@@ -51,9 +51,10 @@ import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
 import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
-import { runDirectModulePlanning } from '../direct_module_planner.js';
+import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
+import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
-import { classifySpokenPlanConfirmation } from '../realtime_completion.js';
+import { classifyExecutionApproval } from './execution_approval.js';
 import {
   classifyRealtimeProviderError,
   realtimeTranscriptionUsageFromEvent,
@@ -456,15 +457,11 @@ export class ConsumerLiveSession {
         : null;
       const storedDirectOffer = await this.state.storage.get('directConfirmationOffer') || null;
       this.directConfirmationOffer = storedDirectOffer?.token
-        && storedDirectOffer?.assistantTurnId
-        && Number.isSafeInteger(Number(storedDirectOffer?.snapshotRevision))
-        ? {
-            token: String(storedDirectOffer.token),
-            assistantTurnId: String(storedDirectOffer.assistantTurnId),
-            snapshotRevision: Number(storedDirectOffer.snapshotRevision),
-            certificateSignature: String(storedDirectOffer.certificateSignature || '')
-          }
+        && storedDirectOffer?.planId
+        ? storedDirectOffer
         : null;
+      this.directPlaybackEvidence = new Map();
+      this.pendingDirectApprovals = new Map();
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -496,6 +493,10 @@ export class ConsumerLiveSession {
       if (path === '/state' && request.method === 'GET') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
         return json({ ok: true, ...(await this.publicState()) });
+      }
+      if (path === '/delivery' && request.method === 'POST') {
+        if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
+        return json(await this.acknowledgeReadbackPlayback(await readInternalJson(request)));
       }
       if (path === '/close' && request.method === 'POST') {
         const body = await readInternalJson(request);
@@ -1114,8 +1115,28 @@ export class ConsumerLiveSession {
     }
 
     if (type === 'input_audio_buffer.speech_started') {
+      const attempt = this.directConfirmationOffer?.deliveryAttempt;
+      if (attempt?.playbackStarted && !attempt.playbackCompleted) {
+        await this.interruptDirectReadback(attempt.responseId);
+      }
       this.invalidatePendingContinuations();
       return;
+    }
+
+    if (type === 'output_audio_buffer.started') {
+      const attempt = this.directConfirmationOffer?.deliveryAttempt;
+      if (attempt?.responseId === String(event.response_id || '')) {
+        attempt.playbackStarted = true;
+        await this.persistDirectConfirmationOffer();
+      }
+      return;
+    }
+    if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {
+      return this.acknowledgeReadbackPlayback({
+        responseId: event.response_id,
+        eventId: event.event_id,
+        playback: type === 'output_audio_buffer.stopped' ? 'completed' : 'interrupted'
+      });
     }
 
     if (type === 'conversation.item.input_audio_transcription.completed') {
@@ -1155,6 +1176,7 @@ export class ConsumerLiveSession {
         event.response?.metadata || {}
       );
       if (!context) return;
+      await this.beginDirectReadbackAttempt(context);
       this.currentResponseAwaitingClientTranscription = context.pendingSourceItemIds.size > 0;
       this.currentResponseNumericContainmentUnavailable = context.numericUnavailable;
       this.pendingClientTranscriptionUnavailable = false;
@@ -1193,7 +1215,10 @@ export class ConsumerLiveSession {
       if (context) {
         context.done = true;
         context.status = String(event.response?.status || 'completed');
-        if (context.status !== 'completed') context.continuationChain.invalidated = true;
+        if (context.status !== 'completed') {
+          context.continuationChain.invalidated = true;
+          await this.interruptDirectReadback(context.responseId);
+        }
         if (context.toolCallIds.size === 0) context.continuationChain.settled = true;
       }
       this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
@@ -1328,14 +1353,10 @@ export class ConsumerLiveSession {
 
     if (event.typed !== true) await this.meterTranscription(event);
     await this.touch();
-    const confirmsPublishedDirectSnapshot = Boolean(
-      this.directConfirmationOffer
-      && turn.answersTurnId
-      && turn.answersTurnId === this.directConfirmationOffer.assistantTurnId
-      && Number(this.directConfirmationOffer.snapshotRevision)
-        === Number(this.directAwaitingConfirmationSnapshotRevision)
-      && classifySpokenPlanConfirmation(transcript) === 'affirmed'
-    );
+    const answersDirectOffer = this.turnAnswersDirectOffer(turn);
+    if (answersDirectOffer) turn.confirmationOfferToken = this.directConfirmationOffer.token;
+    const confirmsPublishedDirectSnapshot = answersDirectOffer
+      && classifyExecutionApproval(transcript) === 'affirmed';
     // THE OBLIGATION IS REGISTERED BEFORE THE DRAIN, NOT AFTER IT.
     // A deferred get_state resumes inside drainDeferredEvidenceTools below and
     // waits on the planning chain. If this turn were queued after that drain,
@@ -1350,14 +1371,9 @@ export class ConsumerLiveSession {
     }
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);
-    // An answer to anything other than the exact armed plan proposition ends
-    // that invitation. This is causal bookkeeping only; the semantic planner,
-    // not this comparison, decides what the new utterance means financially.
-    // scheduleDirectModulePlanning already retires the offer when it queues a
-    // new pass; this covers the turns that queue nothing.
-    if (this.directConfirmationOffer && !confirmsPublishedDirectSnapshot) {
-      await this.clearDirectConfirmationOffer();
-    }
+    // An unclear answer retains the invitation while detached semantic review
+    // decides whether its meaning changed. A false negative now costs only a
+    // clarification, restoring the premise of the original approval safety test.
     this.pruneLiveTurnLedger();
 
     // NOTE WHAT DOES NOT HAPPEN HERE: no brief, no `response.create`, and
@@ -1545,13 +1561,132 @@ export class ConsumerLiveSession {
   }
 
   async clearDirectConfirmationOffer() {
+    if (this.directConfirmationOffer) {
+      this.directConfirmationOffer.superseded = true;
+      await this.state.storage.put('supersededDirectConfirmationOffer', this.directConfirmationOffer);
+    }
     this.directConfirmationOffer = null;
     await this.state.storage.delete('directConfirmationOffer').catch(() => {});
   }
 
+  persistDirectConfirmationOffer() {
+    return this.directConfirmationOffer
+      ? this.state.storage.put('directConfirmationOffer', structuredClone(this.directConfirmationOffer))
+      : Promise.resolve();
+  }
+
+  async recordCompletionMilestone(milestone) {
+    if (!this.meta) return;
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      direction: 'server',
+      eventType: 'live.completion.milestone',
+      payload: { milestone, planId: this.directConfirmationOffer?.planId || null, recordedAtMs: Date.now() }
+    }).catch(() => {});
+  }
+
+  turnAnswersDirectOffer(turn) {
+    const offer = this.directConfirmationOffer;
+    return Boolean(offer && !offer.superseded && turn?.answersTurnId
+      && [offer.assistantTurnId, ...(offer.confirmationTurnIds || [])].includes(turn.answersTurnId));
+  }
+
+  async beginDirectReadbackAttempt(response) {
+    const candidate = response?.continuationChain?.directConfirmationCandidate;
+    const offer = this.directConfirmationOffer;
+    if (!candidate || candidate.token !== offer?.token
+      || response.responseId === candidate.sourceResponseId) return;
+    offer.readbackFullyDelivered = false;
+    offer.deliveryAttempt = {
+      responseId: response.responseId,
+      responseCompleted: false,
+      transcriptMatched: false,
+      playbackStarted: false,
+      playbackCompleted: false,
+      interrupted: response.continuationChain.invalidated === true
+    };
+    const early = this.directPlaybackEvidence.get(response.responseId);
+    if (early) {
+      offer.deliveryAttempt.interrupted ||= early.playback === 'interrupted';
+      offer.deliveryAttempt.playbackCompleted = early.playback === 'completed';
+    }
+    await this.persistDirectConfirmationOffer();
+  }
+
+  async interruptDirectReadback(responseId) {
+    const offer = this.directConfirmationOffer;
+    const attempt = offer?.deliveryAttempt;
+    if (!attempt || attempt.responseId !== responseId) return false;
+    attempt.interrupted = true;
+    offer.readbackFullyDelivered = false;
+    await this.persistDirectConfirmationOffer();
+    await this.drainDirectApprovalDelivery();
+    return true;
+  }
+
+  // Only the authenticated browser route or provider sideband can call this.
+  // The model's tool schema has no delivery field. This ack proves playback;
+  // the independent transcript/response checks below still prove WHAT played.
+  async acknowledgeReadbackPlayback(body) {
+    const responseId = String(body?.responseId || '').slice(0, 200);
+    const playback = body?.playback;
+    if (!responseId || !['completed', 'interrupted'].includes(playback)) {
+      throw new ConsumerError(400, 'readback_delivery_invalid', 'The playback acknowledgement is invalid.');
+    }
+    const previous = this.directPlaybackEvidence.get(responseId);
+    const evidence = {
+      playback: previous?.playback === 'interrupted' ? 'interrupted' : playback,
+      eventId: String(body?.eventId || '').slice(0, 200)
+    };
+    this.directPlaybackEvidence.set(responseId, evidence);
+    while (this.directPlaybackEvidence.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
+      this.directPlaybackEvidence.delete(this.directPlaybackEvidence.keys().next().value);
+    }
+    const offer = this.directConfirmationOffer;
+    const attempt = offer?.deliveryAttempt;
+    if (attempt?.responseId === responseId) {
+      attempt.interrupted ||= evidence.playback === 'interrupted';
+      attempt.playbackCompleted ||= evidence.playback === 'completed';
+      offer.readbackFullyDelivered = !attempt.interrupted && attempt.playbackCompleted
+        && attempt.responseCompleted && attempt.transcriptMatched;
+      if (offer.readbackFullyDelivered) offer.deliveredAt ||= Date.now();
+      await this.persistDirectConfirmationOffer();
+      await this.drainDirectApprovalDelivery();
+    }
+    return { ok: true, responseId, readbackFullyDelivered: offer?.readbackFullyDelivered === true };
+  }
+
+  async drainDirectApprovalDelivery() {
+    const offer = this.directConfirmationOffer;
+    if (!offer?.readbackFullyDelivered && !offer?.deliveryAttempt?.interrupted) return;
+    const pending = [...this.pendingDirectApprovals.values()];
+    this.pendingDirectApprovals.clear();
+    // Resume the SAME tool attempt after delivery evidence settles, without
+    // creating a planner pass or requiring another spoken approval.
+    for (const item of pending) {
+      this.state.waitUntil(this.executeToolCallWithTranscript(item.event, item.clientTranscript));
+    }
+  }
+
   async maybeArmDirectConfirmation(response) {
     const candidate = response?.continuationChain?.directConfirmationCandidate;
+    const offer = this.directConfirmationOffer;
+    if (!offer) return false;
+    const cause = this.clientTurnsByItemId.get(response?.causeItemId);
+    // Clarification remains causally attached to the original certified offer.
+    // It does not replace its read-back or manufacture fresh delivery evidence.
+    if (!candidate && cause?.confirmationOfferToken === offer.token
+      && response?.done && response.status === 'completed' && response.assistantDone
+      && !response.complianceTripped && response.storedAssistantTurnId) {
+      offer.confirmationTurnIds = [...new Set([
+        ...(offer.confirmationTurnIds || []), response.storedAssistantTurnId
+      ])].slice(-MAX_LIVE_TURN_LEDGER_ENTRIES);
+      await this.persistDirectConfirmationOffer();
+    }
     if (!candidate
+      || candidate.token !== offer.token
+      || offer.deliveryAttempt?.responseId !== response.responseId
       || response?.responseId === candidate.sourceResponseId
       || response?.done !== true
       || response?.status !== 'completed'
@@ -1559,21 +1694,20 @@ export class ConsumerLiveSession {
       || !response?.storedAssistantTurnId
       || response?.toolCallIds?.size !== 0
       || response?.continuationChain?.invalidated === true
+      || response?.complianceTripped === true
       || !candidate.confirmationPrompt
       || confirmationReadbackKey(response.assistantTranscript)
         !== confirmationReadbackKey(candidate.confirmationPrompt)
-      || Number(candidate.snapshotRevision) !== Number(this.directAwaitingConfirmationSnapshotRevision)
-      || this.directModulePlanningPending > 0
-      || this.directModulePlanningOutstanding.length > 0) return false;
-    const offer = {
-      token: String(candidate.token),
-      assistantTurnId: String(response.storedAssistantTurnId),
-      snapshotRevision: Number(candidate.snapshotRevision),
-      certificateSignature: String(candidate.certificateSignature || '')
-    };
-    this.directConfirmationOffer = offer;
-    await this.state.storage.put('directConfirmationOffer', offer);
-    return true;
+    ) return false;
+    offer.assistantTurnId = String(response.storedAssistantTurnId);
+    offer.deliveryAttempt.responseCompleted = true;
+    offer.deliveryAttempt.transcriptMatched = true;
+    offer.readbackFullyDelivered = offer.deliveryAttempt.playbackCompleted
+      && !offer.deliveryAttempt.interrupted;
+    if (offer.readbackFullyDelivered) offer.deliveredAt ||= Date.now();
+    await this.persistDirectConfirmationOffer();
+    await this.drainDirectApprovalDelivery();
+    return offer.readbackFullyDelivered;
   }
 
   /* Structural pointers only: a path is safe to record, a value is not. */
@@ -1610,14 +1744,15 @@ export class ConsumerLiveSession {
       sequence: ++this.directModulePlanningSequence
     };
     if (!existing) this.directModulePlanningOutstanding.push(job);
-    // Any new semantic turn invalidates the confirmation invitation immediately.
-    // It will be restored only after a fresh verified snapshot is persisted and
-    // published to Realtime.
-    this.directAwaitingConfirmationSnapshotRevision = null;
-    this.directConfirmationOffer = null;
+    // Register review synchronously, but preserve the offer provisionally.
+    // A planner pass number is not a semantic change and cannot retire consent.
+    if (this.directConfirmationOffer) this.directConfirmationOffer.reviewStatus = 'pending';
+    else {
+      this.directAwaitingConfirmationSnapshotRevision = null;
+      this.state.waitUntil(this.state.storage.delete('directAwaitingConfirmationSnapshotRevision'));
+    }
     this.state.waitUntil(Promise.all([
-      this.state.storage.delete('directAwaitingConfirmationSnapshotRevision'),
-      this.state.storage.delete('directConfirmationOffer'),
+      this.persistDirectConfirmationOffer(),
       this.persistDirectModulePlanningOutstanding()
     ]).catch(() => {}));
     if (this.directModulePlanningPending > 0) return this.directModulePlanningChain;
@@ -1638,7 +1773,8 @@ export class ConsumerLiveSession {
             config,
             context,
             leaseId: this.meta.leaseId,
-            throughTurnId: nextJob.turnId
+            throughTurnId: nextJob.turnId,
+            frozenPlanId: this.directConfirmationOffer?.planId || null
           });
           // This full transcript snapshot settles every obligation at or before
           // its watermark. A turn arriving during the call remains and is the
@@ -1648,6 +1784,27 @@ export class ConsumerLiveSession {
           await this.persistDirectModulePlanningOutstanding();
           if (config.modulePlannerMode === 'apply'
             && this.directModulePlanningOutstanding.length === 0) {
+            const offer = this.directConfirmationOffer;
+            if (offer) {
+              const unchanged = planned?.brief?.readyToConfirm === true
+                && Boolean(planned.brief.verificationCertificate?.signature)
+                && directModulePlanMeaningKey(planned.snapshot, planned.brief.verificationCertificate)
+                  === offer.semanticIdentity;
+              if (unchanged && planned.brief.verificationCertificate.confirmationPromptHash
+                === offer.confirmationPromptHash) {
+                offer.reviewStatus = 'settled';
+                offer.reviewedThroughTurnId = nextJob.turnId;
+                offer.reviewedSnapshotRevision = Number(planned.snapshot.snapshotRevision);
+                await this.persistDirectConfirmationOffer();
+              } else if (unchanged) {
+                // Review of regenerated prose does not establish that the
+                // delivered proposition remains true. Keep it, blocked.
+                offer.reviewStatus = 'failed';
+                await this.persistDirectConfirmationOffer();
+              } else {
+                await this.clearDirectConfirmationOffer();
+              }
+            }
             const published = await this.injectVolatileState();
             this.directAwaitingConfirmationSnapshotRevision = published === true
               && planned?.brief?.readyToConfirm === true
@@ -1663,6 +1820,10 @@ export class ConsumerLiveSession {
             }
           }
         } catch (error) {
+          if (this.directConfirmationOffer) {
+            this.directConfirmationOffer.reviewStatus = 'failed';
+            await this.persistDirectConfirmationOffer();
+          }
           await appendRealtimeEvent(this.env, {
             sessionId: this.meta?.sessionId,
             leaseId: this.meta?.leaseId,
@@ -2536,6 +2697,7 @@ export class ConsumerLiveSession {
     // if the same detector sees that response again.
     if (targetResponse?.complianceTripped) return;
     if (targetResponse) targetResponse.complianceTripped = true;
+    await this.interruptDirectReadback(targetResponseId);
     const targetIsActive = targetResponse?.done === false;
     const targetIsCurrent = targetIsActive && targetResponseId === this.currentResponseId;
     this.violationCount += 1;
@@ -2663,6 +2825,19 @@ export class ConsumerLiveSession {
   async executeToolCallWithTranscript(event, clientTranscript) {
     const name = String(event.name || '');
     const callId = String(event.call_id || '');
+    const approvalOffer = this.directConfirmationOffer;
+    const approvalResponse = this.responseContextsById.get(String(event.response_id || ''));
+    const approvalTurn = this.clientTurnsByItemId.get(approvalResponse?.causeItemId);
+    let proposedToken = '';
+    try { proposedToken = JSON.parse(event.arguments || '{}')?.confirmationToken || ''; } catch (_error) { /* invalid tool */ }
+    if (name === 'confirm_and_run' && getConsumerConfig(this.env).modulePlannerMode === 'apply'
+      && classifyExecutionApproval(clientTranscript) === 'affirmed'
+      && this.turnAnswersDirectOffer(approvalTurn) && proposedToken === approvalOffer?.token
+      && !approvalOffer.readbackFullyDelivered && !approvalOffer.deliveryAttempt?.interrupted
+      && approvalOffer.deliveryAttempt?.transcriptMatched && approvalOffer.deliveryAttempt?.responseCompleted) {
+      this.pendingDirectApprovals.set(callId, { event, clientTranscript });
+      return;
+    }
     const startedAt = Date.now();
     this.activeToolCalls += 1;
 
@@ -2701,19 +2876,16 @@ export class ConsumerLiveSession {
         result = attempt.result;
       } else {
         const affirmedConfirmation = name === 'confirm_and_run'
-          && classifySpokenPlanConfirmation(clientTranscript) === 'affirmed';
+          && classifyExecutionApproval(clientTranscript) === 'affirmed';
         const directOfferMatches = Boolean(
           affirmedConfirmation
           && this.directConfirmationOffer
-          && causalTurn?.answersTurnId
-          && causalTurn.answersTurnId === this.directConfirmationOffer.assistantTurnId
+          && this.turnAnswersDirectOffer(causalTurn)
           && String(args?.confirmationToken || '') === this.directConfirmationOffer.token
-          && Number(this.directConfirmationOffer.snapshotRevision)
-            === Number(this.directAwaitingConfirmationSnapshotRevision)
         );
         const directPlanningUnsettled = this.directModulePlanningPending > 0
           || this.directModulePlanningOutstanding.length > 0
-          || !this.directAwaitingConfirmationSnapshotRevision;
+          || this.directConfirmationOffer?.reviewStatus !== 'settled';
         if (affirmedConfirmation && config.modulePlannerMode === 'apply'
           && !directOfferMatches) {
           result = {
@@ -2723,40 +2895,11 @@ export class ConsumerLiveSession {
             message: 'The verified plan must be read back again before it can run. Call get_state, summarize that current plan, and ask for confirmation.'
           };
         } else if (directOfferMatches && directPlanningUnsettled) {
-          if (this.directModulePlanningPending === 0
-            && this.directModulePlanningOutstanding.length > 0) {
-            this.scheduleDirectModulePlanning(
-              this.directModulePlanningOutstanding.at(-1)?.turnId
-            );
-          } else if (this.directModulePlanningPending === 0) {
-            // The semantic pass may have succeeded while its volatile-state
-            // publication failed. Re-publish the stored snapshot; do not pay
-            // for or invent a second interpretation merely to recover transport.
-            const published = await this.injectVolatileState();
-            if (published) {
-              const latestDirect = await getLatestRealtimeMeetingBrief(
-                this.env,
-                this.meta.sessionId,
-                this.meta.leaseId
-              ).catch(() => null);
-              if (latestDirect?.brief?.readyToConfirm === true) {
-                this.directAwaitingConfirmationSnapshotRevision = Number(
-                  latestDirect.brief.snapshotRevision || 0
-                ) || null;
-                if (this.directAwaitingConfirmationSnapshotRevision) {
-                  await this.state.storage.put(
-                    'directAwaitingConfirmationSnapshotRevision',
-                    this.directAwaitingConfirmationSnapshotRevision
-                  );
-                }
-              }
-            }
-          }
           result = {
             ok: false,
             code: 'module_planning_pending',
             retryable: true,
-            message: 'I am completing the final input check before running the analyses. Please wait a moment and then confirm again.'
+            message: 'The same offer is waiting for its background review. Clarify whether the client wants this plan to run; do not replace the offer or invent new inputs.'
           };
         }
         if (affirmedConfirmation
@@ -2821,13 +2964,43 @@ export class ConsumerLiveSession {
             && Boolean(responseContext?.continuationChain);
           let confirmationToken = null;
           if (readyForOffer) {
-            await this.clearDirectConfirmationOffer();
-            confirmationToken = `dmc_${crypto.randomUUID()}`;
+            let offer = this.directConfirmationOffer;
+            if (!offer) {
+              confirmationToken = `dmc_${crypto.randomUUID()}`;
+              const prepared = await prepareRealtimeVoiceAnalysisPlan({
+                env: this.env,
+                config,
+                sessionRow: context.sessionRow,
+                profile: context.profile,
+                leaseId: this.meta.leaseId,
+                idempotencyKey: `live-offer:${confirmationToken}`,
+                confirmationOfferToken: confirmationToken
+              });
+              offer = {
+                token: confirmationToken,
+                planId: prepared.row.id,
+                profileRevision: Number(prepared.row.profile_revision),
+                snapshotRevision,
+                certificateSignature: String(brief.verificationCertificate.signature),
+                confirmationPromptHash: brief.verificationCertificate.confirmationPromptHash,
+                semanticIdentity: prepared.semanticIdentity,
+                confirmationPrompt: String(brief.confirmationPrompt),
+                readbackFullyDelivered: false,
+                deliveryAttempt: null,
+                reviewStatus: 'settled',
+                reviewedThroughTurnId: brief.directModuleSnapshot?.throughTurnId || null,
+                superseded: false,
+                createdAt: Date.now()
+              };
+              this.directConfirmationOffer = offer;
+              await this.persistDirectConfirmationOffer();
+            }
+            confirmationToken = offer.token;
             responseContext.continuationChain.directConfirmationCandidate = {
               token: confirmationToken,
-              snapshotRevision,
-              certificateSignature: String(brief.verificationCertificate.signature),
-              confirmationPrompt: String(brief.confirmationPrompt),
+              snapshotRevision: offer.snapshotRevision,
+              certificateSignature: offer.certificateSignature,
+              confirmationPrompt: offer.confirmationPrompt,
               sourceResponseId: responseContext.responseId
             };
           }
@@ -2844,7 +3017,7 @@ export class ConsumerLiveSession {
             snapshotRevision,
             readyToConfirm: readyForOffer,
             confirmationToken,
-            confirmationPrompt: readyForOffer ? String(brief.confirmationPrompt) : null,
+            confirmationPrompt: readyForOffer ? this.directConfirmationOffer.confirmationPrompt : null,
             verificationStatus: brief?.verification?.verdict || 'pending',
             modules: (brief?.directModuleSnapshot?.modules || [])
               .filter((item) => item?.status !== 'not_relevant')
@@ -2859,11 +3032,19 @@ export class ConsumerLiveSession {
           };
         }
         if (!result) {
+          if (name === 'confirm_and_run' && directOfferMatches
+            && this.directConfirmationOffer?.readbackFullyDelivered) {
+            this.directConfirmationOffer.approvedAt ||= Date.now();
+            await this.persistDirectConfirmationOffer();
+            await this.recordCompletionMilestone('approved');
+          }
           result = await executeLiveTool(name, args, {
             env: this.env,
             config,
             leaseId: this.meta.leaseId,
             toolAttemptId: attempt.row.id,
+            directConfirmationOffer: config.modulePlannerMode === 'apply'
+              ? this.directConfirmationOffer : null,
             // The proposal audit row keeps the provider item identity. Exact
             // quote offsets remain a T2 responsibility against the stored turn.
             evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
@@ -3022,9 +3203,14 @@ export class ConsumerLiveSession {
     }).catch(() => {});
 
     if (name === 'confirm_and_run' && result?.ok) {
-      await this.clearDirectConfirmationOffer();
-      this.directAwaitingConfirmationSnapshotRevision = null;
-      await this.state.storage.delete('directAwaitingConfirmationSnapshotRevision').catch(() => {});
+      if (this.directConfirmationOffer) {
+        this.directConfirmationOffer.approvedAt ||= startedAt;
+        this.directConfirmationOffer.executionStatus = String(result.status || 'pending');
+        this.directConfirmationOffer.analysisRunId = result.analysisPlan?.analysisRunId || null;
+        if (result.status === 'complete') this.directConfirmationOffer.completedAt ||= Date.now();
+        await this.persistDirectConfirmationOffer();
+      }
+      if (result.status === 'complete') await this.recordCompletionMilestone('results_persisted');
       await appendRealtimeEvent(this.env, {
         sessionId: this.meta.sessionId,
         leaseId: this.meta.leaseId,
@@ -3347,6 +3533,7 @@ export class ConsumerLiveSession {
         await hangupOpenAiRealtimeCall({ env: this.env, providerCallId });
       }
       hangupConfirmed = true;
+      await this.recordCompletionMilestone('provider_hangup_confirmed');
     } catch (error) {
       this.closing = false;
       await this.scheduleTerminalizationRetry();

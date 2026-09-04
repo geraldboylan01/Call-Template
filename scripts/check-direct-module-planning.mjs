@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { directModuleTestInputs } from './live-harness/direct-fixtures.mjs';
 
-import { createDefaultHousePurchaseInputs } from '../js/house_purchase/index.js';
-import { LIQUIDITY_RESERVE_POLICY } from '../js/liquidity_reserve.js';
 import { approvedCollegeScenarios, PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
 import {
@@ -28,6 +27,7 @@ import { buildLiveSessionConfig } from '../worker/src/consumer/live/live_provide
 import {
   DIRECT_MODULE_CONTRACTS,
   DIRECT_MODULE_IDS,
+  directModulePlanMeaningKey,
   interpretDirectModuleConversation,
   MODULE_PLANNING_SNAPSHOT_V1,
   normalizeDirectSnapshot,
@@ -88,30 +88,6 @@ assert.match(
 );
 pass('direct Realtime opens warmly, routes all seven modules by goal, and follows AI-authored state without legacy fact-writing instructions');
 
-const house = createDefaultHousePurchaseInputs(TODAY);
-Object.assign(house, {
-  lendingCategory: 'first_time_buyer',
-  applicants: [{
-    ...house.applicants[0],
-    id: 'primary',
-    label: 'Aoife',
-    age: 34,
-    employmentStatus: 'employee',
-    grossAnnualIncome: 68000,
-    incomeReliability: 'stable',
-    schemeBuyerStatus: 'first_time_buyer'
-  }],
-  cashSavingsContributions: [{ ownerId: 'primary', amount: 70000 }],
-  currentCashSavings: 70000,
-  monthlyNetHouseholdIncome: 4200,
-  monthlyEssentialExpensesExcludingHousingDebtAndRent: 2200,
-  currentMonthlyRent: 1700,
-  currentMonthlySavings: 1000,
-  plannedMonthlySavings: 1000,
-  targetPropertyPrice: 400000,
-  targetPurchaseDate: '2028-06-30',
-  localAuthorityCode: 'unknown'
-});
 
 const PBS_NONE_TRANSCRIPT = 'The house is worth 450,000, we have 50,000 saved and a pension of 180,000, and we have no debts at all. We spend about 2,500 a month.';
 const PBS_EVIDENCE_PROFILE = { profileId: 'p', revision: 1, primaryPerson: { personId: 'primary', displayName: 'Client' }, partner: null, preferences: { baseCurrency: 'EUR' }, assumptions: { calculationDateIso: TODAY } };
@@ -125,61 +101,7 @@ const PBS_ASSET_EVIDENCE = [
   { path: '/currencyWarnings', source: 'conversation', turnId: 'turn-none', quote: 'we have no debts at all', profilePath: '' }
 ];
 
-const inputs = {
-  personal_balance_sheet: {
-    currency: 'EUR',
-    assetPositions: [
-      { id: 'home', label: 'Home', bucket: 'lifestyle_assets', amount: 450000, source: 'properties' },
-      { id: 'cash', label: 'Savings', bucket: 'spendable_reserves', amount: 50000, source: 'assets' },
-      { id: 'pension', label: 'Pension', bucket: 'retirement_funding', amount: 180000, source: 'pensions' }
-    ],
-    liabilityPositions: [{ id: 'mortgage', label: 'Mortgage', amount: 240000, source: 'liabilities' }],
-    monthlyExpenditure: 2500,
-    reconciliationWarnings: [],
-    currencyWarnings: []
-  },
-  pension_projection: {
-    currentYear: 2026,
-    inflationRate: 0.02,
-    growthRate: 0.05,
-    wageGrowthRate: 0.02,
-    incomeMode: 'target',
-    targetIncomeToday: 70000,
-    targetStartYear: 2052,
-    horizonEndAge: 95,
-    pensions: [
-      { id: 'primary', title: 'John', currentAge: 42, retirementAge: 67, currentSalary: 85000, currentPot: 180000, personalPct: 0.08, employerPct: 0.06, includeStatePension: true, statePensionFraction: 1, statePensionStartAge: 66, statePensionEscalationRate: 0.02 },
-      { id: 'partner', title: 'Mary', currentAge: 40, retirementAge: 66, currentSalary: 70000, currentPot: 120000, personalPct: 0.07, employerPct: 0.05, includeStatePension: true, statePensionFraction: 1, statePensionStartAge: 66, statePensionEscalationRate: 0.02 }
-    ],
-    otherIncomeSources: []
-  },
-  liquidity_analysis: {
-    currentCash: 90000,
-    monthlyExpenditure: 5000,
-    annualExpenditure: 60000,
-    clientStatus: 'not-retired',
-    policyVersion: LIQUIDITY_RESERVE_POLICY.policyVersion,
-    minimumBufferMonths: 3,
-    targetBufferMonths: 6
-  },
-  mortgage_analysis: {
-    loanKind: 'mortgage', currentBalance: 240000, annualInterestRate: 0.041,
-    startDateIso: TODAY, endDateIso: null, remainingTermYears: 22, repaymentType: 'repayment',
-    fixedPaymentAmount: null, oneOffOverpayment: 0, annualOverpayment: 0
-  },
-  loan_analysis: {
-    loanKind: 'loan', currentBalance: 18000, annualInterestRate: 0.085,
-    startDateIso: TODAY, endDateIso: null, remainingTermYears: 4, repaymentType: 'repayment',
-    fixedPaymentAmount: null, oneOffOverpayment: 0, annualOverpayment: 500
-  },
-  college_funding: {
-    currentYear: 2026,
-    inflationRate: PLANEIR_ASSUMPTIONS.inflation.educationRate,
-    children: [{ id: 'child-1', title: 'Child', currentAge: 8, collegeStartAge: 18, collegeDurationYears: 4 }],
-    scenarios: approvedCollegeScenarios()
-  },
-  house_purchase: house
-};
+const inputs = directModuleTestInputs(TODAY);
 
 for (const [moduleId, input] of Object.entries(inputs)) {
   const result = await runPlanningModuleWithInput(moduleId, input, {
@@ -1235,6 +1157,66 @@ try {
   ), false);
   pass('certificate binds exact canonical inputs, prompt/model policy, and every cited profile value');
 
+  const frozenMeaning = directModulePlanMeaningKey(interpreted.snapshot, interpreted.certificate);
+  const bookkeepingSnapshot = structuredClone(interpreted.snapshot);
+  bookkeepingSnapshot.snapshotRevision += 4;
+  bookkeepingSnapshot.throughTurnId = 'later-turn';
+  bookkeepingSnapshot.confirmationPrompt = 'A regenerated wording is not a new financial plan.';
+  bookkeepingSnapshot.modules[0].steeringSummary = 'New steering wording';
+  bookkeepingSnapshot.modules[0].evidence = [];
+  assert.equal(directModulePlanMeaningKey(bookkeepingSnapshot, {
+    ...interpreted.certificate,
+    snapshotRevision: bookkeepingSnapshot.snapshotRevision,
+    throughTurnId: 'later-turn',
+    profileEvidenceHash: 'new-evidence-index',
+    signature: 'new-signature'
+  }), frozenMeaning);
+  for (const change of [
+    (snapshot) => { snapshot.modules.find((item) => item.status === 'ready').input.currentBalance += 1; },
+    (snapshot) => { snapshot.modules.find((item) => item.status === 'ready').assumptions.push({ path: '/currentBalance', value: 1, source: 'different' }); },
+    (snapshot) => { snapshot.modules.find((item) => item.status === 'ready').status = 'collecting'; },
+    (snapshot) => { snapshot.profileRevision += 1; }
+  ]) {
+    const changed = structuredClone(interpreted.snapshot);
+    change(changed);
+    assert.notEqual(directModulePlanMeaningKey(changed, interpreted.certificate), frozenMeaning);
+  }
+  assert.notEqual(directModulePlanMeaningKey(interpreted.snapshot, {
+    ...interpreted.certificate, policyHash: 'changed-policy'
+  }), frozenMeaning);
+  assert.notEqual(directModulePlanMeaningKey(interpreted.snapshot, {
+    ...interpreted.certificate, moduleContractVersions: { mortgage_analysis: 'changed-contract' }
+  }), frozenMeaning);
+  pass('semantic identity excludes review bookkeeping but binds native inputs, selection, assumptions and execution policy');
+
+  const originalExtraction = extractionValue;
+  extractionValue = {
+    ...originalExtraction,
+    baseSnapshotRevision: interpreted.snapshot.snapshotRevision,
+    throughTurnId: 'unclear-approval',
+    confirmationPrompt: 'A newly generated and different proposal.'
+  };
+  const callsBeforeReview = providerCalls;
+  const reviewed = await interpretDirectModuleConversation({
+    env: certificateEnv,
+    config: certificateConfig,
+    turns: [
+      { id: 'turn-1', role: 'user', transcript },
+      { id: 'readback', role: 'assistant', transcript: CONFIRMATION_PROMPT },
+      { id: 'unclear-approval', role: 'user', transcript: 'Could you say that again?' }
+    ],
+    throughTurnId: 'unclear-approval',
+    previousSnapshot: interpreted.snapshot,
+    currentProfileContext: EVIDENCE_PROFILE,
+    frozenPlan: { snapshot: interpreted.snapshot, certificate: interpreted.certificate }
+  });
+  assert.equal(providerCalls - callsBeforeReview, 2, 'review uses only the existing extraction and verifier calls');
+  assert.equal(lastVerifierEnvelope.proposedSnapshot.confirmationPrompt, CONFIRMATION_PROMPT);
+  assert.equal(lastVerifierEnvelope.conversation.at(-1).text, 'Could you say that again?');
+  assert.notEqual(reviewed.certificate.signature, interpreted.certificate.signature);
+  assert.equal(directModulePlanMeaningKey(reviewed.snapshot, reviewed.certificate), frozenMeaning);
+  pass('unchanged review certifies the original delivered read-back against the newer conversation without another verifier call');
+
   verifierValue = {
     schemaVersion: 'ModuleInputVerificationV1',
     verdict: 'needs_clarification',
@@ -1253,15 +1235,23 @@ try {
   const blockedByVerifier = await interpretDirectModuleConversation({
     env: certificateEnv,
     config: certificateConfig,
-    turns: [{ id: 'turn-1', role: 'user', transcript }],
-    throughTurnId: 'turn-1',
-    currentProfileContext: EVIDENCE_PROFILE
+    turns: [
+      { id: 'turn-1', role: 'user', transcript },
+      { id: 'unclear-approval', role: 'user', transcript: 'Actually I am not certain that mortgage is mine alone.' }
+    ],
+    throughTurnId: 'unclear-approval',
+    previousSnapshot: interpreted.snapshot,
+    currentProfileContext: EVIDENCE_PROFILE,
+    frozenPlan: { snapshot: interpreted.snapshot, certificate: interpreted.certificate }
   });
   assert.equal(blockedByVerifier.certificate, null);
   assert.equal(blockedByVerifier.brief.readyToConfirm, false);
   assert.equal(blockedByVerifier.brief.ambiguities.at(-1)?.question,
     'Is that mortgage yours alone or jointly held?');
   pass('a verifier objection blocks execution and supplies an AI-authored next question');
+  assert.equal(lastVerifierEnvelope.proposedSnapshot.confirmationPrompt, CONFIRMATION_PROMPT);
+  assert.match(lastVerifierEnvelope.conversation.at(-1).text, /not certain/);
+  extractionValue = originalExtraction;
   verifierValue = {
     schemaVersion: 'ModuleInputVerificationV1',
     verdict: 'pass',

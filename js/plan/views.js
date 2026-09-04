@@ -1,3 +1,4 @@
+import { describePlanningCompletion, getDisplayableResultItems as getResultItems } from './completion.js';
 import { getAiConsent, getConsumerInvite } from './store.js';
 import { isSubscriptionAssistCohort } from './subscription_assist.js';
 import {
@@ -185,21 +186,8 @@ export function getAvailableViews(currentState) {
     currentState.profile?.revision,
     0
   ) || 0);
-  const analysisRevision = Number(currentState.analysis?.profileRevision || 0);
   const confirmedRevision = Number(currentState.session?.confirmedProfileRevision || 0);
-  const hasCompletedResults = currentRevision > 0
-    && analysisRevision === currentRevision
-    && ['complete', 'partial'].includes(String(currentState.analysis?.status || ''))
-    && getResultItems(currentState.analysis).length > 0;
-  const planSlots = asArray(currentState.analysisPlan?.moduleSlots);
-  const hasCompletedAdviserReviewPlan = currentRevision > 0
-    && Number(currentState.analysisPlan?.profileRevision || 0) === currentRevision
-    && String(currentState.analysisPlan?.status || '') === 'complete'
-    && asArray(currentState.analysisPlan?.moduleIds).length === 0
-    && planSlots.length >= 1
-    && planSlots.length <= 3
-    && planSlots.every((slot) => slot?.availability === 'adviser_review_required');
-  const hasCompletedOutcome = hasCompletedResults || hasCompletedAdviserReviewPlan;
+  const hasCompletedOutcome = describePlanningCompletion(currentState).ready;
   const profileConfirmed = currentRevision > 0 && confirmedRevision === currentRevision;
   return {
     conversation: true,
@@ -985,35 +973,6 @@ function createRecommendationsView(currentState) {
   return section;
 }
 
-function getResultItems(analysis) {
-  const root = asObject(analysis) || {};
-  const nestedResults = asObject(root.results);
-  const candidates = firstDefined(
-    root.moduleRuns,
-    root.moduleResults,
-    root.modules,
-    Array.isArray(root.results) ? root.results : null,
-    nestedResults?.moduleRuns,
-    nestedResults?.moduleResults,
-    nestedResults?.modules
-  );
-  if (Array.isArray(candidates)) {
-    return candidates.filter(consumerVisibleAnalysis);
-  }
-  if (asObject(candidates)) {
-    return Object.entries(candidates)
-      .map(([moduleId, value]) => ({ moduleId, ...(asObject(value) || { value }) }))
-      .filter(consumerVisibleAnalysis);
-  }
-  if (
-    (root.outputs || root.semanticResult || root.highlights || root.summary)
-    && consumerVisibleAnalysis(root)
-  ) {
-    return [root];
-  }
-  return [];
-}
-
 /** Keys the renderer itself consumes. They describe a result; they are not one. */
 const METRIC_METADATA_KEYS = new Set(['currency', 'moduleid', 'moduleversion', 'calculationversion']);
 
@@ -1533,12 +1492,13 @@ function createMeetingTranscriptSection(currentState) {
 // client sees it, rather than summarised second-hand by whoever is reviewing
 // the call. See scripts/render-client-results.mjs.
 export function createResultsView(currentState) {
-  const adviserReviewSlots = adviserReviewModuleSlots(currentState);
-  const planSlotCount = asArray(currentState.analysisPlan?.moduleSlots).length;
-  const gatedOnly = adviserReviewSlots.length >= 1
-    && adviserReviewSlots.length === planSlotCount
-    && getResultItems(currentState.analysis).length === 0;
+  const completion = describePlanningCompletion(currentState);
+  const gatedOnly = completion.ready && completion.kind === 'adviser_review';
   const section = element('section');
+  if (completion.profileRevision > 0 && !completion.ready) {
+    section.append(element('p', 'empty-state-inline', 'Your results are not ready yet.'));
+    return section;
+  }
   append(
     section,
     createWorkspaceHeading(

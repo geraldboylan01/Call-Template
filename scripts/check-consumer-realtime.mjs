@@ -3468,6 +3468,57 @@ const completedReplay = await confirmRealtimeAnalysisPlan(env, {
 assert.equal(completedReplay.idempotentReplay, true);
 assert.equal(completedReplay.result.speakableText, 'The deterministic analysis is complete.');
 
+// Direct live approval owns one durable offer receipt. This repository test
+// intentionally does not certify or run module inputs: the execution harness
+// covers those gates, while this exercises real database uniqueness and CAS.
+const frozenOfferRequest = {
+  sessionId,
+  leaseId: lease.id,
+  idempotencyKey: 'live-offer:confirmation-offer-001',
+  confirmationOfferToken: 'confirmation-offer-001',
+  profileRevision: 1,
+  moduleIds: ['mortgage_analysis'],
+  inputSource: 'verified_direct_module_input',
+  directModuleSnapshot: { snapshotRevision: 10 },
+  verificationCertificate: { signature: 'repository-fixture' },
+  moduleInputs: { mortgage_analysis: { currentBalance: 240000 } }
+};
+const frozenOfferPlan = await prepareRealtimeAnalysisPlan(env, frozenOfferRequest);
+const duplicatePreparedOffer = await prepareRealtimeAnalysisPlan(env, frozenOfferRequest);
+assert.equal(duplicatePreparedOffer.row.id, frozenOfferPlan.row.id);
+await rejectsCode(prepareRealtimeAnalysisPlan(env, {
+  ...frozenOfferRequest,
+  directModuleSnapshot: { snapshotRevision: 11 }
+}), 'analysis_plan_nonce_conflict');
+const frozenApproval = {
+  sessionId,
+  planId: frozenOfferPlan.row.id,
+  planNonce: frozenOfferPlan.planNonce,
+  profileRevision: 1
+};
+const competingApprovals = await Promise.all([
+  confirmRealtimeAnalysisPlan(env, frozenApproval),
+  confirmRealtimeAnalysisPlan(env, frozenApproval)
+]);
+assert.equal(competingApprovals.filter((receipt) => !receipt.idempotentReplay).length, 1);
+assert.ok(competingApprovals.every((receipt) => receipt.row.id === frozenOfferPlan.row.id));
+assert.equal(competingApprovals[0].input.confirmationOfferToken, frozenOfferRequest.confirmationOfferToken);
+await markRealtimeAnalysisPlanRunning(env, sessionId, frozenOfferPlan.row.id);
+const pendingOfferReplay = await confirmRealtimeAnalysisPlan(env, frozenApproval);
+assert.equal(pendingOfferReplay.idempotentReplay, true);
+assert.equal(pendingOfferReplay.row.status, 'running');
+await rejectsCode(markRealtimeAnalysisPlanRunning(env, sessionId, frozenOfferPlan.row.id), 'analysis_plan_state_conflict');
+await completeRealtimeAnalysisPlan(env, {
+  sessionId,
+  planId: frozenOfferPlan.row.id,
+  status: 'complete',
+  result: { speakableText: 'Frozen offer complete.' },
+  analysisRunId: 'frozen_offer_run_001'
+});
+const frozenCompletedReplay = await confirmRealtimeAnalysisPlan(env, frozenApproval);
+assert.equal(frozenCompletedReplay.row.analysis_run_id, 'frozen_offer_run_001');
+assert.equal(frozenCompletedReplay.result.speakableText, 'Frozen offer complete.');
+
 const stalePlan = await prepareRealtimeAnalysisPlan(env, {
   sessionId,
   leaseId: lease.id,
@@ -3487,6 +3538,9 @@ await rejectsCode(confirmRealtimeAnalysisPlan(env, {
   profileRevision: 1
 }), 'profile_revision_conflict');
 assert.equal((await getCurrentRealtimeAnalysisPlan(env, sessionId)).status, 'conflicted');
+const historicalOfferReplay = await confirmRealtimeAnalysisPlan(env, frozenApproval);
+assert.equal(historicalOfferReplay.idempotentReplay, true);
+assert.equal(historicalOfferReplay.row.analysis_run_id, 'frozen_offer_run_001');
 sqliteCommand(databasePath, 'run', {
   sql: 'UPDATE consumer_sessions SET current_profile_revision = 1, confirmed_profile_revision = 1 WHERE id = ?',
   values: [sessionId]

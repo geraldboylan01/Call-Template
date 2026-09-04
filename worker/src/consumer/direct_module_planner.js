@@ -17,10 +17,13 @@ import { hmacSha256Base64Url, sha256Base64Url, stableStringify } from './crypto.
 import {
   appendRealtimeEvent,
   getLatestRealtimeMeetingBrief,
+  getRealtimeAnalysisPlanExecution,
   listReconciliationTranscriptWindow,
   recordRealtimeUsage,
   saveRealtimeMeetingBrief
 } from './realtime_repository.js';
+import { directModuleCandidateMeaningKey } from './direct_module_identity.js';
+export { directModulePlanMeaningKey } from './direct_module_identity.js';
 
 export const MODULE_PLANNING_SNAPSHOT_V1 = 'ModulePlanningSnapshotV1';
 const MODULE_VERIFICATION_V1 = 'ModuleInputVerificationV1';
@@ -798,12 +801,18 @@ async function verificationCertificate(
   return { ...unsigned, signature };
 }
 
-export async function runDirectModulePlanning({ env, config, context, leaseId, throughTurnId }) {
+export async function runDirectModulePlanning({ env, config, context, leaseId, throughTurnId, frozenPlanId = null }) {
   const previous = await getLatestRealtimeMeetingBrief(env, context.sessionRow.id, leaseId).catch(() => null);
   const previousSnapshot = previous?.brief?.schemaVersion === MEETING_BRIEF_V3
     ? previous.brief.directModuleSnapshot
     : null;
-  const referencedTurnIds = (previousSnapshot?.modules || [])
+  const frozen = frozenPlanId
+    ? await getRealtimeAnalysisPlanExecution(env, context.sessionRow.id, frozenPlanId, leaseId)
+    : null;
+  const referencedTurnIds = [
+    ...(previousSnapshot?.modules || []),
+    ...(frozen?.input?.directModuleSnapshot?.modules || [])
+  ]
     .flatMap((module) => (module.evidence || [])
       .filter((item) => item.source === 'conversation')
       .map((item) => item.turnId))
@@ -826,7 +835,10 @@ export async function runDirectModulePlanning({ env, config, context, leaseId, t
     turns,
     throughTurnId,
     previousSnapshot,
-    currentProfileContext: context.profile
+    currentProfileContext: context.profile,
+    frozenPlan: frozen?.input?.inputSource === 'verified_direct_module_input'
+      ? { snapshot: frozen.input.directModuleSnapshot, certificate: frozen.input.verificationCertificate }
+      : null
   });
   const {
     snapshot,
@@ -903,7 +915,8 @@ export async function interpretDirectModuleConversation({
   turns,
   throughTurnId,
   previousSnapshot = null,
-  currentProfileContext = null
+  currentProfileContext = null,
+  frozenPlan = null
 }) {
   const previousRevision = Number(previousSnapshot?.snapshotRevision || 0);
   const priorSnapshotForModel = plannerFacingSnapshot(previousSnapshot);
@@ -949,6 +962,20 @@ export async function interpretDirectModuleConversation({
     allowedModuleIds: config.allowedModules
   });
   snapshot.profileRevision = Number(currentProfileContext?.revision || 0);
+  // An unchanged candidate is audited against the EXACT read-back already
+  // delivered, not newly generated prose. The existing verifier sees the newer
+  // conversation, so changed certainty/ownership can still block this offer.
+  // This adds no model call and does not replace the frozen executable input.
+  if (frozenPlan?.snapshot?.confirmationPrompt
+    && directModuleCandidateMeaningKey(snapshot) === directModuleCandidateMeaningKey(frozenPlan.snapshot)
+    && await verifyDirectModuleCertificate(env, frozenPlan.certificate, frozenPlan.snapshot, null, {
+      config,
+      calculationDateIso: currentProfileContext?.assumptions?.calculationDateIso,
+      baseCurrency: currentProfileContext?.preferences?.baseCurrency,
+      currentProfileContext
+    })) {
+    snapshot.confirmationPrompt = frozenPlan.snapshot.confirmationPrompt;
+  }
   const readyModules = snapshot.modules.filter((item) => item.status === 'ready');
   const relevantModules = snapshot.modules.filter((item) => item.status !== 'not_relevant');
   const eligibleForVerification = relevantModules.length > 0

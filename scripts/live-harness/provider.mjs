@@ -151,6 +151,12 @@ export class LiveProviderSimulator {
       }
     });
     response.done = true;
+    if (response.spoken) {
+      await this.send({
+        type: 'output_audio_buffer.stopped', response_id: response.responseId,
+        event_id: `playback_stopped_${response.responseId}`
+      });
+    }
   }
 
   async runResponseChain({ itemId = null, clientText = '', responseCreate = null, act, startedAt }) {
@@ -174,6 +180,10 @@ export class LiveProviderSimulator {
         );
       }
       const value = String(text || '');
+      if (!response.spoken && value) await this.send({
+        type: 'output_audio_buffer.started', response_id: response.responseId,
+        event_id: `playback_started_${response.responseId}`
+      });
       for (let index = 0; index < value.length; index += AUDIO_DELTA_CHUNK) {
         await this.send({
           type: 'response.output_audio_transcript.delta',

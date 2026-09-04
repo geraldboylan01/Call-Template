@@ -17,7 +17,7 @@ import {
   MODULE_PLANNING_SNAPSHOT_V1
 } from '../worker/src/consumer/direct_module_planner.js';
 import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
-import { getLatestRealtimeMeetingBrief } from '../worker/src/consumer/realtime_repository.js';
+import { getLatestRealtimeMeetingBrief, getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
 
 const pass = (message) => console.info(`[DirectModuleLivePath] PASS: ${message}`);
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -275,8 +275,10 @@ try {
   });
   await settle(durable, session);
   assert.equal(inaccurateReadBack.responseIds.length, 2, 'get_state must finish in a distinct continuation response');
-  assert.equal(session.directConfirmationOffer, null,
-    'an incomplete or inaccurate read-back must not arm a certified plan');
+  assert.ok(session.directConfirmationOffer?.planId,
+    'the exact executable plan is frozen before attempting delivery');
+  assert.equal(session.directConfirmationOffer.readbackFullyDelivered, false,
+    'an incomplete or inaccurate read-back preserves an explicitly unapprovable offer');
 
   const readBack = await simulator.turn({
     clientText: 'Please read the exact plan back to me.',
@@ -290,6 +292,7 @@ try {
   await settle(durable, session);
   assert.equal(readBack.responseIds.length, 2);
   assert.equal(session.directConfirmationOffer?.token, confirmationToken);
+  assert.equal(session.directConfirmationOffer?.readbackFullyDelivered, true);
   const armedAssistantTurnId = session.directConfirmationOffer?.assistantTurnId;
   assert.ok(armedAssistantTurnId);
   pass('a ready get_state result arms only the assistant turn that reads back the verified plan');
@@ -323,9 +326,28 @@ try {
   assert.notEqual(session.directConfirmationOffer?.assistantTurnId, armedAssistantTurnId);
   pass('wrong tokens fail and a multi-continuation chain preserves its exact causal turn and proposition');
 
+  const frozenOffer = structuredClone(session.directConfirmationOffer);
+  const frozenExecution = await getRealtimeAnalysisPlanExecution(
+    meeting.env, meeting.sessionId, frozenOffer.planId, meeting.meetingId
+  );
+  await simulator.turn({
+    clientText: 'That seems sensible to me.',
+    act: async () => ({ speech: 'Would you like me to run that plan now?' })
+  });
+  await settle(durable, session);
+  assert.equal(session.directConfirmationOffer?.token, frozenOffer.token,
+    'unclear confirmation must not destroy the offer');
+  assert.equal(session.directConfirmationOffer?.planId, frozenOffer.planId);
+  assert.equal(session.directConfirmationOffer?.readbackFullyDelivered, true);
+  assert.equal(session.directConfirmationOffer?.reviewStatus, 'settled');
+  assert.ok(session.directConfirmationOffer.reviewedSnapshotRevision > frozenOffer.snapshotRevision,
+    'a newer planning pass with unchanged verified meaning keeps the original offer alive');
+  assert.equal(session.directConfirmationOffer?.certificateSignature, frozenOffer.certificateSignature);
+  pass('unclear approval retains the delivered offer through an unchanged semantic review and clarification');
+
   let confirmationResult = null;
   await simulator.turn({
-    clientText: 'Yes, please go ahead.',
+    clientText: 'Yeah, run that plan.',
     act: async ({ callTool }) => {
       const call = await callTool('confirm_and_run', { confirmationToken: replacementToken });
       confirmationResult = call.result;
@@ -334,8 +356,8 @@ try {
   });
   await settle(durable, session);
 
-  assert.equal(extractionCalls, 3, 'each pre-confirmation get_state settles its latest client turn once');
-  assert.equal(verificationCalls, 3, 'the confirmation must use the latest independently verified snapshot');
+  assert.equal(extractionCalls, 4, 'clean natural approval creates no new extraction pass');
+  assert.equal(verificationCalls, 4, 'unclear clarification is reviewed once in the existing background verifier');
   assert.equal(confirmationResult?.ok, true);
   assert.equal(confirmationResult?.status, 'complete');
   assert.equal(confirmationResult?.completedCount, 1);
@@ -348,6 +370,30 @@ try {
   assert.equal(runs.length, 1);
   assert.equal(runs[0].status, 'complete');
   assert.ok(runs[0].input_snapshot_hash_b64u);
+  const executed = await getRealtimeAnalysisPlanExecution(
+    meeting.env, meeting.sessionId, frozenOffer.planId, meeting.meetingId
+  );
+  assert.deepEqual(executed.input, frozenExecution.input,
+    'the originally delivered certificate and inputs must remain byte-for-byte identical');
+  const callsBeforeReplay = extractionCalls;
+  let replayResult;
+  await simulator.turn({
+    clientText: 'Yes, run the plan.',
+    act: async ({ callTool }) => {
+      replayResult = (await callTool('confirm_and_run', { confirmationToken: frozenOffer.token })).result;
+      return { speech: 'The results are ready.' };
+    }
+  });
+  await settle(durable, session);
+  assert.equal(replayResult?.ok, true);
+  assert.equal(replayResult?.analysisPlan?.planId, frozenOffer.planId);
+  assert.equal(extractionCalls, callsBeforeReplay);
+  assert.equal((await meeting.env.CONSUMER_DB.prepare(
+    'SELECT COUNT(*) AS n FROM consumer_module_runs WHERE session_id = ?'
+  ).bind(meeting.sessionId).first()).n, 1, 'a second natural approval with a new tool id cannot execute again');
+  assert.equal((await meeting.env.CONSUMER_DB.prepare(
+    'SELECT stage FROM consumer_sessions WHERE id = ?'
+  ).bind(meeting.sessionId).first()).stage, 'results', 'duplicate approval cannot regress the result stage');
   pass('the analysis run records provenance for the exact direct input snapshot');
   const plannerUsage = (await meeting.env.CONSUMER_DB.prepare(`
     SELECT usage_kind FROM consumer_realtime_usage

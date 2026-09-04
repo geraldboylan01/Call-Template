@@ -100,13 +100,16 @@ const realtimeVoiceControllerOptions = {
   onPlanningPayload: (payload) => scheduleRealtimeJourneyRender(payload),
   onNavigate: async (view) => {
     const destination = view || 'review';
-    if (destination === 'results') {
-      await refreshSavedSession({ keepView: true });
-      const latestMeeting = state.realtimeMeetings?.[0];
-      if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
-    }
+    // The controller has already received matching results and confirmed hang-up.
+    // Secondary transcript/history reads must not hold the completed call here.
     setView(destination);
     renderCurrentJourney({ focus: true });
+    if (destination === 'results') {
+      refreshSavedSession({ keepView: true }).then(async () => {
+        const latestMeeting = state.realtimeMeetings?.[0];
+        if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
+      }).catch(() => {});
+    }
   },
   onToast: (message, options) => showToast(message, options),
   onSessionUnavailable: (error) => recoverUnavailableSession(error),
@@ -359,8 +362,7 @@ function chooseViewFromServer({ action = '', payload = null, profileChanged = tr
   if (stage === 'human_handoff' && available.handoff) {
     return 'handoff';
   }
-  if ((stage === 'results' || (state.analysis && ['complete', 'completed'].includes(String(state.session?.status))))
-    && available.results) {
+  if (available.results) {
     return 'results';
   }
   if (['module_recommendation', 'missing_information', 'analysis'].includes(stage)) {

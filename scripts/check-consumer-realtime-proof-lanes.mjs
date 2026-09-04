@@ -498,6 +498,12 @@ assert.equal(LIVE_TOOL_NAMES.length, 3, 'The live lane has three tools, not the 
         }
       });
     }
+    if (options.method === 'DELETE' && target.pathname.includes('/voice/realtime/calls/')) {
+      return new Response(JSON.stringify({
+        realtimeLease: { leaseId: target.pathname.split('/').at(-1), status: 'complete' },
+        providerHangupConfirmed: true
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
     return new Response(JSON.stringify({ session: { id: 'cs_stubsession000000000001', status: 'active' } }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }

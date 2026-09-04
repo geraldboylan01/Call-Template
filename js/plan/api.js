@@ -469,6 +469,17 @@ export function deleteRealtimeVoiceCall(sessionId, leaseId, { signal, controlCap
   });
 }
 
+export function acknowledgeRealtimePlayback(sessionId, leaseId, delivery, { signal, controlCapability } = {}) {
+  return request(`${realtimeCallPath(sessionId, leaseId)}/delivery`, {
+    method: 'POST',
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
+    body: { responseId: delivery.responseId, eventId: delivery.eventId, playback: delivery.playback },
+    signal,
+    timeoutMs: 20_000
+  });
+}
+
 export function speakRealtimeAuthorized(sessionId, leaseId, authorization, {
   signal,
   controlCapability

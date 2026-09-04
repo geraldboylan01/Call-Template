@@ -32,8 +32,10 @@
  */
 
 import {
+  acknowledgeRealtimePlayback,
   createRealtimeVoiceCall,
   deleteRealtimeVoiceCall,
+  getRealtimeVoiceCall,
   getRealtimeVoiceMeetingTranscript,
   getSession
 } from './api.js';
@@ -44,7 +46,9 @@ import {
   submitConsent
 } from './live_voice_consent.js';
 import { RealtimeOrb } from './realtime_orb.js';
+import { describePlanningCompletion } from './completion.js';
 import { getSessionId, state as journeyState } from './store.js';
+import { createPlaybackDeliveryLedger } from './playback_delivery.js';
 
 const MAX_CAPTION_LENGTH = 3_000;
 const MAX_TRANSCRIPT_ITEMS = 500;
@@ -197,6 +201,7 @@ export class LiveVoiceController {
     this.dataChannel = null;
     this.localStream = null;
     this.remoteAudio = null;
+    this.remotePlaybackReady = false;
     this.shellElement = null;
     this.orb = null;
     this.startController = null;
@@ -212,6 +217,26 @@ export class LiveVoiceController {
     this.continuationStallTimer = null;
     this.phase = 'off';
     this.navigated = false;
+    this.refreshPromise = null;
+    this.shutdownPromise = null;
+    this.completionPromise = null;
+    this.completionPayload = null;
+    this.expectedExecution = null;
+    this.executionWatching = false;
+    this.deliveries = createPlaybackDeliveryLedger({
+      limit: MAX_TRANSCRIPT_ITEMS,
+      newEventId: () => newPrivateId('playback'),
+      canSend: () => Boolean(this.leaseId && this.controlCapability),
+      audible: () => this.remotePlaybackReady
+        && (!this.remoteAudio
+          || (!this.remoteAudio.paused && !this.remoteAudio.muted && this.remoteAudio.volume !== 0)),
+      send: (evidence) => acknowledgeRealtimePlayback(
+        this.sessionId, this.leaseId, evidence, { controlCapability: this.controlCapability }
+      )
+    });
+    this.currentResponseId = '';
+    this.playbackResponseId = '';
+    this.completionTimings = {};
 
     this.bindElements();
   }
@@ -239,7 +264,7 @@ export class LiveVoiceController {
     if (canvas) this.orb = new RealtimeOrb(canvas, { shell: this.shellElement });
 
     this.startButton?.addEventListener('click', () => this.start());
-    this.stopButton?.addEventListener('click', () => this.stop('consumer_closed'));
+    this.stopButton?.addEventListener('click', () => this.stop('consumer_closed').catch(() => {}));
     this.transcriptToggle?.addEventListener('click', () => this.toggleTranscript());
     this.transcriptCopyButton?.addEventListener('click', () => this.copyTranscript());
     this.textForm?.addEventListener('submit', (event) => {
@@ -262,7 +287,7 @@ export class LiveVoiceController {
     if (this.statusElement && message) this.statusElement.textContent = message;
     // The markup ships End disabled. There is nothing to end until this live
     // controller has a meeting running.
-    if (this.stopButton) this.stopButton.disabled = !this.active;
+    if (this.stopButton) this.stopButton.disabled = !this.active && !this.leaseId;
     this.syncShellFace();
   }
 
@@ -281,7 +306,7 @@ export class LiveVoiceController {
   syncShellFace() {
     const hasTranscript = this.transcriptHistory.length > 0;
     [this.root, this.shellElement].filter(Boolean).forEach((element) => {
-      element.classList?.toggle?.('is-live', this.active);
+      element.classList?.toggle?.('is-live', this.active || Boolean(this.leaseId));
       element.classList?.toggle?.('has-transcript', hasTranscript);
     });
     if (this.transcriptToggle) {
@@ -440,7 +465,7 @@ export class LiveVoiceController {
   /* ------------------------------------------------------------- lifecycle */
 
   async start() {
-    if (this.active) return;
+    if (this.active || this.leaseId || this.shutdownPromise) return;
     if (!isLiveVoiceSupported()) {
       this.reportFailure('This browser cannot run the live call. Please try a recent version of Chrome, Edge, or Safari.', {
         reason: 'unsupported-browser'
@@ -456,6 +481,13 @@ export class LiveVoiceController {
     const generation = ++this.generation;
     this.active = true;
     this.navigated = false;
+    this.completionPayload = null;
+    this.expectedExecution = null;
+    this.executionWatching = false;
+    this.deliveries.clear();
+    this.currentResponseId = '';
+    this.playbackResponseId = '';
+    this.completionTimings = {};
     this.sessionId = context.sessionId;
     this.transcriptHistory = [];
     this.responseInProgress = false;
@@ -502,7 +534,7 @@ export class LiveVoiceController {
       peer.addEventListener('connectionstatechange', () => {
         this.setTransportState(peer.connectionState);
         if (peer.connectionState === 'failed' && this.active) {
-          this.stop('connection_lost').finally(() => {
+          this.stop('connection_lost').catch(() => {}).finally(() => {
             this.reportFailure('The live connection was lost during the call.', { reason: 'connection-lost' });
           });
         }
@@ -515,7 +547,7 @@ export class LiveVoiceController {
       channel.addEventListener('close', () => {
         this.syncShellFace();
         if (this.active) {
-          this.stop('connection_lost').finally(() => {
+          this.stop('connection_lost').catch(() => {}).finally(() => {
             this.reportFailure('The live call’s secure message channel was lost.', { reason: 'connection-lost' });
           });
         }
@@ -563,7 +595,11 @@ export class LiveVoiceController {
       this.teardown();
       // A lease created moments ago is already billing. Failing between the
       // answer and the connection must not leave it running to its alarm.
-      await this.releaseLease();
+      try { await this.releaseLease(); } catch (closeError) {
+        this.setPhase('closing', 'Your microphone is off. The call is still closing.');
+        this.onToast(closeError.message, { tone: 'error' });
+        return;
+      }
       if (cancelled) return;
       // A STALE DISCLOSURE MUST NOT DEAD-END THE MEETING.
       //
@@ -604,18 +640,26 @@ export class LiveVoiceController {
    * it with the provider and settles the lease — but it has to be told, and
    * the browser is the only thing that knows the client pressed End.
    *
-   * Idempotent by construction: the id is cleared before the request, and an
-   * already-settled lease answers the same way.
+   * Keep the same private capability until both the provider and lease are
+   * confirmed closed. A lost response must remain safely retryable.
    */
   async releaseLease() {
     const leaseId = this.leaseId;
     const controlCapability = this.controlCapability;
-    this.leaseId = '';
-    this.controlCapability = '';
     if (!leaseId || !this.sessionId) return;
-    try {
-      await deleteRealtimeVoiceCall(this.sessionId, leaseId, { controlCapability });
-    } catch (_error) { /* the Worker's idle alarm remains the backstop */ }
+    const body = unwrap(await deleteRealtimeVoiceCall(this.sessionId, leaseId, { controlCapability }));
+    if (body.providerHangupConfirmed !== true
+      || !['complete', 'failed', 'withdrawn', 'budget_exhausted', 'expired', 'deleted'].includes(String(body.realtimeLease?.status || ''))
+      || body.realtimeLease?.leaseId !== leaseId) {
+      throw new Error('Your microphone is off, but the service has not yet confirmed that the call is closed. Please retry End.');
+    }
+    this.recordCompletionTiming('providerHangupConfirmedAt');
+    this.recordCompletionTiming('terminalLeaseAt');
+    if (this.leaseId === leaseId) {
+      this.leaseId = '';
+      this.controlCapability = '';
+    }
+    return body;
   }
 
   /**
@@ -636,7 +680,11 @@ export class LiveVoiceController {
     this.remoteAudio.autoplay = true;
     this.remoteAudio.setAttribute('playsinline', '');
     this.remoteAudio.srcObject = stream;
-    this.remoteAudio.play?.().catch(() => {
+    this.remotePlaybackReady = false;
+    this.remoteAudio.play?.().then(() => {
+      this.remotePlaybackReady = true;
+      this.deliveries.acknowledgeAll();
+    }).catch(() => {
       this.onToast('Tap anywhere to let Planéir speak.', { tone: 'info' });
     });
   }
@@ -655,27 +703,32 @@ export class LiveVoiceController {
     this.shellElement?.setAttribute?.('data-live-transport', state);
   }
 
-  async stop(reason = 'consumer_closed') {
-    if (!this.active) return;
+  stop(reason = 'consumer_closed') {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    if (!this.active && !this.leaseId) return Promise.resolve();
     const meetingId = this.leaseId;
     const sessionId = this.sessionId;
     this.active = false;
     this.generation += 1;
     this.startController?.abort();
     this.teardown();
-    this.setPhase('off', 'Live meeting ended.');
-    await this.releaseLease();
-    try {
-      await getSession(this.sessionId).then((payload) => this.acceptSessionPayload(payload));
-    } catch (_error) { /* the meeting is already over */ }
-    if (sessionId && meetingId && !['navigation', 'reset', 'deletion'].includes(reason)) {
-      try {
-        await this.loadServerTranscript(sessionId, meetingId);
-      } catch (_error) {
-        this.onToast('The saved transcript could not be refreshed. This browser’s transcript is still available to review.', { tone: 'error' });
+    this.recordCompletionTiming('localMediaStoppedAt');
+    this.setPhase('closing', 'Your microphone is off. Closing the call…');
+    this.shutdownPromise = this.releaseLease().then(() => {
+      this.setPhase('off', 'Live meeting ended.');
+      if (reason !== 'completed') {
+        getSession(sessionId).then((payload) => this.acceptSessionPayload(payload)).catch(() => {});
       }
-      this.revealTranscript();
-    }
+      if (sessionId && meetingId && !['completed', 'navigation', 'reset', 'deletion'].includes(reason)) {
+        this.loadServerTranscript(sessionId, meetingId).then(() => this.revealTranscript()).catch(() => {
+          this.onToast('The saved transcript could not be refreshed. This browser’s transcript is still available to review.', { tone: 'error' });
+        });
+      }
+    }).catch((error) => {
+      this.setPhase('closing', 'Your microphone is off. The call is still closing — retry End.');
+      throw error;
+    }).finally(() => { this.shutdownPromise = null; });
+    return this.shutdownPromise;
   }
 
   teardown() {
@@ -687,6 +740,7 @@ export class LiveVoiceController {
     try { this.peerConnection?.close(); } catch (_error) { /* best effort */ }
     stopTracks(this.localStream);
     if (this.remoteAudio) this.remoteAudio.srcObject = null;
+    this.remotePlaybackReady = false;
     this.dataChannel = null;
     this.peerConnection = null;
     this.localStream = null;
@@ -709,6 +763,7 @@ export class LiveVoiceController {
    * bought nothing and cost an entire canary.
    */
   handleProviderEvent(data) {
+    if (!this.active) return;
     if (typeof data !== 'string' || data.length > 64_000) return;
     let event;
     try {
@@ -719,6 +774,9 @@ export class LiveVoiceController {
     const type = String(event?.type || '');
 
     if (type === 'input_audio_buffer.speech_started') {
+      if (this.assistantPlaybackActive || this.responseInProgress) {
+        this.deliveries.interrupt(this.playbackResponseId || this.currentResponseId, event.event_id);
+      }
       // The client answering is itself a resolution: the Worker will abandon
       // any pending continuation rather than talk over them.
       this.responseNeedsContinuation = false;
@@ -739,6 +797,8 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'response.created') {
+      this.currentResponseId = String(event.response?.id || '');
+      this.deliveries.for(this.currentResponseId);
       this.assistantCaption = '';
       this.responseInProgress = true;
       this.responseNeedsContinuation = false;
@@ -750,6 +810,7 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'response.function_call_arguments.done') {
+      if (event.name === 'confirm_and_run') this.watchExecution();
       // A function call ends this provider response. The Worker will deliver
       // its result and explicitly request the continuation response; until
       // then the client is still waiting for Planéir, not listening for a
@@ -761,11 +822,23 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'output_audio_buffer.started') {
+      this.playbackResponseId = String(event.response_id || this.currentResponseId || '');
+      const delivery = this.deliveries.for(this.playbackResponseId);
+      if (delivery) delivery.started = true;
       this.assistantPlaybackActive = true;
       this.setPhase('assistant_speaking', 'Planéir is speaking.');
       return;
     }
     if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {
+      const responseId = String(event.response_id || this.playbackResponseId || '');
+      const delivery = this.deliveries.for(responseId);
+      if (type === 'output_audio_buffer.cleared') this.deliveries.interrupt(responseId, event.event_id);
+      else if (delivery) {
+        delivery.stopped = true;
+        delivery.eventId = String(event.event_id || delivery.eventId || newPrivateId('playback'));
+        this.deliveries.acknowledge(delivery);
+      }
+      this.playbackResponseId = '';
       this.assistantPlaybackActive = false;
       if (this.responseInProgress) {
         if (!['user_speaking', 'interrupted'].includes(this.phase)) {
@@ -792,8 +865,15 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'response.done') {
+      const delivery = this.deliveries.for(String(event.response?.id || ''));
+      if (delivery) {
+        delivery.responseCompleted = event.response?.status === 'completed';
+        if (!delivery.responseCompleted) this.deliveries.interrupt(delivery.responseId, event.event_id);
+        else this.deliveries.acknowledge(delivery);
+      }
       this.responseInProgress = false;
       const output = Array.isArray(event?.response?.output) ? event.response.output : [];
+      if (output.some((item) => item?.type === 'function_call' && item.name === 'confirm_and_run')) this.watchExecution();
       this.responseNeedsContinuation = this.responseNeedsContinuation
         || output.some((item) => item?.type === 'function_call');
       // `response.done` is generation completion, not audible completion.
@@ -806,6 +886,18 @@ export class LiveVoiceController {
         this.armContinuationStallTimer();
       }
     }
+  }
+
+  recordCompletionTiming(name) {
+    if (this.completionTimings[name]) return;
+    this.completionTimings[name] = Date.now();
+    if (this.root?.dataset) this.root.dataset.liveCompletionTimings = JSON.stringify(this.completionTimings);
+  }
+
+  watchExecution() {
+    this.executionWatching = true;
+    this.recordCompletionTiming('approvalToolObservedAt');
+    this.scheduleStateRefresh();
   }
 
   /**
@@ -843,24 +935,59 @@ export class LiveVoiceController {
 
   /* --------------------------------------------------------- on-screen state */
 
-  /**
-   * Refreshing after each assistant turn is what makes the drafts appear on
-   * screen as the client talks — which IS the demo. It is a poll rather than a
-   * server push because the browser has no channel to the Durable Object, and
-   * adding one is not worth it for a once-per-turn refresh.
-   */
+  // Keep the existing cadence. Request, lease and budget limits remain the
+  // bounds until real provider/browser timing evidence supports new limits.
   scheduleStateRefresh() {
-    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    if (this.refreshTimer || this.refreshPromise || (!this.active && !this.completionPayload)) return;
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = null;
-      this.refreshState().catch(() => { /* the next turn will refresh again */ });
+      this.refreshState().catch(() => {}).finally(() => {
+        if ((this.active && this.executionWatching) || (this.completionPayload && !this.navigated)) {
+          this.scheduleStateRefresh();
+        }
+      });
     }, STATE_REFRESH_DELAY_MS);
   }
 
-  async refreshState() {
-    if (!this.sessionId) return;
-    const payload = await getSession(this.sessionId);
-    this.acceptSessionPayload(payload);
+  refreshState() {
+    if (this.refreshPromise) return this.refreshPromise;
+    if (!this.sessionId) return Promise.resolve();
+    this.refreshPromise = (async () => {
+      if (this.completionPayload) {
+        await this.completeWithResults(this.completionPayload);
+        return;
+      }
+      let call = null;
+      if (this.leaseId && this.controlCapability) {
+        this.deliveries.acknowledgeAll();
+        call = unwrap(await getRealtimeVoiceCall(this.sessionId, this.leaseId, {
+          controlCapability: this.controlCapability
+        }));
+        const execution = call.realtimeExecution;
+        if (execution?.planId) {
+          if (!this.expectedExecution || this.expectedExecution.planId === execution.planId) {
+            this.expectedExecution = execution;
+            this.recordCompletionTiming('approvedExecutionObservedAt');
+          }
+          this.executionWatching = true;
+          if (['failed', 'expired', 'conflicted', 'cancelled'].includes(execution.status)) {
+            this.executionWatching = false;
+            await this.stop('execution_failed');
+            this.reportFailure('The analysis could not complete. Your saved information is still available.', { reason: 'execution-failed' });
+            return;
+          }
+        }
+      }
+      const payload = unwrap(await getSession(this.sessionId));
+      const body = { ...payload, ...(call?.analysisPlan ? { analysisPlan: call.analysisPlan } : {}) };
+      await this.acceptSessionPayload(body);
+      if (this.active && call?.realtimeLease
+        && !['pending', 'active', 'closing'].includes(call.realtimeLease.status)) {
+        this.executionWatching = false;
+        await this.stop('server_closed');
+      }
+    })().finally(() => { this.refreshPromise = null; });
+    return this.refreshPromise;
   }
 
   acceptSessionPayload(payload) {
@@ -870,14 +997,29 @@ export class LiveVoiceController {
     this.onVoicePayload(body);
     this.onPlanningPayload(body);
 
-    // The deterministic engine has run and the results exist. Navigate once.
-    const status = String(body.session?.status || '');
-    const hasResults = Boolean(body.analysis?.results?.length || body.analysis?.summary);
-    if (!this.navigated && hasResults && ['complete', 'completed'].includes(status)) {
-      this.navigated = true;
-      this.stop('completed').catch(() => {});
-      this.onNavigate('results');
+    // A live call requires the identity observed on its authenticated lease.
+    // Historical results at the same profile revision cannot end this call.
+    if (!this.navigated && this.expectedExecution
+      && describePlanningCompletion(body, this.expectedExecution).ready) {
+      this.recordCompletionTiming('resultsObservedAt');
+      this.completionPayload = body;
+      return this.completeWithResults(body);
     }
+  }
+
+  completeWithResults(body) {
+    if (this.completionPromise) return this.completionPromise;
+    if (this.navigated) return Promise.resolve();
+    this.completionPromise = this.stop('completed').then(async () => {
+      this.onVoicePayload(body);
+      this.onPlanningPayload(body);
+      await this.onNavigate('results');
+      this.navigated = true;
+      this.executionWatching = false;
+      this.recordCompletionTiming('resultsRenderedAt');
+      this.completionPayload = null;
+    }).finally(() => { this.completionPromise = null; });
+    return this.completionPromise;
   }
 
   /**
