@@ -146,12 +146,65 @@ For a property sale case, remove or reduce the property in `Legacy`, reduce the 
 - Do not mention internal threshold colors or implementation details.
 
 ## `generated.pbsInputs`
+This section describes the Dev Panel artifact lane ONLY, where the model has
+already produced the finished balance sheet in `generated.outputsBucketed` and
+`pbsInputs` carries three optional hints for the liquidity colour coding. The
+planning runtime uses the same key name for something entirely different -- the
+full native input its deterministic engine calculates FROM. See Runtime Fields
+below, and do not mix the two shapes in one object.
 - Include `annualExpenditure` only if Gerry provides it or clearly implies it.
 - Include `currentAge` only if Gerry provides it or clearly implies it.
 - Include `retirementStatus: "retired"` if Gerry says the client is retired. Use `retirementStatus: "not-retired"` only if Gerry explicitly says they are not retired or still working.
 - If neither is known, omit `generated.pbsInputs`.
 - Do not guess age, annual expenditure, or retirement status.
 - Liquidity colour coding is standard three-to-six-month reserve logic unless `retirementStatus` is `"retired"` or `currentAge` is 65 or over. For retired / age 65+ cases, liquidity is red under 12 months, yellow from 12 to under 24 months, and green at 24+ months.
+
+## Runtime Fields
+These are the fields of the native `personal_balance_sheet` planning input --
+the object the deterministic engine receives. It is NOT the Dev Panel artifact
+above: here the engine does every calculation, and nothing in this object is a
+total, a subtotal or a net-worth figure.
+
+- `currency` - required non-empty string. Server-supplied; use the value given.
+- `assetPositions[]` - required array. Each entry needs all five of:
+  - `id` - stable non-empty string identifying this holding
+  - `label` - what the client called it, in their words
+  - `bucket` - exactly one of `lifestyle_assets`, `spendable_reserves`,
+    `retirement_funding`, `concentrated_assets`
+  - `amount` - a finite non-negative number
+  - `source` - non-empty string naming where the position came from
+- `liabilityPositions[]` - required array. Each entry needs `id`, `label`,
+  `amount` and `source`. There is no `bucket` on a liability.
+- `monthlyExpenditure` - required KEY, whose value is a number or `null`.
+  `null` means unknown, and the engine then omits reserve months entirely
+  rather than estimating one. Never put a guessed figure here.
+- `reconciliationWarnings[]` and `currencyWarnings[]` - required arrays of
+  strings. Server-supplied.
+
+### An Empty Array Is A Claim, Not A Silence
+`assetPositions: []` asserts the client has no assets, and `liabilityPositions:
+[]` asserts they have no debts. Both are real client statements and both are
+representable -- "no, nothing else" closes a collection. Neither may be written
+because the conversation has not reached the subject yet. Assets or liabilities
+that are simply unknown are missing information, not an empty balance sheet.
+
+### Identity, Ownership And Duplicates
+- Each position is counted exactly once. `source` plus `id` is its identity, and
+  the engine refuses a collection that repeats one.
+- Two records describing the same holding are ONE position; two similar holdings
+  the client genuinely has are two. That is a reading of the conversation.
+- There is no owner field. Whose a holding is belongs in `label` and `id` --
+  "Mary's PRSA" and "John's PRSA" are two positions, and a jointly held account
+  is one position labelled as joint.
+
+### What The Engine Calculates
+Bucket subtotals, gross assets, total liabilities, net worth, spendable reserves
+and reserve months. All of it is derived; none of it is ever authored here.
+
+### What This Module Does Not Do
+No currency conversion -- mixed currencies are reported as warnings, not
+converted. No projection, growth, income, tax or time dimension: it is a
+position at a point in time. No scenario levers. Nothing here is a forecast.
 
 ## Chart Rules
 Prefer up to 2 bar charts:

@@ -16,6 +16,10 @@ import {
 } from '../js/planning/module_registry.js';
 import { PLANNING_PLAYBOOK_GUIDANCE } from '../js/planning/playbook_manifest.generated.js';
 import {
+  computePersonalBalanceSheet,
+  PERSONAL_BALANCE_SHEET_BUCKETS
+} from '../js/personal_balance_sheet.js';
+import {
   APPROVED_CONSUMER_MODULE_IDS,
   getConsumerConfig,
   publicConsumerConfig
@@ -561,6 +565,115 @@ pass('dropped planner bookkeeping never rescues an unsupported value or an undis
   );
 }
 pass('an empty collection is ready only when the client said there are none');
+
+/* ---------------- the balance sheet's own capability boundary -------------- */
+
+// WHY THIS BLOCK EXISTS. `generated.pbsInputs` names two different live
+// contracts. In the Dev Panel artifact lane the MODEL produces the finished
+// balance sheet and pbsInputs carries three optional colour-coding hints
+// (annualExpenditure, currentAge, retirementStatus -- see js/state.js). In the
+// planning runtime the ENGINE does every calculation and the same key is its
+// full native input. The playbook documented only the first, so the one
+// document the planner is given as capability authority showed it a same-named
+// object with entirely different fields. These pin the runtime side.
+{
+  const pbsPlaybook = PLANNING_PLAYBOOK_GUIDANCE.personal_balance_sheet;
+  for (const field of [
+    'assetPositions', 'liabilityPositions', 'monthlyExpenditure',
+    'reconciliationWarnings', 'currencyWarnings', 'currency'
+  ]) {
+    assert.ok(pbsPlaybook.includes(field),
+      `the PBS playbook must document ${field}, which the runtime validator requires`);
+  }
+  for (const bucket of PERSONAL_BALANCE_SHEET_BUCKETS) {
+    assert.ok(pbsPlaybook.includes(bucket),
+      `the PBS playbook must name the ${bucket} bucket the engine accepts`);
+  }
+  assert.ok(/empty array is a claim/i.test(pbsPlaybook),
+    'and it must say that an empty collection is a claim rather than a silence');
+
+  // SILENCE IS REFUSED; A CLAIM IS ACCEPTED. The engine will not turn an
+  // unfinished conversation into a zero-net-worth balance sheet, and it will
+  // accept the collection the client actually closed. Provenance decides which
+  // of those two a given empty array is; this is the structural half.
+  assert.throws(
+    () => normalizePlanningModuleInput('personal_balance_sheet', { currency: 'EUR' }),
+    /must explicitly include assetPositions and liabilityPositions/,
+    'a bare balance-sheet goal cannot become a €0 balance sheet by omission'
+  );
+  const closed = normalizePlanningModuleInput('personal_balance_sheet', {
+    currency: 'EUR', assetPositions: [], liabilityPositions: [],
+    monthlyExpenditure: null, reconciliationWarnings: [], currencyWarnings: []
+  });
+  assert.deepEqual(closed.assetPositions, []);
+  assert.equal(closed.monthlyExpenditure, null,
+    'unknown spending stays unknown -- the engine omits reserve months rather than estimating');
+
+  // OWNERSHIP IS SEMANTIC, AND IT SURVIVES. There is no owner field: whose a
+  // holding is lives in the label and id the planner authors. Two people's
+  // pensions are two positions and must both be counted.
+  const twoOwners = normalizePlanningModuleInput('personal_balance_sheet', {
+    currency: 'EUR',
+    assetPositions: [
+      { id: 'prsa-john', label: "John's PRSA", bucket: 'retirement_funding', amount: 90000, source: 'pensions' },
+      { id: 'prsa-mary', label: "Mary's PRSA", bucket: 'retirement_funding', amount: 35000, source: 'pensions' },
+      { id: 'home-joint', label: 'Family home (joint)', bucket: 'lifestyle_assets', amount: 450000, source: 'properties' }
+    ],
+    liabilityPositions: [{ id: 'mortgage', label: 'Mortgage on the family home', amount: 240000, source: 'liabilities' }],
+    monthlyExpenditure: 2500, reconciliationWarnings: [], currencyWarnings: []
+  });
+  // The engine regroups positions into bucket order, so compare the set: what
+  // matters is that no owner's holding is dropped or merged into another's.
+  assert.deepEqual(
+    twoOwners.assetPositions.map((item) => item.label).sort(),
+    ['Family home (joint)', "John's PRSA", "Mary's PRSA"],
+    'each owner keeps their own position; the labels the planner authored are what the client hears back'
+  );
+  const sheet = computePersonalBalanceSheet(twoOwners);
+  assert.equal(sheet.grossAssets, 575000);
+  assert.equal(sheet.netWorth, 335000);
+  assert.equal(sheet.buckets.retirement_funding.total, 125000,
+    'two owners of the same kind of holding are summed, never collapsed into one');
+  // The same holding supplied twice is the one thing a balance sheet may never do.
+  assert.throws(
+    () => computePersonalBalanceSheet({
+      ...twoOwners,
+      assetPositions: [twoOwners.assetPositions[0], { ...twoOwners.assetPositions[0] }]
+    }),
+    /supplied more than once/
+  );
+
+  // THE DEV PANEL FIELDS ARE NOT RUNTIME FIELDS. Even if the planner follows
+  // the artifact section of its own playbook, none of it can reach the engine,
+  // the provenance record or the certificate.
+  const withArtifactFields = {
+    currency: 'EUR',
+    assetPositions: [{ id: 'cash', label: 'Savings', bucket: 'spendable_reserves', amount: 50000, source: 'assets', ownerId: 'primary' }],
+    liabilityPositions: [],
+    monthlyExpenditure: 2500,
+    reconciliationWarnings: [], currencyWarnings: [],
+    annualExpenditure: 36000,
+    currentAge: 45,
+    retirementStatus: 'not-retired'
+  };
+  const canonicalPbs = normalizePlanningModuleInput(
+    'personal_balance_sheet',
+    structuredClone(withArtifactFields)
+  );
+  for (const artifactField of ['annualExpenditure', 'currentAge', 'retirementStatus']) {
+    assert.equal(canonicalPbs[artifactField], undefined,
+      `${artifactField} belongs to the Dev Panel artifact and must never reach the planning engine`);
+  }
+  assert.equal(canonicalPbs.assetPositions[0].ownerId, undefined,
+    'and a position carries only the five fields the engine reads');
+  assert.equal(
+    directModulePolicyEntries('personal_balance_sheet', withArtifactFields, POLICY)
+      .some((entry) => ['/annualExpenditure', '/currentAge', '/retirementStatus'].includes(entry.path)),
+    false,
+    'none of them is a server-owned assumption either'
+  );
+}
+pass('the balance sheet runs on the contract its playbook now documents, and on nothing else');
 
 // Selecting college funding supplies no child facts. Even an inconsistent
 // model label of ready cannot overrule its explicit missing-input list.
