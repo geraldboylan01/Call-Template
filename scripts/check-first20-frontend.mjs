@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 
-export class TestNode {
+// Local to this file: the synthetic DOM these checks run against. It was
+// exported without an importer, which is what the stale-export ratchet is for.
+class TestNode {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.children = []; this.attributes = new Map();
     this.dataset = {}; this.listeners = new Map(); this._value = null; this.hidden = false;
