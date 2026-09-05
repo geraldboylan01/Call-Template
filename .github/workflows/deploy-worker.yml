@@ -578,7 +578,12 @@ jobs:
             'CONSUMER_MODULE_OFFERS_ENABLED',
             'CONSUMER_AGENT_TEST_ENABLED',
             'CONSUMER_HANDOFF_ENABLED',
-            'CONSUMER_PUBLIC_ACCESS_ENABLED'
+            'CONSUMER_PUBLIC_ACCESS_ENABLED',
+            // The typed consumer lane (D-08). Every other consumer capability
+            // is held false in source and enforced here; this one was false in
+            // source but unenforced, so an edit could have flipped it without
+            // the deploy gate noticing -- which is the entire point of the list.
+            'CONSUMER_TYPED_LANE_ENABLED'
           ];
           for (const flag of requiredFalseFlags) {
             const expression = new RegExp(`^${flag}\\s*=\\s*"false"\\s*$`, 'm');

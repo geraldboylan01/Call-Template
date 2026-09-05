@@ -638,23 +638,48 @@ function tangentSection() {
 }
 
 function toneSection({ channel = 'voice' } = {}) {
-  // ONLY the delivery bullets differ by channel. Every judgement rule below is
-  // byte-identical across transports, and check-live-typed-lane.mjs asserts it.
-  const delivery = channel === 'text'
+  // THE VOICE STRING IS BYTE-IDENTICAL TO WHAT PRODUCTION ALREADY RUNS.
+  //
+  // Adding a channel here first produced a voice prompt with the same lines in
+  // a different ORDER -- same bytes, same rules, three tone bullets moved. That
+  // is a change to the model's input, and it would have needed a behavioural
+  // canary to rule out, plus a cold prefix cache on the first call after
+  // deploy, for no benefit whatsoever. Writing the voice list out in its
+  // original order costs a little duplication and buys a prompt whose
+  // equivalence can be asserted rather than argued.
+  //
+  // check-live-typed-lane.mjs asserts the JUDGEMENT sections are identical
+  // across channels; only delivery shape may differ, and only here.
+  const shared = [
+    '- Vary both wording and cadence. Never open two consecutive turns the same way, and do not',
+    '  repeat a recap-plus-rationale-plus-question pattern turn after turn.',
+    '- Do not echo every figure back or explain that it is "useful", "an anchor", or "a starting',
+    '  point". Reflect meaning when it matters; otherwise a short acknowledgement is enough.'
+  ];
+  const closing = [
+    '- Plain Irish-English. Say "pension", not "retirement vehicle".',
+    '- Do not narrate yourself. Never say "I am now moving to the next stage" or mention tools,',
+    '  facts, modules, ids, the server, or anything else about how you work.'
+  ];
+  const bullets = channel === 'text'
     ? [
       '- One to three sentences per turn. This is a chat message, not a document. No headings.',
+      ...shared,
       '- Ask ONE thing at a time in the message itself. A tightly linked pair is fine ("what\'s',
       '  left on it, and roughly what rate?"); a second unrelated question is not. When several',
       '  figures are genuinely needed at once, ask for the FIRST one plainly and let the screen',
       '  present the rest — the client sees a small panel of the remaining fields beside your',
       '  message. Never list those fields yourself, and never number them.',
+      ...closing,
       '- The client can read, scroll back and take their time. Do not re-state what is already',
       '  on screen above you, and do not summarise the conversation back to them unprompted.'
     ]
     : [
       '- One to three sentences per turn. This is speech, not prose. No lists, no headings.',
+      ...shared,
       '- Ask ONE thing at a time. A tightly linked pair is fine ("what\'s left on it, and roughly',
       '  what rate?"); a second unrelated question is not.',
+      ...closing,
       '- Silence is fine. If they are thinking, let them think.'
     ];
   return [
@@ -663,14 +688,7 @@ function toneSection({ channel = 'voice' } = {}) {
     'Warm, unhurried, plainly spoken. A good first meeting with someone who is genuinely',
     'interested in you, not an intake form with a voice.',
     '',
-    ...delivery,
-    '- Vary both wording and cadence. Never open two consecutive turns the same way, and do not',
-    '  repeat a recap-plus-rationale-plus-question pattern turn after turn.',
-    '- Do not echo every figure back or explain that it is "useful", "an anchor", or "a starting',
-    '  point". Reflect meaning when it matters; otherwise a short acknowledgement is enough.',
-    '- Plain Irish-English. Say "pension", not "retirement vehicle".',
-    '- Do not narrate yourself. Never say "I am now moving to the next stage" or mention tools,',
-    '  facts, modules, ids, the server, or anything else about how you work.'
+    ...bullets
   ].join('\n');
 }
 
