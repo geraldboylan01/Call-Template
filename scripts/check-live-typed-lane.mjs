@@ -57,6 +57,29 @@ for (const heading of SHARED_SECTIONS) {
 }
 ok(shared >= 3, `expected to compare several shared sections, compared ${shared}`);
 
+// THE VOICE STRING MUST NOT MOVE WHEN A CHANNEL IS ADDED.
+//
+// Adding the parameter first produced a voice prompt with the same lines in a
+// different ORDER. Same rules, same bytes, three tone bullets relocated -- and
+// still a change to what the model is given, which would need a behavioural
+// canary to rule out and would cost a cold prefix cache on the first call after
+// every deploy. Voice keeps its exact wording and ordering; only text differs.
+const VOICE_TONE_ORDER = [
+  'This is speech, not prose',
+  'Vary both wording and cadence',
+  'Do not echo every figure back',
+  'Ask ONE thing at a time',
+  'Plain Irish-English',
+  'Do not narrate yourself',
+  'Silence is fine'
+];
+let cursor = -1;
+for (const marker of VOICE_TONE_ORDER) {
+  const at = voicePrompt.indexOf(marker);
+  ok(at > cursor, `voice tone bullets keep their production order: "${marker}"`);
+  cursor = at;
+}
+
 // The typed prompt must not be telling the model it is speaking.
 for (const forbidden of [/having a spoken conversation/, /Speak confirmationPrompt verbatim/, /say(?:ing)? .{0,12}aloud/]) {
   ok(!forbidden.test(textPrompt), `typed prompt must not instruct speech: ${forbidden}`);
