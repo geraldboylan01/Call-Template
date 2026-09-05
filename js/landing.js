@@ -21,7 +21,6 @@ const leadForm = document.getElementById('leadForm');
 const leadFormStatus = document.getElementById('leadFormStatus');
 const leadSubmitButton = document.getElementById('leadSubmitButton');
 const leadSuccessOverlay = document.getElementById('leadSuccessOverlay');
-const leadSuccessGhost = document.getElementById('leadSuccessGhost');
 const leadSuccessTarget = document.getElementById('leadSuccessTarget');
 const leadSuccessTitle = document.querySelector('#leadSuccessCopy .lead-success-title');
 const leadSuccessBody = document.querySelector('#leadSuccessCopy .lead-success-body');
@@ -37,12 +36,11 @@ const leadSuccessLockTargets = [
 ].filter(Boolean);
 
 const LEAD_SUCCESS_MESSAGE = 'Thanks — your request has been received. Gerry will be in touch shortly.';
-const LEAD_SUCCESS_HOLD_MS = 10000;
+const LEAD_SUCCESS_HOLD_MS = 3800;
 
 const leadSuccessTakeover = createSuccessTakeover({
   overlay: leadSuccessOverlay,
   origin: leadSuccessOrigin,
-  ghost: leadSuccessGhost,
   target: leadSuccessTarget,
   title: leadSuccessTitle,
   body: leadSuccessBody,
@@ -452,6 +450,7 @@ function bindLeadForm() {
       return;
     }
 
+    const restoreFocus = leadForm.contains(document.activeElement);
     if (leadSubmitButton) {
       leadSubmitButton.disabled = true;
       leadSubmitButton.textContent = 'Sending...';
@@ -466,7 +465,7 @@ function bindLeadForm() {
       await leadSuccessTakeover.play({
         titleText: 'Congratulations',
         bodyText: 'You have taken the first step towards understanding your options more clearly.',
-        restoreFocusIfContainedIn: leadForm,
+        restoreFocus,
         restoreFocusTo: leadFormStatus
       });
     } catch (error) {

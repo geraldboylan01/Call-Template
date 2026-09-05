@@ -35,11 +35,13 @@ import {
   storeSessionAccess
 } from './store.js';
 import { createLiveVoiceLaneController } from './voice_lane.js';
+import { TypedMeetingController } from './typed_meeting.js';
 import {
   findProfileField,
   getAvailableViews,
   getProfileFieldGroups,
   renderJourney,
+  renderLaneChoice,
   renderMeetingBackdrop,
   renderOnboarding,
   renderUnavailable
@@ -111,7 +113,7 @@ const realtimeVoiceControllerOptions = {
       }).catch(() => {});
     }
   },
-  onToast: (message, options) => showToast(message, options),
+  onToast: (message, options) => showToast(message, { error: options?.tone === 'error' }),
   onSessionUnavailable: (error) => recoverUnavailableSession(error),
   onFailure: ({ message = '', reason = 'runtime-failure', transcript = '' } = {}) => {
     console.warn('[planeir] live call failed', { reason });
@@ -270,6 +272,59 @@ const MEETING_UNAVAILABLE_MESSAGES = Object.freeze({
   'no-session': 'The live meeting could not find an active planning session. Please try again.',
   'consent-refresh': 'Please review the updated privacy notice before your meeting starts.'
 });
+
+/**
+ * SPEAK OR TYPE IS CHOSEN ONCE, ON THE WAY IN.
+ *
+ * The two lanes differ in consent (a microphone), in cost (a per-minute lease)
+ * and in transport (a peer connection versus plain requests). Switching
+ * mid-session would mean tearing a lease down, re-establishing consent and
+ * holding two response lifecycles in one Durable Object -- for a choice almost
+ * nobody makes twice. The planning state is durable and shared, so resuming in
+ * the other mode is a session-resumption feature if it is ever wanted, not a
+ * live toggle.
+ *
+ * Note what is NOT affected by this: the "Prefer to type?" box inside a voice
+ * call. That is a second input METHOD on one lane, which is what it has always
+ * claimed to be, and it is genuinely useful to a caller who cannot say a
+ * figure out loud.
+ */
+const typedMeetingController = new TypedMeetingController({
+  onNavigate: (view) => {
+    setView(view);
+    renderCurrentJourney({ focus: true });
+    void refreshSavedSession({ keepView: true });
+  },
+  onFailure: ({ message }) => {
+    renderUnavailable(appRoot, { message, liveMeetingFailure: true });
+    syncHeader();
+  },
+  onToast: (message, options) => showToast(message, options)
+});
+
+function enterTypedMeeting({ focus = false } = {}) {
+  setView('meeting');
+  syncHeader();
+  void typedMeetingController.start(appRoot);
+  if (focus) focusCurrentHeading();
+}
+
+function chooseLaneAndEnter({ focus = false } = {}) {
+  const typedAvailable = typedMeetingController.isAvailable();
+  const voiceAvailable = realtimeVoiceController.isMeetingAvailable();
+  if (typedAvailable && !voiceAvailable) return enterTypedMeeting({ focus });
+  if (typedAvailable && voiceAvailable) {
+    setView('meeting');
+    renderLaneChoice(appRoot, {
+      onSpeak: () => enterMeetingOrFail({ focus: true }),
+      onType: () => enterTypedMeeting({ focus: true })
+    });
+    syncHeader();
+    if (focus) focusCurrentHeading();
+    return;
+  }
+  return enterMeetingOrFail({ focus });
+}
 
 function enterMeetingOrFail({ focus = false } = {}) {
   if (!realtimeVoiceController.isMeetingAvailable()) {
@@ -650,7 +705,7 @@ async function handleStartSession(form) {
     }
 
     setBusy(false);
-    enterMeetingOrFail({ focus: true });
+    chooseLaneAndEnter({ focus: true });
     showToast('Your private session is ready.');
   } catch (error) {
     if (error instanceof ConsumerApiError
@@ -1447,7 +1502,7 @@ async function boot() {
       mergePayload(sessionPayload);
       const latestMeeting = state.realtimeMeetings?.[0];
       if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
-      enterMeetingOrFail();
+      chooseLaneAndEnter();
     } catch (error) {
       if (recoverUnavailableSession(error)) return;
       renderUnavailable(appRoot, { message: getErrorMessage(error) });

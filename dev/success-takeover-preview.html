@@ -7,7 +7,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>Planeir Success Animation Preview</title>
     <link rel="stylesheet" href="../styles/base.css" />
-    <link rel="stylesheet" href="../styles/success_takeover.css?v=resonant-halo-qa" />
+    <link rel="stylesheet" href="../styles/success_takeover.css" />
     <style>
       body {
         min-height: 100vh;
@@ -102,7 +102,8 @@
       body.is-lead-success-active .success-preview-actions {
         position: fixed;
         z-index: 200;
-        top: 16px;
+        bottom: 52px;
+        left: 16px;
         right: 16px;
         padding: 8px;
         border: 1px solid rgba(143, 208, 255, 0.24);
@@ -129,14 +130,14 @@
     <div id="successPreviewShell" class="success-preview-shell">
       <header class="success-preview-header">
         <span id="successPreviewOrigin" class="success-preview-origin" aria-label="Planeir">
-          <img src="../assets/brand/planeir-wordmark-light.svg" alt="" width="1330" height="384" />
+          <img src="../assets/brand/planeir-lockup-light.svg" alt="" width="1330" height="384" />
         </span>
       </header>
 
       <main class="success-preview-main">
         <section class="success-preview-panel" aria-labelledby="successPreviewHeading">
           <h1 id="successPreviewHeading">Success animation preview</h1>
-          <p>Local-only controls for reviewing the Resonant Halo without calling any production API.</p>
+          <p>Local-only controls for reviewing the Newgrange alignment without calling any production API.</p>
 
           <div class="success-preview-controls">
             <label class="success-preview-field" for="successPreviewVariant">
@@ -154,6 +155,15 @@
           </label>
 
           <div class="success-preview-actions">
+            <select id="successPreviewFrame" aria-label="Authored animation frame">
+              <option value="830">Arrival — 830ms</option>
+              <option value="1100">Light — 1100ms</option>
+              <option value="1520">Ignition — 1520ms</option>
+              <option value="2270">Message — 2270ms</option>
+              <option value="5900">Return — 5900ms</option>
+              <option value="6210">Header landing — 6210ms</option>
+            </select>
+            <button id="successPreviewInspect" class="ui-button" type="button">Inspect frame</button>
             <button id="successPreviewPlay" class="ui-button" type="button" data-testid="preview-play">Play</button>
             <button id="successPreviewReplay" class="ui-button" type="button" data-testid="preview-replay">Replay</button>
             <button id="successPreviewCancel" class="ui-button" type="button" data-testid="preview-cancel">Cancel and reset</button>
@@ -168,8 +178,6 @@
       <div class="lead-success-stage">
         <div id="successPreviewTarget" class="lead-success-lockup" aria-hidden="true">
           <div class="lead-success-wordmark-shell">
-            <span class="lead-success-stage-logo lead-success-stage-wordmark" aria-hidden="true"></span>
-            <span class="lead-success-harp-resonance" aria-hidden="true"></span>
           </div>
         </div>
 
@@ -184,6 +192,6 @@
       </div>
     </div>
 
-    <script type="module" src="./success_takeover_preview.js"></script>
+    <script type="module" src="./success_takeover_preview.js?v=newgrange-2"></script>
   </body>
 </html>

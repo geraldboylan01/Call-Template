@@ -35,6 +35,7 @@ import {
   completeRealtimeToolAttempt,
   getRealtimeLease,
   getLatestRealtimeMeetingBrief,
+  listRecentRealtimeFinalTurns,
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
   recoverStalePlannerReconciliation,
@@ -52,6 +53,8 @@ import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
 import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
+import { renderLiveAssistantText } from './live_text_channel.js';
+import { buildTypedCardIndex, buildTypedCardState } from './typed_projection.js';
 import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifyExecutionApproval } from './execution_approval.js';
@@ -93,6 +96,33 @@ const MAX_LIVE_TURN_LEDGER_ENTRIES = 64;
 // tool loop. The third tool result therefore gets one final, tools-disabled
 // response in which to speak.
 const MAX_TOOL_CALLS_PER_ROOT_TURN = 3;
+/** A typed message is bounded exactly as the in-call typing box already is. */
+const MAX_TYPED_MESSAGE_CHARACTERS = 4_000;
+/**
+ * How much conversation the typed renderer is handed.
+ *
+ * Larger than the voice window because a typed client scrolls back and expects
+ * Planéir to have the same memory they do; still bounded, because the planner
+ * -- not this window -- is the authority on what is known.
+ */
+const MAX_TYPED_CONTEXT_TURNS = 16;
+/**
+ * What Planéir opens a typed meeting with if the renderer is unavailable.
+ *
+ * Deterministic, and deliberately the same invitation the spoken opening makes:
+ * introduce yourself, then ask one broad non-financial question. A meeting that
+ * cannot start is worse than one that starts plainly.
+ */
+/**
+ * How many requirements one meeting may declare unanswerable.
+ *
+ * Bounded because it is durable state driven by a button. Twelve is more than
+ * any real plan has open at once; a meeting that hit it is not a meeting that
+ * needed a thirteenth.
+ */
+const MAX_ACKNOWLEDGED_UNKNOWN = 12;
+const TYPED_OPENING_FALLBACK = 'I\'m Planéir, an AI planning companion. '
+  + 'Before we look at any numbers — what brought you here today?';
 
 /** A finalized typed message echoed by the provider's sideband. */
 export function typedClientTurnFromEvent(event) {
@@ -332,6 +362,23 @@ export class ConsumerLiveSession {
     this.webSocket = null;
     this.meta = null;
     this.closing = false;
+    // TYPED LANE. A typed meeting has no provider socket, so `sendProvider`
+    // has nowhere to send. Rather than branch every call site, the same
+    // protocol events are captured here and read back by the turn that caused
+    // them -- which keeps `executeToolCallWithTranscript` and
+    // `injectVolatileState` single-implementation across both transports.
+    this.textChannel = false;
+    this.textToolOutputs = new Map();
+    this.textVolatileStateItem = '';
+    // Requirements the client has said, on screen, that they cannot answer.
+    // Durable for the same reason the unreviewed material turns are: a
+    // hibernated meeting that forgot one would start asking again, which is
+    // precisely the loop the control exists to end.
+    this.acknowledgedUnknown = [];
+    // fieldId -> {moduleId, path} for the card most recently drawn. This is
+    // what lets the screen stay pointer-free: the client returns an opaque id
+    // and the server, which built the card, is the only side that resolves it.
+    this.typedCardIndex = new Map();
     this.inResponse = false;
     this.eventChain = Promise.resolve();
     this.reconciliationChain = Promise.resolve();
@@ -428,6 +475,10 @@ export class ConsumerLiveSession {
 
     this.state.blockConcurrencyWhile(async () => {
       this.meta = await this.state.storage.get('lease') || null;
+      // The transport has to survive hibernation. A typed meeting that woke up
+      // believing it had a provider socket would try to send on one.
+      this.textChannel = this.meta?.channel === 'typed';
+      this.acknowledgedUnknown = await this.state.storage.get('acknowledgedUnknown') || [];
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
@@ -482,8 +533,8 @@ export class ConsumerLiveSession {
     const path = new URL(request.url).pathname;
     try {
       if (path === '/activate' && request.method === 'POST') {
-        await this.activate(await readInternalJson(request));
-        return json({ ok: true, leaseId: this.meta.leaseId });
+        const opening = await this.activate(await readInternalJson(request));
+        return json({ ok: true, leaseId: this.meta.leaseId, ...(opening || {}) });
       }
       if (path === '/lease' && request.method === 'GET') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
@@ -493,6 +544,10 @@ export class ConsumerLiveSession {
       if (path === '/state' && request.method === 'GET') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
         return json({ ok: true, ...(await this.publicState()) });
+      }
+      if (path === '/message' && request.method === 'POST') {
+        if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
+        return json(await this.handleTextMessage(await readInternalJson(request)));
       }
       if (path === '/delivery' && request.method === 'POST') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
@@ -523,6 +578,8 @@ export class ConsumerLiveSession {
     const sessionId = String(body?.sessionId || '');
     const leaseId = String(body?.leaseId || '');
     const costEntryId = String(body?.costEntryId || '');
+    // The channel comes from the activating route, never from the client.
+    const textChannel = body?.channel === 'typed';
     if (!/^cs_[A-Za-z0-9_-]{20,80}$/.test(sessionId)
       || !/^rt_[A-Za-z0-9_-]{20,80}$/.test(leaseId)
       || !/^cost_[A-Za-z0-9_-]{20,80}$/.test(costEntryId)) {
@@ -532,18 +589,26 @@ export class ConsumerLiveSession {
     if (!lease || lease.status !== 'active' || lease.provider_cost_id !== costEntryId) {
       throw new ConsumerError(409, 'live_lease_conflict', 'The live meeting lease is not active.');
     }
-    const providerCallId = await getRealtimeProviderCallId(this.env, sessionId, leaseId);
-    if (!providerCallId) throw new ConsumerError(409, 'live_provider_call_missing', 'The live meeting call is missing.');
+    let providerCallId = null;
+    if (!textChannel) {
+      providerCallId = await getRealtimeProviderCallId(this.env, sessionId, leaseId);
+      if (!providerCallId) throw new ConsumerError(409, 'live_provider_call_missing', 'The live meeting call is missing.');
+    }
 
     this.meta = {
       sessionId,
       leaseId,
       costEntryId,
+      channel: textChannel ? 'typed' : 'voice',
       hardExpiresAt: lease.hard_expires_at,
       idleExpiresAt: lease.idle_expires_at
     };
+    this.textChannel = textChannel;
     await this.state.storage.put('lease', this.meta);
-    await this.connectSideband(providerCallId);
+    // A typed meeting has no sideband to connect and nothing to keep alive
+    // between turns: each turn is its own request. The alarm is still armed,
+    // because the hard expiry still has to be able to close an abandoned one.
+    if (!textChannel) await this.connectSideband(providerCallId);
     await this.scheduleAlarm();
     if (this.pendingReconciliationTurn) this.queueReconciliationDrain();
     await appendRealtimeEvent(this.env, {
@@ -551,9 +616,54 @@ export class ConsumerLiveSession {
       leaseId,
       direction: 'server',
       eventType: 'live.call.activated',
-      payload: { model: lease.model, promptVersion: LIVE_PROMPT_VERSION }
+      payload: {
+        model: lease.model,
+        promptVersion: LIVE_PROMPT_VERSION,
+        channel: textChannel ? 'typed' : 'voice'
+      }
     });
+    // Voice asks the provider for its one tools-disabled opening turn. Typed
+    // has no provider holding the conversation, so the opening is produced the
+    // same way every other typed turn is -- and returned to the caller, which
+    // is what puts Planéir's first message on screen immediately.
+    if (textChannel) return this.openTypedMeeting();
     await this.requestOpeningResponse();
+    return null;
+  }
+
+  /**
+   * Planéir speaks first, in text, before the client has typed anything.
+   *
+   * This is the one turn with no client turn behind it, exactly as the spoken
+   * opening is. It takes no tools: there is nothing to look up yet, and the
+   * catalogue prompt already tells it what an opening turn is for.
+   */
+  async openTypedMeeting() {
+    if (this.openingRequested) return null;
+    this.openingRequested = true;
+    await this.state.storage.put('openingRequested', true);
+    const config = getConsumerConfig(this.env);
+    const response = this.createResponseContext({
+      responseId: `txt_${crypto.randomUUID()}`,
+      responseKind: 'opening',
+      opening: true,
+      rootResponseId: `txt_open_${crypto.randomUUID()}`,
+      causeItemId: null
+    });
+    const rendered = await renderLiveAssistantText({
+      env: this.env,
+      config,
+      recentTurns: [],
+      fallbackQuestion: TYPED_OPENING_FALLBACK,
+      // An opening turn has nothing to look up. Refusing the call outright is
+      // simpler than telling the model not to make one.
+      dispatchTool: async () => ({ ok: false, code: 'live_tool_not_available_yet' })
+    });
+    response.done = true;
+    response.status = 'completed';
+    await this.finalizeTypedAssistantTurn(response, rendered.text);
+    await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => {});
+    return { assistantText: rendered.text, fallback: rendered.fallback === true };
   }
 
   async connectSideband(providerCallId) {
@@ -596,6 +706,10 @@ export class ConsumerLiveSession {
   }
 
   sendProvider(event) {
+    // A typed meeting captures instead of transmitting. Everything upstream --
+    // the tool barrier, the volatile state refresh -- stays unaware there is no
+    // socket, which is the whole point: one implementation, two transports.
+    if (this.textChannel) return this.captureProviderEvent(event);
     if (!this.webSocket || this.webSocket.readyState !== 1) {
       throw new ConsumerError(503, 'live_sideband_unavailable', 'The live meeting controls are disconnected.');
     }
@@ -604,6 +718,23 @@ export class ConsumerLiveSession {
       throw new ConsumerError(413, 'live_provider_event_too_large', 'That live meeting control message is too large.');
     }
     this.webSocket.send(text);
+  }
+
+  captureProviderEvent(event) {
+    const item = event?.item;
+    if (event?.type === 'conversation.item.create' && item?.type === 'function_call_output') {
+      this.textToolOutputs.set(String(item.call_id || ''), String(item.output || ''));
+      return;
+    }
+    if (event?.type === 'conversation.item.create' && item?.role === 'system') {
+      const text = (item.content || [])
+        .map((part) => String(part?.text || '')).join('').trim();
+      if (text) this.textVolatileStateItem = text;
+      return;
+    }
+    // response.create / response.cancel are turn-taking protocol for a provider
+    // that is holding a conversation open. A typed turn IS its own request and
+    // ends with an HTTP response, so there is nothing to ask for or cancel.
   }
 
   /** Ask for the one tools-disabled opening turn, durably and at most once. */
@@ -732,14 +863,34 @@ export class ConsumerLiveSession {
     const causeItemId = continuation
       ? String(chain?.rootCauseItemId || '') || null
       : opening ? null : this.unboundAutoResponseTurnIds.shift() || null;
-    const pendingSourceItemIds = continuation && parent
-      ? new Set(parent.pendingSourceItemIds)
-      : new Set(
-        [...this.clientTurnsByItemId.values()]
-          .filter((turn) => turn.status === 'pending')
-          .map((turn) => turn.itemId)
-      );
-    const cause = causeItemId ? this.clientTurnsByItemId.get(causeItemId) : null;
+    return this.createResponseContext({
+      responseId, responseKind, continuation, opening,
+      rootResponseId, parentResponseId, parent, chain, causeItemId,
+      continuationIndex: continuation ? Math.max(1, Number(metadata?.continuation_index || 1)) : 0
+    });
+  }
+
+  /**
+   * The one place a response context is built.
+   *
+   * Extracted from `bindResponseContext` so the typed lane can open a response
+   * without inventing a second shape. Everything above this line in
+   * `bindResponseContext` is provider-metadata validation, which a typed turn
+   * has no provider to validate; everything below it is the ledger every
+   * downstream barrier check reads, and there must be exactly one of those.
+   */
+  createResponseContext({
+    responseId,
+    responseKind = 'auto',
+    continuation = false,
+    opening = false,
+    rootResponseId,
+    parentResponseId = '',
+    parent = null,
+    chain = null,
+    causeItemId = null,
+    continuationIndex = 0
+  }) {
     const precedingAssistantTranscript = continuation
       ? String(chain?.precedingAssistantTranscript || parent?.precedingAssistantTranscript || '')
       : opening ? '' : this.lastCompletedAssistantTranscript;
@@ -751,9 +902,6 @@ export class ConsumerLiveSession {
         toolCallCount: 0,
         invalidated: false,
         settled: false,
-        // A chain's saves happen on the hops; its review happens at the end.
-        // These carry each hop's outcome forward so the turn is scheduled on
-        // everything it produced rather than on whatever the last hop did.
         noteAcceptedCount: 0,
         noteRejectedCount: 0,
         acceptedValueEvidence: [],
@@ -762,15 +910,21 @@ export class ConsumerLiveSession {
       };
       this.continuationChainsByRootResponseId.set(rootResponseId, chain);
     }
+    const pendingSourceItemIds = continuation && parent
+      ? new Set(parent.pendingSourceItemIds)
+      : new Set(
+        [...this.clientTurnsByItemId.values()]
+          .filter((turn) => turn.status === 'pending')
+          .map((turn) => turn.itemId)
+      );
+    const cause = causeItemId ? this.clientTurnsByItemId.get(causeItemId) : null;
     const context = {
       responseId,
       causeItemId,
       responseKind,
       rootResponseId,
       parentResponseId,
-      continuationIndex: continuation
-        ? Math.max(1, Number(metadata?.continuation_index || 1))
-        : 0,
+      continuationIndex,
       continuationChain: chain,
       continuationRequested: false,
       toolCallIds: new Set(),
@@ -1348,7 +1502,14 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       direction: 'server',
       eventType: 'live.client.turn',
-      payload: { itemId, inputMode: event.typed === true ? 'text' : 'audio' }
+      payload: {
+        itemId,
+        // 'form' is a card submission compiled to one client turn. It is the
+        // same turn, on the same path, with the same evidence obligations --
+        // the label exists so the eval corpus can tell the screen's
+        // contribution from the keyboard's, never so anything branches on it.
+        inputMode: event.inputMode === 'form' ? 'form' : (event.typed === true ? 'text' : 'audio')
+      }
     }).catch(() => {});
 
     if (event.typed !== true) await this.meterTranscription(event);
@@ -1398,6 +1559,299 @@ export class ConsumerLiveSession {
         if (settledResponse) this.maybeScheduleReconciliation(settledResponse);
       }
     }
+  }
+
+  /**
+   * One typed turn, start to finish.
+   *
+   * The shape mirrors a spoken turn exactly, with two deliberate differences,
+   * both registered as D-08:
+   *
+   *   1. THE PLANNER IS AWAITED. Voice cannot afford it -- a caller hears the
+   *      pause -- so voice replies first and lets the snapshot catch up. A
+   *      typed client is looking at a screen, and the cost of waiting two
+   *      seconds is far smaller than the cost of a card that still shows a
+   *      field they just filled, or a question they just answered. This is the
+   *      single line that makes "Planéir does not re-ask" structural rather
+   *      than best-effort.
+   *   2. THE READ-BACK IS WRITTEN BY THE SERVER. See deliverCertifiedReadback.
+   *
+   * Everything else -- ingest, persistence, evidence, the tool barrier, the
+   * confirmation gate -- is the same code voice runs.
+   */
+  async handleTextMessage(body) {
+    const text = String(body?.text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TYPED_MESSAGE_CHARACTERS);
+    if (!text) throw new ConsumerError(400, 'live_text_message_invalid', 'That message is empty.');
+    const inputMode = body?.inputMode === 'form' ? 'form' : 'text';
+    const config = getConsumerConfig(this.env);
+    if (this.closing) throw new ConsumerError(409, 'live_meeting_closing', 'This meeting is closing.');
+
+    // A "Not sure" click is recorded BEFORE the planner runs, so the very next
+    // pass already knows not to ask again. Recording it afterwards would let
+    // one more question through, which is the whole complaint.
+    await this.recordAcknowledgedUnknown(body?.unknownFieldId);
+
+    const itemId = `msg_${crypto.randomUUID()}`;
+    this.registerStoppedClientTurn({ item_id: itemId });
+    await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode });
+
+    // (1) above. A failed pass is not fatal: the turn is already durable and the
+    // renderer falls back to the last good state rather than stalling.
+    await this.directModulePlanningChain.catch(() => {});
+
+    const response = this.bindResponseContext(`txt_${crypto.randomUUID()}`, {});
+    if (!response) throw new ConsumerError(503, 'live_text_response_unavailable', 'The typed meeting could not open a turn.');
+
+    const rendered = await renderLiveAssistantText({
+      env: this.env,
+      config,
+      volatileStateItem: this.textVolatileStateItem,
+      recentTurns: await listRecentRealtimeFinalTurns(
+        this.env, this.meta.sessionId, this.meta.leaseId, MAX_TYPED_CONTEXT_TURNS
+      ).catch(() => []),
+      fallbackQuestion: this.typedFallbackQuestion(),
+      dispatchTool: (call) => this.dispatchTextToolCall(call, response, text)
+    });
+
+    response.done = true;
+    response.status = 'completed';
+
+    // The certified plan is delivered by the server or not at all.
+    const delivered = await this.deliverCertifiedReadback(response, text);
+    const assistantText = delivered || rendered.text;
+    await this.finalizeTypedAssistantTurn(response, assistantText, { readback: Boolean(delivered) });
+
+    await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => {});
+    await this.touch();
+    return {
+      ok: true,
+      turnId: itemId,
+      assistantText,
+      readback: Boolean(delivered),
+      fallback: rendered.fallback === true && !delivered,
+      // The card. Built from the snapshot this turn's own planner pass
+      // produced, which is why it can never show a field the client just
+      // filled in -- see the awaited pass at the top of this method.
+      card: await this.typedCardState()
+    };
+  }
+
+  /**
+   * The compact module card, or nothing.
+   *
+   * Nothing is the right answer for most of a conversation: a card appears
+   * when the planner has identified an analysis and knows what it still needs,
+   * and not before. Type mode is a conversation that can show a card, never a
+   * form with a chat box attached.
+   */
+  async typedCardState() {
+    if (getConsumerConfig(this.env).modulePlannerMode !== 'apply') return { modules: [] };
+    const direct = await getLatestRealtimeMeetingBrief(
+      this.env, this.meta.sessionId, this.meta.leaseId
+    ).catch(() => null);
+    try {
+      const brief = direct?.brief || null;
+      // Built together, from the same brief, so an id the client returns can
+      // only ever resolve against the card they were actually shown.
+      this.typedCardIndex = buildTypedCardIndex(brief);
+      return buildTypedCardState(brief);
+    } catch (_error) {
+      // A card is an enhancement. A projection fault must never cost the
+      // client their reply, so the conversation simply carries on without it.
+      return { modules: [] };
+    }
+  }
+
+  /**
+   * Record that the client cannot answer one requirement.
+   *
+   * The id is resolved against the card THIS SERVER drew, which is what keeps
+   * the screen pointer-free: the browser never learns a module id or a native
+   * input path, and cannot name one it was not offered. An id the server does
+   * not recognise is ignored rather than rejected -- a stale card is an
+   * ordinary race, not an attack, and the client's message still goes through.
+   */
+  async recordAcknowledgedUnknown(fieldId) {
+    const entry = this.typedCardIndex.get(String(fieldId || ''));
+    if (!entry) return;
+    const exists = this.acknowledgedUnknown.some(
+      (item) => item.moduleId === entry.moduleId && item.path === entry.path
+    );
+    if (exists) return;
+    this.acknowledgedUnknown = [
+      ...this.acknowledgedUnknown,
+      { moduleId: entry.moduleId, path: entry.path, acknowledgedAt: Date.now() }
+    ].slice(-MAX_ACKNOWLEDGED_UNKNOWN);
+    await this.state.storage.put('acknowledgedUnknown', this.acknowledgedUnknown);
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      direction: 'server',
+      eventType: 'live.requirement.unanswerable',
+      // Structural only: which module and which path, never the question text
+      // and never anything the client typed.
+      payload: { moduleId: entry.moduleId, path: entry.path }
+    }).catch(() => {});
+  }
+
+  /**
+   * Hand one model tool call to the REAL barrier.
+   *
+   * There is no text-specific tool logic here on purpose. The event is shaped
+   * the way the provider would have shaped it, handed to the same
+   * `runToolCallWithTranscript` voice uses, and the output is read back out of
+   * the captured `sendProvider` stream. Idempotency, approval classification,
+   * offer-token binding and certificate re-verification all happen in there,
+   * once, for both transports.
+   */
+  async dispatchTextToolCall(call, response, clientTranscript) {
+    const callId = String(call?.callId || '') || `call_${crypto.randomUUID()}`;
+    try {
+      await this.runToolCallWithTranscript({
+        name: String(call?.name || ''),
+        call_id: callId,
+        arguments: String(call?.argumentsJson || '{}'),
+        response_id: response.responseId
+      }, clientTranscript);
+    } catch (_error) {
+      // A broken tool call is never a broken conversation -- the same rule the
+      // voice path applies. The model is told to carry on.
+      return { ok: false, code: 'live_tool_failed' };
+    }
+    const raw = this.textToolOutputs.get(callId);
+    this.textToolOutputs.delete(callId);
+    try {
+      return raw ? JSON.parse(raw) : { ok: false, code: 'live_tool_no_output' };
+    } catch (_error) {
+      return { ok: false, code: 'live_tool_no_output' };
+    }
+  }
+
+  /**
+   * Write the certified confirmation prompt, verbatim, as the assistant turn.
+   *
+   * THIS IS THE TYPED LANE'S ANSWER TO `readbackFullyDelivered`, and it is
+   * stronger than the spoken one rather than weaker.
+   *
+   * Voice must let the model say the prompt and then prove, afterwards, that
+   * what it said matched the certified string byte for byte, that the audio
+   * actually played, and that nobody talked over it. Three of those checks
+   * exist because the model held the pen.
+   *
+   * Here the server holds the pen. The exact certified string is persisted as
+   * the assistant turn and returned in the same response, so it cannot be
+   * paraphrased, truncated or reordered, and it does not evaporate the way
+   * speech does -- it stays on screen, scrollable, until the client answers it.
+   * What replaces the playback acknowledgement is REPLY BINDING: the approving
+   * turn's `answersTurnId` must be this turn's id (`turnAnswersDirectOffer`),
+   * so an approval can only ever attach to the plan the client was actually
+   * looking at. A superseded offer changes the token and the turn id, and the
+   * old binding stops matching.
+   *
+   * Returns the delivered text, or '' when no plan is certified yet.
+   */
+  async deliverCertifiedReadback(response, clientTranscript) {
+    const candidate = response?.continuationChain?.directConfirmationCandidate;
+    const offer = this.directConfirmationOffer;
+    if (!candidate?.confirmationPrompt || !offer || candidate.token !== offer.token) return '';
+    if (offer.readbackFullyDelivered) return '';
+
+    // A CONTINUATION, exactly as voice does it: the response that called
+    // get_state is not the response that presents the plan. Keeping that
+    // boundary is what lets `maybeArmDirectConfirmation` refuse to arm on a
+    // response that also made a tool call.
+    const readbackResponse = this.createResponseContext({
+      responseId: `txt_${crypto.randomUUID()}`,
+      responseKind: 'tool_continuation',
+      continuation: true,
+      rootResponseId: response.rootResponseId,
+      parentResponseId: response.responseId,
+      parent: response,
+      chain: response.continuationChain,
+      causeItemId: response.causeItemId,
+      continuationIndex: 1
+    });
+    await this.beginDirectReadbackAttempt(readbackResponse);
+    readbackResponse.done = true;
+    readbackResponse.status = 'completed';
+    await this.finalizeTypedAssistantTurn(
+      readbackResponse,
+      String(candidate.confirmationPrompt),
+      { readback: true }
+    );
+    return String(candidate.confirmationPrompt);
+  }
+
+  /**
+   * Persist one typed assistant turn and settle its response.
+   *
+   * The spoken equivalent is `handleSpeechDone`. The differences are all
+   * absences: no streamed transcript to accumulate, no ASR to wait on, and no
+   * redundant-question guard, because the typed lane has already awaited the
+   * planner and cannot be asking about state it has not seen.
+   */
+  async finalizeTypedAssistantTurn(response, text, { readback = false } = {}) {
+    const transcript = String(text || '').trim().slice(0, MAX_ASSISTANT_TRANSCRIPT);
+    if (!transcript) return null;
+    response.assistantTranscript = transcript;
+    response.assistantDone = true;
+    response.assistantItemId = `${response.responseId}_assistant`;
+    this.lastCompletedAssistantTranscript = transcript;
+    this.syncCurrentResponseAliases(response);
+
+    const stored = await recordRealtimeFinalTurn(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      providerItemId: response.assistantItemId,
+      role: 'assistant',
+      transcript
+    }).catch(() => null);
+    if (stored?.id) {
+      // The proposition the client's next turn will answer. Reply binding for
+      // the read-back is built entirely on this id.
+      this.lastCompletedAssistantTurnId = stored.id;
+      response.storedAssistantTurnId = stored.id;
+    }
+    if (readback) await this.maybeArmDirectConfirmation(response);
+    const cause = response.causeItemId ? this.clientTurnsByItemId.get(response.causeItemId) : null;
+    if (!cause || cause.status !== 'pending') {
+      this.scheduleResponseReview(response, cause?.status === 'completed' ? cause.transcript : '');
+    }
+    return stored?.id || null;
+  }
+
+  /**
+   * The deterministic question a typed turn falls back to.
+   *
+   * Never a stall and never an apology: if the renderer failed, the client
+   * still gets the planner's own next open item, in the planner's own
+   * client-safe words.
+   */
+  typedFallbackQuestion() {
+    const item = this.textVolatileStateItem || '';
+    const match = /(?:^|\n)\s*(?:Ask|Next)[^\n]*?:\s*([^\n]{8,300})/i.exec(item);
+    return match ? match[1].trim() : '';
+  }
+
+  /**
+   * Typed spend lands in the same table, priced by the same pricing version.
+   * Text tokens only -- there is no audio and no transcription to meter.
+   */
+  async meterTypedUsage(responseId, tokens) {
+    const total = Number(tokens?.inputTextTokens || 0)
+      + Number(tokens?.cachedTextTokens || 0)
+      + Number(tokens?.outputTextTokens || 0);
+    if (!(total > 0)) return;
+    const config = getConsumerConfig(this.env);
+    await recordRealtimeUsage(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      providerResponseId: responseId,
+      usageKind: 'response',
+      tokens,
+      rates: config.realtimeUsageRates,
+      pricingVersion: config.realtimePricingVersion
+    }).catch(() => {});
   }
 
   async markClientTranscriptionUnavailable(event = {}) {
@@ -1702,8 +2156,18 @@ export class ConsumerLiveSession {
     offer.assistantTurnId = String(response.storedAssistantTurnId);
     offer.deliveryAttempt.responseCompleted = true;
     offer.deliveryAttempt.transcriptMatched = true;
-    offer.readbackFullyDelivered = offer.deliveryAttempt.playbackCompleted
-      && !offer.deliveryAttempt.interrupted;
+    // DELIVERY MEANS SOMETHING DIFFERENT ON EACH TRANSPORT, AND ONLY THIS LINE
+    // KNOWS IT. Speech has to be heard: it plays once, it can be talked over,
+    // and the only proof it reached the client is an acknowledgement that the
+    // audio buffer finished. Text has already arrived -- the exact certified
+    // string is a persisted assistant turn, returned in the same response and
+    // still on screen. What stops an approval attaching to a plan the client
+    // never saw is not playback but REPLY BINDING: `turnAnswersDirectOffer`
+    // requires their next turn to answer this exact assistant turn id, and a
+    // superseded offer changes both the token and the turn.
+    offer.readbackFullyDelivered = this.textChannel
+      ? true
+      : offer.deliveryAttempt.playbackCompleted && !offer.deliveryAttempt.interrupted;
     if (offer.readbackFullyDelivered) offer.deliveredAt ||= Date.now();
     await this.persistDirectConfirmationOffer();
     await this.drainDirectApprovalDelivery();
@@ -1774,7 +2238,8 @@ export class ConsumerLiveSession {
             context,
             leaseId: this.meta.leaseId,
             throughTurnId: nextJob.turnId,
-            frozenPlanId: this.directConfirmationOffer?.planId || null
+            frozenPlanId: this.directConfirmationOffer?.planId || null,
+            acknowledgedUnknown: this.acknowledgedUnknown
           });
           // This full transcript snapshot settles every obligation at or before
           // its watermark. A turn arriving during the call remains and is the
@@ -3572,7 +4037,10 @@ export class ConsumerLiveSession {
       status,
       reason,
       activatedAtMs,
-      responseCount: Number(lease?.response_count || 0)
+      responseCount: Number(lease?.response_count || 0),
+      // Without this a typed meeting reports itself as a voice call, and every
+      // voice metric it lands in silently becomes a mixture.
+      channel: this.textChannel ? 'typed' : 'voice'
     });
 
     let row;

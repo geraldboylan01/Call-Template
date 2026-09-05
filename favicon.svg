@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Planeir Newgrange alignment mark" shape-rendering="geometricPrecision">
+  <rect width="512" height="512" rx="96" fill="#07131E"/>
+  <g transform="translate(48 48) scale(3.25)"><path data-planeir-mark-ring="" fill="#F4F8FC" d="M106.07 33.44 A52 52 0 1 1 93.82 21.41 L81.21 39.43 A30 30 0 1 0 88.27 46.37 Z"/>
+<path data-planeir-mark-disc="" fill="#F4F8FC" d="M77 64 A13 13 0 1 1 51 64 A13 13 0 1 1 77 64 Z"/></g>
+</svg>

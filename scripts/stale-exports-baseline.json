@@ -22,7 +22,6 @@
     "js/plan/store.js:clearAnalysisPlanNonce",
     "js/plan/store.js:normaliseVoiceBudget",
     "js/plan/store.js:storeAnalysisPlanNonce",
-    "js/planeir_harp_artwork.js:PLANEIR_WORDMARK_VIEW_BOX",
     "js/planning/adapters/college_funding.js:COLLEGE_FUNDING_ADAPTER_VERSION",
     "js/planning/adapters/common.js:projectionParts",
     "js/planning/adapters/house_purchase.js:HOUSE_PURCHASE_ADAPTER_VERSION",

@@ -12,6 +12,8 @@ const ui = {
   play: document.getElementById('successPreviewPlay'),
   replay: document.getElementById('successPreviewReplay'),
   cancel: document.getElementById('successPreviewCancel'),
+  inspect: document.getElementById('successPreviewInspect'),
+  frame: document.getElementById('successPreviewFrame'),
   status: document.getElementById('successPreviewStatus')
 };
 
@@ -21,6 +23,25 @@ const motionQuery = {
   }
 };
 
+let manual = false;
+let manualStarted = false;
+let manualTime = 0;
+let resumeAt = null;
+let resumeTime = 0;
+const previewClock = {
+  now: () => manual ? manualTime : performance.now(),
+  request: callback => requestAnimationFrame(now => {
+    if (manual) {
+      manualTime = resumeAt === null
+        ? (manualStarted ? 520 + Number(ui.frame.value) : 520)
+        : resumeTime + now - resumeAt;
+      manualStarted = true;
+    }
+    callback(manual ? manualTime : now);
+  }),
+  cancel: id => cancelAnimationFrame(id)
+};
+
 const takeover = createSuccessTakeover({
   overlay: ui.overlay,
   origin: ui.origin,
@@ -28,8 +49,7 @@ const takeover = createSuccessTakeover({
   title: ui.title,
   body: ui.body,
   motionQuery,
-  holdMs: 3500,
-  reducedHoldMs: 1200,
+  clock: previewClock,
   lockTargets: []
 });
 
@@ -49,12 +69,16 @@ function getCopy() {
   };
 }
 
-async function playResonantHalo() {
+async function playAlignment(inspect = false) {
+  manual = inspect;
+  manualStarted = false;
+  manualTime = 0;
+  resumeAt = null;
   const currentRunId = ++previewRunId;
   const copy = getCopy();
 
   if (ui.status) {
-    ui.status.textContent = `Playing Resonant Halo${motionQuery.matches ? ' with reduced motion' : ''}.`;
+    ui.status.textContent = `Playing Newgrange alignment${motionQuery.matches ? ' with reduced motion' : ''}.`;
   }
 
   const playedEffect = await takeover.play({
@@ -67,7 +91,7 @@ async function playResonantHalo() {
   }
 
   if (ui.status) {
-    const result = playedEffect ? 'Played Resonant Halo. ' : '';
+    const result = playedEffect ? 'Played Newgrange alignment. ' : '';
     ui.status.textContent = `${result}Finished and restored to the neutral logo.`;
   }
 
@@ -75,13 +99,24 @@ async function playResonantHalo() {
 }
 
 ui.play?.addEventListener('click', () => {
-  void playResonantHalo();
+  void playAlignment();
 });
 
 ui.replay?.addEventListener('click', () => {
   takeover.reset();
-  void playResonantHalo();
+  void playAlignment();
 });
+
+ui.inspect?.addEventListener('click', () => { void playAlignment(true); });
+
+// A frozen inspection frame can still use the real dismissal/return path.
+function resumeForDismissal() {
+  if (manual && resumeAt === null) { resumeTime = manualTime; resumeAt = performance.now(); }
+}
+ui.overlay?.addEventListener('click', resumeForDismissal);
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape') resumeForDismissal();
+}, true);
 
 ui.cancel?.addEventListener('click', () => {
   previewRunId += 1;
@@ -92,7 +127,7 @@ ui.cancel?.addEventListener('click', () => {
 });
 
 window.__successTakeoverPreview = {
-  play: playResonantHalo,
+  play: playAlignment,
   reset: () => {
     previewRunId += 1;
     takeover.reset();

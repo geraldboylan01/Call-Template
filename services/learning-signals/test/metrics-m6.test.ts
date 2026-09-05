@@ -455,7 +455,7 @@ describe.sequential("M6 daily metrics", () => {
     const thresholds = loadThresholds();
     expect(thresholds.version).toBe("thresholds-v1");
     expect(thresholds.reliability.connection_success_warn_below).toBe(0.98);
-    expect(loadEventCatalogRegistry().current.version).toBe("telemetry-events-v7");
+    expect(loadEventCatalogRegistry().current.version).toBe("telemetry-events-v8");
   });
 
   it("completion_rate counts sessions with a session.completed event over starts", async () => {

@@ -76,7 +76,7 @@ const DEFAULT_ALLOWED_REQUEST_HEADERS = [
 ].join(', ');
 const RESEND_EMAILS_API_URL = 'https://api.resend.com/emails';
 const PLANEIR_SITE_URL = 'https://planeir.ie';
-const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card.png`;
+const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card-newgrange.png`;
 const PLANEIR_EMAIL_CARD_ALT = 'Planeir - Irish financial education calls. Educational only, not financial advice.';
 const LEAD_SOURCE_LABEL = 'Planeir landing page';
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
@@ -246,10 +246,21 @@ function getConsumerRouteMethods(pathname) {
   }
   // The bounded upload transcription route is gone. This table must not keep
   // advertising it: a preflight that answers 204 with an Allow list for a path
-  // the consumer router then 404s tells a browser the route exists.
-  const voiceMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/voice\/(consent|speech)$/.exec(pathname);
-  if (voiceMatch) return voiceMatch[1] === 'consent' ? 'PATCH,OPTIONS' : 'POST,OPTIONS';
-  const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|handoffs|consent))?$/.exec(pathname);
+  // the consumer router then 404s tells a browser the route exists. The
+  // `/voice/(consent|speech)` entry that used to sit here did exactly that --
+  // `routeMatch` has had no branch for it since the route was removed, so a
+  // preflight was answered 204 and the request itself 404d. Removed.
+  const typedMessagesMatch = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/text\/meetings\/rt_[A-Za-z0-9_-]{20,80}\/messages$/.exec(pathname);
+  if (typedMessagesMatch) return 'POST,OPTIONS';
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/text\/meetings\/rt_[A-Za-z0-9_-]{20,80}$/.test(pathname)) {
+    return 'GET,DELETE,OPTIONS';
+  }
+  if (/^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}\/text\/meetings$/.test(pathname)) {
+    return 'POST,OPTIONS';
+  }
+  // DRIFT: `publish` was missing here while `routeMatch` has always matched it,
+  // so a preflight for it answered 404 with no Allow-Methods.
+  const match = /^\/api\/consumer\/sessions\/cs_[A-Za-z0-9_-]{20,80}(?:\/(turns|profile|confirm|analyses|publish|handoffs|consent))?$/.exec(pathname);
   if (!match) return null;
   const child = match[1] || '';
   if (!child) return 'GET,DELETE,OPTIONS';

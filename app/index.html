@@ -19,9 +19,13 @@
       content="Planeir advisor workspace for live planning calls, reports, and client session publishing."
     />
     <title>Planeir App</title>
-    <link rel="icon" type="image/png" href="../favicon.png" />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
     <link rel="stylesheet" href="../styles/base.css" />
     <link rel="stylesheet" href="../styles/success_takeover.css" />
+    <script type="module" src="../js/brand_header.js"></script>
   </head>
   <body class="advisor-gate-pending">
     <div id="app">
@@ -31,7 +35,7 @@
             <img
               id="publishSuccessOrigin"
               class="app-home-link-image"
-              src="../assets/brand/planeir-wordmark-light.svg"
+              src="../assets/brand/planeir-lockup-light.svg"
               alt=""
               width="1330"
               height="384"
@@ -431,22 +435,10 @@
     </div>
 
     <div id="publishSuccessOverlay" class="lead-success-overlay" aria-hidden="true">
-      <div id="publishSuccessGhost" class="lead-success-ghost" aria-hidden="true">
-        <img
-          class="lead-success-ghost-logo"
-          src="../assets/brand/planeir-wordmark-light.svg"
-          alt=""
-          width="1330"
-          height="384"
-          decoding="async"
-        />
-      </div>
 
       <div class="lead-success-stage">
         <div id="publishSuccessTarget" class="lead-success-lockup" aria-hidden="true">
           <div class="lead-success-wordmark-shell">
-            <span class="lead-success-stage-logo lead-success-stage-wordmark" aria-hidden="true"></span>
-            <span class="lead-success-harp-resonance" aria-hidden="true"></span>
           </div>
         </div>
 

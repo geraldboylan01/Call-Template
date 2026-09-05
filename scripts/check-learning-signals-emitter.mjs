@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   buildSessionSummary,
@@ -143,3 +144,48 @@ function eventsByType(events) {
 }
 
 console.log('check-learning-signals-emitter: all assertions passed');
+
+// A TYPED SESSION MUST NOT REPORT ITSELF AS A CALL.
+//
+// The channel was hardcoded to 'voice', which was true while voice was the
+// only lane. A typed meeting reporting itself as voice is worse than one
+// reporting nothing: it contaminates every voice metric it lands in, and the
+// use -> observe -> improve loop ends up measuring a mixture it cannot split.
+{
+  const typed = buildSessionSummary({
+    status: 'complete', reason: 'consumer_closed', activatedAtMs: Date.now() - 60_000,
+    responseCount: 8, channel: 'typed'
+  });
+  const started = typed.events.find((event) => event.event_type === 'session.started');
+  const connected = typed.events.find((event) => event.event_type === 'call.connected');
+  assert.equal(started.attrs.channel, 'typed', 'a typed session reports the typed channel');
+  assert.equal(connected.attrs.channel, 'typed', 'and so does its connection event');
+
+  const spoken = buildSessionSummary({
+    status: 'complete', reason: 'consumer_closed', activatedAtMs: Date.now() - 60_000,
+    responseCount: 8, channel: 'voice'
+  });
+  assert.equal(spoken.events.find((e) => e.event_type === 'session.started').attrs.channel, 'voice',
+    'a voice session is unchanged');
+
+  // Anything unrecognised falls back to voice rather than inventing a channel
+  // the catalog has never heard of and having the whole batch refused.
+  const unknown = buildSessionSummary({
+    status: 'complete', reason: 'consumer_closed', activatedAtMs: Date.now() - 60_000,
+    responseCount: 1, channel: 'something-else'
+  });
+  assert.equal(unknown.events.find((e) => e.event_type === 'session.started').attrs.channel, 'voice',
+    'an unknown channel falls back rather than being emitted');
+
+  // The deployed catalog has to accept what the Worker sends, or typed
+  // sessions produce no signals at all -- which was the original defect.
+  const catalog = JSON.parse(readFileSync(
+    new URL('../services/learning-signals/config/telemetry-events.v8.json', import.meta.url), 'utf8'
+  ));
+  for (const eventType of ['session.started', 'call.connected']) {
+    assert.ok(
+      catalog.events[eventType].attrs_schema.properties.channel.enum.includes('typed'),
+      `the current catalog accepts a typed ${eventType}`
+    );
+  }
+}

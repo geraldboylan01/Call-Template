@@ -91,7 +91,7 @@ function isoOrNull(ms) {
  * side-effect free so it can be unit-tested exhaustively for leaks. Every
  * attrs value is a fixed category, count, or bucket — never call content.
  */
-export function buildSessionSummary({ status, reason, activatedAtMs, responseCount, nowMs = Date.now() }) {
+export function buildSessionSummary({ status, reason, activatedAtMs, responseCount, channel, nowMs = Date.now() }) {
   const outcome = mapSessionOutcome(status);
   const cause = mapCause(reason, outcome);
   const activated = Number.isFinite(activatedAtMs);
@@ -101,10 +101,19 @@ export function buildSessionSummary({ status, reason, activatedAtMs, responseCou
   const turnCount = Math.max(0, Math.min(10000, Math.trunc(Number(responseCount) || 0)));
 
   const events = [];
-  events.push({ event_type: 'session.started', attrs: { channel: 'voice', source: 'orchestrator' }, occurred_at: startIso });
+  // THE CHANNEL IS THE SESSION'S, NOT A CONSTANT.
+  //
+  // It was hardcoded to 'voice', which was true when voice was the only lane
+  // and stopped being true the moment a typed meeting could run. A typed
+  // session that reported itself as voice would be worse than one that
+  // reported nothing: it would quietly contaminate every voice metric it
+  // landed in, and the use -> observe -> improve loop would be measuring a
+  // mixture it could not separate.
+  const sessionChannel = channel === 'typed' ? 'typed' : 'voice';
+  events.push({ event_type: 'session.started', attrs: { channel: sessionChannel, source: 'orchestrator' }, occurred_at: startIso });
 
   if (activated) {
-    events.push({ event_type: 'call.connected', attrs: { channel: 'voice' }, occurred_at: startIso });
+    events.push({ event_type: 'call.connected', attrs: { channel: sessionChannel }, occurred_at: startIso });
   } else if (outcome !== 'completed') {
     // Never reached the client: a connect failure, tagged with its cause.
     events.push({

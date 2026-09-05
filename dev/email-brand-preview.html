@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Planeir email previews — Newgrange brand QA</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #e8eef4; color: #102a43; }
+      main { width: min(100% - 24px, 980px); margin: 0 auto; padding: 32px 0 72px; }
+      .intro { margin-bottom: 24px; padding: 24px; border-radius: 16px; background: #07131e; color: #f4f8fc; }
+      h1 { margin: 0 0 10px; font-size: clamp(1.5rem, 4vw, 2.25rem); }
+      .intro p { margin: 6px 0 0; line-height: 1.55; color: #cfe8fb; }
+      code { overflow-wrap: anywhere; }
+      .preview { margin: 0 0 28px; border: 1px solid #bcccdc; border-radius: 18px; overflow: hidden; background: white; box-shadow: 0 10px 28px rgb(15 34 51 / 10%); }
+      .preview__header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; background: #f7fafc; border-bottom: 1px solid #d9e2ea; }
+      .preview h2 { margin: 0; font-size: 1rem; }
+      .preview a { color: #0f4c81; font-size: 0.875rem; }
+      iframe { display: block; width: 100%; height: 1120px; border: 0; background: #f1f5f9; }
+      @media (max-width: 620px) {
+        main { width: 100%; padding-top: 0; }
+        .intro, .preview { border-radius: 0; }
+        .preview__header { align-items: flex-start; flex-direction: column; }
+        iframe { height: 1280px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="intro">
+        <h1>Newgrange email-card QA</h1>
+        <p>Five email variants rendered by the actual functions in <code>worker/src/index.js</code> with fictitious data.</p>
+        <p>The shared card image is loaded locally from <code>http://127.0.0.1:8768/assets/brand/planeir-social-card-newgrange.png</code>. No email or lead API is invoked.</p>
+      </section>
+
+      <section class="preview" aria-labelledby="heading-lead-notification">
+        <header class="preview__header">
+          <h2 id="heading-lead-notification">1. Lead notification — adviser</h2>
+          <a href="./lead-notification.html">Open this email alone</a>
+        </header>
+        <iframe
+          title="1. Lead notification — adviser"
+          src="./lead-notification.html"
+          loading="eager"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+
+      <section class="preview" aria-labelledby="heading-lead-confirmation">
+        <header class="preview__header">
+          <h2 id="heading-lead-confirmation">2. Lead confirmation — client</h2>
+          <a href="./lead-confirmation.html">Open this email alone</a>
+        </header>
+        <iframe
+          title="2. Lead confirmation — client"
+          src="./lead-confirmation.html"
+          loading="eager"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+
+      <section class="preview" aria-labelledby="heading-schedule-email">
+        <header class="preview__header">
+          <h2 id="heading-schedule-email">3. Proposed call time — client</h2>
+          <a href="./schedule-email.html">Open this email alone</a>
+        </header>
+        <iframe
+          title="3. Proposed call time — client"
+          src="./schedule-email.html"
+          loading="eager"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+
+      <section class="preview" aria-labelledby="heading-published-session">
+        <header class="preview__header">
+          <h2 id="heading-published-session">4. Published session — client</h2>
+          <a href="./published-session.html">Open this email alone</a>
+        </header>
+        <iframe
+          title="4. Published session — client"
+          src="./published-session.html"
+          loading="eager"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+
+      <section class="preview" aria-labelledby="heading-published-advisor-notification">
+        <header class="preview__header">
+          <h2 id="heading-published-advisor-notification">5. Published session — adviser notification</h2>
+          <a href="./published-advisor-notification.html">Open this email alone</a>
+        </header>
+        <iframe
+          title="5. Published session — adviser notification"
+          src="./published-advisor-notification.html"
+          loading="eager"
+          referrerpolicy="no-referrer"
+        ></iframe>
+      </section>
+    </main>
+  </body>
+</html>

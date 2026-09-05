@@ -72,6 +72,11 @@ CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED = "false"
 # are alternative conversation layers over the same lease, consent and cost
 # infrastructure, and exactly one drives a given meeting. Ships false.
 CONSUMER_LIVE_VOICE_ENABLED = "false"
+# The typed planning lane (D-08). Off in source like every other consumer
+# capability. It shares voice's cohort gate and additionally requires
+# CONSUMER_MODULE_PLANNER_MODE = "apply", so it cannot activate on a deployment
+# whose planner is off.
+CONSUMER_TYPED_LANE_ENABLED = "false"
 CONSUMER_MODULE_ROUTING_ENABLED = "false"
 CONSUMER_GOAL_ROUTING_ENABLED = "false"
 # Offering an optional analysis, and the three-analysis capacity decision that

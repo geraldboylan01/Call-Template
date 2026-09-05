@@ -304,6 +304,15 @@ export function getConsumerConfig(env) {
   // consent, cost ledger and provider configuration, but does not depend on
   // either legacy controlled-lane switch above.
   const liveVoiceEnabled = realtimeEnabled && enabled(env.CONSUMER_LIVE_VOICE_ENABLED);
+  // THE TYPED LANE IS GATED ON THE PLANNER, NOT ON AUDIO.
+  //
+  // It shares voice's cohort gate -- it is the same invite-only canary, not a
+  // new access surface -- but not voice's realtime requirements: it opens no
+  // Realtime call, needs no microphone consent and pins no audio policy. What
+  // it genuinely cannot run without is the direct-module planner, because a
+  // typed meeting with no planner has no module state to draw a card from and
+  // no certified plan to confirm.
+  const typedLaneRequested = enabled(env.CONSUMER_TYPED_LANE_ENABLED);
   const handoffRequested = enabled(env.CONSUMER_HANDOFF_ENABLED);
   const handoffRetentionDays = optionalBoundedInteger(env.CONSUMER_HANDOFF_RETENTION_DAYS, 1, 365);
   const handoffRetentionPolicyId = policyId(env.CONSUMER_HANDOFF_RETENTION_POLICY_ID);
@@ -507,6 +516,12 @@ export function getConsumerConfig(env) {
     // separate from legacy fact reconciliation so a deployment can shadow or
     // roll back the complete execution source as one unit.
     modulePlannerMode: modulePlannerMode(env.CONSUMER_MODULE_PLANNER_MODE),
+    // The cohort half of the gate is asserted in the router, by the SAME
+    // `hasApprovedAdvisorPlanningAccess` predicate voice uses -- one definition
+    // of "who may run a planning meeting", not two.
+    typedLaneEnabled: journeyEnabled
+      && typedLaneRequested
+      && modulePlannerMode(env.CONSUMER_MODULE_PLANNER_MODE) === 'apply',
     modulePlannerModel: plannerModel(env.CONSUMER_MODULE_PLANNER_MODEL || env.CONSUMER_REALTIME_PLANNER_MODEL),
     modulePlannerReasoningEffort: reasoningEffort(env.CONSUMER_MODULE_PLANNER_REASONING_EFFORT, 'low'),
     modulePlannerTimeoutMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_TIMEOUT_MS, 30_000, 5_000, 60_000),
@@ -586,6 +601,10 @@ export function publicConsumerConfig(config) {
       consumerVoiceEnabled: false,
       // The live lane is the only supported browser call implementation.
       consumerRealtimeVoiceEnabled: config.liveVoiceEnabled,
+      // The entry screen needs to know whether to offer the choice at all.
+      // A boolean only: nothing about the planner, the model or the cohort
+      // crosses this boundary.
+      consumerTypedLaneEnabled: config.typedLaneEnabled === true,
       consumerRealtimeConversationV2Enabled: false,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
       consumerGoalRoutingEnabled: config.goalRoutingEnabled,
