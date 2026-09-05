@@ -185,4 +185,37 @@ function scriptModels() {
   models.restore();
 }
 
+/* ------------------------- withdrawing consent stops a typed meeting too */
+
+// The consent record and the running meeting have to agree. This looked up the
+// active VOICE lease only, so a client who withdrew consent while typing kept a
+// live meeting: the record said no and the conversation carried on.
+{
+  const { getActiveTypedLease } = await import('../worker/src/consumer/realtime_repository.js');
+  const routerSource = (await import('node:fs')).readFileSync(
+    new URL('../worker/src/consumer/router.js', import.meta.url), 'utf8'
+  );
+
+  const meeting = await newLiveMeeting('typed-consent', ENV);
+  await attachTypedSession(meeting);
+  const live = await getActiveTypedLease(meeting.env, meeting.sessionId);
+  ok(live, 'a running typed meeting is findable by the consent path');
+  equal(live.channel, 'typed', 'and it is the typed one');
+
+  // Voice scoping of getActiveRealtimeLease is deliberate -- migration 0014
+  // exists so voice machinery is never handed a meeting it cannot drive -- so
+  // the callers that govern BOTH transports must ask for both.
+  const { getActiveRealtimeLease } = await import('../worker/src/consumer/realtime_repository.js');
+  equal(await getActiveRealtimeLease(meeting.env, meeting.sessionId), null,
+    'the voice lookup deliberately does not return a typed meeting');
+
+  const withdrawal = routerSource.slice(
+    routerSource.indexOf('const realtimeConsent = await setRealtimeConsent'),
+    routerSource.indexOf('realtimeVoiceAvailability')
+  );
+  ok(/getActiveTypedLease/.test(withdrawal),
+    'withdrawing consent must close a typed meeting as well as a voice one');
+  ok(/consent_withdrawn/.test(withdrawal), 'and for the stated reason');
+}
+
 console.log(`[LiveTypedLifecycle] ${checks} checks passed.`);

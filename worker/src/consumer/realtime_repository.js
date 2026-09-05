@@ -698,6 +698,24 @@ export async function activateTypedLease(env, sessionId, leaseId) {
   return row;
 }
 
+/**
+ * The typed equivalent of `getActiveRealtimeLease`, scoped by channel.
+ *
+ * A separate function rather than a widened one: `getActiveRealtimeLease` is
+ * voice-scoped ON PURPOSE -- migration 0014 introduced `channel` precisely so
+ * the voice lifecycle machinery could never be handed a meeting it does not
+ * understand. Widening it would undo that. Callers that genuinely govern BOTH
+ * transports -- withdrawing consent, deleting a session -- ask for both.
+ */
+export async function getActiveTypedLease(env, sessionId) {
+  return db(env).prepare(`
+    SELECT * FROM consumer_realtime_sessions
+    WHERE session_id = ? AND channel = 'typed' AND status IN ('pending', 'active', 'closing')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).bind(sessionId).first();
+}
+
 export async function activateRealtimeLease(env, sessionId, leaseId, providerCallId) {
   const timestamp = nowIso();
   const [providerCallIdHash, providerCallEncrypted] = await Promise.all([

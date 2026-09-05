@@ -51,6 +51,7 @@ import {
   claimRealtimeControlMessage,
   finalizeRealtimeControlMessage,
   getActiveRealtimeLease,
+  getActiveTypedLease,
   getRealtimeControlPlaneProof,
   getNextRealtimeControlMessage,
   getCurrentRealtimeAnalysisPlan,
@@ -714,14 +715,32 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }
       const realtimeConsent = await setRealtimeConsent(env, sessionRow, config, body.granted);
       let realtimeLease = await getActiveRealtimeLease(env, sessionRow.id);
-      if (!body.granted && realtimeLease) {
-        realtimeLease = await closeRealtimeControl(env, realtimeLease, {
-          status: 'withdrawn',
-          reason: 'consent_withdrawn',
-          errorCode: null,
-          usageKnown: false,
-          required: false
-        });
+      if (!body.granted) {
+        // WITHDRAWING CONSENT STOPS THE MEETING, WHICHEVER ONE IS RUNNING.
+        //
+        // This looked up the active VOICE lease only, so a client who withdrew
+        // consent while typing kept a live meeting: the consent record said no
+        // and the conversation carried on. Both transports are covered by the
+        // same disclosure, so both have to stop.
+        const typedLease = await getActiveTypedLease(env, sessionRow.id);
+        if (typedLease) {
+          await closeRealtimeControl(env, typedLease, {
+            status: 'withdrawn',
+            reason: 'consent_withdrawn',
+            errorCode: null,
+            usageKnown: false,
+            required: false
+          });
+        }
+        if (realtimeLease) {
+          realtimeLease = await closeRealtimeControl(env, realtimeLease, {
+            status: 'withdrawn',
+            reason: 'consent_withdrawn',
+            errorCode: null,
+            usageKnown: false,
+            required: false
+          });
+        }
       }
       return respond({
         realtimeConsent: toPublicRealtimeConsent(realtimeConsent, config),
