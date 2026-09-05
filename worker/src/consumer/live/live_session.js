@@ -3951,7 +3951,20 @@ export class ConsumerLiveSession {
       && Number(this.pendingReconciliationTurn.notBeforeAt || 0) <= Date.now()) {
       this.queueReconciliationDrain();
     }
-    if (!this.webSocket || this.webSocket.readyState !== 1) {
+    // LOSING THE SIDEBAND ENDS A CALL. IT MEANS NOTHING TO A TYPED MEETING.
+    //
+    // A typed meeting holds no socket between turns -- each turn is its own
+    // request -- so `webSocket` is null by design, and this heartbeat marked
+    // every typed meeting for failure-termination fifteen seconds after it
+    // started. It survived only because the close itself was broken above:
+    // terminalize threw, so the meeting kept working while retrying a
+    // termination it could never complete. Fixing the close WITHOUT fixing this
+    // would have turned that stalemate into a typed meeting that dies mid
+    // sentence, which is why the two land together.
+    //
+    // The expiry checks below still apply: an abandoned typed meeting is
+    // reclaimed by its hard expiry, exactly as a call is.
+    if (!this.textChannel && (!this.webSocket || this.webSocket.readyState !== 1)) {
       await this.terminalize('failed', 'sideband_rehydration_lost', 'live_sideband_lost', false).catch(() => {});
       return;
     }
@@ -3998,8 +4011,25 @@ export class ConsumerLiveSession {
     try {
       lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId);
       if (!lease) throw new ConsumerError(503, 'live_close_failed', 'The live meeting could not be closed safely.');
-      const providerCallId = await getRealtimeProviderCallId(this.env, this.meta.sessionId, this.meta.leaseId);
-      const wasDispatched = Boolean(
+      // A TYPED MEETING HAS NO PROVIDER CALL, AND NEVER COULD HAVE.
+      //
+      // `wasDispatched` asks "did we ever put a call on the wire" and answered
+      // it from `activated_at`, which a typed meeting also sets. So every typed
+      // close reached the hangup branch, found no provider call id -- there is
+      // none to find -- and threw `live_hangup_uncertain`. Typed meetings could
+      // not be closed at all: the lease stayed `active` for its full life, its
+      // budget reservation was never settled (so a second typed meeting in the
+      // same session was refused for want of budget), and `emitSessionSummary`
+      // sits past the throw, so typed sessions emitted no telemetry whatsoever.
+      //
+      // Read from the LEASE, not from `this.textChannel`: terminalize also runs
+      // from a rehydrated object and from the expiry sweep, and the lease is
+      // the only thing that is authoritative in all three.
+      const typedMeeting = String(lease.channel || 'voice') === 'typed';
+      const providerCallId = typedMeeting
+        ? null
+        : await getRealtimeProviderCallId(this.env, this.meta.sessionId, this.meta.leaseId);
+      const wasDispatched = !typedMeeting && Boolean(
         lease.activated_at || lease.provider_call_id_hash_b64u || lease.provider_call_id_encrypted || providerCallId
       );
       // Hours past the hard expiry the provider call is dead by time alone;
