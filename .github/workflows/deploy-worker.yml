@@ -70,6 +70,10 @@ jobs:
       # optional analyses and the three-analysis capacity decision, off means
       # none does. Canaried separately from the rest of the beta.
       CONSUMER_MODULE_OFFERS_ENABLED: ${{ vars.CONSUMER_MODULE_OFFERS_ENABLED || 'false' }}
+      # The typed consumer lane (D-08). Off unless the repository variable says
+      # otherwise, and gated below on the same adviser beta as voice plus the
+      # direct-module planner, which it cannot run without.
+      CONSUMER_TYPED_LANE_ENABLED: ${{ vars.CONSUMER_TYPED_LANE_ENABLED || 'false' }}
       CONSUMER_DB_NAME: "planeir-consumer"
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
@@ -542,6 +546,19 @@ jobs:
             throw new Error('CONSUMER_MODULE_OFFERS_ENABLED must be exactly true or false.');
           }
           const moduleOffersEnabled = betaEnabled && moduleOffersToggle === 'true';
+          const typedLaneToggle = envValue('CONSUMER_TYPED_LANE_ENABLED');
+          if (!['true', 'false'].includes(typedLaneToggle)) {
+            throw new Error('CONSUMER_TYPED_LANE_ENABLED must be exactly true or false.');
+          }
+          // TWO GATES, LIKE VOICE'S. The adviser beta decides WHO may run a
+          // planning meeting at all; the direct-module planner is what a typed
+          // meeting is built on -- there is no card to draw and no certified
+          // plan to confirm without it -- so asking for typed on a deployment
+          // whose planner is off is a configuration mistake, not a lesser mode.
+          const typedLaneEnabled = betaEnabled && typedLaneToggle === 'true';
+          if (typedLaneEnabled && directModulePlannerMode !== 'apply') {
+            throw new Error('CONSUMER_TYPED_LANE_ENABLED requires CONSUMER_MODULE_PLANNER_MODE = apply.');
+          }
           if (realtimeEnabled && !betaEnabled) {
             throw new Error('Realtime cannot be enabled outside the signed-invite adviser beta.');
           }
@@ -771,6 +788,11 @@ jobs:
               'CONSUMER_MODULE_OFFERS_ENABLED',
               moduleOffersEnabled ? 'true' : 'false'
             );
+            generatedSource = replaceTomlString(
+              generatedSource,
+              'CONSUMER_TYPED_LANE_ENABLED',
+              typedLaneEnabled ? 'true' : 'false'
+            );
 
             if (realtimeEnabled) {
               const fixedRealtimeValues = {
@@ -865,6 +887,7 @@ jobs:
             CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_MODULE_OFFERS_ENABLED: moduleOffersEnabled ? 'true' : 'false',
+            CONSUMER_TYPED_LANE_ENABLED: typedLaneEnabled ? 'true' : 'false',
             // The agent-test transport is a protected testing facility and is
             // never activated in production.
             CONSUMER_AGENT_TEST_ENABLED: 'false',
