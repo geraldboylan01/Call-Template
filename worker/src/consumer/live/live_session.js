@@ -479,6 +479,15 @@ export class ConsumerLiveSession {
       // believing it had a provider socket would try to send on one.
       this.textChannel = this.meta?.channel === 'typed';
       this.acknowledgedUnknown = await this.state.storage.get('acknowledgedUnknown') || [];
+      // THE PROPOSITION THE NEXT CLIENT TURN ANSWERS, ACROSS AN EVICTION.
+      //
+      // Reply binding is the typed lane's whole confirmation guarantee: the
+      // approving turn must answer the exact assistant turn that carried the
+      // certified plan. Held only in memory, it was lost the moment the object
+      // hibernated -- which is precisely what happens while someone reads a
+      // plan and decides -- so `answersTurnId` came back null and the approval
+      // no longer bound to the offer it was answering.
+      this.lastCompletedAssistantTurnId = await this.state.storage.get('lastCompletedAssistantTurnId') || null;
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
@@ -1832,6 +1841,7 @@ export class ConsumerLiveSession {
       // The proposition the client's next turn will answer. Reply binding for
       // the read-back is built entirely on this id.
       this.lastCompletedAssistantTurnId = stored.id;
+      await this.state.storage.put('lastCompletedAssistantTurnId', stored.id).catch(() => {});
       response.storedAssistantTurnId = stored.id;
     }
     if (readback) await this.maybeArmDirectConfirmation(response);
@@ -2023,6 +2033,7 @@ export class ConsumerLiveSession {
     // reconstructing the pairing from it later gets terse answers wrong.
     if (storedAssistantTurn?.id) {
       this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
+      await this.state.storage.put('lastCompletedAssistantTurnId', storedAssistantTurn.id).catch(() => {});
       response.storedAssistantTurnId = storedAssistantTurn.id;
     }
 

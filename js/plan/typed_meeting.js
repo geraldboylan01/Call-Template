@@ -25,6 +25,16 @@ import { getSessionId, mergePayload, state } from './store.js';
 
 const MAX_MESSAGE_CHARACTERS = 4_000;
 
+/**
+ * How hard the client's results are chased after the plan has run.
+ *
+ * Bounded, and short: the analysis is already persisted, so this is only
+ * covering a transient read. Four attempts over a couple of seconds outlasts a
+ * blip without leaving a page quietly polling forever.
+ */
+const MAX_COMPLETION_ATTEMPTS = 4;
+const COMPLETION_RETRY_MS = 600;
+
 function newPrivateId(prefix) {
   const bytes = new Uint8Array(18);
   (window.crypto || {}).getRandomValues?.(bytes);
@@ -53,6 +63,9 @@ export class TypedMeetingController {
     this.transcript = [];
     this.navigated = false;
     this.awaitingExecution = false;
+    this.abandoned = false;
+    this.startPromise = null;
+    this.completionAttempts = 0;
     this.root = null;
     this.cardNode = null;
     this.cardEntries = new Map();
@@ -68,8 +81,29 @@ export class TypedMeetingController {
       && Boolean(getSessionId());
   }
 
+  /**
+   * Open the meeting, at most once.
+   *
+   * `active` is only true once the server has answered, so guarding on it let a
+   * second call -- a double-click, a re-render, a retry -- open a SECOND
+   * meeting while the first was still in flight. Each one reserves the whole
+   * remaining session budget, so the second is not merely untidy: it is the
+   * client's next meeting, spent. The in-flight promise is the guard, and
+   * concurrent callers await the same open rather than racing it.
+   */
   async start(root) {
-    if (this.active) return;
+    if (this.startPromise) return this.startPromise;
+    if (this.active) return undefined;
+    this.abandoned = false;
+    this.startPromise = this.openMeeting(root);
+    try {
+      return await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  async openMeeting(root) {
     this.root = root;
     this.renderShell();
     this.setStatus('Starting your planning session…');
@@ -84,11 +118,23 @@ export class TypedMeetingController {
         activationId: newPrivateId('rt_activation'),
         controlCapability: newPrivateId('rt_control')
       });
-      this.leaseId = String(meeting.leaseId || '');
-      this.controlCapability = String(meeting.controlCapability || '');
-      if (!this.leaseId || !this.controlCapability) {
+      const leaseId = String(meeting.leaseId || '');
+      const controlCapability = String(meeting.controlCapability || '');
+      if (!leaseId || !controlCapability) {
         throw new Error('The typed meeting did not open.');
       }
+      // THE CLIENT LEFT WHILE THIS WAS OPENING.
+      //
+      // A meeting that arrives after they have gone must be closed, not shown.
+      // Leaving it open holds their whole budget against a conversation nobody
+      // is having, and showing it reopens a screen they deliberately left.
+      if (this.abandoned) {
+        await endTypedMeeting(sessionId, leaseId, { controlCapability }).catch(() => {});
+        this.active = false;
+        return;
+      }
+      this.leaseId = leaseId;
+      this.controlCapability = controlCapability;
       this.active = true;
       this.setStatus('');
       if (meeting.assistantText) this.pushTurn('assistant', meeting.assistantText);
@@ -101,9 +147,12 @@ export class TypedMeetingController {
   }
 
   async end(reason = 'consumer_closed') {
+    // Recorded before the early return: a meeting still opening has no lease to
+    // close yet, and `openMeeting` closes the one that arrives late.
+    this.abandoned = true;
+    this.active = false;
     if (!this.leaseId) return;
     const { leaseId, controlCapability } = this;
-    this.active = false;
     this.leaseId = '';
     try {
       await endTypedMeeting(getSessionId(), leaseId, { controlCapability });
@@ -131,6 +180,10 @@ export class TypedMeetingController {
     this.pushTurn('user', message);
     this.setComposerValue('');
     this.setThinking(true);
+    // Cleared optimistically so the box is ready for the next thought, but
+    // remembered: if the send fails, the client gets their own wording back
+    // rather than being asked to retype a correction they already made.
+    const draft = message;
     try {
       const result = await sendTypedMessage(getSessionId(), this.leaseId, {
         text: message,
@@ -138,6 +191,11 @@ export class TypedMeetingController {
         unknownFieldId,
         controlCapability: this.controlCapability
       });
+      // THE CLIENT MAY HAVE LEFT WHILE THIS TURN WAS IN FLIGHT.
+      //
+      // Everything below writes to a screen they are no longer on, and
+      // `checkCompletion` would navigate them into a session they closed.
+      if (this.abandoned) return;
       if (result.assistantText) this.pushTurn('assistant', result.assistantText, { readback: result.readback });
       // A read-back is the ONLY moment a plan can start running, so it is the
       // only moment worth watching for results. Polling the session after every
@@ -148,6 +206,7 @@ export class TypedMeetingController {
     } catch (error) {
       // The turn is already durable on the server whatever happened here, so
       // the client is told the reply failed -- never that their answer was lost.
+      if (!this.composerNode?.value) this.setComposerValue(draft);
       this.onToast(
         error?.message || 'That did not send. Your answers are safe — please try again.',
         { tone: 'error' }
@@ -169,11 +228,18 @@ export class TypedMeetingController {
    * endpoint carries.
    */
   async checkCompletion() {
-    if (this.navigated) return;
+    if (this.navigated || this.abandoned) return;
     try {
       mergePayload(await getSession(getSessionId()));
     } catch (_error) {
-      // A failed refresh is not a failed plan. The next turn tries again.
+      // A FAILED READ IS NOT A FAILED PLAN, AND THE CLIENT HAS NOTHING LEFT TO
+      // SAY. They approved the plan; it is running; there is no next turn to
+      // piggyback a retry on. Giving up here meant one transient 503 cost them
+      // their results entirely -- the analysis had run and they never saw it.
+      this.completionAttempts += 1;
+      if (this.completionAttempts <= MAX_COMPLETION_ATTEMPTS) {
+        setTimeout(() => { void this.checkCompletion(); }, COMPLETION_RETRY_MS);
+      }
       return;
     }
     const completion = describePlanningCompletion(state, null);
@@ -366,7 +432,12 @@ export class TypedMeetingController {
       : element('input', 'typed-field-input');
     input.id = `typed-field-${field.id}`;
     if (field.kind === 'choice') {
-      input.append(element('option', '', 'Choose…'));
+      // An <option> with no value attribute reports its TEXT as its value, so
+      // an untouched select submitted "Choose…" to the planner as though the
+      // client had said it -- a made-up answer, quoted as evidence.
+      const placeholder = element('option', '', 'Choose…');
+      placeholder.value = '';
+      input.append(placeholder);
       for (const option of field.options || []) {
         const node = element('option', '', option.label);
         node.value = option.value;
