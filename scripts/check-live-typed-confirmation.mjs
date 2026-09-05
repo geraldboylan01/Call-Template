@@ -174,4 +174,126 @@ for (const [text, verdict] of [
     'and it arms nothing');
 }
 
+/* ============================================================================
+ * THE WHOLE PATH, NOT THE PIECES.
+ *
+ * Everything above drives `deliverCertifiedReadback` directly, and that is what
+ * let a P0 through: called on its own it persists exactly ONE assistant turn,
+ * so `offer.assistantTurnId === assistant[0].id` passed. In the real
+ * `handleTextMessage` the root response was finalized as well, the certified
+ * prompt was written TWICE, and the second write moved
+ * `lastCompletedAssistantTurnId` -- which is what the client's next turn binds
+ * to. Offer pointed at turn A, approval at turn B, and every approval was
+ * refused with `confirmation_context_invalid`, permanently, because a delivered
+ * offer is never re-presented.
+ *
+ * A unit test of the read-back cannot see that. This drives the real path:
+ * certified plan -> displayed and persisted -> a typed "yes" -> answersTurnId
+ * -> confirm_and_run -> the exact frozen offer executes.
+ * ========================================================================= */
+
+const { directModuleTestInputs } = await import('./live-harness/direct-fixtures.mjs');
+const { settle } = await import('./live-harness/session.mjs');
+
+{
+  const TODAY = new Date().toISOString().slice(0, 10);
+  const INPUT = directModuleTestInputs(TODAY).mortgage_analysis;
+  const STATED = 'The mortgage balance is two hundred and forty grand, the rate is 4.1 percent, and there are 22 years to run.';
+
+  const wrap = (payload) => new Response(JSON.stringify({
+    status: 'completed',
+    output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(payload) }] }],
+    usage: { input_tokens: 10, output_tokens: 5 }
+  }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+  let evidenceTurnId = null;
+  let script = [];
+  let scriptIndex = 0;
+  let callSeq = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.openai.com')) return original(url, init);
+    const body = JSON.parse(init?.body || '{}');
+    const schema = body?.text?.format?.name || '';
+    if (schema === 'module_planning_snapshot_v1') {
+      const envelope = JSON.parse(body.input.find((item) => item.role === 'user').content);
+      const heard = (envelope.conversation || []).find((turn) => String(turn.text || '').includes('forty grand'));
+      if (heard) evidenceTurnId = heard.turnId;
+      return wrap({
+        schemaVersion: 'ModulePlanningSnapshotV1',
+        baseSnapshotRevision: Number(envelope.previousSnapshot?.snapshotRevision || 0),
+        throughTurnId: String(envelope.throughTurnId || ''),
+        generalAmbiguities: [], confirmationPrompt: PROMPT,
+        modules: [{
+          moduleId: 'mortgage_analysis', outputKey: 'generated.mortgageInputs', status: 'ready',
+          selection: { origin: 'client_requested', reason: 'they asked about the mortgage' },
+          inputJson: JSON.stringify(INPUT), steeringSummary: 'Existing repayment mortgage.',
+          missing: [], ambiguities: [],
+          assumptions: [
+            { path: '/endDateIso', valueJson: 'null', source: 'contract_default' },
+            { path: '/fixedPaymentAmount', valueJson: 'null', source: 'contract_default' },
+            { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
+            { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
+          ],
+          evidence: [
+            { path: '/currentBalance', source: 'conversation', turnId: evidenceTurnId, quote: 'two hundred and forty grand', profilePath: '' },
+            { path: '/annualInterestRate', source: 'conversation', turnId: evidenceTurnId, quote: '4.1 percent', profilePath: '' },
+            { path: '/remainingTermYears', source: 'conversation', turnId: evidenceTurnId, quote: '22 years', profilePath: '' }
+          ]
+        }]
+      });
+    }
+    if (schema === 'module_input_verification_v1') {
+      return wrap({
+        schemaVersion: 'ModuleInputVerificationV1', verdict: 'pass',
+        unsupportedPaths: [], omittedSupportedInformation: [], unresolvedAmbiguities: [],
+        clarifications: [], confirmationPromptApproved: true, explanation: 'ok'
+      });
+    }
+    if (schema) return wrap({ ok: true });
+    const step = script[Math.min(scriptIndex, script.length - 1)];
+    scriptIndex += 1;
+    const output = typeof step === 'string'
+      ? [{ type: 'message', content: [{ type: 'output_text', text: step }] }]
+      : [{ type: 'function_call', name: step.tool, arguments: JSON.stringify(step.args || {}), call_id: `call_${++callSeq}` }];
+    return new Response(JSON.stringify({ status: 'completed', output, usage: {} }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  const { session, durable, meeting } = await rig('typed-end-to-end');
+  // The certified offer is produced by the real planner path, not preset.
+  session.directConfirmationOffer = null;
+
+  script = ['Thanks — I have what I need.']; scriptIndex = 0;
+  await session.handleTextMessage({ text: STATED });
+  await settle(durable, session);
+
+  script = [{ tool: 'get_state', args: {} }, 'ok']; scriptIndex = 0;
+  const presented = await session.handleTextMessage({ text: 'Yes please, take a look at that.' });
+  await settle(durable, session);
+  equal(presented.readback, true, 'the certified plan is presented to the client');
+
+  const turns = await listRealtimeFinalTurns(meeting.env, meeting.sessionId, meeting.meetingId);
+  const promptTurns = turns.filter((turn) => turn.role === 'assistant' && turn.transcript === PROMPT);
+  equal(promptTurns.length, 1,
+    'the certified plan is persisted EXACTLY ONCE -- twice desynchronises the offer from the approval');
+  const offer = session.directConfirmationOffer;
+  equal(offer.assistantTurnId, promptTurns[0].id, 'the offer binds to the turn the client was shown');
+  equal(session.lastCompletedAssistantTurnId, promptTurns[0].id,
+    'and that is the turn the client\'s next message will answer');
+
+  script = [{ tool: 'confirm_and_run', args: { confirmationToken: offer.token } }, 'Running it now.'];
+  scriptIndex = 0;
+  await session.handleTextMessage({ text: 'yes, go ahead' });
+  await settle(durable, session);
+
+  const approving = [...session.clientTurnsByItemId.values()].at(-1);
+  equal(approving.answersTurnId, promptTurns[0].id, 'the approval answers the certified read-back');
+  equal(session.turnAnswersDirectOffer(approving), true, 'so it binds to the offer');
+  equal(session.directConfirmationOffer.executionStatus, 'complete',
+    'and the exact frozen plan executes');
+
+  globalThis.fetch = original;
+}
+
 console.log(`[LiveTypedConfirmation] ${checks} checks passed.`);

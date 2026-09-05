@@ -1616,10 +1616,21 @@ export class ConsumerLiveSession {
     response.done = true;
     response.status = 'completed';
 
-    // The certified plan is delivered by the server or not at all.
+    // THE CERTIFIED PLAN IS DELIVERED BY THE SERVER, AS EXACTLY ONE TURN.
+    //
+    // `deliverCertifiedReadback` persists the certified prompt on its own
+    // continuation response and binds the offer to THAT turn id. Finalizing the
+    // root response as well wrote the same text a second time -- and the second
+    // write moved `lastCompletedAssistantTurnId`, which is what the client's
+    // next turn records in `answersTurnId`. So the offer pointed at turn A, the
+    // approval pointed at turn B, `turnAnswersDirectOffer` was false, and
+    // `confirm_and_run` refused every approval with
+    // `confirmation_context_invalid` -- permanently, because a delivered offer
+    // is never re-presented. The barrier was right; there were simply two turns
+    // where the client had seen one plan.
     const delivered = await this.deliverCertifiedReadback(response, text);
     const assistantText = delivered || rendered.text;
-    await this.finalizeTypedAssistantTurn(response, assistantText, { readback: Boolean(delivered) });
+    if (!delivered) await this.finalizeTypedAssistantTurn(response, assistantText);
 
     await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => {});
     await this.touch();
