@@ -130,4 +130,59 @@ function scriptModels() {
     'a VOICE meeting with no provable hangup still refuses to close -- unchanged');
 }
 
+/* ------------------------------- the allowance and the turn cap both apply */
+
+// Voice enforces these in `handleUsage`, which only ever runs from a provider
+// message. A typed meeting produces none, so it had no mid-meeting ceiling at
+// all -- bounded only by the reservation it took at the door, which is the
+// whole remaining session budget.
+{
+  const models = scriptModels();
+  const meeting = await newLiveMeeting('typed-allowance', ENV);
+  const { session, durable } = await attachTypedSession(meeting);
+
+  ok(typeof session.enforceTypedBudget === 'function',
+    'a typed meeting has its own allowance check');
+  equal(await session.enforceTypedBudget(), false,
+    'a fresh meeting is well inside its allowance');
+
+  // Drive the lease past its turn cap the way real turns would, then check.
+  const config = (await import('../worker/src/consumer/config.js')).getConsumerConfig(meeting.env);
+  await meeting.env.CONSUMER_DB.prepare(
+    'UPDATE consumer_realtime_sessions SET response_count = ? WHERE id = ?'
+  ).bind(config.realtimeMaxResponses, meeting.meetingId).run();
+
+  equal(await session.enforceTypedBudget(), true,
+    'a typed meeting that has used its turn allowance is stopped');
+  const lease = await getRealtimeLease(meeting.env, meeting.sessionId, meeting.meetingId);
+  equal(lease.status, 'budget_exhausted', 'and the lease is actually closed rather than left running');
+  equal(lease.close_reason, 'dispatch_stop_reached', 'for the same reason a call would be');
+  models.restore();
+}
+
+// And it has to be WIRED to the turn path, not merely available on the object.
+{
+  const models = scriptModels();
+  const meeting = await newLiveMeeting('typed-allowance-wired', ENV);
+  const { session, durable } = await attachTypedSession(meeting);
+  const config = (await import('../worker/src/consumer/config.js')).getConsumerConfig(meeting.env);
+  await meeting.env.CONSUMER_DB.prepare(
+    'UPDATE consumer_realtime_sessions SET response_count = ? WHERE id = ?'
+  ).bind(config.realtimeMaxResponses, meeting.meetingId).run();
+
+  const turn = await session.handleTextMessage({ text: 'One more question.' });
+  await settle(durable, session);
+
+  // The client keeps the reply they paid for; there is simply no next turn.
+  equal(turn.ok, true, 'the turn already in flight still answers the client');
+  ok(turn.assistantText, 'and they keep that answer');
+  equal(turn.closed, 'budget_exhausted', 'the reply tells the client the meeting has reached its limit');
+  equal(
+    (await getRealtimeLease(meeting.env, meeting.sessionId, meeting.meetingId)).status,
+    'budget_exhausted',
+    'metering a typed turn enforces the allowance -- it is not enough for the check to merely exist'
+  );
+  models.restore();
+}
+
 console.log(`[LiveTypedLifecycle] ${checks} checks passed.`);

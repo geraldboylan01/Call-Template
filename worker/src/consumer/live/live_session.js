@@ -1632,18 +1632,29 @@ export class ConsumerLiveSession {
     const assistantText = delivered || rendered.text;
     if (!delivered) await this.finalizeTypedAssistantTurn(response, assistantText);
 
-    await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => {});
-    await this.touch();
+    // THE WHOLE REPLY IS BUILT BEFORE THE MEETING CAN BE STOPPED.
+    //
+    // Metering may terminalize, and terminalizing clears `this.meta` -- so
+    // reading the card afterwards dereferenced null and threw, losing the
+    // client the very answer they had just paid for. Build first, meter second:
+    // the turn in flight always completes, and the meeting stops before the
+    // next one rather than swallowing this one.
+    const card = await this.typedCardState();
+    const stopped = await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => false);
+    if (!stopped) await this.touch();
     return {
       ok: true,
       turnId: itemId,
       assistantText,
       readback: Boolean(delivered),
       fallback: rendered.fallback === true && !delivered,
+      // The meeting has reached its allowance. The client keeps this reply and
+      // their whole transcript; there is simply no next turn.
+      ...(stopped ? { closed: 'budget_exhausted' } : {}),
       // The card. Built from the snapshot this turn's own planner pass
       // produced, which is why it can never show a field the client just
       // filled in -- see the awaited pass at the top of this method.
-      card: await this.typedCardState()
+      card
     };
   }
 
@@ -1852,17 +1863,54 @@ export class ConsumerLiveSession {
     const total = Number(tokens?.inputTextTokens || 0)
       + Number(tokens?.cachedTextTokens || 0)
       + Number(tokens?.outputTextTokens || 0);
-    if (!(total > 0)) return;
     const config = getConsumerConfig(this.env);
-    await recordRealtimeUsage(this.env, {
-      sessionId: this.meta.sessionId,
-      leaseId: this.meta.leaseId,
-      providerResponseId: responseId,
-      usageKind: 'response',
-      tokens,
-      rates: config.realtimeUsageRates,
-      pricingVersion: config.realtimePricingVersion
-    }).catch(() => {});
+    // A turn that recorded no tokens still counts against the meeting. The
+    // allowance is a property of the lease, not of this turn: returning early
+    // on a zero-token turn would let a renderer that keeps failing run the
+    // meeting past its cap for free.
+    if (total > 0) {
+      await recordRealtimeUsage(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerResponseId: responseId,
+        usageKind: 'response',
+        tokens,
+        rates: config.realtimeUsageRates,
+        pricingVersion: config.realtimePricingVersion
+      }).catch(() => null);
+    }
+    return this.enforceTypedBudget();
+  }
+
+  /**
+   * The euro allowance and the turn cap, for a transport that has no provider
+   * responses to hang them off.
+   *
+   * Voice enforces both in `handleUsage`, which only ever runs from a provider
+   * message. A typed meeting never produces one, so it had NO mid-meeting cost
+   * ceiling and no turn cap at all -- it was bounded only by the reservation it
+   * took at the door, which is the entire remaining session budget. A stuck or
+   * abusive typed session could spend all of it.
+   *
+   * The thresholds are the lease's own, so both transports stop at the same
+   * place; only the moment of checking differs, which is the difference between
+   * the transports and nothing more.
+   *
+   * @returns {boolean} whether the meeting was stopped.
+   */
+  async enforceTypedBudget() {
+    const config = getConsumerConfig(this.env);
+    // One read of the lease, exactly as `handleUsage` does after metering a
+    // spoken response. `recordRealtimeUsage` has already recomputed the
+    // counters on the row, and the threshold lives there too.
+    const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId).catch(() => null);
+    if (!lease) return false;
+    const stop = Number(lease.dispatch_stop_eur_micros || 0);
+    const exhausted = Number(lease.response_count || 0) >= config.realtimeMaxResponses
+      || (stop > 0 && Number(lease.estimated_cost_eur_micros || 0) >= stop);
+    if (!exhausted) return false;
+    await this.terminalize('budget_exhausted', 'dispatch_stop_reached', null, true).catch(() => {});
+    return true;
   }
 
   async markClientTranscriptionUnavailable(event = {}) {
