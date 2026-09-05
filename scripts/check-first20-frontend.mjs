@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 
-export class TestNode {
+// Local to this file: the synthetic DOM these checks run against. It was
+// exported without an importer, which is what the stale-export ratchet is for.
+class TestNode {
   constructor(tag = 'div') {
     this.tagName = tag.toUpperCase(); this.children = []; this.attributes = new Map();
     this.dataset = {}; this.listeners = new Map(); this._value = null; this.hidden = false;
@@ -54,7 +56,11 @@ const { TypedMeetingController } = await import('../js/plan/typed_meeting.js');
 const { state, resetJourneyState, storeSessionAccess } = await import('../js/plan/store.js');
 const leaseId = 'rt_frontend_recovery_1234567890';
 const sessionId = 'cs_frontend_recovery_1234567890';
-const access = { leaseId, controlCapability: 'rt_control_frontend_1234567890' };
+// 20+ characters after the prefix, because that is what the client actually
+// generates and what realtimeControlHeaders enforces. The previous fixture was
+// one character short, so every DELETE it drove was refused before it left the
+// browser -- which made this file unable to observe the close it asserts.
+const access = { leaseId, controlCapability: 'rt_control_frontend_12345678901' };
 const execution = { planId: 'plan_current', profileRevision: 3, status: 'complete', analysisRunId: 'analysis_current' };
 const completed = {
   session: { id: sessionId, currentProfileRevision: 3, stage: 'results' },

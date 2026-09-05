@@ -479,6 +479,15 @@ export class ConsumerLiveSession {
       // believing it had a provider socket would try to send on one.
       this.textChannel = this.meta?.channel === 'typed';
       this.acknowledgedUnknown = await this.state.storage.get('acknowledgedUnknown') || [];
+      // THE PROPOSITION THE NEXT CLIENT TURN ANSWERS, ACROSS AN EVICTION.
+      //
+      // Reply binding is the typed lane's whole confirmation guarantee: the
+      // approving turn must answer the exact assistant turn that carried the
+      // certified plan. Held only in memory, it was lost the moment the object
+      // hibernated -- which is precisely what happens while someone reads a
+      // plan and decides -- so `answersTurnId` came back null and the approval
+      // no longer bound to the offer it was answering.
+      this.lastCompletedAssistantTurnId = await this.state.storage.get('lastCompletedAssistantTurnId') || null;
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
@@ -1616,23 +1625,45 @@ export class ConsumerLiveSession {
     response.done = true;
     response.status = 'completed';
 
-    // The certified plan is delivered by the server or not at all.
+    // THE CERTIFIED PLAN IS DELIVERED BY THE SERVER, AS EXACTLY ONE TURN.
+    //
+    // `deliverCertifiedReadback` persists the certified prompt on its own
+    // continuation response and binds the offer to THAT turn id. Finalizing the
+    // root response as well wrote the same text a second time -- and the second
+    // write moved `lastCompletedAssistantTurnId`, which is what the client's
+    // next turn records in `answersTurnId`. So the offer pointed at turn A, the
+    // approval pointed at turn B, `turnAnswersDirectOffer` was false, and
+    // `confirm_and_run` refused every approval with
+    // `confirmation_context_invalid` -- permanently, because a delivered offer
+    // is never re-presented. The barrier was right; there were simply two turns
+    // where the client had seen one plan.
     const delivered = await this.deliverCertifiedReadback(response, text);
     const assistantText = delivered || rendered.text;
-    await this.finalizeTypedAssistantTurn(response, assistantText, { readback: Boolean(delivered) });
+    if (!delivered) await this.finalizeTypedAssistantTurn(response, assistantText);
 
-    await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => {});
-    await this.touch();
+    // THE WHOLE REPLY IS BUILT BEFORE THE MEETING CAN BE STOPPED.
+    //
+    // Metering may terminalize, and terminalizing clears `this.meta` -- so
+    // reading the card afterwards dereferenced null and threw, losing the
+    // client the very answer they had just paid for. Build first, meter second:
+    // the turn in flight always completes, and the meeting stops before the
+    // next one rather than swallowing this one.
+    const card = await this.typedCardState();
+    const stopped = await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => false);
+    if (!stopped) await this.touch();
     return {
       ok: true,
       turnId: itemId,
       assistantText,
       readback: Boolean(delivered),
       fallback: rendered.fallback === true && !delivered,
+      // The meeting has reached its allowance. The client keeps this reply and
+      // their whole transcript; there is simply no next turn.
+      ...(stopped ? { closed: 'budget_exhausted' } : {}),
       // The card. Built from the snapshot this turn's own planner pass
       // produced, which is why it can never show a field the client just
       // filled in -- see the awaited pass at the top of this method.
-      card: await this.typedCardState()
+      card
     };
   }
 
@@ -1810,6 +1841,7 @@ export class ConsumerLiveSession {
       // The proposition the client's next turn will answer. Reply binding for
       // the read-back is built entirely on this id.
       this.lastCompletedAssistantTurnId = stored.id;
+      await this.state.storage.put('lastCompletedAssistantTurnId', stored.id).catch(() => {});
       response.storedAssistantTurnId = stored.id;
     }
     if (readback) await this.maybeArmDirectConfirmation(response);
@@ -1841,17 +1873,54 @@ export class ConsumerLiveSession {
     const total = Number(tokens?.inputTextTokens || 0)
       + Number(tokens?.cachedTextTokens || 0)
       + Number(tokens?.outputTextTokens || 0);
-    if (!(total > 0)) return;
     const config = getConsumerConfig(this.env);
-    await recordRealtimeUsage(this.env, {
-      sessionId: this.meta.sessionId,
-      leaseId: this.meta.leaseId,
-      providerResponseId: responseId,
-      usageKind: 'response',
-      tokens,
-      rates: config.realtimeUsageRates,
-      pricingVersion: config.realtimePricingVersion
-    }).catch(() => {});
+    // A turn that recorded no tokens still counts against the meeting. The
+    // allowance is a property of the lease, not of this turn: returning early
+    // on a zero-token turn would let a renderer that keeps failing run the
+    // meeting past its cap for free.
+    if (total > 0) {
+      await recordRealtimeUsage(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        providerResponseId: responseId,
+        usageKind: 'response',
+        tokens,
+        rates: config.realtimeUsageRates,
+        pricingVersion: config.realtimePricingVersion
+      }).catch(() => null);
+    }
+    return this.enforceTypedBudget();
+  }
+
+  /**
+   * The euro allowance and the turn cap, for a transport that has no provider
+   * responses to hang them off.
+   *
+   * Voice enforces both in `handleUsage`, which only ever runs from a provider
+   * message. A typed meeting never produces one, so it had NO mid-meeting cost
+   * ceiling and no turn cap at all -- it was bounded only by the reservation it
+   * took at the door, which is the entire remaining session budget. A stuck or
+   * abusive typed session could spend all of it.
+   *
+   * The thresholds are the lease's own, so both transports stop at the same
+   * place; only the moment of checking differs, which is the difference between
+   * the transports and nothing more.
+   *
+   * @returns {boolean} whether the meeting was stopped.
+   */
+  async enforceTypedBudget() {
+    const config = getConsumerConfig(this.env);
+    // One read of the lease, exactly as `handleUsage` does after metering a
+    // spoken response. `recordRealtimeUsage` has already recomputed the
+    // counters on the row, and the threshold lives there too.
+    const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId).catch(() => null);
+    if (!lease) return false;
+    const stop = Number(lease.dispatch_stop_eur_micros || 0);
+    const exhausted = Number(lease.response_count || 0) >= config.realtimeMaxResponses
+      || (stop > 0 && Number(lease.estimated_cost_eur_micros || 0) >= stop);
+    if (!exhausted) return false;
+    await this.terminalize('budget_exhausted', 'dispatch_stop_reached', null, true).catch(() => {});
+    return true;
   }
 
   async markClientTranscriptionUnavailable(event = {}) {
@@ -1964,6 +2033,7 @@ export class ConsumerLiveSession {
     // reconstructing the pairing from it later gets terse answers wrong.
     if (storedAssistantTurn?.id) {
       this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
+      await this.state.storage.put('lastCompletedAssistantTurnId', storedAssistantTurn.id).catch(() => {});
       response.storedAssistantTurnId = storedAssistantTurn.id;
     }
 
@@ -3940,7 +4010,20 @@ export class ConsumerLiveSession {
       && Number(this.pendingReconciliationTurn.notBeforeAt || 0) <= Date.now()) {
       this.queueReconciliationDrain();
     }
-    if (!this.webSocket || this.webSocket.readyState !== 1) {
+    // LOSING THE SIDEBAND ENDS A CALL. IT MEANS NOTHING TO A TYPED MEETING.
+    //
+    // A typed meeting holds no socket between turns -- each turn is its own
+    // request -- so `webSocket` is null by design, and this heartbeat marked
+    // every typed meeting for failure-termination fifteen seconds after it
+    // started. It survived only because the close itself was broken above:
+    // terminalize threw, so the meeting kept working while retrying a
+    // termination it could never complete. Fixing the close WITHOUT fixing this
+    // would have turned that stalemate into a typed meeting that dies mid
+    // sentence, which is why the two land together.
+    //
+    // The expiry checks below still apply: an abandoned typed meeting is
+    // reclaimed by its hard expiry, exactly as a call is.
+    if (!this.textChannel && (!this.webSocket || this.webSocket.readyState !== 1)) {
       await this.terminalize('failed', 'sideband_rehydration_lost', 'live_sideband_lost', false).catch(() => {});
       return;
     }
@@ -3987,8 +4070,25 @@ export class ConsumerLiveSession {
     try {
       lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId);
       if (!lease) throw new ConsumerError(503, 'live_close_failed', 'The live meeting could not be closed safely.');
-      const providerCallId = await getRealtimeProviderCallId(this.env, this.meta.sessionId, this.meta.leaseId);
-      const wasDispatched = Boolean(
+      // A TYPED MEETING HAS NO PROVIDER CALL, AND NEVER COULD HAVE.
+      //
+      // `wasDispatched` asks "did we ever put a call on the wire" and answered
+      // it from `activated_at`, which a typed meeting also sets. So every typed
+      // close reached the hangup branch, found no provider call id -- there is
+      // none to find -- and threw `live_hangup_uncertain`. Typed meetings could
+      // not be closed at all: the lease stayed `active` for its full life, its
+      // budget reservation was never settled (so a second typed meeting in the
+      // same session was refused for want of budget), and `emitSessionSummary`
+      // sits past the throw, so typed sessions emitted no telemetry whatsoever.
+      //
+      // Read from the LEASE, not from `this.textChannel`: terminalize also runs
+      // from a rehydrated object and from the expiry sweep, and the lease is
+      // the only thing that is authoritative in all three.
+      const typedMeeting = String(lease.channel || 'voice') === 'typed';
+      const providerCallId = typedMeeting
+        ? null
+        : await getRealtimeProviderCallId(this.env, this.meta.sessionId, this.meta.leaseId);
+      const wasDispatched = !typedMeeting && Boolean(
         lease.activated_at || lease.provider_call_id_hash_b64u || lease.provider_call_id_encrypted || providerCallId
       );
       // Hours past the hard expiry the provider call is dead by time alone;

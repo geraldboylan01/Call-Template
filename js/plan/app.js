@@ -36,6 +36,7 @@ import {
 } from './store.js';
 import { createLiveVoiceLaneController } from './voice_lane.js';
 import { TypedMeetingController } from './typed_meeting.js';
+import { describePlanningCompletion } from './completion.js';
 import {
   findProfileField,
   getAvailableViews,
@@ -1502,6 +1503,19 @@ async function boot() {
       mergePayload(sessionPayload);
       const latestMeeting = state.realtimeMeetings?.[0];
       if (latestMeeting?.meetingId) await loadRealtimeMeetingTranscript(latestMeeting.meetingId);
+      // A FINISHED SESSION OPENS ON ITS RESULTS, NOT ON A NEW MEETING.
+      //
+      // Reloading used to land on the meeting screen whichever lane you were
+      // in, so someone returning to a plan that had already run was offered a
+      // fresh conversation instead of the answer they came back for -- and on
+      // the typed lane starting one would have spent the budget the finished
+      // meeting still held. The same terminal test the meeting itself uses
+      // decides this: a current, identity-matched, displayable result.
+      if (describePlanningCompletion(state).ready) {
+        setView('results');
+        renderCurrentJourney({ focus: true });
+        return;
+      }
       chooseLaneAndEnter();
     } catch (error) {
       if (recoverUnavailableSession(error)) return;

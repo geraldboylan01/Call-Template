@@ -471,28 +471,48 @@ function normalizedSelection(value, status) {
  * the server already holds an approved default for -- there, "I don't know" is
  * answerable, and the default is disclosed as an assumption like any other.
  */
-function partitionAcknowledgedUnknown(moduleId, missing, acknowledgedUnknown, policyEntries) {
+function partitionAcknowledgedUnknown(moduleId, missing, ambiguities, acknowledgedUnknown, policyEntries) {
   const acknowledged = new Set((acknowledgedUnknown || [])
     .filter((entry) => String(entry?.moduleId || '') === moduleId)
     .map((entry) => String(entry?.path || ''))
     .filter(Boolean));
-  if (acknowledged.size === 0) return { missing, blocked: [], unanswerable: false };
+  if (acknowledged.size === 0) {
+    return { missing, ambiguities, blocked: [], unanswerable: false };
+  }
   const defaulted = new Set((policyEntries || [])
     .filter((entry) => entry.mode === 'default' || entry.mode === 'fixed')
     .map((entry) => entry.path));
-  const remaining = [];
-  const blocked = [];
-  for (const need of missing) {
-    const path = String(need?.path || '');
-    if (!acknowledged.has(path)) { remaining.push(need); continue; }
-    blocked.push({
-      path,
-      reason: String(need?.reason || ''),
-      covered: defaulted.has(path)
-    });
-  }
+
+  // BLOCKED IS DERIVED FROM WHAT THE CLIENT SAID, NOT FROM WHAT THE MODEL
+  // HAPPENED TO LIST.
+  //
+  // Deriving it from `missing` read a COMPLIANT model as a satisfied
+  // requirement: the extractor is told not to raise an acknowledged path, so
+  // once it obeys, the path leaves `missing`, nothing is recorded as blocked,
+  // and the module can reach `ready` on a figure the client explicitly said
+  // they could not give. Absence from `missing` carries no information here --
+  // it is the expected result of the instruction, not evidence of an answer.
+  //
+  // The client's own statement is the authority, so the set is the authority.
+  // That also makes `acknowledgedUnknownHash` a function of what they said
+  // rather than of model output, which is what a certificate should bind.
+  const reasons = new Map((missing || []).map((need) => [String(need?.path || ''), String(need?.reason || '')]));
+  const blocked = [...acknowledged].sort().map((path) => ({
+    path,
+    reason: reasons.get(path) || '',
+    covered: defaulted.has(path)
+  }));
+
   return {
-    missing: remaining,
+    missing: (missing || []).filter((need) => !acknowledged.has(String(need?.path || ''))),
+    // A CLARIFICATION IS A QUESTION TOO. One that asks only about paths the
+    // client has already closed is the same question in another field, and
+    // leaving it would re-ask what they just declined -- through the one route
+    // the missing-list filter does not cover.
+    ambiguities: (ambiguities || []).filter((item) => {
+      const paths = (item?.relatedPaths || []).map((path) => String(path || ''));
+      return paths.length === 0 || paths.some((path) => !acknowledged.has(path));
+    }),
     blocked,
     unanswerable: blocked.some((entry) => entry.covered !== true)
   };
@@ -613,7 +633,7 @@ export function normalizeDirectSnapshot(raw, {
     // the policy assertions are: the planner is separately told not to re-ask
     // these, but the instruction is a courtesy and this is the enforcement.
     const acknowledged = partitionAcknowledgedUnknown(
-      moduleId, candidate.missing || [], acknowledgedUnknown, policy.entries
+      moduleId, candidate.missing || [], candidate.ambiguities || [], acknowledgedUnknown, policy.entries
     );
 
     // READY PLUS AN OPEN QUESTION IS DOWNGRADED, NOT FATAL.
@@ -624,7 +644,7 @@ export function normalizeDirectSnapshot(raw, {
     // left Realtime with no state at all, which is how a meeting stalls.
     let status = candidate.status;
     if (status === 'ready'
-      && (acknowledged.missing.length > 0 || (candidate.ambiguities || []).length > 0)) {
+      && (acknowledged.missing.length > 0 || acknowledged.ambiguities.length > 0)) {
       status = 'needs_clarification';
     }
     // AND A MODULE THAT NEEDS A FIGURE NOBODY CAN SUPPLY IS NOT READY EITHER.
@@ -710,7 +730,7 @@ export function normalizeDirectSnapshot(raw, {
       steeringSummary: String(candidate.steeringSummary || ''),
       missing,
       blocked: acknowledged.blocked,
-      ambiguities: candidate.ambiguities || [],
+      ambiguities: acknowledged.ambiguities,
       assumptions: policy.assumptions,
       serverPolicyPaths: policy.entries
         .filter((item) => item.mode === 'fixed')
@@ -1200,14 +1220,28 @@ export async function interpretDirectModuleConversation({
         && candidate.generalAmbiguities.length === 0
         && Boolean(candidate.confirmationPrompt)) {
         const second = await verify(candidate);
-        meter(second?.usage);
         // A repair is adopted only when it actually passes. A second non-pass
         // keeps the ORIGINAL snapshot and its clarifications, so a failed repair
         // costs latency and never changes what the client is asked.
-        if (second?.value?.verdict === 'pass' && second.value.confirmationPromptApproved === true) {
+        const adopted = second?.value?.verdict === 'pass'
+          && second.value.confirmationPromptApproved === true;
+        if (adopted) {
+          // EVERY CALL COUNTED ONCE, AND EXACTLY ONCE.
+          //
+          // Adopting the repair swaps which audit gets reported: `second`
+          // becomes `verificationUsage`, and the FIRST audit is discarded. So
+          // the first has to be folded into the repair line here, and the
+          // second must not be -- metering both into `extraUsage` billed the
+          // second twice while losing the first entirely. The caller meters two
+          // figures and cannot tell a double count from a real extra call,
+          // which is the one thing this accounting exists to make visible.
+          meter(verificationResponse?.usage);
           repairedSnapshot = candidate;
           verificationResponse = second;
           verification = second.value;
+        } else {
+          // Discarded, so no other line will report it. It still cost money.
+          meter(second?.usage);
         }
       }
     } catch (_error) {

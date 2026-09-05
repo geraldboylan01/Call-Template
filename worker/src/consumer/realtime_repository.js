@@ -698,6 +698,24 @@ export async function activateTypedLease(env, sessionId, leaseId) {
   return row;
 }
 
+/**
+ * The typed equivalent of `getActiveRealtimeLease`, scoped by channel.
+ *
+ * A separate function rather than a widened one: `getActiveRealtimeLease` is
+ * voice-scoped ON PURPOSE -- migration 0014 introduced `channel` precisely so
+ * the voice lifecycle machinery could never be handed a meeting it does not
+ * understand. Widening it would undo that. Callers that genuinely govern BOTH
+ * transports -- withdrawing consent, deleting a session -- ask for both.
+ */
+export async function getActiveTypedLease(env, sessionId) {
+  return db(env).prepare(`
+    SELECT * FROM consumer_realtime_sessions
+    WHERE session_id = ? AND channel = 'typed' AND status IN ('pending', 'active', 'closing')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).bind(sessionId).first();
+}
+
 export async function activateRealtimeLease(env, sessionId, leaseId, providerCallId) {
   const timestamp = nowIso();
   const [providerCallIdHash, providerCallEncrypted] = await Promise.all([
@@ -1014,12 +1032,25 @@ export async function finalizeRealtimeControlMessage(env, {
 export async function touchRealtimeLease(env, sessionId, leaseId, idleTimeoutSeconds) {
   const timestamp = nowIso();
   const idleExpiresAt = new Date(Date.now() + idleTimeoutSeconds * 1_000).toISOString();
+  // A TYPED MEETING HAS NO IDLE CLOCK, AND EACH TURN MUST NOT GIVE IT ONE.
+  //
+  // `createRealtimeLease` sets idle to the hard expiry for typed, because a
+  // client filling in a panel of fields is thinking, not idle. This recomputed
+  // it from the CALL's idle timeout on every turn, so the first typed turn
+  // silently reimposed a three-minute clock -- and the meeting would then
+  // expire mid-card, which is the exact failure the wider window exists to
+  // prevent. `MAX` keeps the hard expiry for typed and is a no-op for voice,
+  // whose idle expiry is always the nearer of the two.
   return db(env).prepare(`
     UPDATE consumer_realtime_sessions
-    SET last_active_at = ?, idle_expires_at = ?
+    SET last_active_at = ?,
+        idle_expires_at = CASE
+          WHEN channel = 'typed' THEN MAX(hard_expires_at, ?)
+          ELSE ?
+        END
     WHERE id = ? AND session_id = ? AND status = 'active'
     RETURNING *
-  `).bind(timestamp, idleExpiresAt, leaseId, sessionId).first();
+  `).bind(timestamp, idleExpiresAt, idleExpiresAt, leaseId, sessionId).first();
 }
 
 export async function appendRealtimeEvent(env, request) {

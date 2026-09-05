@@ -51,9 +51,34 @@ function terminationTimeProven(lease) {
 }
 
 async function closeDirectly(env, lease, options) {
-  const providerCallId = await getRealtimeProviderCallId(env, lease.session_id, lease.id);
-  const wasDispatched = Boolean(lease.activated_at || lease.provider_call_id_hash_b64u || providerCallId);
-  if (wasDispatched && !terminationTimeProven(lease)) {
+  // A TYPED MEETING HAS NO PROVIDER CALL, SO THERE IS NOTHING TO HANG UP.
+  //
+  // The same precondition as the Durable Object's own close: `wasDispatched`
+  // asks whether a call was ever put on the wire and answered it from
+  // `activated_at`, which typed also sets. This is the fallback the DO close
+  // falls through to when the coordinator is unavailable -- and the path
+  // `closeRealtimeControl` uses when consent is withdrawn or a session is
+  // deleted -- so leaving it voice-shaped meant a typed meeting could not be
+  // closed by any route at all.
+  const typedMeeting = String(lease.channel || 'voice') === 'typed';
+  const providerCallId = typedMeeting
+    ? null
+    : await getRealtimeProviderCallId(env, lease.session_id, lease.id);
+  // TWO DIFFERENT QUESTIONS, WHICH ONLY LOOKED LIKE ONE WHILE VOICE WAS THE
+  // ONLY TRANSPORT.
+  //
+  //   `hasProviderCall` -- is there a call on the wire to hang up? For typed,
+  //   never.
+  //   `spent` -- did this meeting cost money that must now be settled? For
+  //   typed, yes: text tokens are metered per turn exactly as audio is.
+  //
+  // For a call the two always agreed, so one flag served both. Reusing it for
+  // typed released a genuinely spent reservation as `not_sent`, which is both
+  // untrue and unreachable for a reservation already in flight.
+  const hasProviderCall = !typedMeeting
+    && Boolean(lease.activated_at || lease.provider_call_id_hash_b64u || providerCallId);
+  const spent = Boolean(lease.activated_at || lease.provider_call_id_hash_b64u || providerCallId);
+  if (hasProviderCall && !terminationTimeProven(lease)) {
     if (!providerCallId) {
       throw new ConsumerError(502, 'realtime_hangup_uncertain', 'The live provider call could not be terminated safely. Please retry.');
     }
@@ -71,7 +96,7 @@ async function closeDirectly(env, lease, options) {
     throw new ConsumerError(503, 'realtime_close_failed', 'The live voice session could not be closed safely. Please retry.');
   }
   if (closed.provider_cost_id) {
-    if (wasDispatched) {
+    if (spent) {
       await settleConsumerProviderCostUnknown(env, closed.provider_cost_id, {
         errorCode: options.errorCode || options.reason,
         estimatedCostEurMicros: Number(closed.estimated_cost_eur_micros || 0)

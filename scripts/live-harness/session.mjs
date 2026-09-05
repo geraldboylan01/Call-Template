@@ -120,6 +120,40 @@ export async function attachLiveSession(meeting, { initial = {} } = {}) {
   return { session, durable, provider };
 }
 
+async function markLeaseTyped(env, sessionId, leaseId) {
+  await env.CONSUMER_DB.prepare(
+    "UPDATE consumer_realtime_sessions SET channel = 'typed' WHERE id = ? AND session_id = ?"
+  ).bind(leaseId, sessionId).run();
+  await ensureProviderCostRow(env, sessionId, leaseId);
+}
+
+/**
+ * The agent-test meeting the shared harness builds carries a synthetic
+ * `provider_cost_id` with no row behind it. Production cannot produce that --
+ * `createRealtimeLease` will not insert without a real reserved entry -- so a
+ * harness lacking one cannot exercise closing at all: settlement fails on a
+ * reservation that was never there, and the failure looks like a defect in the
+ * close path rather than a gap in the rig.
+ */
+async function ensureProviderCostRow(env, sessionId, leaseId) {
+  const lease = await env.CONSUMER_DB
+    .prepare('SELECT provider_cost_id FROM consumer_realtime_sessions WHERE id = ? AND session_id = ?')
+    .bind(leaseId, sessionId).first();
+  const costId = lease?.provider_cost_id;
+  if (!costId) return;
+  const existing = await env.CONSUMER_DB
+    .prepare('SELECT id FROM consumer_provider_costs WHERE id = ?').bind(costId).first();
+  if (existing) return;
+  const now = new Date().toISOString();
+  await env.CONSUMER_DB.prepare(`
+    INSERT INTO consumer_provider_costs (
+      id, session_id, operation, idempotency_key, provider, model, pricing_version,
+      status, reserved_cost_eur_micros, created_at, dispatched_at
+    ) VALUES (?, ?, 'typed_planning_session', ?, 'openai', 'harness', 'harness-pricing-v1',
+              'reserved', 1000000, ?, ?)
+  `).bind(costId, sessionId, `harness-${leaseId}`, now, now).run();
+}
+
 /**
  * Bind a TYPED Durable Object to that meeting.
  *
@@ -130,6 +164,14 @@ export async function attachLiveSession(meeting, { initial = {} } = {}) {
  * point: a typed meeting is the same object with a different mouth.
  */
 export async function attachTypedSession(meeting, { initial = {} } = {}) {
+  // THE LEASE HAS TO SAY IT IS TYPED, because the code under test reads the
+  // CHANNEL from the lease rather than from the object -- terminalize runs from
+  // a rehydrated object and from the expiry sweep too, where in-memory state
+  // does not exist. Production does this in `activateTypedLease`; a harness
+  // that only set the in-memory flag was testing a meeting that no production
+  // path can produce, and would have gone on passing while every real typed
+  // close failed.
+  await markLeaseTyped(meeting.env, meeting.sessionId, meeting.meetingId);
   const durable = fakeDurableState(initial);
   const session = new ConsumerLiveSession(durable.state, meeting.env);
   await durable.initialized();
