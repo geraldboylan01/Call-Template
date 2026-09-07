@@ -432,8 +432,81 @@ pass('spoken-word evidence supports the AI-authored native number without determ
   assert.equal(filled.input, null);
   assert.deepEqual(filled.evidence, []);
   assert.equal(completed.modules.length, APPROVED_CONSUMER_MODULE_IDS.length);
+
+  // A DISCLOSURE THAT CONTRADICTS THE INPUT IS THE SAME BOOKKEEPING, and the
+  // same rule has to hold for it: dropped, never fatal, and never a rescue.
+  //
+  // FOUND WITH THE REAL MODEL. A client said "we spend about 4000 a month"; the
+  // planner authored the 4000 correctly and ALSO disclosed "I am leaving
+  // monthlyExpenditure to the server default (null)". Two contradictory lines
+  // of bookkeeping about a figure it had understood and quoted. That threw
+  // module_snapshot_assumption_invalid and destroyed the whole snapshot.
+  //
+  // These two cases are the pair that makes dropping safe. The claim is
+  // discarded either way; what decides the outcome is whether the CONVERSATION
+  // supports the value, which is the only thing that ever should have.
+  const overpayingInput = { ...inputs.mortgage_analysis, annualOverpayment: 500 };
+  const overpayingRows = (evidence) => moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? { ...item, inputJson: JSON.stringify(overpayingInput), evidence }
+      : item
+  ));
+  const normalizeOverpaying = (evidence, turns) => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: overpayingRows(evidence),
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns,
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const mortgageRow = moduleRows.find((item) => item.moduleId === 'mortgage_analysis');
+
+  // 1. NO EVIDENCE: dropping the contradictory claim must not let 500 through.
+  // The module leaves this pass not ready, carries no authored input, cannot be
+  // certified and cannot execute -- and the overpayment becomes a question.
+  const unevidenced = normalizeOverpaying(
+    mortgageRow.evidence,
+    [{ id: 'turn-1', role: 'user', transcript }]
+  );
+  const unevidencedRow = unevidenced.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.notEqual(unevidencedRow.status, 'ready');
+  assert.equal(unevidencedRow.authoredInput, undefined);
+  assert.equal(
+    unevidencedRow.assumptions.some((item) => item.path === '/annualOverpayment'), false,
+    'a disclosure that contradicts the authored input is discarded, never recorded as support'
+  );
+  assert.ok(
+    unevidencedRow.inputSupportIssues.includes('/annualOverpayment'),
+    'the value the dropped claim would have supported must be reported unsupported'
+  );
+  assert.ok(unevidencedRow.missing.some((need) => need.path === '/annualOverpayment'));
+
+  // 2. WITH EVIDENCE: the same divergence is allowed, because a `default` entry
+  // exists precisely so a client may name their own value. The claim is still
+  // dropped; the quote is what carries the figure.
+  const overpayingTranscript = `${transcript} We pay 500 a year off it as well.`;
+  const evidenced = normalizeOverpaying(
+    [
+      ...mortgageRow.evidence,
+      { path: '/annualOverpayment', source: 'conversation', turnId: 'turn-1', quote: '500 a year off it', profilePath: '' }
+    ],
+    [{ id: 'turn-1', role: 'user', transcript: overpayingTranscript }]
+  );
+  const evidencedRow = evidenced.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.equal(evidencedRow.status, 'ready');
+  assert.equal(evidencedRow.input.annualOverpayment, 500);
+  assert.equal(
+    evidencedRow.assumptions.some((item) => item.path === '/annualOverpayment'), false,
+    'the contradictory claim is dropped here too: evidence carried the value, not bookkeeping'
+  );
 }
 pass('dropped planner bookkeeping never rescues an unsupported value or an undisclosed default');
+pass('a default policy path may diverge only on evidence, never on a disclosure that contradicts the input');
 
 /* ---------- an empty collection is a claim, and it needs saying out loud ---- */
 

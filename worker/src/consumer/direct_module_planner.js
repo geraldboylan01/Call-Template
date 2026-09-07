@@ -382,9 +382,12 @@ function assertDirectPolicy(moduleId, input, assumptions, envelope, { ready = fa
     const expected = policyValueAtPath(entry, path);
     const actual = readJsonPointer(input, path);
     // WHAT THE PLANNER IS ACTUALLY ASSERTING is "I used the server's value
-    // here, and did not invent one". That claim is checked in full: the path
-    // must be a real policy path, and the value in the input must equal the
-    // policy value exactly. The source TAG, though, is server-owned metadata
+    // here, and did not invent one". That claim is still checked in full: the
+    // path must be a real policy path, and the value in the input must equal
+    // the policy value exactly. What changed is the CONSEQUENCE of failing it
+    // at a non-fixed path -- see the note below the fixed-path branch: the
+    // claim is discarded rather than the whole snapshot, and the value then has
+    // to earn its own evidence. The source TAG, though, is server-owned metadata
     // that follows from the path alone -- the planner has no discretion over
     // it. Demanding it echo the right label, and failing the entire pass over
     // a wrong one, was bookkeeping the server already knows the answer to.
@@ -406,9 +409,7 @@ function assertDirectPolicy(moduleId, input, assumptions, envelope, { ready = fa
     // the ready branch of this same function, which is what the policy tamper
     // cases exercise.
     const serverOwned = entry?.mode === 'fixed';
-    if (!entry
-      || (!serverOwned && !mayBeUnauthored && stableStringify(actual) !== stableStringify(value))
-      || (!serverOwned && stableStringify(value) !== stableStringify(expected))) {
+    if (!entry) {
       throw moduleError(
         moduleId,
         502,
@@ -417,8 +418,38 @@ function assertDirectPolicy(moduleId, input, assumptions, envelope, { ready = fa
         { path, declaredValue: value, expected, actual }
       );
     }
-    return { path, source: entry.source, value: serverOwned ? expected : value };
-  });
+    if (serverOwned) return { path, source: entry.source, value: expected };
+    // AN INCOHERENT DISCLOSURE AT A DEFAULT PATH IS THE SAME MISLABEL AS ONE
+    // AT A NON-POLICY PATH -- dropped, for the same reason and in the same
+    // direction. The claim being made here is narrow: "I used the server's
+    // value at this path and did not invent one". It is coherent only when the
+    // declared value IS the policy value and the input either agrees with it or
+    // leaves the field to the server. Anything else is the planner mislabelling
+    // a figure, not tampering with policy.
+    //
+    // THE DEFECT THIS FIXES. A client said "we spend about 4000 a month"; the
+    // planner authored monthlyExpenditure 4000 -- correctly, and with a quote --
+    // and ALSO disclosed "I am leaving this to the server default (null)". Two
+    // sentences of bookkeeping that contradict each other. Throwing destroyed
+    // the entire snapshot, every module in it and the state the meeting steers
+    // on, over a wrong label on a value that was understood and quoted
+    // correctly. The same trap sits under every `default` path a client may
+    // legitimately name: an annual overpayment, a college start age, a course
+    // length, an income mode, a retirement horizon.
+    //
+    // DROPPING IS THE STRICT DIRECTION, and materially stricter than what it
+    // replaces. `unsupportedReadyInputPaths` counts assumptions as support, so
+    // removing this line takes the value's support away with it: a `default`
+    // path may now diverge from its policy value ONLY when conversation
+    // evidence at that path carries the divergence. Before, a disclosure could
+    // wave a divergent value through on bookkeeping alone. A fixed path is not
+    // touched -- the ready branch above checks every one of them against the
+    // authored input, which is what the policy tamper cases exercise.
+    const claimIsPolicyValue = stableStringify(value) === stableStringify(expected);
+    const claimMatchesInput = mayBeUnauthored || stableStringify(actual) === stableStringify(value);
+    if (!claimIsPolicyValue || !claimMatchesInput) return null;
+    return { path, source: entry.source, value };
+  }).filter(Boolean);
   return { entries, assumptions: normalizedAssumptions };
 }
 
