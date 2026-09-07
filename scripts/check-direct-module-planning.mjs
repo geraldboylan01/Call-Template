@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { directModuleTestInputs } from './live-harness/direct-fixtures.mjs';
+import { LIQUIDITY_RESERVE_POLICY } from '../js/liquidity_reserve.js';
 
 import { approvedCollegeScenarios, PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
@@ -251,6 +252,49 @@ for (const [moduleId, tamperedInput] of policyTamperCases) {
   }), /server-owned value/);
 }
 pass('AI-authored inputs cannot override pension, liquidity, college, or house-purchase engine policy');
+
+// ...AND A SERVER-OWNED STRING NOBODY SAYS IS SUPPLIED, NOT RETYPED.
+//
+// FOUND WITH THE REAL MODEL. The planner simply omitted liquidity's
+// /policyVersion. It is a version tag: the client never says one, the planner
+// has no discretion over one, and it cannot move a figure -- yet the whole
+// snapshot, every module in it and the state the meeting steers on were
+// discarded over it. Every tamper case above is a NUMBER, and every one of them
+// still fails loudly, which is the line: a rate, a buffer or a term is an
+// integrity signal, a version tag is bookkeeping.
+{
+  const { policyVersion: _omitted, ...withoutVersion } = inputs.liquidity_analysis;
+  const rows = DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: id === 'liquidity_analysis' ? 'ready' : 'not_relevant',
+    inputJson: id === 'liquidity_analysis' ? JSON.stringify(withoutVersion) : '',
+    steeringSummary: '', missing: [], ambiguities: [], assumptions: [],
+    evidence: id === 'liquidity_analysis'
+      ? Object.keys(withoutVersion).map((key) => ({
+        path: `/${key}`, source: 'conversation', turnId: 'turn-policy', quote: 'Use the standard Planéir policy.', profilePath: ''
+      }))
+      : []
+  }));
+  const completed = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-policy',
+    modules: rows,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planéir policy.' }],
+    throughTurnId: 'turn-policy', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const row = completed.modules.find((item) => item.moduleId === 'liquidity_analysis');
+  assert.equal(row.status, 'ready', 'an omitted server-owned version tag is supplied, not fatal');
+  assert.equal(row.input.policyVersion, LIQUIDITY_RESERVE_POLICY.policyVersion,
+    'and it is the server value, so nothing the planner wrote can stand in for it');
+}
+pass('an omitted server-owned string is completed by the server, while a tampered number still fails closed');
 
 const transcript = 'About two and a half thousand a month, and the mortgage is two hundred and forty grand.';
 const moduleRows = DIRECT_MODULE_IDS.map((moduleId) => ({

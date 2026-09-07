@@ -217,9 +217,16 @@ export function directModulePolicyEntries(moduleId, input, envelope) {
   }
   if (moduleId === 'pension_projection') {
     if (input?.incomeMode === 'target') {
-      entries.push(
-        recited('/targetIncomePctOfSalary', 0.5, 'contract_default', 'default')
-      );
+      // TARGET MODE TAKES A EURO AMOUNT OR A PERCENTAGE, NEVER BOTH. When the
+      // client has named the amount, the percentage default is not a value this
+      // calculation relies on, so reading it back would announce an assumption
+      // the answer does not rest on -- which the auditor rightly refused. The
+      // policy entry stays either way, because the disclosure rules are about
+      // what MAY be supplied; only its place in the spoken floor is conditional.
+      const relied = readJsonPointer(input, '/targetIncomeToday') === undefined;
+      entries.push(relied
+        ? recited('/targetIncomePctOfSalary', 0.5, 'contract_default', 'default')
+        : policy('/targetIncomePctOfSalary', 0.5, 'contract_default', 'default'));
     } else if (input?.incomeMode === 'affordable') {
       entries.push(
         recited('/affordableEndAges', AFFORDABLE_END_AGE_DEFAULTS, 'contract_default', 'default')
