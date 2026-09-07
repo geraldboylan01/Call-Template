@@ -52,7 +52,7 @@ const CONFIG = {
   realtimePromptVersion: 'p', realtimeToolsetVersion: 't'
 };
 
-function snapshotBody({ omitEvidenceFor = null, confirmationPrompt = PROMPT } = {}) {
+function snapshotBody({ omitEvidenceFor = null, confirmationPrompt = PROMPT, ambiguities = [] } = {}) {
   const policy = directModulePolicyEntries('mortgage_analysis', INPUT, POLICY);
   return {
     schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
@@ -65,7 +65,7 @@ function snapshotBody({ omitEvidenceFor = null, confirmationPrompt = PROMPT } = 
       selection: { origin: 'client_requested', reason: 'you asked about your mortgage' },
       inputJson: JSON.stringify(INPUT),
       steeringSummary: 'your repayment mortgage',
-      missing: [], ambiguities: [],
+      missing: [], ambiguities,
       assumptions: policy.filter((entry) => entry.mode === 'default'
         && (readJsonPointer(INPUT, entry.path) === undefined
           || stableStringify(readJsonPointer(INPUT, entry.path)) === stableStringify(entry.value)))
@@ -199,6 +199,86 @@ assert.equal(failedRepair.result.certificate, null);
 assert.equal(failedRepair.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
 pass('an unreadable repair is abandoned without spending a verification, and changes nothing');
 
+/* ------------- structural provenance and the audit are separate budgets ---- */
+
+// THE DEFECT THIS PINS, found in the paid v9 corpus. Structural provenance and
+// the semantic verifier shared ONE repair budget, and structural runs first. A
+// snapshot needing a citation repaired therefore spent the budget before the
+// verifier had ever seen it, and the verifier's own finding -- a stale quote,
+// a read-back omission, both squarely the planner's own bookkeeping -- had no
+// repair left. College asked a parent to reconfirm an age they had already
+// corrected. House purchase asked for figures already given. Exactly the
+// failure the repair mechanism exists to prevent.
+//
+// `currentBalance` carries no policy assumption, so omitting its citation is a
+// STRUCTURAL provenance failure, not a semantic one -- which is what makes this
+// sequence different from the four above.
+
+const structuralThenSemantic = await run([
+  { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) },
+  { kind: 'extract', value: snapshotBody() },
+  { kind: 'verify', value: VERDICTS.omission },
+  { kind: 'extract', value: snapshotBody() },
+  { kind: 'verify', value: VERDICTS.pass }
+]);
+assert.equal(structuralThenSemantic.calls.length, 5,
+  'an adopted structural repair no longer forfeits the audit repair: two classes, one attempt each');
+ok(structuralThenSemantic.calls[1].findings?.structuralSupportIssues,
+  'the second call repairs provenance and is told which paths failed');
+ok(structuralThenSemantic.calls[3].findings?.omittedSupportedInformation,
+  'the fourth call repairs the audit finding and is told what the auditor rejected');
+ok(Boolean(structuralThenSemantic.result.certificate),
+  'the plan the client hears is certified rather than turned into a question they already answered');
+assert.deepEqual(structuralThenSemantic.result.verification.clarifications, []);
+pass('a citation repair and a read-back repair are separate budgets: five calls, two repairs, one certificate');
+
+// AND THE CEILING IS STILL TWO. A stubborn planner spends both and stops.
+const bothSpent = await run([
+  { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) },
+  { kind: 'extract', value: snapshotBody() },
+  { kind: 'verify', value: VERDICTS.omission },
+  { kind: 'extract', value: snapshotBody() },
+  { kind: 'verify', value: VERDICTS.omission }
+]);
+assert.equal(bothSpent.calls.length, 5, 'two repairs is the whole budget, never a loop');
+assert.equal(bothSpent.result.certificate, null);
+assert.equal(bothSpent.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
+pass('two repairs is the ceiling: a planner that still cannot fix itself asks, and does not keep paying');
+
+// A REJECTED STRUCTURAL REPAIR NEVER REACHES THE AUDIT AT ALL. The module is
+// still not ready, so it is not eligible for verification and no certificate
+// can exist. The forfeit rule in the planner is therefore defensive rather than
+// load-bearing today -- it exists so the "a planner that could not fix itself
+// does not get paid twice" rule survives a later change to the eligibility
+// rules. This pins the behaviour that makes it unreachable.
+const structuralRejected = await run([
+  { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) },
+  { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) }
+]);
+assert.equal(structuralRejected.calls.length, 2,
+  'a structural repair that did not clear provenance stops there and never buys a verification');
+assert.equal(structuralRejected.result.certificate, null);
+pass('a failed provenance repair leaves the module unverifiable and unconfirmable, at no further cost');
+
+/* ------------ neither repair may settle a genuinely competing reading ------ */
+
+// The semantic side of this rule was already pinned above. The STRUCTURAL side
+// was true only by construction and had no test: its gate requires every
+// relevant module to be ready-or-provenance-blocked, and a module carrying its
+// own ambiguity is needs_clarification WITHOUT support issues, so it fails that
+// predicate. Pinned here so a later refactor cannot quietly let a repair choose
+// between two readings of what the client meant.
+const ambiguousModule = await run([
+  { kind: 'extract', value: snapshotBody({
+    omitEvidenceFor: 'currentBalance',
+    ambiguities: [{ path: '/currentBalance', reason: 'two mortgages were mentioned', question: 'Which mortgage did you mean?' }]
+  }) }
+]);
+assert.equal(ambiguousModule.calls.length, 1,
+  'a competing reading is never repaired structurally, even alongside a real provenance gap');
+assert.equal(ambiguousModule.result.certificate, null);
+pass('a repair fixes representation, never meaning: an ambiguous module goes straight to the client');
+
 /* ------------------------------------------ every model call is still metered */
 
 // An unmetered call is a budget the session never spends and an incident nobody
@@ -210,7 +290,10 @@ assert.equal(billed(clean), 200, 'a clean pass bills its two calls');
 assert.equal(billed(repaired), 400, 'an adopted repair bills all four of its calls');
 assert.equal(billed(stubborn), 400, 'a repair that failed its second audit is still billed in full');
 assert.equal(billed(failedRepair), 300, 'an abandoned repair bills the extraction it actually made');
-checks += 4;
+assert.equal(billed(structuralThenSemantic), 500, 'two repairs bill all five of their calls');
+assert.equal(billed(bothSpent), 500, 'two repairs that still do not pass are billed in full');
+assert.equal(billed(structuralRejected), 200, 'a failed provenance repair bills its two extractions and buys no audit');
+checks += 7;
 pass('a repair is metered whether or not it is adopted; no model call is free');
 
 console.info(`[LiveInternalRepair] ${checks} checks passed.`);

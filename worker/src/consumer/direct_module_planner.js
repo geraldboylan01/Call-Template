@@ -1214,21 +1214,44 @@ export async function interpretDirectModuleConversation({
     currentProfileContext,
     allowedModuleIds: config.allowedModules
   });
-  // One bounded repair budget is shared by structural provenance and the
-  // semantic verifier. A malformed citation is the planner's work to repair;
-  // asking the client to repeat the already-recorded answer cannot fix it.
+  // ONE BOUNDED REPAIR PER ERROR CLASS, NOT ONE PER TURN. A malformed citation
+  // is the planner's work to repair; asking the client to repeat the
+  // already-recorded answer cannot fix it.
+  //
+  // THE DEFECT THIS FIXES, found in the paid v9 corpus. Structural provenance
+  // and the semantic verifier shared ONE budget, and structural runs first. So
+  // a snapshot that needed a citation repaired spent the budget before the
+  // verifier had ever seen it, and the verifier's own finding -- a stale quote,
+  // a read-back omission, both squarely the planner's own bookkeeping -- had no
+  // repair left and became a question to the client. College asked a parent to
+  // reconfirm an age they had already corrected; house purchase asked for
+  // figures it had already been given. That is the exact failure this repair
+  // mechanism exists to prevent, reintroduced by the shared counter.
+  //
+  // The two classes are separate budgets, and the second is earned rather than
+  // granted: a structural repair that was REJECTED forfeits it, because a
+  // planner that could not fix its own provenance on this transcript has shown
+  // what a second paid attempt would buy. Still bounded at two, still monotone,
+  // and neither class may settle a competing reading -- see both gates below.
   const extraUsage = { input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
   const meter = (usage) => {
     extraUsage.input_tokens += Number(usage?.input_tokens || 0);
     extraUsage.output_tokens += Number(usage?.output_tokens || 0);
     extraUsage.cached_tokens += Number(usage?.input_tokens_details?.cached_tokens || 0);
   };
-  let repairAttempted = false;
+  let structuralRepairAttempted = false;
+  let structuralRepairAdopted = false;
   const supportIssues = snapshot.modules.filter((item) => item.inputSupportIssues?.length);
+  // A STRUCTURAL REPAIR MAY NOT SETTLE A COMPETING READING EITHER. This gate is
+  // what enforces it: no general ambiguity, and every relevant module either
+  // ready or held up purely by provenance. A module carrying its own
+  // `ambiguities` is needs_clarification WITHOUT support issues, so it fails
+  // the `every` and no repair is attempted -- the question goes to the person.
+  // True by construction before this change and untested; pinned now.
   if (supportIssues.length && snapshot.generalAmbiguities.length === 0
     && snapshot.modules.filter((item) => item.status !== 'not_relevant')
       .every((item) => item.status === 'ready' || item.inputSupportIssues?.length)) {
-    repairAttempted = true;
+    structuralRepairAttempted = true;
     try {
       const repair = await extract({
         failedProposal: plannerFacingSnapshot(snapshot),
@@ -1245,6 +1268,10 @@ export async function interpretDirectModuleConversation({
           + 'the native contract does not require instead of inventing aggregate values. '
           + 'The failed proposal is not evidence: do not preserve a value the conversation does not '
           + 'establish. Keep genuinely missing information collecting and ask a concise question. '
+          + 'This repair may correct representation only -- citations, evidence, provenance '
+          + 'bookkeeping and wording. It may not choose between two readings the conversation '
+          + 'genuinely leaves open, or between two values the client may have meant: leave any such '
+          + 'question open for the client rather than picking one. '
           + 'Return the full corrected snapshot, checking that no previously supported material '
           + 'figure, owner, scenario choice or assumption disappeared from the confirmation.'
       });
@@ -1255,7 +1282,10 @@ export async function interpretDirectModuleConversation({
       });
       // This adopts a new proposal only, never a certificate. The independent
       // semantic verifier below must still approve its inputs and exact readback.
-      if (!candidate.modules.some((item) => item.inputSupportIssues?.length)) snapshot = candidate;
+      if (!candidate.modules.some((item) => item.inputSupportIssues?.length)) {
+        snapshot = candidate;
+        structuralRepairAdopted = true;
+      }
     } catch (_error) {
       // The original incomplete snapshot remains unavailable on failed repair.
     }
@@ -1321,16 +1351,24 @@ export async function interpretDirectModuleConversation({
   // repair from the same transcript: the same extractor, the same window, plus
   // the auditor's findings. An unresolved AMBIGUITY is never repairable this way
   // -- genuinely competing readings can only be settled by the person -- and one
-  // attempt is the whole budget, so a planner that cannot fix itself still ends
-  // up asking rather than looping at the client's expense.
-  const repairable = !repairAttempted && verification
+  // attempt is the whole budget for this class, so a planner that cannot fix
+  // itself still ends up asking rather than looping at the client's expense.
+  //
+  // A STRUCTURAL REPAIR NO LONGER FORFEITS THIS ONE, unless it failed. An
+  // adopted structural repair produced a DIFFERENT proposal, which this audit
+  // is seeing for the first time: its findings are a first-time verdict, not a
+  // second bite. A rejected structural repair forfeits it, because the planner
+  // has already demonstrated on this transcript what another attempt buys.
+  // Ceiling: two repairs, five model calls, and only ever on the planner's own
+  // bookkeeping.
+  const semanticRepairAvailable = !structuralRepairAttempted || structuralRepairAdopted;
+  const repairable = semanticRepairAvailable && verification
     && verification.verdict !== 'pass'
     && (verification.unresolvedAmbiguities || []).length === 0
     && ((verification.unsupportedPaths || []).length > 0
       || (verification.omittedSupportedInformation || []).length > 0
       || verification.confirmationPromptApproved !== true);
   if (repairable) {
-    repairAttempted = true;
     try {
       const repair = await extract({
         failedProposal: plannerFacingSnapshot(snapshot),
@@ -1350,7 +1388,10 @@ export async function interpretDirectModuleConversation({
           + 'than dropping material to meet the word-count preference. Recheck the whole corrected '
           + 'confirmation against the proposed inputs before returning the full snapshot. The failed '
           + 'proposal is not evidence: do not invent or preserve an unsupported value, and do not mark '
-          + 'a module ready that the conversation does not establish.'
+          + 'a module ready that the conversation does not establish. This repair may correct '
+          + 'representation only -- citations, evidence, provenance bookkeeping and read-back '
+          + 'wording. It may not settle a competing reading or choose between two values the client '
+          + 'may have meant: leave any such question open for the client rather than picking one.'
       });
       meter(repair.usage);
       const candidate = normalizeDirectSnapshot(repair.value, {

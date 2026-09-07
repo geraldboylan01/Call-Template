@@ -206,13 +206,34 @@ await checkAsync('semantic repair receives the exact failed current proposal and
   assert.ok(result.certificate);
   assert.equal(result.extractionUsage.input_tokens + result.verificationUsage.input_tokens, 1012);
 });
-await checkAsync('a structural repair still needs semantic approval and cannot buy a second repair', async () => {
-  const { result, requests } = await fixtureRun([[brokenCitation(), 101], [raw(), 203], [reject, 307]]);
-  assert.equal(requests.length, 3);
+// WAS: "...and cannot buy a second repair", asserting three calls.
+//
+// That assertion encoded the defect, and the paid v9 corpus is the evidence.
+// `reject` here carries no unresolvedAmbiguities and withholds
+// confirmationPromptApproved -- planner bookkeeping, the exact class the repair
+// mechanism exists for, and the exact shape of the real house-purchase verdict
+// (eight omittedSupportedInformation entries on /confirmationPrompt) and the
+// real college verdict (one stale citation in unsupportedPaths). Under the
+// shared budget both had spent it on provenance before the auditor ever ran, so
+// both asked the client to supply what they had already said.
+//
+// The first half of the claim is unchanged and still proven here: a structural
+// repair buys NO semantic approval. What changed is the ceiling -- two repairs,
+// one per class -- and a plan that still cannot pass is still refused.
+await checkAsync('a structural repair still needs semantic approval, and two repairs is the ceiling', async () => {
+  const { result, requests } = await fixtureRun([
+    [brokenCitation(), 101], [raw(), 203], [reject, 307], [raw(), 401], [reject, 503]
+  ]);
+  assert.equal(requests.length, 5, 'provenance and the audit each get one repair, and no more');
+  assert.ok(requests[1].priorAuditFindings.structuralSupportIssues, 'the second call repairs provenance');
+  assert.ok(requests[3].priorAuditFindings.omittedSupportedInformation !== undefined,
+    'the fourth call repairs the audit finding, and is told what the auditor rejected');
   assert.equal(result.certificate, null);
   assert.equal(result.brief.readyToConfirm, false);
   assert.equal(result.verification.verdict, 'reject');
-  assert.equal(result.extractionUsage.input_tokens + result.verificationUsage.input_tokens, 611);
+  // 101 + 203 + 307 + 401 + 503: every completed call billed exactly once.
+  assert.equal(result.extractionUsage.input_tokens, 1208);
+  assert.equal(result.verificationUsage.input_tokens, 307);
 });
 await checkAsync('failed structural repair stays unconfirmable and every completed call is metered', async () => {
   const { result, requests } = await fixtureRun([[brokenCitation(), 101], [brokenCitation(), 203]]);
