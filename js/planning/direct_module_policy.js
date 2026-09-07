@@ -268,5 +268,31 @@ export function directModuleMaterialAssumptions(moduleId, input, envelope) {
       const actual = readJsonPointer(input, entry.path);
       return actual === undefined || stableStringify(actual) === stableStringify(entry.value);
     })
-    .map((entry) => Object.freeze({ path: entry.path, value: entry.value, source: entry.source }));
+    // AN OBJECT IS NOT A VALUE ANYONE CAN READ BACK. "Recite /purchaseCosts
+    // with its actual value" left both sides to decide what that meant, and
+    // they decided differently: the planner said "the stated purchase costs"
+    // and the auditor wanted the five amounts inside it. Neither was wrong
+    // about the rule, because the rule did not say. Expanding to the scalar
+    // amounts here says it once, to both, in the only form a person can check.
+    .flatMap((entry) => scalarLeaves(entry.path, entry.value)
+      .map(([path, value]) => Object.freeze({ path, value, source: entry.source })));
+}
+
+/**
+ * Each scalar inside a policy value, addressed by its own pointer.
+ *
+ * Numbers and booleans only. A null is a value nobody supplied, and there is
+ * nothing to read back about it; a string at a policy path is a mode
+ * discriminator -- stampDutyMode "rules" -- which the auditor already exempts
+ * and which no client could check. Reciting either would bury the amounts that
+ * matter under bookkeeping, which is the failure this list exists to prevent.
+ */
+function scalarLeaves(path, value) {
+  if (value === null || typeof value !== 'object') {
+    return typeof value === 'number' || typeof value === 'boolean' ? [[path, value]] : [];
+  }
+  return Object.entries(value).flatMap(([key, nested]) => scalarLeaves(
+    `${path}/${String(key).replace(/~/g, '~0').replace(/\//g, '~1')}`,
+    nested
+  ));
 }
