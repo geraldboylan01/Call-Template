@@ -574,7 +574,18 @@ export function sendTypedMessage(sessionId, leaseId, {
     signal,
     // A typed turn awaits the planner before it replies. That is the whole
     // point of the transport, and it is slower than a voice turn on purpose.
-    timeoutMs: 60_000
+    //
+    // SIZED AGAINST THE SERVER'S CEILING, NOT AGAINST HOPE. The planner now
+    // holds a wall-clock budget for the whole turn -- five model calls at most
+    // for one pass, then the renderer -- and this has to outlast it, or a turn
+    // the server completed is thrown away by the browser and the client is
+    // told to retype an answer that already landed. Sixty seconds did not: a
+    // real four-call pass measured 52.5s with the renderer still to come.
+    //
+    // NEITHER NUMBER IS A TARGET. A typed reply that takes a minute has failed
+    // the client even though it succeeded; these are the points at which the
+    // system fails safe instead of failing silently.
+    timeoutMs: 120_000
   });
 }
 

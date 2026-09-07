@@ -31,6 +31,19 @@ const MAX_MESSAGE_CHARACTERS = 4_000;
 const COMPLETION_RETRY_MS = 2_000;
 const TERMINAL_MEETING_STATUSES = new Set(['ended', 'expired', 'failed', 'budget_exhausted', 'completed', 'cancelled']);
 const RUNNING_PLAN_STATUSES = new Set(['approved', 'executing', 'pending', 'running']);
+// What the screen says while a typed turn is with the planner. Plain progress,
+// no invented percentage and no promised time.
+const THINKING_STAGES = Object.freeze([
+  'Planéir is thinking…',
+  'Planéir is going back over what you have told it…',
+  'Planéir is checking the figures before it reads them back…',
+  'Still working. Your answers are saved.'
+]);
+const THINKING_STAGE_MS = 12_000;
+// How long the browser keeps looking for a reply whose HTTP response it lost.
+// Thirty two-second polls covers a turn the server is still finishing; past
+// that the client is told plainly rather than watching a spinner forever.
+const MAX_TURN_RECOVERY_ATTEMPTS = 30;
 
 function newPrivateId(prefix) {
   const bytes = new Uint8Array(18);
@@ -61,6 +74,10 @@ export class TypedMeetingController {
     this.transcript = [];
     this.navigated = false;
     this.awaitingExecution = false;
+    // Looking for a reply whose HTTP response was lost, and how long for.
+    this.recoveringTurn = false;
+    this.recoveryAttempts = 0;
+    this.thinkingTimer = null;
     this.abandoned = false;
     this.startPromise = null;
     this.generation = 0;
@@ -263,9 +280,20 @@ export class TypedMeetingController {
         error?.message || 'That did not send. Your answers are safe — please try again.',
         { tone: 'error' }
       );
-      // Approval may already have executed even when its HTTP reply was lost.
-      // Recover its durable status instead of requiring another approval turn.
-      if (this.awaitingExecution) await this.checkCompletion();
+      // THE SERVER'S WORK SURVIVES A LOST RESPONSE; the screen has to as well.
+      //
+      // This used to recover only an approval, because approval is the moment
+      // results appear. But a COLLECTING turn is the common case and it was
+      // silently unrecoverable: the client turn is persisted before the planner
+      // runs, so the assistant reply the server went on to produce sat in
+      // durable storage, invisible, while the client saw an error, a stale card
+      // and their own message. Retyping it then created a second turn of the
+      // same answer. A planning turn is slow on purpose -- that is the whole
+      // point of this transport -- so losing one reply must never cost the
+      // reply, and every failed send now looks for what actually landed.
+      this.recoveringTurn = true;
+      this.recoveryAttempts = 0;
+      await this.checkCompletion();
     } finally {
       if (this.isCurrent(generation)) {
         this.sending = false;
@@ -356,6 +384,23 @@ export class TypedMeetingController {
     }
     if (Array.isArray(meeting.turns)) this.restoreTurns(meeting.turns);
     if (meeting.card) this.renderCard(meeting.card);
+    if (this.recoveringTurn) {
+      // The durable transcript ending in the client's own words means the
+      // planner has not finished the turn yet; an assistant turn after it means
+      // the reply we lost has been recovered, along with its card.
+      if (this.transcript.at(-1)?.role === 'assistant') {
+        this.recoveringTurn = false;
+        this.setStatus('');
+      } else if (this.recoveryAttempts < MAX_TURN_RECOVERY_ATTEMPTS) {
+        this.recoveryAttempts += 1;
+        this.setStatus('Reconnecting to your planning session…');
+        this.scheduleCompletion(generation);
+        return;
+      } else {
+        this.recoveringTurn = false;
+        this.setStatus('');
+      }
+    }
     if (RUNNING_PLAN_STATUSES.has(status)) {
       this.awaitingExecution = true;
       this.setStatus('Planéir is preparing your results…');
@@ -636,11 +681,34 @@ export class TypedMeetingController {
     await this.send(text, { inputMode: 'form' });
   }
 
+  /**
+   * A long typed turn is not a broken one, and the screen has to say so.
+   *
+   * The planner runs to completion before the reply, and a full pass -- read
+   * the conversation, check it, repair a citation, check again -- has been
+   * measured at over fifty seconds. An unchanging spinner for that long reads
+   * as a hang, and a client who reloads or retypes at forty seconds turns a
+   * working turn into a duplicate one. So the wording moves on while the work
+   * does, and never promises a time it cannot keep.
+   */
   setThinking(active) {
     if (this.sendNode) this.sendNode.disabled = active === true;
     if (this.composerNode) this.composerNode.readOnly = active === true;
-    if (active) this.setStatus('Planéir is thinking…');
-    else if (this.statusNode?.textContent === 'Planéir is thinking…') this.setStatus('');
+    window.clearTimeout(this.thinkingTimer);
+    this.thinkingTimer = null;
+    if (!active) {
+      if (THINKING_STAGES.includes(this.statusNode?.textContent)) this.setStatus('');
+      return;
+    }
+    let stage = 0;
+    this.setStatus(THINKING_STAGES[stage]);
+    const advance = () => {
+      stage += 1;
+      if (stage >= THINKING_STAGES.length) return;
+      this.setStatus(THINKING_STAGES[stage]);
+      this.thinkingTimer = window.setTimeout(advance, THINKING_STAGE_MS);
+    };
+    this.thinkingTimer = window.setTimeout(advance, THINKING_STAGE_MS);
   }
 
   setStatus(text) {

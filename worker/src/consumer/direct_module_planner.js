@@ -220,11 +220,18 @@ function outputText(payload) {
   return '';
 }
 
-async function structuredResponse({ env, config, systemPrompt, name, schema, body }) {
+async function structuredResponse({ env, config, systemPrompt, name, schema, body, deadlineAt = null }) {
   const clientRequestId = crypto.randomUUID();
   const startedAt = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.modulePlannerTimeoutMs);
+  // THE TURN'S REMAINING TIME IS ALSO THIS CALL'S TIME. Without a deadline the
+  // behaviour is exactly as before -- every existing script and probe, some of
+  // which run 60-180s per call, is untouched. With one, a call can never
+  // outlive the turn that asked for it.
+  const budget = Number.isFinite(deadlineAt)
+    ? Math.max(0, Math.min(config.modulePlannerTimeoutMs, deadlineAt - startedAt))
+    : config.modulePlannerTimeoutMs;
+  const timer = setTimeout(() => controller.abort(), budget);
   let response;
   const failure = (status, code, message) => Object.assign(new ConsumerError(status, code, message), {
     // Server-only operational context; no prompt, financial input, credential,
@@ -271,7 +278,8 @@ async function structuredResponse({ env, config, systemPrompt, name, schema, bod
     return {
       value,
       usage: payload.usage || null,
-      providerResponseId: String(payload?.id || clientRequestId)
+      providerResponseId: String(payload?.id || clientRequestId),
+      latencyMs: Date.now() - startedAt
     };
   } catch (error) {
     if (error instanceof ConsumerError) throw error;
@@ -1086,7 +1094,8 @@ async function verificationCertificate(
 }
 
 export async function runDirectModulePlanning({
-  env, config, context, leaseId, throughTurnId, frozenPlanId = null, acknowledgedUnknown = []
+  env, config, context, leaseId, throughTurnId, frozenPlanId = null, acknowledgedUnknown = [],
+  deadlineAt = null
 }) {
   const previous = await getLatestRealtimeMeetingBrief(env, context.sessionRow.id, leaseId).catch(() => null);
   const previousSnapshot = previous?.brief?.schemaVersion === MEETING_BRIEF_V3
@@ -1126,7 +1135,8 @@ export async function runDirectModulePlanning({
     acknowledgedUnknown,
     frozenPlan: frozen?.input?.inputSource === 'verified_direct_module_input'
       ? { snapshot: frozen.input.directModuleSnapshot, certificate: frozen.input.verificationCertificate }
-      : null
+      : null,
+    deadlineAt
   });
   const {
     snapshot,
@@ -1208,8 +1218,34 @@ export async function interpretDirectModuleConversation({
   // never model-authored, and never taken from the client's own words: this
   // list is a record of a deliberate action, not an interpretation of one.
   acknowledgedUnknown = [],
-  frozenPlan = null
+  frozenPlan = null,
+  // Absolute wall-clock ceiling for this whole planning pass, or null for the
+  // unbounded behaviour every offline script and probe relies on.
+  deadlineAt = null
 }) {
+  // Is there room to start an optional call AND the call that must follow it?
+  //
+  // A repair nobody can verify is money spent on nothing, so a repair is only
+  // started with room for BOTH it and the audit that has to approve it.
+  //
+  // MEASURED, NOT GUESSED. A fixed floor cannot be right: sized for the slowest
+  // call a provider can make it blocks the ordinary five-call pass that fits
+  // comfortably, and sized for a typical call it lets a repair start and then
+  // starves the verification that must follow. This pass has already made one
+  // or two calls against this provider, this model and this conversation, so it
+  // knows what a call costs here. Requiring twice the slowest one seen is what
+  // keeps the guarantee exact: no call is ever started that the turn's clock
+  // cannot let it finish.
+  let slowestCallMs = 0;
+  const observe = (response) => {
+    slowestCallMs = Math.max(slowestCallMs, Number(response?.latencyMs || 0));
+    return response;
+  };
+  const roomForRepair = () => deadlineAt === null
+    || deadlineAt - Date.now() >= Math.max(
+      Number(config.modulePlannerRepairFloorMs || 20_000),
+      2 * slowestCallMs
+    );
   const previousRevision = Number(previousSnapshot?.snapshotRevision || 0);
   const priorSnapshotForModel = plannerFacingSnapshot(previousSnapshot);
   const policyEnvelope = buildDirectModulePolicyEnvelope({
@@ -1236,6 +1272,7 @@ export async function interpretDirectModuleConversation({
   const extract = (priorFindings = null) => structuredResponse({
     env,
     config,
+    deadlineAt,
     systemPrompt: EXTRACTOR_PROMPT,
     name: 'module_planning_snapshot_v1',
     schema: DIRECT_SNAPSHOT_SCHEMA,
@@ -1249,7 +1286,7 @@ export async function interpretDirectModuleConversation({
       ...(priorFindings ? { priorAuditFindings: priorFindings } : {})
     }
   });
-  const extraction = await extract();
+  const extraction = observe(await extract());
   let snapshot = normalizeDirectSnapshot(extraction.value, {
     acknowledgedUnknown,
     turns,
@@ -1294,11 +1331,12 @@ export async function interpretDirectModuleConversation({
   // the `every` and no repair is attempted -- the question goes to the person.
   // True by construction before this change and untested; pinned now.
   if (supportIssues.length && snapshot.generalAmbiguities.length === 0
+    && roomForRepair()
     && snapshot.modules.filter((item) => item.status !== 'not_relevant')
       .every((item) => item.status === 'ready' || item.inputSupportIssues?.length)) {
     structuralRepairAttempted = true;
     try {
-      const repair = await extract({
+      const repair = observe(await extract({
         failedProposal: plannerFacingSnapshot(snapshot),
         structuralSupportIssues: supportIssues.map((item) => ({
           moduleId: item.moduleId,
@@ -1312,7 +1350,11 @@ export async function interpretDirectModuleConversation({
           + 'provenance checks, not an earlier conversation snapshot. Repair the listed paths in this '
           + 'proposal with the smallest supported correction. Preserve already-supported inputs, owners, '
           + 'assumptions, exact valid quotations and material confirmation wording; do not reconstruct '
-          + 'unaffected modules or shorten their read-back. For each missing citation copy one contiguous '
+          + 'unaffected modules. EVIDENCE YOU OMIT IS EVIDENCE WITHDRAWN: failedProposal carries every '
+          + 'citation the server accepted, and the evidence array you return replaces it outright, so '
+          + 'repeat all of those entries unchanged and add your corrections to them. Returning only the '
+          + 'entries you fixed leaves every other value unsupported and fails this pass again. '
+          + 'Do not shorten an unaffected read-back. For each missing citation copy one contiguous '
           + 'substring from the exact named conversation turn, without ellipses or spliced passages. '
           + 'droppedCitations lists every citation the server could not resolve and why: a quote that is '
           + 'not a contiguous substring of the named turn, or one that occurs there more than once. Fix '
@@ -1329,7 +1371,7 @@ export async function interpretDirectModuleConversation({
           + 'question open for the client rather than picking one. '
           + 'Return the full corrected snapshot, checking that no previously supported material '
           + 'figure, owner, scenario choice or assumption disappeared from the confirmation.'
-      });
+      }));
       meter(repair.usage);
       const candidate = normalizeDirectSnapshot(repair.value, {
         acknowledgedUnknown, turns, throughTurnId, previousRevision, policyEnvelope,
@@ -1378,11 +1420,23 @@ export async function interpretDirectModuleConversation({
     .map((item) => ({
       moduleId: item.moduleId,
       assumptions: directModuleMaterialAssumptions(item.moduleId, item.authoredInput, policyEnvelope)
+        // AN ANSWER THE CLIENT GAVE IS NOT AN ASSUMPTION, even when it lands on
+        // the same number the server would have used. A parent who says "Anna
+        // would start at eighteen for four years" has chosen 18 and 4; the
+        // contract defaults are also 18 and 4, and comparing values alone
+        // cannot tell those apart. Conversation evidence at the path can, and
+        // it is the only thing here that may: calling a client's own answer an
+        // assumption is a false claim about where a figure came from, and the
+        // auditor rightly refuses a read-back that makes it.
+        .filter((assumption) => !(item.evidence || []).some((entry) => (
+          entry.source === 'conversation' && pathCovers(entry.path, assumption.path)
+        )))
     }))
     .filter((item) => item.assumptions.length > 0);
   const verify = (candidate) => structuredResponse({
     env,
     config,
+    deadlineAt,
     systemPrompt: VERIFIER_PROMPT,
     name: 'module_input_verification_v1',
     schema: VERIFICATION_SCHEMA,
@@ -1405,7 +1459,7 @@ export async function interpretDirectModuleConversation({
       contracts
     }
   });
-  let verificationResponse = eligibleForVerification ? await verify(snapshot) : null;
+  let verificationResponse = eligibleForVerification ? observe(await verify(snapshot)) : null;
   let verification = verificationResponse?.value || null;
   let repairedSnapshot = null;
   // EVERY CALL IS METERED, INCLUDING A REPAIR THAT IS THROWN AWAY. Reporting
@@ -1434,7 +1488,7 @@ export async function interpretDirectModuleConversation({
   // Ceiling: two repairs, five model calls, and only ever on the planner's own
   // bookkeeping.
   const semanticRepairAvailable = !structuralRepairAttempted || structuralRepairAdopted;
-  const repairable = semanticRepairAvailable && verification
+  const repairable = semanticRepairAvailable && roomForRepair() && verification
     && verification.verdict !== 'pass'
     && (verification.unresolvedAmbiguities || []).length === 0
     && ((verification.unsupportedPaths || []).length > 0
@@ -1442,7 +1496,7 @@ export async function interpretDirectModuleConversation({
       || verification.confirmationPromptApproved !== true);
   if (repairable) {
     try {
-      const repair = await extract({
+      const repair = observe(await extract({
         failedProposal: plannerFacingSnapshot(snapshot),
         verdict: verification.verdict,
         unsupportedPaths: verification.unsupportedPaths || [],
@@ -1457,6 +1511,8 @@ export async function interpretDirectModuleConversation({
           + 'previousSnapshot from an earlier conversation turn. Make the smallest correction that '
           + 'addresses these findings. Preserve all already-supported inputs, owners, assumptions, '
           + 'valid exact quotations and material read-back content; do not reauthor unaffected modules. '
+          + 'EVIDENCE YOU OMIT IS EVIDENCE WITHDRAWN: the evidence array you return replaces the one in '
+          + 'failedProposal outright, so repeat every entry it carries and add your corrections to them. '
           + 'Correct a bad citation, restore an omitted fact, or amend only the inaccurate wording. '
           + 'When adding missing read-back information, retain every other supported material figure, '
           + 'owner, precision, scenario choice and financial assumption. A longer read-back is better '
@@ -1467,7 +1523,7 @@ export async function interpretDirectModuleConversation({
           + 'representation only -- citations, evidence, provenance bookkeeping and read-back '
           + 'wording. It may not settle a competing reading or choose between two values the client '
           + 'may have meant: leave any such question open for the client rather than picking one.'
-      });
+      }));
       meter(repair.usage);
       const candidate = normalizeDirectSnapshot(repair.value, {
         acknowledgedUnknown,
@@ -1484,7 +1540,7 @@ export async function interpretDirectModuleConversation({
         && candidateRelevant.every((item) => item.status === 'ready')
         && candidate.generalAmbiguities.length === 0
         && Boolean(candidate.confirmationPrompt)) {
-        const second = await verify(candidate);
+        const second = observe(await verify(candidate));
         // A repair is adopted only when it actually passes. A second non-pass
         // keeps the ORIGINAL snapshot and its clarifications, so a failed repair
         // costs latency and never changes what the client is asked.

@@ -526,6 +526,33 @@ export function getConsumerConfig(env) {
     modulePlannerReasoningEffort: reasoningEffort(env.CONSUMER_MODULE_PLANNER_REASONING_EFFORT, 'low'),
     modulePlannerTimeoutMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_TIMEOUT_MS, 30_000, 5_000, 60_000),
     modulePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_MODULE_PLANNER_MAX_OUTPUT_TOKENS, 12_000, 2_000, 30_000),
+    // A CEILING FOR THE WHOLE TURN, NOT FOR EACH CALL.
+    //
+    // modulePlannerTimeoutMs bounds one provider call. Nothing bounded the
+    // sequence, and the sequence is not one call: up to five per pass, more
+    // than one pass per chain when a turn is queued mid-flight, and a second
+    // chain again from the pre-confirmation get_state -- with a renderer
+    // budget on top. A typed request could therefore run for minutes behind a
+    // browser that gives up at one, and a voice caller could sit in silence at
+    // the pre-confirmation boundary with no bound at all.
+    //
+    // THIS IS A FAIL-SAFE CEILING, NOT A PERFORMANCE TARGET. A turn that takes
+    // eighty seconds has already failed the client even though it succeeded;
+    // the number exists so that failure is bounded and visible instead of
+    // unbounded and silent. Measured v9 calls ran 6-26s, so a five-call pass
+    // fits with room, and a pathological one degrades to the auditor's
+    // clarification rather than overrunning.
+    modulePlannerTurnBudgetMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_TURN_BUDGET_MS, 90_000, 20_000, 240_000),
+    // An optional call is never STARTED without room to finish the pair it
+    // belongs to -- a repair plus the audit that must approve it. Starting one
+    // it cannot finish spends money and returns nothing.
+    //
+    // This is only the FLOOR. The real requirement is twice the slowest call
+    // this pass has already made, because that is measured against the provider
+    // and conversation actually in hand; a fixed number is either too large,
+    // blocking the ordinary five-call pass, or too small, letting a repair
+    // start and then starving the verification that must follow it.
+    modulePlannerRepairFloorMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_REPAIR_FLOOR_MS, 20_000, 5_000, 120_000),
     modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v10',
     moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v7',
     // Additive and fail-closed: an unset or mistyped value preserves the

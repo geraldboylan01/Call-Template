@@ -101,7 +101,7 @@ const VERDICTS = {
 };
 
 /** Drive the real planner with a scripted sequence of model replies. */
-async function run(script) {
+async function run(script, { deadlineAt = null, config = CONFIG } = {}) {
   const calls = [];
   const original = globalThis.fetch;
   globalThis.fetch = async (_url, request) => {
@@ -121,11 +121,12 @@ async function run(script) {
   try {
     const result = await interpretDirectModuleConversation({
       env: { OPENAI_API_KEY: 'synthetic', CONSUMER_RATE_LIMIT_HASH_KEY: Buffer.alloc(32, 47).toString('base64url') },
-      config: CONFIG,
+      config,
       turns: TURNS,
       throughTurnId: 'turn-1',
       previousSnapshot: null,
-      currentProfileContext: PROFILE
+      currentProfileContext: PROFILE,
+      deadlineAt
     });
     return { result, calls };
   } finally {
@@ -278,6 +279,44 @@ assert.equal(ambiguousModule.calls.length, 1,
   'a competing reading is never repaired structurally, even alongside a real provenance gap');
 assert.equal(ambiguousModule.result.certificate, null);
 pass('a repair fixes representation, never meaning: an ambiguous module goes straight to the client');
+
+/* ------------- the turn's clock, not just each call's, bounds the work ----- */
+
+// A REPAIR NOBODY CAN VERIFY IS MONEY SPENT ON NOTHING. modulePlannerTimeoutMs
+// bounds one call; nothing bounded the sequence, and the sequence is what a
+// waiting client actually experiences. An optional call is therefore not
+// STARTED without room to finish the pair it belongs to -- the repair, and the
+// audit that has to approve it.
+//
+// THIS IS A FAIL-SAFE CEILING, NOT A TARGET. Degrading to the auditor's own
+// clarification is the worst acceptable outcome, not a good one.
+const BUDGETED = { ...CONFIG, modulePlannerRepairFloorMs: 20_000 };
+
+const outOfTime = await run(
+  [
+    { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'annualOverpayment' }) },
+    { kind: 'verify', value: VERDICTS.omission }
+  ],
+  { deadlineAt: Date.now() + 1_000, config: BUDGETED }
+);
+assert.equal(outOfTime.calls.length, 2,
+  'with no room for a repair and its audit, the repair is never started');
+assert.equal(outOfTime.result.certificate, null);
+assert.equal(outOfTime.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
+pass('an exhausted turn budget skips the optional call rather than starting one it cannot finish');
+
+const inTime = await run(
+  [
+    { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'annualOverpayment' }) },
+    { kind: 'verify', value: VERDICTS.omission },
+    { kind: 'extract', value: snapshotBody() },
+    { kind: 'verify', value: VERDICTS.pass }
+  ],
+  { deadlineAt: Date.now() + 600_000, config: BUDGETED }
+);
+assert.equal(inTime.calls.length, 4, 'ample budget changes nothing about the repair itself');
+ok(Boolean(inTime.result.certificate), 'and the repaired plan is still certified');
+pass('a budget with room left behaves exactly as an unbounded pass does');
 
 /* ------------------------------------------ every model call is still metered */
 

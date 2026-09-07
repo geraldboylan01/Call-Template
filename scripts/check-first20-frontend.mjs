@@ -180,6 +180,48 @@ test('A lost approval reply still discovers completed results', async () => {
   finally { await c.end(); }
 });
 
+test('A lost COLLECTING reply is recovered from the durable transcript', async () => {
+  // THE DEFECT THIS PINS. Recovery ran only when awaitingExecution was set --
+  // that is, only after a read-back. A collecting turn is the common case and
+  // was silently unrecoverable: the client turn is persisted before the planner
+  // runs, so the reply the server went on to produce sat in durable storage,
+  // invisible, while the client saw an error, their own message and a stale
+  // card. Retyping the answer then created a second turn of the same answer.
+  // Planning turns are slow on purpose, so a lost reply must not cost the reply.
+  let polls = 0;
+  const c = init(); c.active = true; c.sessionId = sessionId; Object.assign(c, access);
+  c.root = new TestNode(); c.renderShell();
+  assert.equal(c.awaitingExecution, false, 'this is a collecting turn, not an approval');
+  globalThis.fetch = async (url, options) => {
+    if (options.method === 'DELETE') return response({});
+    if (options.method === 'POST') throw new Error('Lost collecting response');
+    if (String(url).includes('/text/meetings/')) {
+      polls += 1;
+      // First look: the planner has not finished, so the transcript still ends
+      // with the client. Second look: the reply and its card have landed.
+      return polls === 1
+        ? response({ turns: [{ role: 'user', text: 'We spend about 4000 a month.' }] })
+        : response({
+          turns: [
+            { role: 'user', text: 'We spend about 4000 a month.' },
+            { role: 'assistant', text: 'Thanks — and do you have any other debts?' }
+          ],
+          card: { modules: [], readyToConfirm: false }
+        });
+    }
+    return response({});
+  };
+  try {
+    await c.send('We spend about 4000 a month.');
+    assert.ok(polls >= 1, 'a failed collecting send must look for what actually landed');
+    await c.checkCompletion();
+    assert.equal(c.transcript.at(-1)?.role, 'assistant',
+      'the reply the server produced is shown rather than lost');
+    assert.equal(c.transcript.at(-1)?.text, 'Thanks — and do you have any other debts?');
+    assert.equal(c.recoveringTurn, false, 'recovery stops once the reply is in hand');
+  } finally { await c.end(); }
+});
+
 test('Ending an in-flight turn cannot navigate into the old session later', async () => {
   const gate = deferred(); let navigated = 0;
   const c = init({ onNavigate: () => { navigated += 1; } });

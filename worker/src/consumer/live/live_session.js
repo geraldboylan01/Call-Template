@@ -385,6 +385,9 @@ export class ConsumerLiveSession {
     this.directModulePlanningChain = Promise.resolve();
     this.directModulePlanningPersistenceChain = Promise.resolve();
     this.directModulePlanningPending = 0;
+    // Absolute wall clock for planning a caller is blocked on; null when the
+    // only work running is background work nobody is waiting for.
+    this.directModulePlanningDeadlineAt = null;
     // Finalized client turns whose direct module snapshot has not yet been
     // successfully rebuilt. This is distinct from an in-memory request count:
     // a failed request remains an obligation, including across hibernation.
@@ -1599,7 +1602,45 @@ export class ConsumerLiveSession {
    * Everything else -- ingest, persistence, evidence, the tool barrier, the
    * confirmation gate -- is the same code voice runs.
    */
+  /**
+   * Arm the wall-clock ceiling for planning work a caller is waiting on.
+   *
+   * modulePlannerTimeoutMs bounds ONE provider call. This bounds the sequence,
+   * which is a different and much larger thing: up to five calls per pass, more
+   * than one pass per chain when a turn is queued mid-flight, and -- before
+   * this -- a whole second chain scheduled from the pre-confirmation get_state
+   * inside the same request. A typed request could run for minutes behind a
+   * browser that gives up at one, and a voice caller could sit in silence at
+   * the read-back boundary with no bound at all.
+   *
+   * ARMING IS IDEMPOTENT, WHICH IS THE POINT. A get_state inside a typed
+   * request inherits that request's REMAINING budget instead of starting a
+   * fresh one, so the second chain cannot extend the first. Returns the disarm.
+   *
+   * Unarmed planning -- the background pass a voice turn schedules and nobody
+   * blocks on -- keeps today's unbounded behaviour, because there is no caller
+   * waiting for it and cutting it short would only lose work.
+   */
+  armDirectModulePlanningDeadline() {
+    if (this.directModulePlanningDeadlineAt !== null) return () => {};
+    const config = getConsumerConfig(this.env);
+    this.directModulePlanningDeadlineAt = Date.now()
+      + Number(config.modulePlannerTurnBudgetMs || 90_000);
+    return () => { this.directModulePlanningDeadlineAt = null; };
+  }
+
   async handleTextMessage(body) {
+    // The budget covers the WHOLE request: the awaited pass, the renderer, and
+    // any get_state the renderer makes -- not just the first await.
+    const disarmPlanningDeadline = this.armDirectModulePlanningDeadline();
+    try {
+      return await this.handleTextMessageWithinBudget(body);
+    } finally {
+      disarmPlanningDeadline();
+    }
+  }
+
+  async handleTextMessageWithinBudget(body) {
     const text = String(body?.text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TYPED_MESSAGE_CHARACTERS);
     if (!text) throw new ConsumerError(400, 'live_text_message_invalid', 'That message is empty.');
     const inputMode = body?.inputMode === 'form' ? 'form' : 'text';
@@ -2311,6 +2352,11 @@ export class ConsumerLiveSession {
         if (!nextJob) break;
         const config = getConsumerConfig(this.env);
         if (config.modulePlannerMode === 'off') break;
+        // A NEW PASS IS NOT STARTED PAST THE CEILING. The obligation stays
+        // outstanding and the next turn settles it; starting a pass nobody can
+        // wait for spends money to miss a deadline that has already passed.
+        const deadlineAt = this.directModulePlanningDeadlineAt;
+        if (deadlineAt !== null && Date.now() >= deadlineAt) break;
         try {
           await this.directModulePlanningPersistenceChain.catch(() => {});
           const context = await loadLiveContext({ env: this.env, config, sessionId: this.meta.sessionId });
@@ -2321,7 +2367,8 @@ export class ConsumerLiveSession {
             leaseId: this.meta.leaseId,
             throughTurnId: nextJob.turnId,
             frozenPlanId: this.directConfirmationOffer?.planId || null,
-            acknowledgedUnknown: this.acknowledgedUnknown
+            acknowledgedUnknown: this.acknowledgedUnknown,
+            deadlineAt
           });
           if (config.modulePlannerMode === 'apply'
             && planned.verification?.verdict === 'pass'
@@ -3507,13 +3554,23 @@ export class ConsumerLiveSession {
           // never delays native turn-taking before the model starts replying;
           // it may, however, wait here at the explicit pre-confirmation tool
           // boundary so the following read-back reflects every finalized turn.
-          if (this.directModulePlanningPending === 0
-            && this.directModulePlanningOutstanding.length > 0) {
-            this.scheduleDirectModulePlanning(
-              this.directModulePlanningOutstanding.at(-1)?.turnId
-            );
+          // SPEAK BLOCKS HERE TOO, so it gets the same ceiling as Type. The
+          // realtime 8s timeout governs the separate legacy fact reconciler and
+          // has never bounded this await. A spent budget schedules no NEW pass:
+          // it waits for whatever is already running and answers from that.
+          const disarmToolDeadline = this.armDirectModulePlanningDeadline();
+          try {
+            if (this.directModulePlanningPending === 0
+              && this.directModulePlanningOutstanding.length > 0
+              && Date.now() < this.directModulePlanningDeadlineAt) {
+              this.scheduleDirectModulePlanning(
+                this.directModulePlanningOutstanding.at(-1)?.turnId
+              );
+            }
+            await this.directModulePlanningChain.catch(() => {});
+          } finally {
+            disarmToolDeadline();
           }
-          await this.directModulePlanningChain.catch(() => {});
           const direct = await getLatestRealtimeMeetingBrief(
             this.env,
             this.meta.sessionId,
