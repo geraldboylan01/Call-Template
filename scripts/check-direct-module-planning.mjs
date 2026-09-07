@@ -504,9 +504,57 @@ pass('spoken-word evidence supports the AI-authored native number without determ
     evidencedRow.assumptions.some((item) => item.path === '/annualOverpayment'), false,
     'the contradictory claim is dropped here too: evidence carried the value, not bookkeeping'
   );
+
+  // A FIGURE IS NOT MADE AMBIGUOUS BY A LONGER FIGURE THAT ENDS THE SAME WAY.
+  //
+  // FOUND WITH THE REAL MODEL. A client said "a joint mortgage of 250 thousand
+  // ... his is worth 50 thousand". The planner quoted "50 thousand" for the
+  // second amount -- exactly right, and the only thing it could have quoted --
+  // and the citation was refused as appearing twice, because "250 thousand"
+  // contains it. Shared suffixes are ordinary in money talk. The uniqueness
+  // rule is unchanged; what changed is that a match embedded inside a longer
+  // word or number is no longer counted as an occurrence of it.
+  const overpayTranscript = `${transcript} We started at 1500 a month and now pay 500 a year extra.`;
+  const citedOverpayment = (quote, turnTranscript) => normalizeOverpaying(
+    [
+      ...mortgageRow.evidence,
+      { path: '/annualOverpayment', source: 'conversation', turnId: 'turn-1', quote, profilePath: '' }
+    ],
+    [{ id: 'turn-1', role: 'user', transcript: turnTranscript }]
+  ).modules.find((item) => item.moduleId === 'mortgage_analysis');
+
+  const sharedSuffix = citedOverpayment('500', overpayTranscript);
+  assert.equal(sharedSuffix.status, 'ready',
+    'a standalone 500 is one occurrence even though 1500 contains it');
+  assert.equal(sharedSuffix.input.annualOverpayment, 500);
+
+  // And the rule still bites the other way: a span the client never said on its
+  // own supports nothing, even though the characters are present.
+  const embeddedOnly = citedOverpayment('500', `${transcript} We pay 1500 a month.`);
+  assert.notEqual(embeddedOnly.status, 'ready',
+    'a quote whose only match sits inside a longer number is not something the client said');
+  assert.ok(
+    embeddedOnly.droppedCitations.some((item) => (
+      item.path === '/annualOverpayment'
+      && item.reason === 'quote_is_not_a_contiguous_substring_of_that_turn'
+    )),
+    'the server records WHY it dropped the citation, so the repair can widen the quote instead of resending it'
+  );
+
+  // A genuinely repeated span is still refused: uniqueness is what makes a
+  // citation point at one claim rather than either of two.
+  const genuinelyRepeated = citedOverpayment(
+    'a year extra',
+    `${transcript} We pay 500 a year extra, and before that 300 a year extra.`
+  );
+  assert.notEqual(genuinelyRepeated.status, 'ready');
+  assert.ok(genuinelyRepeated.droppedCitations.some((item) => (
+    item.reason === 'quote_appears_more_than_once_in_that_turn'
+  )));
 }
 pass('dropped planner bookkeeping never rescues an unsupported value or an undisclosed default');
 pass('a default policy path may diverge only on evidence, never on a disclosure that contradicts the input');
+pass('a shared numeric suffix no longer makes an exact citation ambiguous, and a dropped citation says why');
 
 /* ---------- an empty collection is a claim, and it needs saying out loud ---- */
 
@@ -980,8 +1028,8 @@ const certificateConfig = {
   modulePlannerModel: 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
-  modulePlannerPromptVersion: 'direct-module-planner-v9',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v6'
+  modulePlannerPromptVersion: 'direct-module-planner-v10',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v7'
 };
 let providerCalls = 0;
 let verifierCalls = 0;
@@ -1363,8 +1411,8 @@ try {
       modulePlannerModel: 'gpt-5.6-luna',
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
-      modulePlannerPromptVersion: 'direct-module-planner-v9',
-      moduleVerifierPromptVersion: 'direct-module-verifier-v6'
+      modulePlannerPromptVersion: 'direct-module-planner-v10',
+      moduleVerifierPromptVersion: 'direct-module-verifier-v7'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],
     throughTurnId: 'turn-2',

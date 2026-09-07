@@ -170,8 +170,22 @@ await checkAsync('malformed ready citation is repaired on the same transcript be
   assert.equal(requests.length, 3);
   assert.deepEqual(requests[1].conversation, requests[0].conversation);
   assert.deepEqual(requests[1].serverPolicy, requests[0].serverPolicy);
-  assert.deepEqual(requests[1].priorAuditFindings.structuralSupportIssues,
-    [{ moduleId: 'mortgage_analysis', paths: ['/currentBalance'] }]);
+  // The repair is told which paths failed AND why each citation was dropped.
+  // This fixture's own quote -- 'My mortgage balance ... 240000' -- is an
+  // ellipsis splice, which is the commonest real failure: the establishing
+  // words are not contiguous, so the model reassembles them. Told only the
+  // path, it cannot tell that from a citation it forgot, and it re-sends the
+  // same spliced quote. Told the reason, it can widen the span instead.
+  assert.deepEqual(requests[1].priorAuditFindings.structuralSupportIssues, [{
+    moduleId: 'mortgage_analysis',
+    paths: ['/currentBalance'],
+    droppedCitations: [{
+      path: '/currentBalance',
+      turnId: 'c1',
+      quote: 'My mortgage balance ... 240000',
+      reason: 'quote_is_not_a_contiguous_substring_of_that_turn'
+    }]
+  }]);
   const failedProposal = requests[1].priorAuditFindings.failedProposal;
   assert.equal(failedProposal.confirmationPrompt, brokenCitation().confirmationPrompt);
   assert.equal(failedProposal.modules[0].input.currentBalance, 240000);

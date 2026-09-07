@@ -526,8 +526,8 @@ export function getConsumerConfig(env) {
     modulePlannerReasoningEffort: reasoningEffort(env.CONSUMER_MODULE_PLANNER_REASONING_EFFORT, 'low'),
     modulePlannerTimeoutMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_TIMEOUT_MS, 30_000, 5_000, 60_000),
     modulePlannerMaxOutputTokens: boundedInteger(env.CONSUMER_MODULE_PLANNER_MAX_OUTPUT_TOKENS, 12_000, 2_000, 30_000),
-    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v9',
-    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v6',
+    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v10',
+    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v7',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.
