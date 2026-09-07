@@ -101,6 +101,60 @@ export function laneProofPlan(conversationVersion) {
 }
 
 /**
+ * WHAT AN AUTHENTICATED CLIENT IS ENTITLED TO SEE ON THE WAY IN.
+ *
+ * The entry screen is no longer "the voice meeting, or the button that opens
+ * it". Once the typed lane is on, `chooseLaneAndEnter` renders the Speak/Type
+ * card instead and deliberately leaves the voice companion hidden -- so a
+ * proof that waits for the companion waits for something the product has
+ * correctly stopped doing, and a good deployment fails.
+ *
+ * This resolves the entry from what the page shows AND what the deployment
+ * announced, as a pure function, so the contract can be held without a browser
+ * or a paid meeting.
+ *
+ * IT IS STRICTER THAN WHAT IT REPLACES, NOT LOOSER. With the typed lane on it
+ * is not enough to find some way through to a call: the card must offer BOTH
+ * doors. A deployment that ships the chooser with Type missing has broken the
+ * lane it was activated to deliver, and reaching Speak anyway would certify it.
+ */
+export function resolveMeetingEntry(entry, { typedLaneEnabled } = {}) {
+  const shellOpen = entry?.shellOpen === true;
+  const launcherShown = entry?.launcherShown === true;
+  const doors = Array.isArray(entry?.laneChoiceDoors) ? entry.laneChoiceDoors : [];
+  const chooserShown = entry?.chooserShown === true;
+  if (typedLaneEnabled === true) {
+    if (!chooserShown) {
+      // Not an immediate failure: the page may still be holding a bootstrap
+      // sampled before the typed lane propagated. The caller retries, and
+      // reports this reason if it never arrives.
+      return {
+        ready: false,
+        action: 'none',
+        reason: 'The Speak/Type entry card did not appear on a deployment with the typed lane enabled.'
+      };
+    }
+    const missing = ['speak', 'type'].filter((lane) => !doors.includes(lane));
+    if (missing.length > 0) {
+      return {
+        ready: false,
+        terminal: true,
+        action: 'none',
+        reason: `The Speak/Type entry card is missing its ${missing.join(' and ')} door.`
+      };
+    }
+    return { ready: true, action: 'choose-speak', reason: '' };
+  }
+  if (shellOpen) return { ready: true, action: 'none', reason: '' };
+  if (launcherShown) return { ready: true, action: 'open-launcher', reason: '' };
+  return {
+    ready: false,
+    action: 'none',
+    reason: 'Neither the auto-opened meeting shell nor the Talk to Planéir launcher became available.'
+  };
+}
+
+/**
  * The server-side gate, as a function so it can be tested without a browser,
  * a provider or ten euro of meeting.
  */
@@ -214,6 +268,7 @@ export async function runRealtimeInfrastructureProof({
     let consecutiveEnabledSamples = 0;
     let conversationVersion = '';
     let previousEnabledVersion = '';
+    let typedLaneEnabled = false;
     for (let attempt = 1; attempt <= REALTIME_FLAG_SETTLE_MAX_ATTEMPTS; attempt += 1) {
       let enabled = false;
       let payload = null;
@@ -238,6 +293,11 @@ export async function runRealtimeInfrastructureProof({
           : 1;
         previousEnabledVersion = sampledVersion;
         conversationVersion = sampledVersion;
+        // Read from the SAME settled sample as the lane, and only from a
+        // bootstrap this proof already trusts. It decides which entry screen
+        // the deployment owes the client, so a stale or defaulted value would
+        // check the wrong contract.
+        typedLaneEnabled = payload?.flags?.consumerTypedLaneEnabled === true;
       } else {
         consecutiveEnabledSamples = 0;
         previousEnabledVersion = '';
@@ -278,23 +338,38 @@ export async function runRealtimeInfrastructureProof({
       if (!url.pathname.startsWith(endpointPath)) return;
       requestDiagnostics.push(`${request.method()} ${url.pathname.slice(endpointPath.length) || '/'} -> ${request.failure()?.errorText || 'request failed'}`);
     });
-    // An eligible session auto-opens the meeting surface and marks the
-    // background launcher inert (which Playwright reports as hidden), so the
-    // entry point is proven when either the meeting shell is open or the
+    // THE ENTRY SCREEN, AS THE DEPLOYMENT ACTUALLY DEFINES IT.
+    //
+    // Voice-only: an eligible session auto-opens the meeting surface and marks
+    // the background launcher inert (which Playwright reports as hidden), so
+    // the entry point is proven when either the meeting shell is open or the
     // collapsed launcher is actionable.
+    //
+    // Typed lane on: the client chooses the lane once, on the way in, and the
+    // voice companion stays hidden until they pick Speak. Both doors must be
+    // there; this proof then takes Speak, because what follows costs money and
+    // proves the Realtime provider boundary. Type has its own free gates.
     const launcher = page.locator('#realtimeVoiceLauncher');
     const meetingEntryState = async () => page.evaluate(() => ({
       shellOpen: document.getElementById('realtimeVoiceShell')?.hidden === false,
       launcherShown: (() => {
         const element = document.getElementById('realtimeVoiceLauncher');
         return Boolean(element && element.closest('[hidden]') === null);
-      })()
+      })(),
+      chooserShown: Boolean(document.querySelector('.lane-choice-card')),
+      // Named by the lane each button opens, not by its wording.
+      laneChoiceDoors: [...document.querySelectorAll('.lane-choice-card [data-lane]')]
+        .map((button) => button.dataset.lane)
     }));
-    let entry = { shellOpen: false, launcherShown: false };
+    let entry = { shellOpen: false, launcherShown: false, chooserShown: false, laneChoiceDoors: [] };
+    let resolution = { ready: false, action: 'none', reason: 'The planning entry screen was never sampled.' };
     for (let attempt = 1; attempt <= MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS; attempt += 1) {
       await page.waitForTimeout(PROPAGATION_RETRY_MS);
       entry = await meetingEntryState();
-      if (entry.shellOpen || entry.launcherShown) break;
+      resolution = resolveMeetingEntry(entry, { typedLaneEnabled });
+      // A card that is present but wrong is a broken deployment, not a slow
+      // one. Retrying it would spend ten more minutes proving the same thing.
+      if (resolution.ready || resolution.terminal) break;
       if (attempt < MAX_BOOTSTRAP_PROPAGATION_ATTEMPTS) {
         proofPageUrl.searchParams.set('realtime-proof', crypto.randomUUID());
         await page.goto(proofPageUrl.href, {
@@ -303,12 +378,10 @@ export async function runRealtimeInfrastructureProof({
         });
       }
     }
-    assert.equal(
-      entry.shellOpen || entry.launcherShown,
-      true,
-      'Neither the auto-opened meeting shell nor the Talk to Planéir launcher became available.'
-    );
-    if (!entry.shellOpen) {
+    assert.equal(resolution.ready, true, resolution.reason);
+    if (resolution.action === 'choose-speak') {
+      await page.locator('.lane-choice-card [data-lane="speak"]').click();
+    } else if (resolution.action === 'open-launcher') {
       await launcher.click();
     }
     await page.locator('#realtimeVoiceShell').waitFor({ state: 'visible', timeout: 5_000 });

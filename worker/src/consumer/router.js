@@ -36,6 +36,7 @@ import {
   rotateConsumerEncryptionBatch,
   revokeHandoff,
   saveProfileRevision,
+  settleConsumerProviderCostKnown,
   settleConsumerProviderCostUnknown,
   toConsumerSession,
   withdrawAiConsent
@@ -92,6 +93,7 @@ import { conversationLaneStub } from './live/lane.js';
 import { buildLiveSessionConfig } from './live/live_provider.js';
 import { LIVE_PROMPT_VERSION } from './live/catalogue_prompt.js';
 import { LIVE_TOOLSET_VERSION } from './live/live_tools.js';
+import { loadStoredTypedState } from './live/typed_state.js';
 import { requireConsumerSession } from './session_auth.js';
 import {
   getVoiceConsent,
@@ -474,6 +476,27 @@ async function closeRealtimeControl(env, lease, options = {}) {
   return terminateRealtimeLease(env, lease, options);
 }
 
+async function typedMeetingPayload(env, lease, { coordinator = true } = {}) {
+  // A closed coordinator deletes its in-memory state. The encrypted meeting
+  // record remains the source for refresh and completion observation.
+  const open = ['pending', 'active', 'closing'].includes(lease.status);
+  const state = coordinator && open
+    ? await durableObjectRequest(env, lease.id, '/state', undefined, 'GET')
+      .catch(() => loadStoredTypedState({ env, sessionId: lease.session_id, leaseId: lease.id }))
+    : await loadStoredTypedState({ env, sessionId: lease.session_id, leaseId: lease.id });
+  const plan = await getCurrentRealtimeAnalysisPlan(env, lease.session_id);
+  const analysisPlan = plan?.realtime_session_id === lease.id
+    ? await getPublicRealtimeAnalysisPlan(env, plan) : null;
+  return {
+    ok: true, leaseId: lease.id, status: lease.status,
+    realtimeLease: toPublicRealtimeLease(lease),
+    card: state.card || { modules: [] }, turns: state.turns || [],
+    analysisPlan,
+    realtimeExecution: ['confirmed', 'running', 'complete', 'failed', 'rejected', 'expired'].includes(plan?.status)
+      ? analysisPlan : null
+  };
+}
+
 function voiceBudgetPayload(value, config) {
   const limitMicroEur = Number(value?.limitMicroEur ?? value?.limitEurMicros ?? config.voiceSessionBudgetMicroEur ?? 0) || 0;
   const spentMicroEur = Number(value?.spentMicroEur ?? value?.spentEurMicros ?? 0) || 0;
@@ -662,6 +685,11 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     await rateLimit(env, 'consumer-session-ip', clientIp, 60 * 1000, 120);
     let sessionRow = await requireConsumerSession(request, env, route.sessionId);
     await rateLimit(env, 'consumer-session-id', sessionRow.id, 60 * 1000, 80);
+    const consentRefreshRequired = sessionRow.consent_manifest_id !== config.consentManifestId
+      || sessionRow.consent_policy_version !== config.consentPolicyVersion
+      || sessionRow.consent_analysis_notice_id !== config.analysisNoticeId
+      || sessionRow.consent_ai_notice_id !== config.aiNoticeId
+      || sessionRow.consent_privacy_notice_url !== config.privacyNoticeUrl;
 
     if (route.kind === 'session' && request.method === 'DELETE') {
       const activeRealtime = await getActiveRealtimeLease(env, sessionRow.id);
@@ -861,6 +889,9 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
 
     if (route.kind === 'typed_meetings') {
       assertTypedLaneAvailability(config);
+      if (consentRefreshRequired) {
+        throw new ConsumerError(428, 'consent_refresh_required', 'The planning disclosure has changed. Start a new session or delete this saved session.');
+      }
       const realtimeConsent = await getRealtimeConsent(env, sessionRow.id);
       if (!realtimeConsentIsCurrent(realtimeConsent, config)) {
         throw new ConsumerError(403, 'realtime_consent_required', 'Review and accept the current disclosure before starting.');
@@ -874,6 +905,21 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         sha256Base64Url(activationId),
         sha256Base64Url(controlCapability)
       ]);
+      // A lost HTTP response must not reserve the budget or open the model a
+      // second time. Authenticate the original activation before inspecting
+      // the remaining budget, which is already reserved for that meeting.
+      const existing = await getRealtimeLeaseByActivationHash(env, sessionRow.id, activationIdHash);
+      if (existing) {
+        const lease = await requireRealtimeControlCapability(request, env, sessionRow.id, existing.id, { requireActive: false });
+        if (lease.channel !== 'typed') throw notFound();
+        if (lease.status === 'pending') {
+          throw new ConsumerError(409, 'typed_meeting_starting', 'Your planning session is still starting. Please retry.');
+        }
+        return respond({
+          ...(await typedMeetingPayload(env, lease)), activationId, controlCapability,
+          hardExpiresAt: lease.hard_expires_at, idempotentReplay: true
+        }, 200, methods);
+      }
       const providerBudget = await getConsumerProviderBudget(env, sessionRow.id);
       const reservationAmount = Number(providerBudget.remainingEurMicros || 0);
       if (reservationAmount <= config.realtimeSafetyReserveMicroEur) {
@@ -898,18 +944,36 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       // No provider call to place and no SDP to broker: a typed meeting is
       // activated the moment its budget is reserved. The rollback surface is
       // correspondingly smaller -- there is no remote call to hang up.
-      const lease = await createRealtimeLease(
-        env, sessionRow, config, reservation.entry, controlCapabilityHash, activationIdHash,
-        { channel: 'typed' }
-      );
-      await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
-      await activateTypedLease(env, sessionRow.id, lease.id);
-      const activated = await durableObjectRequest(env, lease.id, '/activate', {
-        sessionId: sessionRow.id,
-        leaseId: lease.id,
-        costEntryId: reservation.entry.id,
-        channel: 'typed'
-      });
+      let lease = null;
+      let dispatched = false;
+      let activationAttempted = false;
+      let activated;
+      try {
+        lease = await createRealtimeLease(
+          env, sessionRow, config, reservation.entry, controlCapabilityHash, activationIdHash,
+          { channel: 'typed' }
+        );
+        await markRealtimeProviderCostInFlight(env, reservation.entry.id, sessionRow.id, config);
+        dispatched = true;
+        lease = await activateTypedLease(env, sessionRow.id, lease.id);
+        activationAttempted = true;
+        activated = await durableObjectRequest(env, lease.id, '/activate', {
+          sessionId: sessionRow.id, leaseId: lease.id,
+          costEntryId: reservation.entry.id, channel: 'typed'
+        });
+      } catch (error) {
+        const errorCode = error instanceof ConsumerError ? error.code : 'typed_start_failed';
+        if (activationAttempted) {
+          await terminateRealtimeLease(env, lease, { status: 'failed', reason: 'typed_start_failed', errorCode });
+        } else {
+          if (lease) await closeRealtimeLease(env, sessionRow.id, lease.id, 'failed', 'typed_start_failed', errorCode);
+          // No coordinator request was attempted, so no provider work exists.
+          if (dispatched) await settleConsumerProviderCostKnown(env, reservation.entry.id, 0, { errorCode });
+          else await releaseConsumerProviderCostNotSent(env, reservation.entry.id, { errorCode });
+        }
+        await recordEvent(env, sessionRow.id, 'typed_start_failed', { errorCode }).catch(() => {});
+        throw error;
+      }
       return respond({
         ok: true,
         leaseId: lease.id,
@@ -922,7 +986,18 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
 
     if (route.kind === 'typed_messages') {
       assertTypedLaneAvailability(config);
-      await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
+      if (consentRefreshRequired) {
+        throw new ConsumerError(428, 'consent_refresh_required', 'The planning disclosure has changed. Start a new session or delete this saved session.');
+      }
+      if (!realtimeConsentIsCurrent(await getRealtimeConsent(env, sessionRow.id), config)) {
+        throw new ConsumerError(403, 'realtime_consent_required', 'Review and accept the current disclosure before continuing.');
+      }
+      const lease = await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
+      if (lease.channel !== 'typed') throw notFound();
+      if (Date.parse(lease.hard_expires_at) <= Date.now()) {
+        await terminateRealtimeLease(env, lease, { status: 'expired', reason: 'hard_timeout' });
+        throw new ConsumerError(410, 'typed_meeting_expired', 'This planning meeting has expired. Start a new meeting to continue.');
+      }
       await rateLimit(env, 'consumer-typed-message', sessionRow.id, 60 * 1000, 20);
       const body = await readJson(request);
       if (typeof body.text !== 'string'
@@ -943,15 +1018,15 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
     }
 
     if (route.kind === 'typed_meeting') {
-      const lease = await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
+      const lease = await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId, { requireActive: false });
+      if (lease.channel !== 'typed') throw notFound();
       if (request.method === 'DELETE') {
-        await durableObjectRequest(env, route.leaseId, '/close', {
+        await terminateRealtimeLease(env, lease, {
           status: 'complete', reason: 'consumer_closed', usageKnown: false
-        }).catch(() => null);
+        });
         return respond({ ok: true }, 200, methods);
       }
-      const state = await durableObjectRequest(env, route.leaseId, '/state', undefined, 'GET');
-      return respond({ ok: true, status: lease.status, ...state }, 200, methods);
+      return respond(await typedMeetingPayload(env, lease), 200, methods);
     }
 
     if (route.kind === 'realtime_delivery') {
@@ -1094,11 +1169,6 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }, 200, methods);
     }
 
-    const consentRefreshRequired = sessionRow.consent_manifest_id !== config.consentManifestId
-      || sessionRow.consent_policy_version !== config.consentPolicyVersion
-      || sessionRow.consent_analysis_notice_id !== config.analysisNoticeId
-      || sessionRow.consent_ai_notice_id !== config.aiNoticeId
-      || sessionRow.consent_privacy_notice_url !== config.privacyNoticeUrl;
     let profile = await getCurrentProfile(env, sessionRow);
 
     if (route.kind === 'session' && request.method === 'GET') {

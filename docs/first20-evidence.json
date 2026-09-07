@@ -1,0 +1,691 @@
+{
+  "generatedAt": "2026-09-07T18:11:02.816384+00:00",
+  "baselineCommit": "3a85575427aa1db229afa27b53a3edf0b029fa31",
+  "reviewHead": "382832ab1e45ae4ca1f040c0a14d8214c2336101",
+  "recommendation": "NOT READY",
+  "syntheticOnly": true,
+  "productionDeploymentPerformed": false,
+  "workingFilesSha256": {
+    ".github/workflows/deploy-pages.yml": "a25d336e6927230d73f4a9bcefadf2b82aa5c7e836d795f0657dd9a5bbc2d79f",
+    ".github/workflows/deploy-worker.yml": "564b049587b89c61a29076babf9c4c4037fe927dc60c47da0dd35509b3844054",
+    "js/plan/api.js": "747266fccd0208a72e45b99d947f31dd39e7f0be517476879d797d9cc83d917d",
+    "js/plan/app.js": "170032d7510205cab2d2a2f49e44e15a590b1e3781fe3f56066ac61d2ed58700",
+    "js/plan/store.js": "07d869516ea2e502d82dcc4c2ff13b48070af197aec1e96de8bf546a712b876b",
+    "js/plan/typed_meeting.js": "c4623cc1b4b1a13d313a4304ef6453e5074fbed85924a456dd80669734c2ee6d",
+    "js/plan/views.js": "d0dc2eb2b89883cfe84cb7cbc981afef7819ee8d5e0fb43401b66a170d0ca55a",
+    "package.json": "d62b05ecbd8313e21db7a4fa3fcc9a5a0dad961a48ff2ddb111483756f391997",
+    "scripts/check-consumer-bootstrap-contract.mjs": "866add029b4bb02db1642ea2295d19f79276def9f22b0fcd967f7d6b566d4dc0",
+    "scripts/check-consumer-entry-contract.mjs": "ce6ead57b12aed59df385ea1e16a4a69f306fb250e7da0b8c263e4c1454be602",
+    "scripts/check-consumer-voice-frontend.mjs": "1050c5f7e80fa974b2455df9c45889170c2fe0684d946b0b6887bcfafe2a6751",
+    "scripts/check-direct-module-planning.mjs": "6776b4ecb91e32ee6f5d956c7acade160d0c463bf7ef35e453deb160cc1befc3",
+    "scripts/check-first20-frontend.mjs": "334534ab21454620eee94bc1261cd77edcd237b33b5f6f98ba27d2de7d4b25e5",
+    "scripts/check-first20-planner-diagnostics.mjs": "0d2a76ff9123bd138d5ef4845240ee67fcb321cebf32ea15a824964aa285e7e0",
+    "scripts/check-first20-router-recovery.mjs": "b42448e46fd8d04f3d072a73eb4e1c6a23f3b1f3b03c21713fefb7c229456c9f",
+    "scripts/check-first20-semantic-integrity.mjs": "70bd1cead6f733039700dea682aa6ab9aea71e535d7ea8f499a9ddef11d6bd46",
+    "scripts/check-first20-typed-recovery.mjs": "f2bd73845b073480b3474dd0578051d5070870ea58e59cfd45619a0c97d760ec",
+    "scripts/check-first20-typed-unknown-resolution.mjs": "644822a3e21762363c875aba96b7ef9c965168bd26f04099e1dad197eb5f27dc",
+    "scripts/check-first20-verifier-rejection.mjs": "ab75da954838c8d1c77718a64b5c8cfa8f5a6869ad25df11c68f5783e3b181bb",
+    "scripts/check-live-certified-approval.mjs": "2f3293881cd56647d3572fe14e2c7d98a4e6d1e41da059f3c1a005070db628dd",
+    "scripts/check-live-completion-matrix.mjs": "8bad2eb7315448fa56add9528e36751f84f5ebbefad8cb64152f5ebd5975a519",
+    "scripts/check-live-internal-repair.mjs": "1b8f0f118fdf6ee36d13d7ae550ee25341f9ea0d130d6cb5b15102cc029b0778",
+    "scripts/first20-semantic-corpus.mjs": "0e430cc0879873b46f3905a460ed7b80cd32e6794d77106c83ad5b0eddf2022a",
+    "scripts/probe-direct-module-acceptance.mjs": "6f353489ee434276a73b3e7e32c9695581386f852f97d3cc32ae2267b11928bd",
+    "scripts/probe-direct-module-conversations.mjs": "12eae7fd58f7481dc5fb680f7d87c820fbc3036df0a3906a9a521690d249f662",
+    "scripts/probe-production-college-call.mjs": "056581a916ddb78fd49d1f0923d256502dbee6f97a0f10d526795eb883264b9d",
+    "scripts/run-consumer-realtime-infrastructure-proof.mjs": "f99698fad9614a5b6c18522a39830f1ee01ee8586db4c0ca185341cd42f2f9e5",
+    "scripts/run-direct-module-planner-eval.mjs": "77e44bf1fa38ec9169eae8291bb2e5cd16b1746e56c9622faabb19687b87c743",
+    "scripts/run-first20-semantic-evals.mjs": "69950a77e2bdbd75452fab21e4a5dcecb3ae7dd72daa34bfdd548dbf96deaccc",
+    "worker/src/consumer/config.js": "191b38815385b5a40897b1959b588674933767b67c0d90ad0d1c8548ce2cba6f",
+    "worker/src/consumer/direct_module_identity.js": "4cb3c6fe3eb7575a5f4a53b7d4e6c87a19022987776c803b44a9305951a04126",
+    "worker/src/consumer/direct_module_planner.js": "001d0119acad87044728ccc58e291c510cc8191e79897882a1fa7d66fb8c9151",
+    "worker/src/consumer/live/execution_approval.js": "5e7964f165ee391abf062300dbfb1fc3016b5f9bb1d0a7a4781555d8646bd9d8",
+    "worker/src/consumer/live/live_session.js": "a9374913fcd5f39ce2207b6e78c3246d937735132c49379425fc3b9178f169ae",
+    "worker/src/consumer/live/typed_state.js": "2d5168180ce46eabceb00207f2f49d69338fbd971b79f9c6410229c10b1b99bc",
+    "worker/src/consumer/realtime_analysis.js": "d7d7dce4215143301e7d647b09595ad2e18c91d3296c22796a7b970faec8bc7a",
+    "worker/src/consumer/realtime_event_schema.js": "b3c94286559c18427de27ab6ed4068e35d3bae1f9f633d64a0ef933394df53fb",
+    "worker/src/consumer/realtime_repository.js": "3e124b2dbc0dd0c4ab845e78d42d81578038e159e37831231c6ccf39e7d0ae4f",
+    "worker/src/consumer/router.js": "78606fb2df01419c8891470af3f499467c79650ae9344b894146a154541e4dc3",
+    "worker/wrangler.toml": "4a77b048c00e13cd7f81c0dc8ecfaa66f015ff36c80093088635e4b4bde02c14"
+  },
+  "paidRuns": {
+    "paid-baseline": {
+      "sourceRoot": "/Users/geraldboylan/Documents/GitHub/Call-Template/diagnostics/first20/baseline/source",
+      "config": {
+        "allowedModules": [
+          "college_funding",
+          "house_purchase",
+          "liquidity_analysis",
+          "loan_analysis",
+          "mortgage_analysis",
+          "pension_projection",
+          "personal_balance_sheet"
+        ],
+        "modulePlannerModel": "gpt-5.6-luna",
+        "modulePlannerReasoningEffort": "low",
+        "modulePlannerTimeoutMs": 120000,
+        "modulePlannerPromptVersion": "direct-module-planner-v6",
+        "moduleVerifierPromptVersion": "direct-module-verifier-v3"
+      },
+      "passed": 6,
+      "count": 11,
+      "startedAt": "2026-09-06T12:25:46.515Z",
+      "finishedAt": "2026-09-06T12:28:59.931Z",
+      "summarySha256": "51c32395f4b642e1ca7c0bd1b0bdefbee1826cb2a89ede854881221e6bf4304f",
+      "cases": [
+        {
+          "id": "pbs-partners-distinct-correction-closure",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 18182,
+          "providerCalls": 2
+        },
+        {
+          "id": "liquidity-cash-boundary-question",
+          "moduleId": "liquidity_analysis",
+          "pass": true,
+          "elapsedMs": 41986,
+          "providerCalls": 4
+        },
+        {
+          "id": "mortgage-correction-hypothetical",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 16813,
+          "providerCalls": 2
+        },
+        {
+          "id": "loan-similar-names-change-mind",
+          "moduleId": "loan_analysis",
+          "pass": true,
+          "elapsedMs": 15011,
+          "providerCalls": 2
+        },
+        {
+          "id": "college-distinct-children-correction",
+          "moduleId": "college_funding",
+          "pass": true,
+          "elapsedMs": 16375,
+          "providerCalls": 2
+        },
+        {
+          "id": "pension-partners-contributions-correction",
+          "moduleId": "pension_projection",
+          "pass": false,
+          "elapsedMs": 19285,
+          "providerCalls": 1
+        },
+        {
+          "id": "house-joint-cash-ringfence-unknown-schemes",
+          "moduleId": "house_purchase",
+          "pass": false,
+          "elapsedMs": 22656,
+          "providerCalls": 1
+        },
+        {
+          "id": "pbs-open-collection-must-wait",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 10614,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-doubt-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 8340,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 7741,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-recovered",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 16391,
+          "providerCalls": 2
+        }
+      ]
+    },
+    "paid-current": {
+      "sourceRoot": "/Users/geraldboylan/Documents/GitHub/Call-Template",
+      "config": {
+        "allowedModules": [
+          "college_funding",
+          "house_purchase",
+          "liquidity_analysis",
+          "loan_analysis",
+          "mortgage_analysis",
+          "pension_projection",
+          "personal_balance_sheet"
+        ],
+        "modulePlannerModel": "gpt-5.6-luna",
+        "modulePlannerReasoningEffort": "low",
+        "modulePlannerTimeoutMs": 120000,
+        "modulePlannerPromptVersion": "direct-module-planner-v6",
+        "moduleVerifierPromptVersion": "direct-module-verifier-v3"
+      },
+      "passed": 7,
+      "count": 11,
+      "startedAt": "2026-09-06T19:37:54.464Z",
+      "finishedAt": "2026-09-06T19:41:37.054Z",
+      "summarySha256": "f75ca996953d0be1fc47314ae1bcbcf2e41395690fdfb595eb7eada4cd8b4c4f",
+      "cases": [
+        {
+          "id": "pbs-partners-distinct-correction-closure",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 20244,
+          "providerCalls": 2
+        },
+        {
+          "id": "liquidity-cash-boundary-question",
+          "moduleId": "liquidity_analysis",
+          "pass": true,
+          "elapsedMs": 19356,
+          "providerCalls": 2
+        },
+        {
+          "id": "mortgage-correction-hypothetical",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 24368,
+          "providerCalls": 2
+        },
+        {
+          "id": "loan-similar-names-change-mind",
+          "moduleId": "loan_analysis",
+          "pass": false,
+          "elapsedMs": 37526,
+          "providerCalls": 4
+        },
+        {
+          "id": "college-distinct-children-correction",
+          "moduleId": "college_funding",
+          "pass": true,
+          "elapsedMs": 17129,
+          "providerCalls": 2
+        },
+        {
+          "id": "pension-partners-contributions-correction",
+          "moduleId": "pension_projection",
+          "pass": false,
+          "elapsedMs": 17162,
+          "providerCalls": 1
+        },
+        {
+          "id": "house-joint-cash-ringfence-unknown-schemes",
+          "moduleId": "house_purchase",
+          "pass": false,
+          "elapsedMs": 23253,
+          "providerCalls": 1
+        },
+        {
+          "id": "pbs-open-collection-must-wait",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 7128,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-doubt-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 8766,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 10565,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-recovered",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 37064,
+          "providerCalls": 4
+        }
+      ]
+    },
+    "paid-final": {
+      "sourceRoot": "/Users/geraldboylan/Documents/GitHub/Call-Template",
+      "config": {
+        "allowedModules": [
+          "college_funding",
+          "house_purchase",
+          "liquidity_analysis",
+          "loan_analysis",
+          "mortgage_analysis",
+          "pension_projection",
+          "personal_balance_sheet"
+        ],
+        "modulePlannerModel": "gpt-5.6-luna",
+        "modulePlannerReasoningEffort": "low",
+        "modulePlannerTimeoutMs": 120000,
+        "modulePlannerPromptVersion": "direct-module-planner-v7",
+        "moduleVerifierPromptVersion": "direct-module-verifier-v4"
+      },
+      "passed": 7,
+      "count": 12,
+      "startedAt": "2026-09-06T19:48:45.888Z",
+      "finishedAt": "2026-09-06T20:00:05.087Z",
+      "summarySha256": "04b065df497c77de679d1babd2d2aa0af38dc79dc79407261d3c72916223f384",
+      "cases": [
+        {
+          "id": "pbs-partners-distinct-correction-closure",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 21079,
+          "providerCalls": 2
+        },
+        {
+          "id": "liquidity-cash-boundary-question",
+          "moduleId": "liquidity_analysis",
+          "pass": false,
+          "elapsedMs": 217501,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-correction-hypothetical",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 154538,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-explicit-joint-ownership-correction",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 47637,
+          "providerCalls": 4
+        },
+        {
+          "id": "loan-similar-names-change-mind",
+          "moduleId": "loan_analysis",
+          "pass": true,
+          "elapsedMs": 43573,
+          "providerCalls": 4
+        },
+        {
+          "id": "college-distinct-children-correction",
+          "moduleId": "college_funding",
+          "pass": true,
+          "elapsedMs": 19808,
+          "providerCalls": 2
+        },
+        {
+          "id": "pension-partners-contributions-correction",
+          "moduleId": "pension_projection",
+          "pass": false,
+          "elapsedMs": 61067,
+          "providerCalls": 4
+        },
+        {
+          "id": "house-joint-cash-ringfence-unknown-schemes",
+          "moduleId": "house_purchase",
+          "pass": false,
+          "elapsedMs": 57910,
+          "providerCalls": 2
+        },
+        {
+          "id": "pbs-open-collection-must-wait",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 9885,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-doubt-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 12188,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 13884,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-recovered",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 19938,
+          "providerCalls": 2
+        }
+      ]
+    },
+    "paid-v8": {
+      "sourceRoot": "/Users/geraldboylan/Documents/GitHub/Call-Template",
+      "config": {
+        "allowedModules": [
+          "college_funding",
+          "house_purchase",
+          "liquidity_analysis",
+          "loan_analysis",
+          "mortgage_analysis",
+          "pension_projection",
+          "personal_balance_sheet"
+        ],
+        "modulePlannerModel": "gpt-5.6-luna",
+        "modulePlannerReasoningEffort": "low",
+        "modulePlannerTimeoutMs": 30000,
+        "modulePlannerPromptVersion": "direct-module-planner-v8",
+        "moduleVerifierPromptVersion": "direct-module-verifier-v5"
+      },
+      "passed": 9,
+      "count": 12,
+      "startedAt": "2026-09-07T06:20:13.716Z",
+      "finishedAt": "2026-09-07T06:24:56.484Z",
+      "summarySha256": "6984440b62a7d3b59c63a6867da2f691d0dd451a664469d6f29de76711d88059",
+      "cases": [
+        {
+          "id": "pbs-partners-distinct-correction-closure",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 23414,
+          "providerCalls": 2
+        },
+        {
+          "id": "liquidity-cash-boundary-question",
+          "moduleId": "liquidity_analysis",
+          "pass": true,
+          "elapsedMs": 33072,
+          "providerCalls": 4
+        },
+        {
+          "id": "mortgage-correction-hypothetical",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 17092,
+          "providerCalls": 2
+        },
+        {
+          "id": "mortgage-explicit-joint-ownership-correction",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 15527,
+          "providerCalls": 2
+        },
+        {
+          "id": "loan-similar-names-change-mind",
+          "moduleId": "loan_analysis",
+          "pass": true,
+          "elapsedMs": 16425,
+          "providerCalls": 2
+        },
+        {
+          "id": "college-distinct-children-correction",
+          "moduleId": "college_funding",
+          "pass": true,
+          "elapsedMs": 16390,
+          "providerCalls": 2
+        },
+        {
+          "id": "pension-partners-contributions-correction",
+          "moduleId": "pension_projection",
+          "pass": false,
+          "elapsedMs": 40100,
+          "providerCalls": 3
+        },
+        {
+          "id": "house-joint-cash-ringfence-unknown-schemes",
+          "moduleId": "house_purchase",
+          "pass": false,
+          "elapsedMs": 49576,
+          "providerCalls": 2
+        },
+        {
+          "id": "pbs-open-collection-must-wait",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 8589,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-doubt-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 9217,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 9902,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-recovered",
+          "moduleId": "mortgage_analysis",
+          "pass": false,
+          "elapsedMs": 43441,
+          "providerCalls": 4
+        }
+      ]
+    },
+    "paid-v8-medium": {
+      "sourceRoot": "/Users/geraldboylan/Documents/GitHub/Call-Template",
+      "config": {
+        "allowedModules": [
+          "college_funding",
+          "house_purchase",
+          "liquidity_analysis",
+          "loan_analysis",
+          "mortgage_analysis",
+          "pension_projection",
+          "personal_balance_sheet"
+        ],
+        "modulePlannerModel": "gpt-5.6-luna",
+        "modulePlannerReasoningEffort": "medium",
+        "modulePlannerTimeoutMs": 30000,
+        "modulePlannerPromptVersion": "direct-module-planner-v8",
+        "moduleVerifierPromptVersion": "direct-module-verifier-v5"
+      },
+      "passed": 0,
+      "count": 2,
+      "startedAt": "2026-09-07T06:26:25.162Z",
+      "finishedAt": "2026-09-07T06:27:52.681Z",
+      "summarySha256": "609db434057eee11e2f5b14280ba8dad0fa400c65c7912c2b061d06493fd0bcb",
+      "cases": [
+        {
+          "id": "pension-partners-contributions-correction",
+          "moduleId": "pension_projection",
+          "pass": false,
+          "elapsedMs": 57505,
+          "providerCalls": 3
+        },
+        {
+          "id": "house-joint-cash-ringfence-unknown-schemes",
+          "moduleId": "house_purchase",
+          "pass": false,
+          "elapsedMs": 30005,
+          "providerCalls": 1
+        }
+      ]
+    },
+    "paid-v9": {
+      "sourceRoot": "/Users/geraldboylan/Documents/GitHub/Call-Template",
+      "config": {
+        "allowedModules": [
+          "college_funding",
+          "house_purchase",
+          "liquidity_analysis",
+          "loan_analysis",
+          "mortgage_analysis",
+          "pension_projection",
+          "personal_balance_sheet"
+        ],
+        "modulePlannerModel": "gpt-5.6-luna",
+        "modulePlannerReasoningEffort": "low",
+        "modulePlannerTimeoutMs": 30000,
+        "modulePlannerPromptVersion": "direct-module-planner-v9",
+        "moduleVerifierPromptVersion": "direct-module-verifier-v6"
+      },
+      "passed": 9,
+      "count": 12,
+      "startedAt": "2026-09-07T17:59:34.533Z",
+      "finishedAt": "2026-09-07T18:04:45.883Z",
+      "summarySha256": "e04c038040a6247d46269dfe773032ec472da2b7c77962c51a1aebf5da81263a",
+      "cases": [
+        {
+          "id": "pbs-partners-distinct-correction-closure",
+          "moduleId": "personal_balance_sheet",
+          "pass": false,
+          "elapsedMs": 16717,
+          "providerCalls": 1
+        },
+        {
+          "id": "liquidity-cash-boundary-question",
+          "moduleId": "liquidity_analysis",
+          "pass": true,
+          "elapsedMs": 21428,
+          "providerCalls": 2
+        },
+        {
+          "id": "mortgage-correction-hypothetical",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 36866,
+          "providerCalls": 4
+        },
+        {
+          "id": "mortgage-explicit-joint-ownership-correction",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 19666,
+          "providerCalls": 2
+        },
+        {
+          "id": "loan-similar-names-change-mind",
+          "moduleId": "loan_analysis",
+          "pass": true,
+          "elapsedMs": 24143,
+          "providerCalls": 2
+        },
+        {
+          "id": "college-distinct-children-correction",
+          "moduleId": "college_funding",
+          "pass": false,
+          "elapsedMs": 34950,
+          "providerCalls": 3
+        },
+        {
+          "id": "pension-partners-contributions-correction",
+          "moduleId": "pension_projection",
+          "pass": true,
+          "elapsedMs": 52509,
+          "providerCalls": 4
+        },
+        {
+          "id": "house-joint-cash-ringfence-unknown-schemes",
+          "moduleId": "house_purchase",
+          "pass": false,
+          "elapsedMs": 55778,
+          "providerCalls": 3
+        },
+        {
+          "id": "pbs-open-collection-must-wait",
+          "moduleId": "personal_balance_sheet",
+          "pass": true,
+          "elapsedMs": 11507,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-doubt-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 9971,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-must-wait",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 9000,
+          "providerCalls": 1
+        },
+        {
+          "id": "mortgage-acknowledged-unknown-recovered",
+          "moduleId": "mortgage_analysis",
+          "pass": true,
+          "elapsedMs": 18795,
+          "providerCalls": 2
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Provider responses are scripted in the160-case shared execution matrix.",
+    "Actual browser validation used a synthetic backend.",
+    "No real audio, physical mobile device, production network or independently renewed statutory-policy audit was performed.",
+    "The paid-v9 process loaded before the content-free error metadata/body-timeout correction; that correction has separate deterministic tests."
+  ],
+  "localChecks": {
+    "consumer": {
+      "pass": true,
+      "path": "diagnostics/first20/check-consumer-release-final.log",
+      "sha256": "c33c5b66b835e89a6758c192f43572ee651a3aa0c26b6119b132438c14b98bca"
+    },
+    "housePurchase": {
+      "pass": true,
+      "path": "diagnostics/first20/house-purchase-final.log",
+      "sha256": "5dcc9595d87bee85de8b4788a2b161a702bcab608c14e6a7279874e10ecd6717"
+    },
+    "workerHttp": {
+      "pass": true,
+      "path": "diagnostics/first20/http-final.log",
+      "sha256": "b1dbf78d5a9393c86e5fa3485bc8eb75b84d8cda69aa5f760eb3145789045189"
+    },
+    "frontend": {
+      "pass": true,
+      "path": "diagnostics/first20/frontend-final.log",
+      "sha256": "e426cff21287e6418a0fa3e7a818169684cbc27cbcf19989e0bf493e958d648d"
+    },
+    "staleCard": {
+      "pass": true,
+      "path": "diagnostics/first20/stale-card-after.log",
+      "sha256": "32cb3444dc9b8b1ea5bf6ac9c9d41988327a235f2dfd4e3df5bd7d51a6e92096"
+    },
+    "unknownRecovery": {
+      "pass": true,
+      "path": "diagnostics/first20/typed-unknown-final.log",
+      "sha256": "60ed0a1f66283acc78dcd893eb68e1f944471b149f4fc8729c9bf65da51542e4"
+    },
+    "providerDiagnostics": {
+      "pass": true,
+      "path": "diagnostics/first20/planner-diagnostics-final.log",
+      "sha256": "e2ef98afb2846506800f15cfd5557b1ac0956e17a3d81e10bafb7ef6c4b39419"
+    },
+    "staticBuild": {
+      "pass": true,
+      "path": "diagnostics/first20/build-final.log",
+      "sha256": "4654f96abdf1940b59fcc706aab36eb2be9a0e2ec79f277a1efbd12f00681650"
+    },
+    "workerDryRun": {
+      "pass": true,
+      "path": "diagnostics/first20/worker-dry-run-final.log",
+      "sha256": "513d4e38db871a8940b441b8f1d64602b27a497419b9e723bc10f84b3d299e19"
+    }
+  },
+  "executionParity": {
+    "cases": 160,
+    "speak": 80,
+    "type": 80,
+    "equalNativeResultPairs": 80,
+    "doubleExecutions": 0,
+    "approvedExecutedInputMismatches": 0,
+    "providerResponses": "scripted",
+    "includedIn": "localChecks.consumer"
+  }
+}

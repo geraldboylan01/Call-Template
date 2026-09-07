@@ -24,6 +24,7 @@ import {
   getRealtimeVoiceConsent,
   getSessionId,
   getStoredSessionAccess,
+  getStoredTypedMeeting,
   mergePayload,
   preparePendingSessionAccess,
   resetJourneyState,
@@ -296,8 +297,8 @@ const typedMeetingController = new TypedMeetingController({
     renderCurrentJourney({ focus: true });
     void refreshSavedSession({ keepView: true });
   },
-  onFailure: ({ message }) => {
-    renderUnavailable(appRoot, { message, liveMeetingFailure: true });
+  onFailure: ({ message, transcript }) => {
+    renderUnavailable(appRoot, { message, transcript, typedMeetingFailure: true });
     syncHeader();
   },
   onToast: (message, options) => showToast(message, options)
@@ -311,8 +312,14 @@ function enterTypedMeeting({ focus = false } = {}) {
 }
 
 function chooseLaneAndEnter({ focus = false } = {}) {
+  if (state.session?.aiProcessingConsented === false || state.session?.consent?.aiProcessing === false) {
+    renderAiAssistanceStopped();
+    if (focus) focusCurrentHeading();
+    return;
+  }
   const typedAvailable = typedMeetingController.isAvailable();
   const voiceAvailable = realtimeVoiceController.isMeetingAvailable();
+  if (typedAvailable && getStoredTypedMeeting()) return enterTypedMeeting({ focus });
   if (typedAvailable && !voiceAvailable) return enterTypedMeeting({ focus });
   if (typedAvailable && voiceAvailable) {
     setView('meeting');
@@ -325,6 +332,14 @@ function chooseLaneAndEnter({ focus = false } = {}) {
     return;
   }
   return enterMeetingOrFail({ focus });
+}
+
+function renderAiAssistanceStopped() {
+  renderUnavailable(appRoot, {
+    typedMeetingFailure: true,
+    message: 'AI assistance is off for this session, so your planning conversation has stopped. Your saved information and any completed results are still available. To use AI assistance again, begin a new session.'
+  });
+  syncHeader();
 }
 
 function enterMeetingOrFail({ focus = false } = {}) {
@@ -600,6 +615,7 @@ function resetToOnboarding({ error = '', toast = '' } = {}) {
     }
   });
   document.body.classList.remove('dialog-open');
+  void typedMeetingController.end('session_unavailable');
   clearSessionAccess();
   realtimeVoiceController.reset({ notifyServer: false });
   resetJourneyState();
@@ -923,8 +939,8 @@ function openPrivacyControls() {
   const aiActive = state.session?.aiProcessingConsented === true
     || state.session?.consent?.aiProcessing === true;
   privacyControlsCopy.textContent = aiActive
-    ? 'Stop AI assistance for this session. Future messages will use fixed questions and rules-only extraction; deterministic calculations remain available.'
-    : 'AI assistance is off for this session. Messages use fixed questions and rules-only extraction; deterministic calculations remain available.';
+    ? 'Stop AI assistance and end the planning conversation for this session. Your saved information and completed results remain available.'
+    : 'AI assistance is off for this session. Your planning conversation has stopped; saved information and completed results remain available.';
   withdrawAiConsentButton.hidden = !aiActive && Boolean(state.session);
   const realtimeVoiceActive = getRealtimeVoiceConsent()?.granted === true;
   withdrawRealtimeVoiceConsentButton.hidden = !realtimeVoiceActive;
@@ -979,15 +995,18 @@ async function handleWithdrawAiConsent() {
   withdrawAiConsentButton.textContent = 'Turning off…';
   try {
     const payload = await withdrawAiConsent(getSessionId());
+    void typedMeetingController.end('consent_withdrawn');
+    void realtimeVoiceController.end({ reason: 'consent_withdrawn' });
     setAiConsent(false);
     mergePayload(payload);
     closeDialog(privacyControlsDialog);
-    if (state.bootstrap?.enabled) {
+    if (describePlanningCompletion(state).ready) {
+      setView('results');
       renderCurrentJourney();
     } else {
-      renderProcessingPaused();
+      renderAiAssistanceStopped();
     }
-    showToast('AI assistance is off. Future messages will use rules-only questions.');
+    showToast('AI assistance is off. Your planning conversation has stopped.');
   } catch (error) {
     if (recoverUnavailableSession(error)) return;
     privacyControlsError.textContent = getErrorMessage(error);
@@ -1264,6 +1283,7 @@ async function handleHandoff(form) {
 }
 
 async function handleDeleteSession() {
+  await typedMeetingController.end('deletion');
   await realtimeVoiceController.end({ reason: 'deletion' });
   confirmDeleteButton.disabled = true;
   confirmDeleteButton.textContent = 'Deleting…';

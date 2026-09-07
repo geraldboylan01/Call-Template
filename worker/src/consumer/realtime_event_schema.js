@@ -290,7 +290,14 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
   'live.modules.planning_failed': event({
     code: NON_CONTENT_FIELD_TYPES.STRING,
     moduleId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
-    paths: NON_CONTENT_FIELD_TYPES.STRING
+    paths: NON_CONTENT_FIELD_TYPES.STRING,
+    plannerStage: NON_CONTENT_FIELD_TYPES.STRING,
+    model: NON_CONTENT_FIELD_TYPES.STRING,
+    promptVersion: NON_CONTENT_FIELD_TYPES.STRING,
+    providerStatus: NON_CONTENT_FIELD_TYPES.NULLABLE_INTEGER,
+    providerRequestId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
+    clientRequestId: NON_CONTENT_FIELD_TYPES.STRING,
+    latencyMs: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
   // A deterministic detector (L2/L3) cancelled a response mid-sentence.
   // A fast-lane figure no review could settle, now being put back to the

@@ -541,6 +541,14 @@ export function createTypedMeeting(sessionId, { requestId, activationId, control
   });
 }
 
+export function getTypedMeeting(sessionId, leaseId, { controlCapability, signal } = {}) {
+  return request(typedMeetingPath(sessionId, leaseId), {
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
+    signal
+  });
+}
+
 /**
  * Send one typed turn.
  *

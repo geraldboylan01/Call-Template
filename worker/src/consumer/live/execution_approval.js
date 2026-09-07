@@ -24,10 +24,19 @@ const CONDITION_OR_UNCERTAINTY = /\b(?:if|unless|provided|providing|assuming|bef
 const LINGUISTIC_QUESTION = /\b(?:why|what|which|who|where|how|whether|question)\b|^(?:can|could|would|should|will|did|does|do you|is it|is that|are you|have you)\b/;
 
 // An affirmative signal must be present; courtesy alone is never approval.
-const APPROVAL_SIGNAL = /\b(?:yes|yep|yeah|yup|sure|grand|perfect|absolutely|okay|ok|correct|confirmed|confirm|right|happy|sounds? good|go ahead|go for it|work away|fire away|please do|proceed|do it|run|generate|create)\b/;
+//
+// `ja`, `aye`, `ya` and `yah` are here because production put them here. On
+// 2026-09-05 a client approved a certified plan and Whisper -- transcribing
+// Irish-accented English with language 'en' -- returned "Ja.". The plan was
+// refused, the approval turn was then treated as ordinary evidence, and the
+// meeting died. None of these four can carry a correction, a figure, a
+// question or a hedge, and the whole-clause rule below still refuses anything
+// that does, so recognising them costs no safety: "ja but change the pension"
+// remains ambiguous because NEGATION_OR_CHANGE sees "but" and "change".
+const APPROVAL_SIGNAL = /\b(?:yes|yep|yeah|yup|ya|yah|ja|aye|sure|grand|perfect|absolutely|okay|ok|correct|confirmed|confirm|right|happy|sounds? good|go ahead|go for it|work away|fire away|please do|proceed|do it|run|generate|create)\b/;
 const TARGET = '(?:it|(?:the|that|this|those|these) (?:plan|modules|analysis|analyses)|modules|analyses)';
 const CLAUSE = new RegExp('^(?:'
-  + '(?:yes|yep|yeah|yup|sure|grand|perfect|absolutely|okay|ok|correct|confirmed)'
+  + '(?:yes|yep|yeah|yup|ya|yah|ja|aye|sure|grand|perfect|absolutely|okay|ok|correct|confirmed)'
   + '|(?:that is|thats|its|that sounds|it sounds|sounds|all) (?:correct|right|good)'
   + '|(?:i confirm|im happy with (?:that|it|the plan))'
   + '|(?:please )?(?:go ahead|go for it|work away|fire away|proceed|do it)'

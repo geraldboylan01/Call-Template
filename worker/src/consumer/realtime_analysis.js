@@ -228,20 +228,27 @@ export async function confirmAndRunRealtimeAnalysisPlan({
         confirmed.input.directModuleSnapshot,
         confirmed.input.verificationCertificate
       );
-      if (latest?.brief?.schemaVersion !== 'MeetingBriefV3'
-        || latest.brief.readyToConfirm !== true
-        || !frozenMeaning
-        || directModulePlanMeaningKey(latestSnapshot, latestCertificate) !== frozenMeaning
+      const certificateOptions = {
+        config,
+        calculationDateIso: profile.assumptions.calculationDateIso,
+        baseCurrency: profile.preferences.baseCurrency,
+        currentProfileContext: profile
+      };
+      // The plan the client approved is still the current understanding.
+      const latestStillCertifies = latest?.brief?.schemaVersion === 'MeetingBriefV3'
+        && latest.brief.readyToConfirm === true
+        && Boolean(frozenMeaning)
+        && directModulePlanMeaningKey(latestSnapshot, latestCertificate) === frozenMeaning
         // Equal figures alone do not prove that the delivered wording still
         // expresses the client's certainty and ownership. The latest audit
         // must cover that original read-back too.
-        || latestCertificate?.confirmationPromptHash !== confirmed.input.verificationCertificate?.confirmationPromptHash
-        || !(await verifyDirectModuleCertificate(env, latestCertificate, latestSnapshot, null, {
-          config,
-          calculationDateIso: profile.assumptions.calculationDateIso,
-          baseCurrency: profile.preferences.baseCurrency,
-          currentProfileContext: profile
-        }))) {
+        && latestCertificate?.confirmationPromptHash === confirmed.input.verificationCertificate?.confirmationPromptHash
+        && await verifyDirectModuleCertificate(env, latestCertificate, latestSnapshot, null, certificateOptions);
+
+      // The independent verifier may notice a correction the extractor missed.
+      // Identical candidate inputs and an older valid signature cannot override
+      // that newer rejection, even if the original read-back was delivered.
+      if (!latestStillCertifies) {
         throw new ConsumerError(409, 'module_snapshot_revision_conflict', 'The module inputs changed after the plan was prepared. Review and confirm them again.');
       }
     }

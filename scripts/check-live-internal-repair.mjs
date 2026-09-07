@@ -108,7 +108,7 @@ async function run(script) {
     const body = JSON.parse(request.body);
     const kind = body.text?.format?.name === 'module_planning_snapshot_v1' ? 'extract' : 'verify';
     const envelope = JSON.parse(body.input?.[1]?.content || '{}');
-    calls.push({ kind, findings: envelope.priorAuditFindings || null });
+    calls.push({ kind, findings: envelope.priorAuditFindings || null, proposal: envelope.proposedSnapshot || null });
     const next = script[calls.length - 1];
     assert.ok(next, `the script must cover model call ${calls.length} (${kind})`);
     assert.equal(next.kind, kind, `call ${calls.length} should be a ${next.kind}, not a ${kind}`);
@@ -154,8 +154,10 @@ const repaired = await run([
 assert.equal(repaired.calls.length, 4);
 ok(repaired.calls[2].findings, 'the repair extraction is given the audit findings');
 assert.deepEqual(repaired.calls[2].findings.omittedSupportedInformation, ['/annualOverpayment']);
-ok(/independent audit rejected your previous snapshot/.test(repaired.calls[2].findings.instruction),
+ok(/independent audit rejected the current failedProposal/.test(repaired.calls[2].findings.instruction),
   'the repair instruction tells the planner the findings are about its own work');
+assert.deepEqual(repaired.calls[2].findings.failedProposal, repaired.calls[1].proposal,
+  'the repair receives exactly the proposal the verifier rejected');
 ok(!repaired.calls[0].findings, 'the first extraction is never given findings');
 ok(Boolean(repaired.result.certificate), 'the repaired plan is certified');
 assert.equal(repaired.result.verification.verdict, 'pass');

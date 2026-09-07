@@ -52,9 +52,9 @@ import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
 import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
-import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
+import { runDirectModulePlanning, directModulePlanMeaningKey, verifyDirectModuleCertificate } from '../direct_module_planner.js';
 import { renderLiveAssistantText } from './live_text_channel.js';
-import { buildTypedCardIndex, buildTypedCardState } from './typed_projection.js';
+import { loadStoredTypedState, projectTypedBrief } from './typed_state.js';
 import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifyExecutionApproval } from './execution_approval.js';
@@ -479,6 +479,12 @@ export class ConsumerLiveSession {
       // believing it had a provider socket would try to send on one.
       this.textChannel = this.meta?.channel === 'typed';
       this.acknowledgedUnknown = await this.state.storage.get('acknowledgedUnknown') || [];
+      if (this.textChannel && this.meta) {
+        const stored = await getLatestRealtimeMeetingBrief(this.env, this.meta.sessionId, this.meta.leaseId).catch(() => null);
+        this.typedCardIndex = (await projectTypedBrief({
+          sessionId: this.meta.sessionId, leaseId: this.meta.leaseId, brief: stored?.brief || null
+        })).index;
+      }
       // THE PROPOSITION THE NEXT CLIENT TURN ANSWERS, ACROSS AN EVICTION.
       //
       // Reply binding is the typed lane's whole confirmation guarantee: the
@@ -1505,6 +1511,11 @@ export class ConsumerLiveSession {
       answersTurnId: turn.answersTurnId ?? null
     }).catch(() => null);
     if (storedTurn?.id) turn.storedTurnId = storedTurn.id;
+    // Bind a card acknowledgement to its durable client turn before scheduling
+    // the planner, so only a later evidenced answer can resolve it.
+    if (event.typed === true && storedTurn?.id) {
+      await this.recordAcknowledgedUnknown(event.unknownFieldId, storedTurn.id);
+    }
 
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
@@ -1595,14 +1606,10 @@ export class ConsumerLiveSession {
     const config = getConsumerConfig(this.env);
     if (this.closing) throw new ConsumerError(409, 'live_meeting_closing', 'This meeting is closing.');
 
-    // A "Not sure" click is recorded BEFORE the planner runs, so the very next
-    // pass already knows not to ask again. Recording it afterwards would let
-    // one more question through, which is the whole complaint.
-    await this.recordAcknowledgedUnknown(body?.unknownFieldId);
-
     const itemId = `msg_${crypto.randomUUID()}`;
     this.registerStoppedClientTurn({ item_id: itemId });
-    await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode });
+    await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode,
+      unknownFieldId: body?.unknownFieldId });
 
     // (1) above. A failed pass is not fatal: the turn is already durable and the
     // renderer falls back to the last good state rather than stalling.
@@ -1684,8 +1691,9 @@ export class ConsumerLiveSession {
       const brief = direct?.brief || null;
       // Built together, from the same brief, so an id the client returns can
       // only ever resolve against the card they were actually shown.
-      this.typedCardIndex = buildTypedCardIndex(brief);
-      return buildTypedCardState(brief);
+      const projection = await projectTypedBrief({ sessionId: this.meta.sessionId, leaseId: this.meta.leaseId, brief });
+      this.typedCardIndex = projection.index;
+      return projection.card;
     } catch (_error) {
       // A card is an enhancement. A projection fault must never cost the
       // client their reply, so the conversation simply carries on without it.
@@ -1702,16 +1710,16 @@ export class ConsumerLiveSession {
    * not recognise is ignored rather than rejected -- a stale card is an
    * ordinary race, not an attack, and the client's message still goes through.
    */
-  async recordAcknowledgedUnknown(fieldId) {
+  async recordAcknowledgedUnknown(fieldId, sourceTurnId) {
     const entry = this.typedCardIndex.get(String(fieldId || ''));
     if (!entry) return;
-    const exists = this.acknowledgedUnknown.some(
+    const existing = this.acknowledgedUnknown.find(
       (item) => item.moduleId === entry.moduleId && item.path === entry.path
     );
-    if (exists) return;
+    if (existing && existing.sourceTurnId === sourceTurnId) return;
     this.acknowledgedUnknown = [
-      ...this.acknowledgedUnknown,
-      { moduleId: entry.moduleId, path: entry.path, acknowledgedAt: Date.now() }
+      ...this.acknowledgedUnknown.filter((item) => item !== existing),
+      { moduleId: entry.moduleId, path: entry.path, sourceTurnId: sourceTurnId || null, acknowledgedAt: Date.now() }
     ].slice(-MAX_ACKNOWLEDGED_UNKNOWN);
     await this.state.storage.put('acknowledgedUnknown', this.acknowledgedUnknown);
     await appendRealtimeEvent(this.env, {
@@ -1807,8 +1815,7 @@ export class ConsumerLiveSession {
     readbackResponse.status = 'completed';
     await this.finalizeTypedAssistantTurn(
       readbackResponse,
-      String(candidate.confirmationPrompt),
-      { readback: true }
+      String(candidate.confirmationPrompt)
     );
     return String(candidate.confirmationPrompt);
   }
@@ -1821,7 +1828,7 @@ export class ConsumerLiveSession {
    * redundant-question guard, because the typed lane has already awaited the
    * planner and cannot be asking about state it has not seen.
    */
-  async finalizeTypedAssistantTurn(response, text, { readback = false } = {}) {
+  async finalizeTypedAssistantTurn(response, text) {
     const transcript = String(text || '').trim().slice(0, MAX_ASSISTANT_TRANSCRIPT);
     if (!transcript) return null;
     response.assistantTranscript = transcript;
@@ -1844,7 +1851,12 @@ export class ConsumerLiveSession {
       await this.state.storage.put('lastCompletedAssistantTurnId', stored.id).catch(() => {});
       response.storedAssistantTurnId = stored.id;
     }
-    if (readback) await this.maybeArmDirectConfirmation(response);
+    // Ordinary typed replies can continue a delivered offer too. Voice calls
+    // this for every completed assistant turn; skipping it here lost the reply
+    // binding after a clarification or execution receipt, so the next approval
+    // was refused despite answering the same plan. The shared method records
+    // continuation turn ids without inventing new read-back delivery evidence.
+    await this.maybeArmDirectConfirmation(response);
     const cause = response.causeItemId ? this.clientTurnsByItemId.get(response.causeItemId) : null;
     if (!cause || cause.status !== 'pending') {
       this.scheduleResponseReview(response, cause?.status === 'completed' ? cause.transcript : '');
@@ -2311,6 +2323,24 @@ export class ConsumerLiveSession {
             frozenPlanId: this.directConfirmationOffer?.planId || null,
             acknowledgedUnknown: this.acknowledgedUnknown
           });
+          if (config.modulePlannerMode === 'apply'
+            && planned.verification?.verdict === 'pass'
+            && planned.snapshot?.resolvedAcknowledgedUnknown?.length
+            && await verifyDirectModuleCertificate(this.env, planned.certificate, planned.snapshot, null, {
+              config,
+              calculationDateIso: context.profile.assumptions.calculationDateIso,
+              baseCurrency: context.profile.preferences.baseCurrency,
+              currentProfileContext: context.profile
+            })) {
+            // The verifier approved these later answers. Match the original
+            // acknowledgement too, so an in-flight pass cannot erase a newer
+            // "not sure" action for the same requirement.
+            this.acknowledgedUnknown = this.acknowledgedUnknown.filter((entry) =>
+              !planned.snapshot.resolvedAcknowledgedUnknown.some((resolved) =>
+                resolved.moduleId === entry.moduleId && resolved.path === entry.path
+                  && resolved.sourceTurnId === entry.sourceTurnId));
+            await this.state.storage.put('acknowledgedUnknown', this.acknowledgedUnknown);
+          }
           // This full transcript snapshot settles every obligation at or before
           // its watermark. A turn arriving during the call remains and is the
           // only additional pass the drain will run.
@@ -2325,6 +2355,9 @@ export class ConsumerLiveSession {
                 && Boolean(planned.brief.verificationCertificate?.signature)
                 && directModulePlanMeaningKey(planned.snapshot, planned.brief.verificationCertificate)
                   === offer.semanticIdentity;
+              // A fresh rejection may catch a correction, owner or uncertainty
+              // the extractor missed. Only a newly certified equivalent plan
+              // can preserve an existing offer; candidate equality cannot.
               if (unchanged && planned.brief.verificationCertificate.confirmationPromptHash
                 === offer.confirmationPromptHash) {
                 offer.reviewStatus = 'settled';
@@ -2370,6 +2403,7 @@ export class ConsumerLiveSession {
             // module id are structural, so they carry no transcript content and
             // no figure -- anything that is not a pointer is dropped here.
             payload: {
+              ...error?.plannerDiagnostics,
               code: String(error?.code || 'module_planner_failed'),
               moduleId: String(error?.moduleId || '') || null,
               paths: ConsumerLiveSession.pointerPaths(error?.details).slice(0, 40).join(' ')
@@ -3901,7 +3935,11 @@ export class ConsumerLiveSession {
       config: getConsumerConfig(this.env),
       sessionId: this.meta.sessionId
     }));
-    return { state: projection, violationCount: this.violationCount };
+    const typed = this.textChannel ? await loadStoredTypedState({
+      env: this.env, sessionId: this.meta.sessionId, leaseId: this.meta.leaseId,
+      restoreCardIndex: (index) => { this.typedCardIndex = index; }
+    }) : {};
+    return { state: projection, violationCount: this.violationCount, ...typed };
   }
 
   /* --------------------------------------------------------------- metering */

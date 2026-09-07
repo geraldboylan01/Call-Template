@@ -432,10 +432,10 @@ export async function createRealtimeLease(
         response_count, tool_call_count, estimated_cost_eur_micros,
         close_reason, error_code, created_at, activated_at,
         last_active_at, ended_at, control_token_hash_b64u,
-        invite_jti_hash_b64u, activation_id_hash_b64u
+        invite_jti_hash_b64u, activation_id_hash_b64u, channel
       )
       SELECT ?, ?, ?, 'openai', NULL, NULL, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?, ?
+             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?, ?, ?
       WHERE EXISTS (
         SELECT 1
         FROM consumer_sessions AS sessions
@@ -485,6 +485,7 @@ export async function createRealtimeLease(
       controlTokenHashB64u,
       invite.jti_hash_b64u,
       activationIdHashB64u,
+      typed ? 'typed' : 'voice',
       providerCostEntry.id,
       sessionRow.id,
       config.realtimeNoticeId,
@@ -500,7 +501,7 @@ export async function createRealtimeLease(
     return row;
   } catch (error) {
     if (error instanceof ConsumerError) throw error;
-    const active = await getActiveRealtimeLease(env, sessionRow.id).catch(() => null);
+    const active = await (typed ? getActiveTypedLease : getActiveRealtimeLease)(env, sessionRow.id).catch(() => null);
     if (active) {
       throw new ConsumerError(409, 'realtime_call_active', 'A live voice call is already active for this planning session.');
     }

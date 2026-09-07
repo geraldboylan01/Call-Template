@@ -3,7 +3,8 @@ const STORAGE_KEYS = Object.freeze({
   credential: 'planeir.consumer.credential.v1',
   aiConsent: 'planeir.consumer.ai-consent.v1',
   analysisPlanId: 'planeir.consumer.analysis-plan-id.v1',
-  analysisPlanNonce: 'planeir.consumer.analysis-plan-nonce.v1'
+  analysisPlanNonce: 'planeir.consumer.analysis-plan-nonce.v1',
+  typedMeeting: 'planeir.consumer.typed-meeting.v1'
 });
 const INVITE_STORAGE_KEY = 'planeir.consumer.invite.v1';
 
@@ -572,6 +573,33 @@ export function getSessionId() {
 
 export function getSessionCredential() {
   return storageGet(STORAGE_KEYS.credential).trim();
+}
+
+/** Private control details stay in the same tab as the session credential. */
+export function getStoredTypedMeeting(sessionId = getSessionId()) {
+  try {
+    const saved = JSON.parse(storageGet(STORAGE_KEYS.typedMeeting) || 'null');
+    return saved?.sessionId === sessionId
+      && /^rt_control_[A-Za-z0-9_-]{20,80}$/.test(saved.controlCapability || '')
+      && (/^rt_[A-Za-z0-9_-]{20,80}$/.test(saved.leaseId || '')
+        || (/^typed_[A-Za-z0-9_-]{20,80}$/.test(saved.requestId || '')
+          && /^rt_activation_[A-Za-z0-9_-]{20,80}$/.test(saved.activationId || '')))
+      ? saved : null;
+  } catch (_error) { return null; }
+}
+
+export function storeTypedMeeting(sessionId, { leaseId, controlCapability, requestId, activationId }) {
+  try {
+    getSessionStorage()?.setItem(STORAGE_KEYS.typedMeeting, JSON.stringify({ sessionId, leaseId, controlCapability, requestId, activationId }));
+  } catch (_error) {
+    // The current meeting still works when tab storage becomes unavailable.
+  }
+}
+
+export function clearTypedMeeting(sessionId, leaseId, activationId) {
+  const saved = getStoredTypedMeeting(sessionId);
+  if (saved && (!leaseId || saved.leaseId === leaseId)
+    && (!activationId || saved.activationId === activationId)) storageRemove(STORAGE_KEYS.typedMeeting);
 }
 
 export function storeAnalysisPlanNonce(planId, planNonce) {

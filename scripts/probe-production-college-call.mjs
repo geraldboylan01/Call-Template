@@ -54,8 +54,8 @@ const config = {
   modulePlannerModel: process.env.CONSUMER_MODULE_PLANNER_MODEL || 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 180_000,
-  modulePlannerPromptVersion: 'direct-module-planner-v6',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v3'
+  modulePlannerPromptVersion: 'direct-module-planner-v9',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v6'
 };
 const currentProfileContext = {
   profileId: 'production-college-replay',

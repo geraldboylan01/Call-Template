@@ -39,6 +39,13 @@ jobs:
       - name: Check success takeover lifecycle
         run: npm run check:success-animation
 
+      - name: Check consumer entry, recovery and results before publishing
+        run: |
+          node scripts/check-first20-frontend.mjs
+          node scripts/check-live-completion-frontend.mjs
+          npm run check:consumer-voice-frontend
+          npm run check:consumer-entry-contract
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

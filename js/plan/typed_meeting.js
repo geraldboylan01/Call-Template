@@ -17,23 +17,20 @@ import {
   createTypedMeeting,
   endTypedMeeting,
   getSession,
+  getTypedMeeting,
   sendTypedMessage
 } from './api.js';
 import { composeCardTurn } from '../planning/module_input_display.js';
 import { describePlanningCompletion } from './completion.js';
-import { getSessionId, mergePayload, state } from './store.js';
+import { clearTypedMeeting, getSessionId, getStoredTypedMeeting, mergePayload, state, storeTypedMeeting } from './store.js';
 
 const MAX_MESSAGE_CHARACTERS = 4_000;
 
-/**
- * How hard the client's results are chased after the plan has run.
- *
- * Bounded, and short: the analysis is already persisted, so this is only
- * covering a transient read. Four attempts over a couple of seconds outlasts a
- * blip without leaving a page quietly polling forever.
- */
-const MAX_COMPLETION_ATTEMPTS = 4;
-const COMPLETION_RETRY_MS = 600;
+// One status request every two seconds only while execution is pending. The
+// session endpoint is read when results exist, to verify their exact identity.
+const COMPLETION_RETRY_MS = 2_000;
+const TERMINAL_MEETING_STATUSES = new Set(['ended', 'expired', 'failed', 'budget_exhausted', 'completed', 'cancelled']);
+const RUNNING_PLAN_STATUSES = new Set(['approved', 'executing', 'pending', 'running']);
 
 function newPrivateId(prefix) {
   const bytes = new Uint8Array(18);
@@ -57,6 +54,7 @@ export class TypedMeetingController {
     this.onFailure = onFailure || (() => {});
     this.onToast = onToast || (() => {});
     this.leaseId = '';
+    this.sessionId = '';
     this.controlCapability = '';
     this.active = false;
     this.sending = false;
@@ -65,7 +63,9 @@ export class TypedMeetingController {
     this.awaitingExecution = false;
     this.abandoned = false;
     this.startPromise = null;
-    this.completionAttempts = 0;
+    this.generation = 0;
+    this.completionTimer = null;
+    this.completionPromise = null;
     this.root = null;
     this.cardNode = null;
     this.cardEntries = new Map();
@@ -92,34 +92,65 @@ export class TypedMeetingController {
    * concurrent callers await the same open rather than racing it.
    */
   async start(root) {
-    if (this.startPromise) return this.startPromise;
-    if (this.active) return undefined;
+    if (this.startPromise) {
+      if (!this.abandoned && this.sessionId === getSessionId()) return this.startPromise;
+      // A late create response still has to be closed. Reopening first could
+      // replay that lease and then have its predecessor close the new screen.
+      await this.startPromise;
+      return this.start(root);
+    }
+    if (this.active && this.sessionId === getSessionId()) return undefined;
+    this.stopPolling();
+    const generation = ++this.generation;
+    this.sessionId = getSessionId();
+    this.leaseId = '';
+    this.controlCapability = '';
     this.abandoned = false;
-    this.startPromise = this.openMeeting(root);
+    this.active = false;
+    this.sending = false;
+    this.navigated = false;
+    this.awaitingExecution = false;
+    this.transcript = [];
+    this.cardNode = null;
+    this.cardEntries = new Map();
+    this.carriedCardValues = new Map();
+    const starting = this.openMeeting(root, generation);
+    this.startPromise = starting;
     try {
-      return await this.startPromise;
+      return await starting;
     } finally {
-      this.startPromise = null;
+      if (this.startPromise === starting) this.startPromise = null;
     }
   }
 
-  async openMeeting(root) {
+  isCurrent(generation) {
+    return generation === this.generation && !this.abandoned && this.sessionId === getSessionId();
+  }
+
+  async openMeeting(root, generation) {
     this.root = root;
     this.renderShell();
     this.setStatus('Starting your planning session…');
-    const sessionId = getSessionId();
+    const sessionId = this.sessionId;
     if (!sessionId) {
       this.onFailure({ message: 'The planning session could not be found. Please try again.' });
       return;
     }
     try {
-      const meeting = await createTypedMeeting(sessionId, {
+      const saved = getStoredTypedMeeting(sessionId);
+      const opening = saved || {
         requestId: newPrivateId('typed'),
         activationId: newPrivateId('rt_activation'),
         controlCapability: newPrivateId('rt_control')
-      });
+      };
+      // Save BEFORE POST: a lost response must replay the original reservation
+      // instead of abandoning its control capability and opening another one.
+      if (!saved) storeTypedMeeting(sessionId, opening);
+      const meeting = saved?.leaseId
+        ? await getTypedMeeting(sessionId, saved.leaseId, saved)
+        : await createTypedMeeting(sessionId, opening);
       const leaseId = String(meeting.leaseId || '');
-      const controlCapability = String(meeting.controlCapability || '');
+      const controlCapability = String(opening.controlCapability || meeting.controlCapability || '');
       if (!leaseId || !controlCapability) {
         throw new Error('The typed meeting did not open.');
       }
@@ -128,18 +159,28 @@ export class TypedMeetingController {
       // A meeting that arrives after they have gone must be closed, not shown.
       // Leaving it open holds their whole budget against a conversation nobody
       // is having, and showing it reopens a screen they deliberately left.
-      if (this.abandoned) {
+      if (!this.isCurrent(generation)) {
         await endTypedMeeting(sessionId, leaseId, { controlCapability }).catch(() => {});
-        this.active = false;
+        clearTypedMeeting(sessionId, saved?.leaseId, opening.activationId);
         return;
       }
       this.leaseId = leaseId;
       this.controlCapability = controlCapability;
       this.active = true;
+      storeTypedMeeting(sessionId, { leaseId, controlCapability });
       this.setStatus('');
-      if (meeting.assistantText) this.pushTurn('assistant', meeting.assistantText);
+      if (Array.isArray(meeting.turns)) this.restoreTurns(meeting.turns);
+      else if (meeting.assistantText) this.pushTurn('assistant', meeting.assistantText);
+      this.renderCard(meeting.card);
+      await this.observeMeeting(meeting, generation);
       this.focusComposer();
     } catch (error) {
+      if (!this.isCurrent(generation)) return;
+      if (this.active && ![401, 403, 404, 410].includes(error?.status)) {
+        this.setStatus('Reconnecting to your planning session…');
+        this.scheduleCompletion(generation);
+        return;
+      }
       this.onFailure({
         message: error?.message || 'Planéir could not start your typed meeting. Please try again.'
       });
@@ -151,11 +192,19 @@ export class TypedMeetingController {
     // close yet, and `openMeeting` closes the one that arrives late.
     this.abandoned = true;
     this.active = false;
-    if (!this.leaseId) return;
-    const { leaseId, controlCapability } = this;
+    this.generation += 1;
+    this.sending = false;
+    this.stopPolling();
+    if (!this.leaseId) {
+      clearTypedMeeting(this.sessionId);
+      return;
+    }
+    const { sessionId, leaseId, controlCapability } = this;
     this.leaseId = '';
+    this.controlCapability = '';
+    clearTypedMeeting(sessionId, leaseId);
     try {
-      await endTypedMeeting(getSessionId(), leaseId, { controlCapability });
+      await endTypedMeeting(sessionId, leaseId, { controlCapability });
     } catch (_error) {
       // Ending is best effort. The lease expires on its own, and telling the
       // client their finished meeting failed to finish would be noise.
@@ -175,7 +224,8 @@ export class TypedMeetingController {
    */
   async send(text, { inputMode = 'text', unknownFieldId = '' } = {}) {
     const message = String(text || '').trim().slice(0, MAX_MESSAGE_CHARACTERS);
-    if (!message || !this.active || this.sending) return;
+    if (!message || !this.active || this.sending || this.sessionId !== getSessionId()) return;
+    const generation = this.generation;
     this.sending = true;
     this.pushTurn('user', message);
     this.setComposerValue('');
@@ -185,7 +235,7 @@ export class TypedMeetingController {
     // rather than being asked to retype a correction they already made.
     const draft = message;
     try {
-      const result = await sendTypedMessage(getSessionId(), this.leaseId, {
+      const result = await sendTypedMessage(this.sessionId, this.leaseId, {
         text: message,
         inputMode,
         unknownFieldId,
@@ -195,15 +245,17 @@ export class TypedMeetingController {
       //
       // Everything below writes to a screen they are no longer on, and
       // `checkCompletion` would navigate them into a session they closed.
-      if (this.abandoned) return;
+      if (!this.isCurrent(generation)) return;
       if (result.assistantText) this.pushTurn('assistant', result.assistantText, { readback: result.readback });
       // A read-back is the ONLY moment a plan can start running, so it is the
       // only moment worth watching for results. Polling the session after every
       // turn would be a request per sentence for an event that happens once.
       if (result.readback === true) this.awaitingExecution = true;
       else if (this.awaitingExecution) await this.checkCompletion();
+      if (!this.isCurrent(generation)) return;
       this.renderCard(result.card);
     } catch (error) {
+      if (!this.isCurrent(generation)) return;
       // The turn is already durable on the server whatever happened here, so
       // the client is told the reply failed -- never that their answer was lost.
       if (!this.composerNode?.value) this.setComposerValue(draft);
@@ -211,10 +263,15 @@ export class TypedMeetingController {
         error?.message || 'That did not send. Your answers are safe — please try again.',
         { tone: 'error' }
       );
+      // Approval may already have executed even when its HTTP reply was lost.
+      // Recover its durable status instead of requiring another approval turn.
+      if (this.awaitingExecution) await this.checkCompletion();
     } finally {
-      this.sending = false;
-      this.setThinking(false);
-      this.focusComposer();
+      if (this.isCurrent(generation)) {
+        this.sending = false;
+        this.setThinking(false);
+        this.focusComposer();
+      }
     }
   }
 
@@ -228,26 +285,101 @@ export class TypedMeetingController {
    * endpoint carries.
    */
   async checkCompletion() {
-    if (this.navigated || this.abandoned) return;
+    if (this.navigated || this.abandoned || this.sessionId !== getSessionId()) return;
+    if (this.completionPromise) return this.completionPromise;
+    const generation = this.generation;
+    const checking = this.pollMeeting(generation);
+    this.completionPromise = checking;
+    try { await checking; }
+    finally { if (this.completionPromise === checking) this.completionPromise = null; }
+  }
+
+  stopPolling() {
+    window.clearTimeout(this.completionTimer);
+    this.completionTimer = null;
+    this.completionPromise = null;
+  }
+
+  scheduleCompletion(generation) {
+    if (!this.isCurrent(generation) || this.navigated || this.completionTimer) return;
+    this.completionTimer = window.setTimeout(() => {
+      this.completionTimer = null;
+      if (this.isCurrent(generation)) void this.checkCompletion();
+    }, COMPLETION_RETRY_MS);
+  }
+
+  async pollMeeting(generation) {
     try {
-      mergePayload(await getSession(getSessionId()));
-    } catch (_error) {
-      // A FAILED READ IS NOT A FAILED PLAN, AND THE CLIENT HAS NOTHING LEFT TO
-      // SAY. They approved the plan; it is running; there is no next turn to
-      // piggyback a retry on. Giving up here meant one transient 503 cost them
-      // their results entirely -- the analysis had run and they never saw it.
-      this.completionAttempts += 1;
-      if (this.completionAttempts <= MAX_COMPLETION_ATTEMPTS) {
-        setTimeout(() => { void this.checkCompletion(); }, COMPLETION_RETRY_MS);
+      const meeting = await getTypedMeeting(this.sessionId, this.leaseId, { controlCapability: this.controlCapability });
+      if (!this.isCurrent(generation)) return;
+      await this.observeMeeting(meeting, generation);
+    } catch (error) {
+      if (!this.isCurrent(generation)) return;
+      if ([401, 403, 404, 410].includes(error?.status)) {
+        this.active = false;
+        this.onFailure({ message: error.message });
+        return;
       }
+      this.setStatus('Reconnecting to your planning session…');
+      this.scheduleCompletion(generation);
+    }
+  }
+
+  async observeMeeting(meeting, generation) {
+    if (!this.isCurrent(generation)) return;
+    const execution = meeting.realtimeExecution;
+    const status = String(execution?.status || meeting.analysisPlan?.status || '');
+    if (['complete', 'partial'].includes(status)) {
+      const payload = await getSession(this.sessionId);
+      if (!this.isCurrent(generation)) return;
+      const completion = describePlanningCompletion(payload, execution || meeting.analysisPlan);
+      if (completion.ready) {
+        mergePayload(payload);
+        this.navigated = true;
+        this.awaitingExecution = false;
+        await this.end('completed');
+        // end invalidates the meeting, but a new session may also have begun
+        // while its DELETE was in flight.
+        if (this.generation === generation + 1 && this.sessionId === getSessionId()) this.onNavigate('results');
+        return;
+      }
+      this.setStatus('Your results are being saved…');
+      this.scheduleCompletion(generation);
       return;
     }
-    const completion = describePlanningCompletion(state, null);
-    if (!completion?.kind) return;
-    this.navigated = true;
-    this.awaitingExecution = false;
-    await this.end('completed');
-    this.onNavigate('results');
+    const meetingStatus = String(meeting.status || meeting.realtimeLease?.status || '');
+    if (TERMINAL_MEETING_STATUSES.has(meetingStatus) || ['failed', 'cancelled'].includes(status)) {
+      this.active = false;
+      this.stopPolling();
+      this.onFailure({ message: 'Your meeting has ended before results were ready. Your saved answers are still available.', transcript: this.transcriptForCopy() });
+      return;
+    }
+    if (Array.isArray(meeting.turns)) this.restoreTurns(meeting.turns);
+    if (meeting.card) this.renderCard(meeting.card);
+    if (RUNNING_PLAN_STATUSES.has(status)) {
+      this.awaitingExecution = true;
+      this.setStatus('Planéir is preparing your results…');
+      this.scheduleCompletion(generation);
+    } else if (status) {
+      // A correction may have returned the plan to collection or confirmation.
+      this.awaitingExecution = status === 'awaiting_confirmation';
+      this.stopPolling();
+      this.setStatus('');
+    } else if (this.awaitingExecution) {
+      this.scheduleCompletion(generation);
+    }
+  }
+
+  restoreTurns(turns) {
+    if (!Array.isArray(turns)) return;
+    const normalized = turns.filter((turn) => ['user', 'assistant'].includes(turn.role))
+      .map((turn) => ({ role: turn.role, text: String(turn.text || turn.transcript || '').trim() }))
+      .filter((turn) => turn.text);
+    if (JSON.stringify(normalized) === JSON.stringify(this.transcript)) return;
+    this.transcript = [];
+    this.threadNode?.replaceChildren();
+    this.cardNode = null;
+    for (const turn of normalized) this.pushTurn(turn.role, turn.text);
   }
 
   /* --------------------------------------------------------------- surface */
@@ -287,7 +419,7 @@ export class TypedMeetingController {
     // Enter sends; Shift+Enter is a new line. A planning answer is usually one
     // line, and reaching for a button after every sentence is friction.
     this.composerNode.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
         void this.send(this.composerNode.value);
       }
@@ -472,7 +604,7 @@ export class TypedMeetingController {
       // The id tells the server to stop asking. The sentence tells the planner
       // what happened. Both are needed: one ends the loop, the other keeps the
       // transcript an honest record of the conversation.
-      { inputMode: 'form', unknownFieldId: field.id }
+      { inputMode: 'form', unknownFieldId: field.unknownFieldId || field.id }
     ));
     wrap.append(unsure);
 
@@ -507,7 +639,8 @@ export class TypedMeetingController {
   setThinking(active) {
     if (this.sendNode) this.sendNode.disabled = active === true;
     if (this.composerNode) this.composerNode.readOnly = active === true;
-    this.setStatus(active ? 'Planéir is thinking…' : '');
+    if (active) this.setStatus('Planéir is thinking…');
+    else if (this.statusNode?.textContent === 'Planéir is thinking…') this.setStatus('');
   }
 
   setStatus(text) {

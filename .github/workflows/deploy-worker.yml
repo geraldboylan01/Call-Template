@@ -102,8 +102,8 @@ jobs:
       # off, and the builder below resolves this back to off whenever Realtime
       # itself is not active.
       CONSUMER_BETA_MODULE_PLANNER_MODE: ${{ vars.CONSUMER_MODULE_PLANNER_MODE || 'off' }}
-      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v6"
-      CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v3"
+      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v9"
+      CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v6"
       # Phase 3 semantic turn reading: a second, independent reading of each
       # reviewed client turn, where agreement between the two readers is what
       # authorises writing a figure.
@@ -804,8 +804,8 @@ jobs:
                 CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
                 CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
                 CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v3'],
-                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v6'],
-                CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION', 'direct-module-verifier-v3'],
+                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v9'],
+                CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION', 'direct-module-verifier-v6'],
                 CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v13'],
                 CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1'],
                 CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
@@ -922,6 +922,12 @@ jobs:
             'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
             'CONSUMER_LIVE_VOICE_ENABLED',
             'CONSUMER_REALTIME_VOICE_ENABLED',
+            // The typed lane is a conversation layer too, and this list missed
+            // it. A failed activation left the rolled-back Worker still
+            // carrying CONSUMER_TYPED_LANE_ENABLED = "true", dead only because
+            // the planner below is forced off -- safe by accident rather than
+            // by this list, which is what the comment above promises.
+            'CONSUMER_TYPED_LANE_ENABLED',
             'CONSUMER_HANDOFF_ENABLED'
           ].reduce((source, flag) => replaceTomlString(source, flag, 'false'), generatedSource);
           bootstrapSource = replaceTomlString(
@@ -946,6 +952,9 @@ jobs:
           }
           if (!/^CONSUMER_MODULE_PLANNER_MODE\s*=\s*"off"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep direct module planning disabled.');
+          }
+          if (!/^CONSUMER_TYPED_LANE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep the typed conversational lane disabled.');
           }
           fs.writeFileSync(bootstrapPath, bootstrapSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           NODE

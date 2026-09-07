@@ -37,7 +37,7 @@ export function directModulePlanMeaningKey(snapshot, certificate) {
       'profileRevision', 'moduleContractVersions', 'playbookVersion',
       'policyVersion', 'policyHash', 'assumptionsVersion', 'irelandRulesVersion',
       'calculationDateIso', 'baseCurrency', 'extractorPromptVersion',
-      'verifierPromptVersion', 'model'
+      'verifierPromptVersion', 'model', 'acknowledgedUnknownHash'
     ].map((key) => [key, certificate[key] ?? null]))
   });
 }
