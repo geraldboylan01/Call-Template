@@ -553,6 +553,12 @@ export function getConsumerConfig(env) {
     // blocking the ordinary five-call pass, or too small, letting a repair
     // start and then starving the verification that must follow it.
     modulePlannerRepairFloorMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_REPAIR_FLOOR_MS, 20_000, 5_000, 120_000),
+    // Provider calls one blocking operation may spend, across every stage and
+    // every pass inside it. Five is the per-pass ceiling of extract, structural
+    // repair, verify, semantic repair, verify -- and it is now the REQUEST's
+    // ceiling too, which is what I previously described it as while a renderer
+    // get_state could quietly start a second chain and reach seven.
+    modulePlannerCallAllowance: boundedInteger(env.CONSUMER_MODULE_PLANNER_CALL_ALLOWANCE, 5, 2, 20),
     modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v10',
     moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v8',
     // Additive and fail-closed: an unset or mistyped value preserves the

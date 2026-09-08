@@ -220,32 +220,56 @@ function outputText(payload) {
   return '';
 }
 
-async function structuredResponse({ env, config, systemPrompt, name, schema, body, deadlineAt = null }) {
+async function structuredResponse({ env, config, systemPrompt, name, schema, body, operation = null }) {
   const clientRequestId = crypto.randomUUID();
   const startedAt = Date.now();
-  const controller = new AbortController();
-  // THE TURN'S REMAINING TIME IS ALSO THIS CALL'S TIME. Without a deadline the
-  // behaviour is exactly as before -- every existing script and probe, some of
-  // which run 60-180s per call, is untouched. With one, a call can never
-  // outlive the turn that asked for it.
-  const budget = Number.isFinite(deadlineAt)
-    ? Math.max(0, Math.min(config.modulePlannerTimeoutMs, deadlineAt - startedAt))
-    : config.modulePlannerTimeoutMs;
-  const timer = setTimeout(() => controller.abort(), budget);
+  const stage = name === 'module_input_verification_v1' ? 'verifier' : 'extractor';
   let response;
   const failure = (status, code, message) => Object.assign(new ConsumerError(status, code, message), {
     // Server-only operational context; no prompt, financial input, credential,
     // provider error message or model output is copied into public errors.
     plannerDiagnostics: {
-      plannerStage: name === 'module_input_verification_v1' ? 'verifier' : 'extractor',
+      plannerStage: stage,
       model: config.modulePlannerModel,
-      promptVersion: name === 'module_input_verification_v1' ? config.moduleVerifierPromptVersion : config.modulePlannerPromptVersion,
+      promptVersion: stage === 'verifier' ? config.moduleVerifierPromptVersion : config.modulePlannerPromptVersion,
       providerStatus: Number.isInteger(response?.status) ? response.status : null,
       providerRequestId: String(response?.headers?.get?.('x-request-id') || '').slice(0, 200) || null,
       clientRequestId,
       latencyMs: Date.now() - startedAt
     }
   });
+  // CHECKED SYNCHRONOUSLY, IMMEDIATELY BEFORE DISPATCH. Nothing awaits between
+  // here and the fetch, so nothing can expire in the gap.
+  //
+  // THE DEFECT THIS FIXES. Clamping the abort to Math.max(0, remaining) and
+  // arming setTimeout(..., 0) does not stop a call: the timer is a macrotask,
+  // so the request is dispatched with a signal that is NOT yet aborted and is
+  // only cancelled afterwards. An expired operation still spent an extractor
+  // and a verifier, and with fast responses still produced a certificate. A
+  // deadline that merely cancels work already in flight is not a deadline;
+  // refusing before dispatch is what makes it one.
+  if (operation) {
+    if (operation.controller?.signal?.aborted) {
+      throw failure(409, 'module_planner_operation_cancelled', 'This planning operation was cancelled.');
+    }
+    if (Number.isFinite(operation.deadlineAt) && Date.now() >= operation.deadlineAt) {
+      throw failure(504, 'module_planner_turn_deadline_exceeded', 'The planning operation ran out of time before this call.');
+    }
+    if (Number.isFinite(operation.callAllowance) && operation.callsUsed >= operation.callAllowance) {
+      throw failure(502, 'module_planner_call_allowance_exhausted', 'The planning operation has no calls left.');
+    }
+    operation.callsUsed += 1;
+  }
+  const controller = new AbortController();
+  // Cancelling the operation reaches work already in flight, so ending a
+  // meeting stops the calls it started instead of letting them finish and
+  // dispatch their successors.
+  const cancel = () => controller.abort();
+  operation?.controller?.signal?.addEventListener?.('abort', cancel, { once: true });
+  const budget = Number.isFinite(operation?.deadlineAt)
+    ? Math.max(1, Math.min(config.modulePlannerTimeoutMs, operation.deadlineAt - Date.now()))
+    : config.modulePlannerTimeoutMs;
+  const timer = setTimeout(cancel, budget);
   try {
     response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -289,6 +313,7 @@ async function structuredResponse({ env, config, systemPrompt, name, schema, bod
     // The response body is part of the request deadline too. Clearing this
     // after headers alone allowed an incomplete body to stall Type forever.
     clearTimeout(timer);
+    operation?.controller?.signal?.removeEventListener?.('abort', cancel);
   }
 }
 
@@ -1155,8 +1180,40 @@ async function verificationCertificate(
 
 export async function runDirectModulePlanning({
   env, config, context, leaseId, throughTurnId, frozenPlanId = null, acknowledgedUnknown = [],
-  deadlineAt = null
+  deadlineAt = null, operation = null
 }) {
+  // WORK THAT WAS PAID FOR IS RECORDED WHEN IT COMPLETES, NOT IF THE PASS
+  // SURVIVES. Usage used to be written only after the interpreter returned, so
+  // a successful extraction followed by a verifier timeout billed nothing at
+  // all: the provider had charged for it, the obligation was still outstanding,
+  // and the usage table had no row to show for either. Every completed response
+  // is now written against its own provider response id as it lands, which is
+  // also what makes the row idempotent if anything retries.
+  const meteringWrites = [];
+  const meterResponse = ({ providerResponseId, usage }) => {
+    if (!usage || !providerResponseId) return;
+    const cached = Number(usage?.input_tokens_details?.cached_tokens || 0);
+    const write = recordRealtimeUsage(env, {
+      sessionId: context.sessionRow.id,
+      leaseId,
+      providerResponseId,
+      usageKind: 'planner',
+      tokens: {
+        inputTextTokens: Math.max(0, Number(usage.input_tokens || 0) - cached),
+        inputAudioTokens: 0,
+        cachedTextTokens: cached,
+        cachedAudioTokens: 0,
+        outputTextTokens: Number(usage.output_tokens || 0),
+        outputAudioTokens: 0
+      },
+      // Same provisional pricing path as the existing reconciler: provider
+      // token counts are exact, dedicated Responses-model rates remain a
+      // deployment configuration follow-up rather than guessed in code.
+      rates: config.realtimeUsageRates,
+      pricingVersion: config.realtimePricingVersion
+    }).catch(() => {});
+    meteringWrites.push(write);
+  };
   const previous = await getLatestRealtimeMeetingBrief(env, context.sessionRow.id, leaseId).catch(() => null);
   const previousSnapshot = previous?.brief?.schemaVersion === MEETING_BRIEF_V3
     ? previous.brief.directModuleSnapshot
@@ -1196,7 +1253,9 @@ export async function runDirectModulePlanning({
     frozenPlan: frozen?.input?.inputSource === 'verified_direct_module_input'
       ? { snapshot: frozen.input.directModuleSnapshot, certificate: frozen.input.verificationCertificate }
       : null,
-    deadlineAt
+    deadlineAt,
+    operation,
+    onProviderResponse: meterResponse
   });
   const {
     snapshot,
@@ -1209,32 +1268,12 @@ export async function runDirectModulePlanning({
     verificationProviderResponseId
   } = interpreted;
   const readyModules = snapshot.modules.filter((item) => item.status === 'ready');
-  for (const usageRecord of [
-    { usage: extractionUsage, providerResponseId: extractionProviderResponseId },
-    { usage: verificationUsage, providerResponseId: verificationProviderResponseId }
-  ]) {
-    if (!usageRecord.usage || !usageRecord.providerResponseId) continue;
-    const cached = Number(usageRecord.usage?.input_tokens_details?.cached_tokens || 0);
-    await recordRealtimeUsage(env, {
-      sessionId: context.sessionRow.id,
-      leaseId,
-      providerResponseId: usageRecord.providerResponseId,
-      usageKind: 'planner',
-      tokens: {
-        inputTextTokens: Math.max(0, Number(usageRecord.usage.input_tokens || 0) - cached),
-        inputAudioTokens: 0,
-        cachedTextTokens: cached,
-        cachedAudioTokens: 0,
-        outputTextTokens: Number(usageRecord.usage.output_tokens || 0),
-        outputAudioTokens: 0
-      },
-      // This is the same provisional pricing path as the existing reconciler.
-      // Provider token counts are exact; dedicated Responses-model rates remain
-      // a deployment configuration follow-up rather than guessed in code.
-      rates: config.realtimeUsageRates,
-      pricingVersion: config.realtimePricingVersion
-    });
-  }
+  // Every completed response was already written by meterResponse as it landed,
+  // against its own provider response id. Re-writing the aggregates here would
+  // be worse than redundant: the extraction line folds in the repair calls, and
+  // the row keyed on the extraction id already exists, so INSERT OR IGNORE
+  // would silently keep the smaller figure. Wait for the writes instead.
+  await Promise.allSettled(meteringWrites);
   // The existing planner also owns the shared "latest meeting brief" stream.
   // A shadow V3 written there would alter its next read depending on which
   // background request won the race. Shadow therefore records only content-free
@@ -1281,8 +1320,26 @@ export async function interpretDirectModuleConversation({
   frozenPlan = null,
   // Absolute wall-clock ceiling for this whole planning pass, or null for the
   // unbounded behaviour every offline script and probe relies on.
-  deadlineAt = null
+  deadlineAt = null,
+  // The operation this pass belongs to: one deadline, one cancellation signal
+  // and one call allowance covering every stage and retry. `deadlineAt` alone
+  // is the shorthand offline callers use.
+  operation = null,
+  // Called the moment a provider response completes, before anything that could
+  // fail afterwards. See runDirectModulePlanning: work that was paid for has to
+  // be recorded whether or not the stage after it succeeds.
+  onProviderResponse = null
 }) {
+  const pass = operation ?? (deadlineAt === null ? null : {
+    deadlineAt, callAllowance: Number.POSITIVE_INFINITY, callsUsed: 0, controller: null
+  });
+  const settle = (response, stage) => {
+    if (response && onProviderResponse) {
+      try { onProviderResponse({ stage, providerResponseId: response.providerResponseId, usage: response.usage }); }
+      catch (_error) { /* metering must never fail the pass it is measuring */ }
+    }
+    return response;
+  };
   // Is there room to start an optional call AND the call that must follow it?
   //
   // A repair nobody can verify is money spent on nothing, so a repair is only
@@ -1297,15 +1354,21 @@ export async function interpretDirectModuleConversation({
   // keeps the guarantee exact: no call is ever started that the turn's clock
   // cannot let it finish.
   let slowestCallMs = 0;
-  const observe = (response) => {
+  const observe = (response, stage) => {
     slowestCallMs = Math.max(slowestCallMs, Number(response?.latencyMs || 0));
-    return response;
+    return settle(response, stage);
   };
-  const roomForRepair = () => deadlineAt === null
-    || deadlineAt - Date.now() >= Math.max(
+  const roomForRepair = () => {
+    if (!pass) return true;
+    // A repair needs the repair AND the audit that must approve it, in both
+    // currencies the operation is bounded by.
+    if (Number.isFinite(pass.callAllowance) && pass.callAllowance - pass.callsUsed < 2) return false;
+    if (!Number.isFinite(pass.deadlineAt)) return true;
+    return pass.deadlineAt - Date.now() >= Math.max(
       Number(config.modulePlannerRepairFloorMs || 20_000),
       2 * slowestCallMs
     );
+  };
   const previousRevision = Number(previousSnapshot?.snapshotRevision || 0);
   const priorSnapshotForModel = plannerFacingSnapshot(previousSnapshot);
   const policyEnvelope = buildDirectModulePolicyEnvelope({
@@ -1332,7 +1395,7 @@ export async function interpretDirectModuleConversation({
   const extract = (priorFindings = null) => structuredResponse({
     env,
     config,
-    deadlineAt,
+    operation: pass,
     systemPrompt: EXTRACTOR_PROMPT,
     name: 'module_planning_snapshot_v1',
     schema: DIRECT_SNAPSHOT_SCHEMA,
@@ -1346,7 +1409,7 @@ export async function interpretDirectModuleConversation({
       ...(priorFindings ? { priorAuditFindings: priorFindings } : {})
     }
   });
-  const extraction = observe(await extract());
+  const extraction = observe(await extract(), 'extractor');
   let snapshot = normalizeDirectSnapshot(extraction.value, {
     acknowledgedUnknown,
     turns,
@@ -1431,7 +1494,7 @@ export async function interpretDirectModuleConversation({
           + 'question open for the client rather than picking one. '
           + 'Return the full corrected snapshot, checking that no previously supported material '
           + 'figure, owner, scenario choice or assumption disappeared from the confirmation.'
-      }));
+      }), 'extractor');
       meter(repair.usage);
       const candidate = normalizeDirectSnapshot(repair.value, {
         acknowledgedUnknown, turns, throughTurnId, previousRevision, policyEnvelope,
@@ -1515,7 +1578,7 @@ export async function interpretDirectModuleConversation({
   const verify = (candidate) => structuredResponse({
     env,
     config,
-    deadlineAt,
+    operation: pass,
     systemPrompt: VERIFIER_PROMPT,
     name: 'module_input_verification_v1',
     schema: VERIFICATION_SCHEMA,
@@ -1538,7 +1601,7 @@ export async function interpretDirectModuleConversation({
       contracts
     }
   });
-  let verificationResponse = eligibleForVerification ? observe(await verify(snapshot)) : null;
+  let verificationResponse = eligibleForVerification ? observe(await verify(snapshot), 'verifier') : null;
   let verification = verificationResponse?.value || null;
   let repairedSnapshot = null;
   // EVERY CALL IS METERED, INCLUDING A REPAIR THAT IS THROWN AWAY. Reporting
@@ -1602,7 +1665,7 @@ export async function interpretDirectModuleConversation({
           + 'representation only -- citations, evidence, provenance bookkeeping and read-back '
           + 'wording. It may not settle a competing reading or choose between two values the client '
           + 'may have meant: leave any such question open for the client rather than picking one.'
-      }));
+      }), 'extractor');
       meter(repair.usage);
       const candidate = normalizeDirectSnapshot(repair.value, {
         acknowledgedUnknown,
@@ -1619,7 +1682,7 @@ export async function interpretDirectModuleConversation({
         && candidateRelevant.every((item) => item.status === 'ready')
         && candidate.generalAmbiguities.length === 0
         && Boolean(candidate.confirmationPrompt)) {
-        const second = observe(await verify(candidate));
+        const second = observe(await verify(candidate), 'verifier');
         // A repair is adopted only when it actually passes. A second non-pass
         // keeps the ORIGINAL snapshot and its clarifications, so a failed repair
         // costs latency and never changes what the client is asked.

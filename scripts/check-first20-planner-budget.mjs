@@ -38,28 +38,32 @@ const { session, durable } = await attachTypedSession(meeting);
 
 /* ---------------- background planning nobody waits for stays unbounded ---- */
 
-assert.equal(session.directModulePlanningDeadlineAt, null,
-  'a session at rest holds no ceiling: the background pass a voice turn schedules has nobody waiting on it');
+assert.equal(session.directModulePlanningOperation, null,
+  'a session at rest holds no operation: the background pass a voice turn schedules has nobody waiting on it');
 pass('unarmed planning keeps its unbounded behaviour, because cutting it short would only lose work');
 
 /* --------------------------------- arming is idempotent, which is the point */
 
 const disarm = session.armDirectModulePlanningDeadline();
-const armedAt = session.directModulePlanningDeadlineAt;
+const armed = session.directModulePlanningOperation;
+const armedAt = armed.deadlineAt;
 assert.ok(Number.isFinite(armedAt) && armedAt > Date.now(), 'a boundary arms an absolute ceiling');
 assert.ok(armedAt - Date.now() <= 90_000, 'and it is the configured budget, not longer');
+assert.equal(armed.callsUsed, 0, 'and an allowance the whole operation shares');
+assert.equal(armed.callAllowance, 5);
+assert.ok(armed.controller instanceof AbortController, 'and one cancellation signal for every stage in it');
 
 // A get_state inside a typed request must inherit that request's REMAINING
 // budget. If arming again moved the ceiling, the second chain would simply buy
 // itself a fresh ninety seconds and the bound would mean nothing.
 const inner = session.armDirectModulePlanningDeadline();
-assert.equal(session.directModulePlanningDeadlineAt, armedAt,
-  'a nested boundary inherits the remaining budget and can never extend it');
+assert.equal(session.directModulePlanningOperation, armed,
+  'a nested boundary inherits the SAME operation and can never extend it or buy a fresh allowance');
 inner();
-assert.equal(session.directModulePlanningDeadlineAt, armedAt,
+assert.equal(session.directModulePlanningOperation, armed,
   'and releasing the nested boundary does not release the request that owns it');
 disarm();
-assert.equal(session.directModulePlanningDeadlineAt, null, 'the owning boundary releases it');
+assert.equal(session.directModulePlanningOperation, null, 'the owning boundary releases it');
 pass('a second planning chain inside one request inherits the remaining budget instead of starting a new one');
 
 /* ------------------- no new pass is started past the ceiling --------------- */
@@ -81,7 +85,9 @@ globalThis.fetch = async () => { providerCalls += 1; throw new Error('scripted: 
 
 const scheduleWithDeadline = async (deadlineAt) => {
   session.directModulePlanningOutstanding = [{ turnId: clientTurn.id, sequence: 1 }];
-  session.directModulePlanningDeadlineAt = deadlineAt;
+  session.directModulePlanningOperation = {
+    id: 'test', deadlineAt, callAllowance: 5, callsUsed: 0, controller: new AbortController()
+  };
   session.scheduleDirectModulePlanning(clientTurn.id);
   await settle(durable, session, { timeoutMs: 30_000 });
 };
@@ -102,7 +108,7 @@ try {
     'and the obligation is kept, not discarded: the next turn settles it');
 } finally {
   globalThis.fetch = originalFetch;
-  session.directModulePlanningDeadlineAt = null;
+  session.directModulePlanningOperation = null;
 }
 pass('the drain loop starts no new pass past the ceiling, and loses no obligation by refusing');
 

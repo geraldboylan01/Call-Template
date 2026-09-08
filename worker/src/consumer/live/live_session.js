@@ -385,9 +385,18 @@ export class ConsumerLiveSession {
     this.directModulePlanningChain = Promise.resolve();
     this.directModulePlanningPersistenceChain = Promise.resolve();
     this.directModulePlanningPending = 0;
-    // Absolute wall clock for planning a caller is blocked on; null when the
-    // only work running is background work nobody is waiting for.
-    this.directModulePlanningDeadlineAt = null;
+    // The planning operation a caller is blocked on: one deadline, one
+    // cancellation signal and one call allowance covering every stage inside
+    // it. Null when the only work running is background work nobody awaits.
+    this.directModulePlanningOperation = null;
+    // Every operation currently alive, blocking or background, so closing the
+    // meeting can stop all of them.
+    this.directModulePlanningOperations = new Set();
+    // Turn ids a planning pass has already been attempted for and not settled.
+    // One attempt per turn, in BOTH transports: what decides whether a failed
+    // obligation is retried is the client's next turn, never a tool call
+    // inside the current one.
+    this.directModulePlanningAttempts = new Map();
     // Finalized client turns whose direct module snapshot has not yet been
     // successfully rebuilt. This is distinct from an in-memory request count:
     // a failed request remains an obligation, including across hibernation.
@@ -1621,12 +1630,61 @@ export class ConsumerLiveSession {
    * blocks on -- keeps today's unbounded behaviour, because there is no caller
    * waiting for it and cutting it short would only lose work.
    */
-  armDirectModulePlanningDeadline() {
-    if (this.directModulePlanningDeadlineAt !== null) return () => {};
+  /**
+   * A bounded lifecycle for one stretch of planning work.
+   *
+   * EVERY PASS GETS ONE, including the background pass a voice turn schedules
+   * and nobody awaits. Leaving background work unbounded meant it could not be
+   * stopped and could not be reached: the drain captured `null` before its
+   * awaits, so a pass that began unbounded stayed unbounded even after a
+   * blocking boundary armed a ceiling while it was loading context -- it
+   * finished its extraction past that deadline and went on to start a verifier.
+   */
+  newDirectModulePlanningOperation() {
     const config = getConsumerConfig(this.env);
-    this.directModulePlanningDeadlineAt = Date.now()
-      + Number(config.modulePlannerTurnBudgetMs || 90_000);
-    return () => { this.directModulePlanningDeadlineAt = null; };
+    const operation = {
+      id: crypto.randomUUID(),
+      deadlineAt: Date.now() + Number(config.modulePlannerTurnBudgetMs || 90_000),
+      callAllowance: Number(config.modulePlannerCallAllowance || 5),
+      callsUsed: 0,
+      controller: new AbortController()
+    };
+    this.directModulePlanningOperations.add(operation);
+    return operation;
+  }
+
+  releaseDirectModulePlanningOperation(operation) {
+    this.directModulePlanningOperations.delete(operation);
+    if (this.directModulePlanningOperation === operation) this.directModulePlanningOperation = null;
+  }
+
+  armDirectModulePlanningDeadline() {
+    if (this.directModulePlanningOperation !== null) return () => {};
+    const config = getConsumerConfig(this.env);
+    this.directModulePlanningOperation = {
+      id: crypto.randomUUID(),
+      deadlineAt: Date.now() + Number(config.modulePlannerTurnBudgetMs || 90_000),
+      // ONE ALLOWANCE FOR THE WHOLE OPERATION, not for each pass inside it.
+      // Five was the per-pass ceiling and I described it as the request's; a
+      // real typed request was reproduced making SEVEN planner calls, because
+      // the renderer's get_state scheduled a second chain while time remained.
+      // Counting against the operation is what makes the number the client's
+      // guarantee rather than an internal detail of one pass.
+      callAllowance: Number(config.modulePlannerCallAllowance || 5),
+      callsUsed: 0,
+      controller: new AbortController()
+    };
+    const operation = this.directModulePlanningOperation;
+    this.directModulePlanningOperations.add(operation);
+    return () => this.releaseDirectModulePlanningOperation(operation);
+  }
+
+  /** Stop every stretch of planning work this session started. Idempotent. */
+  cancelDirectModulePlanning(reason = 'session_closed') {
+    for (const operation of this.directModulePlanningOperations) {
+      operation.cancelledReason = reason;
+      try { operation.controller.abort(); } catch (_error) { /* already aborted */ }
+    }
   }
 
   async handleTextMessage(body) {
@@ -1662,6 +1720,9 @@ export class ConsumerLiveSession {
     const rendered = await renderLiveAssistantText({
       env: this.env,
       config,
+      // Same operation as the planner stage above: one clock and one
+      // cancellation signal for the whole typed turn.
+      operation: this.directModulePlanningOperation,
       volatileStateItem: this.textVolatileStateItem,
       recentTurns: await listRecentRealtimeFinalTurns(
         this.env, this.meta.sessionId, this.meta.leaseId, MAX_TYPED_CONTEXT_TURNS
@@ -2352,14 +2413,30 @@ export class ConsumerLiveSession {
         if (!nextJob) break;
         const config = getConsumerConfig(this.env);
         if (config.modulePlannerMode === 'off') break;
-        // A NEW PASS IS NOT STARTED PAST THE CEILING. The obligation stays
-        // outstanding and the next turn settles it; starting a pass nobody can
-        // wait for spends money to miss a deadline that has already passed.
-        const deadlineAt = this.directModulePlanningDeadlineAt;
-        if (deadlineAt !== null && Date.now() >= deadlineAt) break;
+        // Released in this iteration's finally when this pass created it; a
+        // boundary's operation is released by the boundary that armed it.
+        let ownOperation = null;
         try {
           await this.directModulePlanningPersistenceChain.catch(() => {});
           const context = await loadLiveContext({ env: this.env, config, sessionId: this.meta.sessionId });
+          // READ AFTER THE AWAITS, NOT BEFORE THEM. Capturing the operation at
+          // the top of the loop meant a background Speak pass captured `null`
+          // and then ran unbounded even though a get_state boundary had armed a
+          // ceiling while it was loading context -- the pass finished its
+          // extraction after the deadline and went on to start a verifier.
+          // A NEW PASS IS NOT STARTED PAST THE CEILING either: the obligation
+          // stays outstanding and the next turn settles it, because starting a
+          // pass nobody can wait for spends money to miss a deadline that has
+          // already passed.
+          const inherited = this.directModulePlanningOperation;
+          const operation = inherited ?? this.newDirectModulePlanningOperation();
+          ownOperation = inherited ? null : operation;
+          this.directModulePlanningAttempts.set(
+            nextJob.turnId,
+            Number(this.directModulePlanningAttempts.get(nextJob.turnId) || 0) + 1
+          );
+          if (operation.controller.signal.aborted) break;
+          if (Number.isFinite(operation.deadlineAt) && Date.now() >= operation.deadlineAt) break;
           const planned = await runDirectModulePlanning({
             env: this.env,
             config,
@@ -2368,7 +2445,7 @@ export class ConsumerLiveSession {
             throughTurnId: nextJob.turnId,
             frozenPlanId: this.directConfirmationOffer?.planId || null,
             acknowledgedUnknown: this.acknowledgedUnknown,
-            deadlineAt
+            operation
           });
           if (config.modulePlannerMode === 'apply'
             && planned.verification?.verdict === 'pass'
@@ -2391,8 +2468,17 @@ export class ConsumerLiveSession {
           // This full transcript snapshot settles every obligation at or before
           // its watermark. A turn arriving during the call remains and is the
           // only additional pass the drain will run.
+          // A full-transcript pass settles every obligation at or below its
+          // watermark, so every one of them stops being an outstanding attempt
+          // -- not just the job that happened to drive the pass. Leaving the
+          // others recorded made get_state refuse to schedule for turns that
+          // had in fact been settled, and Speak, which reaches the planner
+          // through that boundary, quietly planned less than Type did.
+          const settled = this.directModulePlanningOutstanding
+            .filter((item) => item.sequence <= nextJob.sequence);
           this.directModulePlanningOutstanding = this.directModulePlanningOutstanding
             .filter((item) => item.sequence > nextJob.sequence);
+          for (const item of settled) this.directModulePlanningAttempts.delete(item.turnId);
           await this.persistDirectModulePlanningOutstanding();
           if (config.modulePlannerMode === 'apply'
             && this.directModulePlanningOutstanding.length === 0) {
@@ -2436,7 +2522,20 @@ export class ConsumerLiveSession {
           }
         } catch (error) {
           if (this.directConfirmationOffer) {
-            this.directConfirmationOffer.reviewStatus = 'failed';
+            // A CANCELLED PASS RETIRES THE OFFER, IT DOES NOT PARK IT.
+            //
+            // Marking the review failed is right when the planner merely could
+            // not finish: a later turn re-runs it. Cancellation is different --
+            // the meeting is ending, so nothing will ever re-establish whether
+            // the delivered plan still matches the conversation. An offer whose
+            // freshness can no longer be checked must not remain approvable, so
+            // it is retired here exactly as a verifier rejection retires it.
+            if (error?.code === 'module_planner_operation_cancelled') {
+              this.directConfirmationOffer = null;
+              this.directAwaitingConfirmationSnapshotRevision = null;
+            } else {
+              this.directConfirmationOffer.reviewStatus = 'failed';
+            }
             await this.persistDirectConfirmationOffer();
           }
           await appendRealtimeEvent(this.env, {
@@ -2459,6 +2558,11 @@ export class ConsumerLiveSession {
           // Keep the failed watermark durable. A later client turn, get_state,
           // or confirmation attempt may retry it; never spin a paid loop here.
           break;
+        } finally {
+          // A background pass owns the operation it created and ends it here.
+          // A boundary's operation outlives this pass, because the caller
+          // blocked on it still has a renderer stage to pay for.
+          if (ownOperation) this.releaseDirectModulePlanningOperation(ownOperation);
         }
       }
     })().finally(() => { this.directModulePlanningPending = 0; });
@@ -3558,11 +3662,35 @@ export class ConsumerLiveSession {
           // realtime 8s timeout governs the separate legacy fact reconciler and
           // has never bounded this await. A spent budget schedules no NEW pass:
           // it waits for whatever is already running and answers from that.
+          // NO SECOND CHAIN INSIDE ONE OPERATION.
+          //
+          // THE DEFECT THIS FIXES. This branch used to reschedule an
+          // outstanding obligation whenever time remained, so a typed request
+          // whose first pass failed its audit started a WHOLE SECOND chain
+          // here: seven planner calls and two renderer calls in one request,
+          // against a five-call guarantee I had described as the request's.
+          // Five was only ever the per-pass ceiling.
+          //
+          // A failed obligation is now settled by the client's NEXT turn, which
+          // is explicit, bounded and visible, rather than by a second chain the
+          // renderer starts on its own. When this boundary owns the operation
+          // it still schedules the first pass; inside someone else's operation
+          // it waits for what is already running and answers from that.
           const disarmToolDeadline = this.armDirectModulePlanningDeadline();
           try {
+            const operation = this.directModulePlanningOperation;
+            const pendingTurnId = this.directModulePlanningOutstanding.at(-1)?.turnId;
             if (this.directModulePlanningPending === 0
               && this.directModulePlanningOutstanding.length > 0
-              && Date.now() < this.directModulePlanningDeadlineAt) {
+              // ONE ATTEMPT PER TURN, AND THE SAME RULE IN BOTH TRANSPORTS. If
+              // a pass has already been tried for this obligation, trying again
+              // here is the second chain. Gating on who owns the operation
+              // instead would have stopped Type retrying while Speak still did,
+              // which is precisely the parity the shared planner exists to
+              // hold: the transport-parity harness caught the divergence.
+              && !this.directModulePlanningAttempts.has(pendingTurnId)
+              && !operation.controller.signal.aborted
+              && Date.now() < operation.deadlineAt) {
               this.scheduleDirectModulePlanning(
                 this.directModulePlanningOutstanding.at(-1)?.turnId
               );
@@ -4046,8 +4174,16 @@ export class ConsumerLiveSession {
 
     // The euro allowance and the response cap still bound the meeting exactly
     // as they do in v2 — those controls were never the problem.
+    // AN UNSET STOP IS NOT A STOP THAT HAS BEEN REACHED. With no dispatch cap
+    // configured both sides are zero, and `0 >= 0` terminalized the meeting as
+    // budget-exhausted on every single turn -- silently, because the call is
+    // .catch()ed. The guard one screen up in enforceDispatchStop() already
+    // reads `stop > 0`; this copy did not. It stayed invisible while
+    // terminalization had no side effect the conversation could feel, and
+    // surfaced the moment closing a meeting began cancelling its planning.
+    const dispatchStop = Number(lease?.dispatch_stop_eur_micros || 0);
     if (lease && (Number(lease.response_count || 0) >= config.realtimeMaxResponses
-      || Number(lease.estimated_cost_eur_micros || 0) >= Number(lease.dispatch_stop_eur_micros || 0))) {
+      || (dispatchStop > 0 && Number(lease.estimated_cost_eur_micros || 0) >= dispatchStop))) {
       await this.terminalize('budget_exhausted', 'dispatch_stop_reached', null, true).catch(() => {});
     }
   }
@@ -4156,6 +4292,12 @@ export class ConsumerLiveSession {
       throw new ConsumerError(409, 'live_close_in_progress', 'The live meeting is already closing.');
     }
     this.closing = true;
+    // A CLOSED MEETING STOPS BUYING PLANNING FOR ITSELF. An extraction already
+    // in flight used to run to completion and then dispatch its verifier with
+    // an un-aborted signal, after the client had ended the meeting: paid work
+    // for a conversation that no longer exists. Cancelling here reaches both
+    // the call in flight and the stages that would have followed it.
+    this.cancelDirectModulePlanning(`meeting_${status}`);
     const termination = { status, reason, errorCode: errorCode || null, usageKnown: usageKnown === true };
     this.pendingTerminalization = termination;
     await this.state.storage.put('pendingTerminalization', termination);

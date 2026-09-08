@@ -119,7 +119,7 @@
     "probe:langfuse": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/probe-langfuse-attributes.mjs",
     "check:consumer-spoken-evidence": "node ./scripts/check-consumer-spoken-evidence.mjs",
     "spike:semantic-claims": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-semantic-claims-spike.mjs",
-    "check:first20": "node ./scripts/check-first20-frontend.mjs && node ./scripts/check-first20-execution-recovery.mjs && node ./scripts/check-first20-semantic-integrity.mjs && node ./scripts/check-first20-router-recovery.mjs && node ./scripts/check-first20-typed-recovery.mjs && node ./scripts/check-first20-verifier-rejection.mjs && node ./scripts/check-first20-typed-unknown-resolution.mjs && node ./scripts/check-first20-planner-diagnostics.mjs && node ./scripts/check-first20-planner-budget.mjs && node ./scripts/check-first20-assumption-floor.mjs",
+    "check:first20": "node ./scripts/check-first20-frontend.mjs && node ./scripts/check-first20-execution-recovery.mjs && node ./scripts/check-first20-semantic-integrity.mjs && node ./scripts/check-first20-router-recovery.mjs && node ./scripts/check-first20-typed-recovery.mjs && node ./scripts/check-first20-verifier-rejection.mjs && node ./scripts/check-first20-typed-unknown-resolution.mjs && node ./scripts/check-first20-planner-diagnostics.mjs && node ./scripts/check-first20-planner-budget.mjs && node ./scripts/check-first20-assumption-floor.mjs && node ./scripts/audit-claude-budget.mjs && node ./scripts/audit-claude-integrity.mjs",
     "evals:first20": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-first20-semantic-evals.mjs"
   },
   "devDependencies": {
