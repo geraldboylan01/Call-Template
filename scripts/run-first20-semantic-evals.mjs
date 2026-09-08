@@ -38,8 +38,28 @@ const config = {
   modulePlannerReasoningEffort: process.env.CONSUMER_MODULE_PLANNER_REASONING_EFFORT || 'low',
   modulePlannerTimeoutMs: Number(process.env.FIRST20_TIMEOUT_MS || sourceConfig.modulePlannerTimeoutMs),
   modulePlannerPromptVersion: sourceConfig.modulePlannerPromptVersion,
-  moduleVerifierPromptVersion: sourceConfig.moduleVerifierPromptVersion
+  moduleVerifierPromptVersion: sourceConfig.moduleVerifierPromptVersion,
+  modulePlannerRepairFloorMs: sourceConfig.modulePlannerRepairFloorMs,
+  modulePlannerCallAllowance: sourceConfig.modulePlannerCallAllowance
 };
+// THE SAME OPERATION PRODUCTION RUNS UNDER.
+//
+// This runner never supplied one, so every earlier result -- mine included --
+// measured an UNBOUNDED planner and was reported as if it were production
+// behaviour. It is not: under the real budget the adaptive repair floor can
+// refuse the second repair outright, so a case that passes here on five calls
+// may never get five in a live turn. Set FIRST20_TURN_BUDGET_MS=0 to measure
+// the unbounded planner deliberately.
+const turnBudgetMs = Number(
+  process.env.FIRST20_TURN_BUDGET_MS ?? sourceConfig.modulePlannerTurnBudgetMs ?? 90_000
+);
+const newOperation = () => (turnBudgetMs > 0 ? {
+  id: `first20-${Math.random().toString(36).slice(2, 10)}`,
+  deadlineAt: Date.now() + turnBudgetMs,
+  callAllowance: Number(sourceConfig.modulePlannerCallAllowance || 5),
+  callsUsed: 0,
+  controller: new AbortController()
+} : null);
 const outputDir = resolve(process.env.FIRST20_OUTPUT_DIR || resolve(workspace,
   'diagnostics/first20/semantic', new Date().toISOString().replaceAll(':', '-')));
 await mkdir(outputDir, { recursive: true });
@@ -164,7 +184,9 @@ for (const test of cases) {
     partner: test.partner ? { personId: 'partner', displayName: 'Ben' } : null,
     preferences: { baseCurrency: 'EUR' }, assumptions: { calculationDateIso: FIRST20_EVAL_DATE } };
   try {
-    record.result = await interpretDirectModuleConversation({ env, config, turns: test.turns,
+    const operation = newOperation();
+    record.operation = operation && { turnBudgetMs, callAllowance: operation.callAllowance };
+    record.result = await interpretDirectModuleConversation({ env, config, operation, turns: test.turns,
       throughTurnId: test.turns.at(-1).id, currentProfileContext: profile,
       acknowledgedUnknown: test.acknowledgedUnknown || [] });
     record.checks = expectedChecks(test, record.result);
