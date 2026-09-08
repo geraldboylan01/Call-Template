@@ -1004,7 +1004,14 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         || !['text', 'form', undefined].includes(body.inputMode)
         || !['string', 'undefined'].includes(typeof body.unknownFieldId)
         || String(body.unknownFieldId || '').length > 40
-        || Object.keys(body).some((key) => !['text', 'inputMode', 'unknownFieldId'].includes(key))) {
+        // THE CLIENT NAMES ITS OWN MESSAGE, so a retry is the same message.
+        // Meeting creation has had this since the beginning; a message never
+        // did, so a lost reply left the client with no way to ask about the
+        // turn they sent -- and retrying created a second turn of the same
+        // answer and paid for a second planning pass.
+        || !['string', 'undefined'].includes(typeof body.clientTurnId)
+        || (body.clientTurnId !== undefined && !/^[A-Za-z0-9_-]{8,64}$/.test(body.clientTurnId))
+        || Object.keys(body).some((key) => !['text', 'inputMode', 'unknownFieldId', 'clientTurnId'].includes(key))) {
         throw new ConsumerError(400, 'typed_message_invalid', 'That message could not be sent.');
       }
       const result = await durableObjectRequest(env, route.leaseId, '/message', {
@@ -1012,7 +1019,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         inputMode: body.inputMode === 'form' ? 'form' : 'text',
         // An opaque id the server issued on the card it drew. It names nothing
         // by itself; only the Durable Object that built that card can resolve it.
-        unknownFieldId: String(body.unknownFieldId || '')
+        unknownFieldId: String(body.unknownFieldId || ''),
+        clientTurnId: String(body.clientTurnId || '')
       });
       return respond(result, 200, methods);
     }

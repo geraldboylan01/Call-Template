@@ -41,9 +41,11 @@ const THINKING_STAGES = Object.freeze([
 ]);
 const THINKING_STAGE_MS = 12_000;
 // How long the browser keeps looking for a reply whose HTTP response it lost.
-// Thirty two-second polls covers a turn the server is still finishing; past
-// that the client is told plainly rather than watching a spinner forever.
-const MAX_TURN_RECOVERY_ATTEMPTS = 30;
+//
+// A WALL CLOCK, NOT AN ATTEMPT COUNT. Counting attempts only counted the polls
+// that SUCCEEDED, so a sustained outage -- exactly when recovery matters -- ran
+// forever without ever reaching its nominal limit. A deadline bounds both.
+const TURN_RECOVERY_WINDOW_MS = 90_000;
 
 function newPrivateId(prefix) {
   const bytes = new Uint8Array(18);
@@ -74,9 +76,9 @@ export class TypedMeetingController {
     this.transcript = [];
     this.navigated = false;
     this.awaitingExecution = false;
-    // Looking for a reply whose HTTP response was lost, and how long for.
-    this.recoveringTurn = false;
-    this.recoveryAttempts = 0;
+    // The specific message whose reply was lost, and how long to look for it.
+    // Null when nothing is being recovered.
+    this.recovery = null;
     this.thinkingTimer = null;
     this.abandoned = false;
     this.startPromise = null;
@@ -251,11 +253,16 @@ export class TypedMeetingController {
     // remembered: if the send fails, the client gets their own wording back
     // rather than being asked to retype a correction they already made.
     const draft = message;
+    const clientTurnId = newPrivateId('ct').slice(0, 64);
     try {
       const result = await sendTypedMessage(this.sessionId, this.leaseId, {
         text: message,
         inputMode,
         unknownFieldId,
+        // NAMED BEFORE IT IS SENT, so a retry is the same turn on the server
+        // rather than a second copy of the same answer with a second planning
+        // pass behind it. The meeting's own creation has always worked this way.
+        clientTurnId,
         controlCapability: this.controlCapability
       });
       // THE CLIENT MAY HAVE LEFT WHILE THIS TURN WAS IN FLIGHT.
@@ -291,8 +298,7 @@ export class TypedMeetingController {
       // same answer. A planning turn is slow on purpose -- that is the whole
       // point of this transport -- so losing one reply must never cost the
       // reply, and every failed send now looks for what actually landed.
-      this.recoveringTurn = true;
-      this.recoveryAttempts = 0;
+      this.recovery = { text: draft, deadlineAt: Date.now() + TURN_RECOVERY_WINDOW_MS };
       await this.checkCompletion();
     } finally {
       if (this.isCurrent(generation)) {
@@ -337,6 +343,15 @@ export class TypedMeetingController {
   }
 
   async pollMeeting(generation) {
+    // CHECKED BEFORE THE REQUEST, so an expired recovery window costs no
+    // further network at all -- not merely no further scheduling.
+    if (this.recovery && Date.now() >= this.recovery.deadlineAt) {
+      this.recovery = null;
+      this.stopPolling();
+      this.setStatus('');
+      this.onToast('We could not reach your planning session. Your answers are saved — please try again.', { tone: 'error' });
+      return;
+    }
     try {
       const meeting = await getTypedMeeting(this.sessionId, this.leaseId, { controlCapability: this.controlCapability });
       if (!this.isCurrent(generation)) return;
@@ -348,6 +363,11 @@ export class TypedMeetingController {
         this.onFailure({ message: error.message });
         return;
       }
+      // A FAILED POLL COUNTS AGAINST THE SAME CLOCK as a successful one. It
+      // used to count against nothing: the attempt counter only advanced on
+      // reads that SUCCEEDED, so a sustained outage -- precisely when recovery
+      // matters -- retried forever and never reached its nominal limit. The
+      // check at the top of this method is what ends it.
       this.setStatus('Reconnecting to your planning session…');
       this.scheduleCompletion(generation);
     }
@@ -384,21 +404,33 @@ export class TypedMeetingController {
     }
     if (Array.isArray(meeting.turns)) this.restoreTurns(meeting.turns);
     if (meeting.card) this.renderCard(meeting.card);
-    if (this.recoveringTurn) {
-      // The durable transcript ending in the client's own words means the
-      // planner has not finished the turn yet; an assistant turn after it means
-      // the reply we lost has been recovered, along with its card.
-      if (this.transcript.at(-1)?.role === 'assistant') {
-        this.recoveringTurn = false;
+    if (this.recovery) {
+      // THE REPLY TO *THIS* MESSAGE, NOT ANY TRAILING ASSISTANT TURN.
+      //
+      // Ending recovery on the last turn being an assistant turn was wrong the
+      // moment a GET landed before the failed POST had been persisted: the
+      // transcript then ended with the PREVIOUS question, recovery declared
+      // success, and the message the client actually sent vanished from the
+      // screen. Recovery is complete only when the durable transcript contains
+      // this submission AND something after it.
+      const sent = this.transcript.findIndex((turn) => (
+        turn.role === 'user' && turn.text === this.recovery.text
+      ));
+      const answered = sent >= 0 && this.transcript.slice(sent + 1).some((turn) => turn.role === 'assistant');
+      if (answered) {
+        // The draft goes back only if it is still the message we recovered --
+        // the client may have typed something new while this was in flight.
+        if (this.composerNode?.value === this.recovery.text) this.setComposerValue('');
+        this.recovery = null;
         this.setStatus('');
-      } else if (this.recoveryAttempts < MAX_TURN_RECOVERY_ATTEMPTS) {
-        this.recoveryAttempts += 1;
+      } else if (Date.now() < this.recovery.deadlineAt) {
         this.setStatus('Reconnecting to your planning session…');
         this.scheduleCompletion(generation);
         return;
       } else {
-        this.recoveringTurn = false;
+        this.recovery = null;
         this.setStatus('');
+        this.onToast('That reply did not arrive. Your answers are saved — send it again when you are ready.', { tone: 'error' });
       }
     }
     if (RUNNING_PLAN_STATUSES.has(status)) {

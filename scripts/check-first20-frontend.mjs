@@ -197,12 +197,15 @@ test('A lost COLLECTING reply is recovered from the durable transcript', async (
     if (options.method === 'POST') throw new Error('Lost collecting response');
     if (String(url).includes('/text/meetings/')) {
       polls += 1;
-      // First look: the planner has not finished, so the transcript still ends
-      // with the client. Second look: the reply and its card have landed.
+      // First look: the POST has not been persisted yet, so the transcript still
+      // ends with the PREVIOUS assistant question -- the shape that used to end
+      // recovery having recovered nothing. Second look: the client's message
+      // and its reply have both landed.
       return polls === 1
-        ? response({ turns: [{ role: 'user', text: 'We spend about 4000 a month.' }] })
+        ? response({ turns: [{ role: 'assistant', text: 'How much do you spend each month?' }] })
         : response({
           turns: [
+            { role: 'assistant', text: 'How much do you spend each month?' },
             { role: 'user', text: 'We spend about 4000 a month.' },
             { role: 'assistant', text: 'Thanks — and do you have any other debts?' }
           ],
@@ -218,7 +221,7 @@ test('A lost COLLECTING reply is recovered from the durable transcript', async (
     assert.equal(c.transcript.at(-1)?.role, 'assistant',
       'the reply the server produced is shown rather than lost');
     assert.equal(c.transcript.at(-1)?.text, 'Thanks — and do you have any other debts?');
-    assert.equal(c.recoveringTurn, false, 'recovery stops once the reply is in hand');
+    assert.equal(c.recovery, null, 'recovery stops once the reply to THIS message is in hand');
   } finally { await c.end(); }
 });
 

@@ -558,7 +558,7 @@ export function getTypedMeeting(sessionId, leaseId, { controlCapability, signal 
  * keyboard's, never so anything branches on it.
  */
 export function sendTypedMessage(sessionId, leaseId, {
-  text, inputMode = 'text', unknownFieldId = '', controlCapability, signal
+  text, inputMode = 'text', unknownFieldId = '', clientTurnId = '', controlCapability, signal
 } = {}) {
   return request(`${typedMeetingPath(sessionId, leaseId)}/messages`, {
     method: 'POST',
@@ -569,7 +569,12 @@ export function sendTypedMessage(sessionId, leaseId, {
       inputMode: inputMode === 'form' ? 'form' : 'text',
       // Opaque, and issued by the server on the card the client is looking at.
       // The browser never learns which module or which input it stands for.
-      ...(unknownFieldId ? { unknownFieldId: String(unknownFieldId) } : {})
+      ...(unknownFieldId ? { unknownFieldId: String(unknownFieldId) } : {}),
+      // THE BROWSER NAMES ITS OWN MESSAGE, before it sends it. A retry after a
+      // lost reply then reaches the same turn instead of creating a second one
+      // and paying for a second planning pass, and recovery has something
+      // specific to look for rather than "any assistant turn".
+      ...(clientTurnId ? { clientTurnId: String(clientTurnId) } : {})
     },
     signal,
     // A typed turn awaits the planner before it replies. That is the whole

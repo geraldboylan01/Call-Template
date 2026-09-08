@@ -1705,7 +1705,14 @@ export class ConsumerLiveSession {
     const config = getConsumerConfig(this.env);
     if (this.closing) throw new ConsumerError(409, 'live_meeting_closing', 'This meeting is closing.');
 
-    const itemId = `msg_${crypto.randomUUID()}`;
+    // THE CLIENT'S OWN NAME FOR THIS MESSAGE, so a retry after a lost reply is
+    // the same turn rather than a second one. recordRealtimeFinalTurn already
+    // dedupes on this id, so the retry re-reads the turn it made instead of
+    // paying for another planning pass on the same words.
+    const clientTurnId = String(body?.clientTurnId || '').trim();
+    const itemId = /^[A-Za-z0-9_-]{8,64}$/.test(clientTurnId)
+      ? `msg_${clientTurnId}`
+      : `msg_${crypto.randomUUID()}`;
     this.registerStoppedClientTurn({ item_id: itemId });
     await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode,
       unknownFieldId: body?.unknownFieldId });

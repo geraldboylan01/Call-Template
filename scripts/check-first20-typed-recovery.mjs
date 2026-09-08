@@ -5,7 +5,8 @@ import { makeEnv, makeConfig, newDatabase } from './agent-harness/transports.mjs
 import { attachTypedSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { createConsumerCredential } from '../worker/src/consumer/crypto.js';
 import { createSessionRecord, getSessionRow, reserveConsumerProviderCost } from '../worker/src/consumer/repository.js';
-import { createRealtimeLease, getActiveRealtimeLease, getActiveTypedLease, recordRealtimeFinalTurn,
+import { listRecentRealtimeFinalTurns,
+  createRealtimeLease, getActiveRealtimeLease, getActiveTypedLease, recordRealtimeFinalTurn,
   saveRealtimeMeetingBrief, setRealtimeConsent } from '../worker/src/consumer/realtime_repository.js';
 
 const failures = [];
@@ -115,6 +116,30 @@ try {
     await rig.session.recordAcknowledgedUnknown(restored.unknownFieldId, 'client-newer');
     assert.equal(rig.session.acknowledgedUnknown[0].sourceTurnId, 'client-newer', 'a later acknowledgement supersedes an older resolution target');
     await settle(rig.durable, rig.session);
+  });
+  await check('a retried message is the same turn, not a second copy of the same answer', async () => {
+    // THE DEFECT THIS PINS. A typed message had no durable client identity and
+    // the server minted a fresh random id per submission, so a client whose
+    // reply was lost and who pressed send again created a SECOND turn of the
+    // same answer -- and paid for a second planning pass on it. Meeting
+    // creation has been idempotent since the beginning; the message was not.
+    const meeting = await newLiveMeeting('first20-recover-idempotent', { CONSUMER_MODULE_PLANNER_MODE: 'off' });
+    const { session, durable } = await attachTypedSession(meeting);
+    const clientTurnId = 'ct_retry_same_message_01';
+    const text = 'We spend about 4000 a month.';
+    const previous = globalThis.fetch;
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({
+      status: 'completed', output_text: 'Thanks — noted.', usage: { input_tokens: 1, output_tokens: 1 }
+    }) });
+    try {
+      const first = await session.handleTextMessage({ text, clientTurnId });
+      const second = await session.handleTextMessage({ text, clientTurnId });
+      assert.equal(second.turnId, first.turnId, 'the retry resolves to the turn the first attempt created');
+      const turns = (await listRecentRealtimeFinalTurns(meeting.env, meeting.sessionId, meeting.meetingId, 50))
+        .filter((turn) => turn.role === 'user' && turn.transcript === text);
+      assert.equal(turns.length, 1, 'the client said it once, so the transcript records it once');
+    } finally { globalThis.fetch = previous; }
+    await settle(durable, session);
   });
 } finally { globalThis.fetch = originalFetch; }
 console.log(`[First20TypedRecovery] ${passed} passed; ${failures.length} failed.`);
