@@ -266,9 +266,15 @@ async function structuredResponse({ env, config, systemPrompt, name, schema, bod
   // dispatch their successors.
   const cancel = () => controller.abort();
   operation?.controller?.signal?.addEventListener?.('abort', cancel, { once: true });
+  // A CONFIG WITHOUT A PER-CALL TIMEOUT MUST NOT PRODUCE A TIMER OF NaN, which
+  // setTimeout treats as zero -- an immediate abort dressed up as a warning.
+  // Offline harnesses build config objects by hand and legitimately omit it.
+  const perCallMs = Number.isFinite(Number(config.modulePlannerTimeoutMs))
+    ? Number(config.modulePlannerTimeoutMs)
+    : 30_000;
   const budget = Number.isFinite(operation?.deadlineAt)
-    ? Math.max(1, Math.min(config.modulePlannerTimeoutMs, operation.deadlineAt - Date.now()))
-    : config.modulePlannerTimeoutMs;
+    ? Math.max(1, Math.min(perCallMs, operation.deadlineAt - Date.now()))
+    : perCallMs;
   const timer = setTimeout(cancel, budget);
   try {
     response = await fetch('https://api.openai.com/v1/responses', {
