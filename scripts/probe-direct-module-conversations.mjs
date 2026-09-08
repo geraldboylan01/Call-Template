@@ -33,7 +33,7 @@ const baseConfig = {
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 120_000,
   modulePlannerPromptVersion: 'direct-module-planner-v10',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v7'
+  moduleVerifierPromptVersion: 'direct-module-verifier-v8'
 };
 
 function profile({ partner = false } = {}) {

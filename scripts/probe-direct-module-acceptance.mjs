@@ -28,7 +28,7 @@ const config = {
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 90_000,
   modulePlannerPromptVersion: 'direct-module-planner-v10',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v7'
+  moduleVerifierPromptVersion: 'direct-module-verifier-v8'
 };
 const profile = {
   profileId: 'acceptance-probe', revision: 1,

@@ -577,12 +577,23 @@ pass('spoken-word evidence supports the AI-authored native number without determ
   const embeddedOnly = citedOverpayment('500', `${transcript} We pay 1500 a month.`);
   assert.notEqual(embeddedOnly.status, 'ready',
     'a quote whose only match sits inside a longer number is not something the client said');
+  // THE REASON HAS TO BE THE RIGHT REASON. The characters of "500" ARE present,
+  // inside "1500"; what is missing is the client ever saying them as their own
+  // phrase. Reporting that as an absent substring sends the planner hunting for
+  // a typo that is not there, so the two cases carry different labels.
   assert.ok(
     embeddedOnly.droppedCitations.some((item) => (
       item.path === '/annualOverpayment'
-      && item.reason === 'quote_is_not_a_contiguous_substring_of_that_turn'
+      && item.reason === 'quote_only_appears_inside_a_longer_word_or_number_in_that_turn'
     )),
     'the server records WHY it dropped the citation, so the repair can widen the quote instead of resending it'
+  );
+  const trulyAbsent = citedOverpayment('700 a year extra', `${transcript} We pay 1500 a month.`);
+  assert.ok(
+    trulyAbsent.droppedCitations.some((item) => (
+      item.reason === 'quote_is_not_a_contiguous_substring_of_that_turn'
+    )),
+    'a quote whose characters are genuinely absent is reported as absent, not as an embedded match'
   );
 
   // A genuinely repeated span is still refused: uniqueness is what makes a
@@ -1073,7 +1084,7 @@ const certificateConfig = {
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
   modulePlannerPromptVersion: 'direct-module-planner-v10',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v7'
+  moduleVerifierPromptVersion: 'direct-module-verifier-v8'
 };
 let providerCalls = 0;
 let verifierCalls = 0;
@@ -1456,7 +1467,7 @@ try {
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
       modulePlannerPromptVersion: 'direct-module-planner-v10',
-      moduleVerifierPromptVersion: 'direct-module-verifier-v7'
+      moduleVerifierPromptVersion: 'direct-module-verifier-v8'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],
     throughTurnId: 'turn-2',

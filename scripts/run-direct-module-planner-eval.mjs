@@ -29,7 +29,7 @@ const result = await interpretDirectModuleConversation({
     modulePlannerReasoningEffort: 'low',
     modulePlannerTimeoutMs: 60_000,
     modulePlannerPromptVersion: 'direct-module-planner-v10',
-    moduleVerifierPromptVersion: 'direct-module-verifier-v7'
+    moduleVerifierPromptVersion: 'direct-module-verifier-v8'
   },
   turns,
   throughTurnId: 'client-3',

@@ -554,7 +554,7 @@ export function getConsumerConfig(env) {
     // start and then starving the verification that must follow it.
     modulePlannerRepairFloorMs: boundedInteger(env.CONSUMER_MODULE_PLANNER_REPAIR_FLOOR_MS, 20_000, 5_000, 120_000),
     modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v10',
-    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v7',
+    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v8',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.

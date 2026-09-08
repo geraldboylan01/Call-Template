@@ -55,7 +55,7 @@ const config = {
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 180_000,
   modulePlannerPromptVersion: 'direct-module-planner-v10',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v7'
+  moduleVerifierPromptVersion: 'direct-module-verifier-v8'
 };
 const currentProfileContext = {
   profileId: 'production-college-replay',
