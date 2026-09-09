@@ -23,6 +23,14 @@ const pass = (message) => console.info(`[DirectModuleLivePath] PASS: ${message}`
 const TODAY = new Date().toISOString().slice(0, 10);
 const CLIENT_TURN = 'Please analyse my existing repayment mortgage. The balance is two hundred and forty thousand euro, the rate is four point one percent, and there are twenty two years left. I do not want to model an overpayment.';
 const CONFIRMATION_PROMPT = 'I will run the existing mortgage analysis using a €240,000 balance, 4.1% interest and 22 years remaining, with no overpayment. Would you like me to run exactly that plan now?';
+const COLLEGE_EVIDENCE = (turnId) => [
+  { path: '/children/0', source: 'conversation', turnId, quote: COLLEGE_QUOTE, profilePath: '' }
+];
+const MORTGAGE_EVIDENCE = (turnId) => [
+  { path: '/currentBalance', source: 'conversation', turnId, quote: 'two hundred and forty thousand euro', profilePath: '' },
+  { path: '/annualInterestRate', source: 'conversation', turnId, quote: 'four point one percent', profilePath: '' },
+  { path: '/remainingTermYears', source: 'conversation', turnId, quote: 'twenty two years', profilePath: '' }
+];
 const MORTGAGE_INPUT = Object.freeze({
   loanKind: 'mortgage',
   currentBalance: 240000,
@@ -57,11 +65,7 @@ function extractionFor(throughTurnId, baseSnapshotRevision = 0, evidenceTurnId =
         { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
         { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
       ] : [],
-      evidence: moduleId === 'mortgage_analysis' ? [
-        { path: '/currentBalance', source: 'conversation', turnId: evidenceTurnId, quote: 'two hundred and forty thousand euro', profilePath: '' },
-        { path: '/annualInterestRate', source: 'conversation', turnId: evidenceTurnId, quote: 'four point one percent', profilePath: '' },
-        { path: '/remainingTermYears', source: 'conversation', turnId: evidenceTurnId, quote: 'twenty two years', profilePath: '' }
-      ] : []
+      evidence: moduleId === 'mortgage_analysis' ? MORTGAGE_EVIDENCE(evidenceTurnId) : []
     })),
     generalAmbiguities: [],
     confirmationPrompt: CONFIRMATION_PROMPT
@@ -119,9 +123,7 @@ function collegeExtractionFor(throughTurnId, previousSnapshot, evidenceTurnId) {
         { path: '/children/0/collegeStartAge', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.startAge), source: 'contract_default' },
         { path: '/children/0/collegeDurationYears', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.durationYears), source: 'contract_default' }
       ] : [],
-      evidence: moduleId === 'college_funding' ? [
-        { path: '/children/0', source: 'conversation', turnId: evidenceTurnId, quote: COLLEGE_QUOTE, profilePath: '' }
-      ] : []
+      evidence: moduleId === 'college_funding' ? COLLEGE_EVIDENCE(evidenceTurnId) : []
     })),
     generalAmbiguities: [],
     confirmationPrompt: COLLEGE_PROMPT

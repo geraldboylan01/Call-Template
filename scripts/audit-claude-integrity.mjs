@@ -11,7 +11,7 @@ const date = '2026-09-08';
 const policy = buildDirectModulePolicyEnvelope({ calculationDateIso: date, baseCurrency: 'EUR' });
 const config = { allowedModules: ['mortgage_analysis'], modulePlannerModel: 'scripted',
   modulePlannerTimeoutMs: 30000, modulePlannerReasoningEffort: 'low',
-  modulePlannerPromptVersion: 'direct-module-planner-v10', moduleVerifierPromptVersion: 'direct-module-verifier-v8' };
+  modulePlannerPromptVersion: 'direct-module-planner-v12', moduleVerifierPromptVersion: 'direct-module-verifier-v11' };
 const original = 'My repayment mortgage is 240000 euro at 4.1 percent for 22 years with no overpayments.';
 const correction = 'I checked the statement. The mortgage balance is 340000 euro, not the 240000 I gave earlier.';
 const turns = [{ id: 't1', role: 'user', transcript: original }, { id: 't2', role: 'user', transcript: correction }];

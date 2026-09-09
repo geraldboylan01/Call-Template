@@ -558,9 +558,15 @@ export function getConsumerConfig(env) {
     // repair, verify, semantic repair, verify -- and it is now the REQUEST's
     // ceiling too, which is what I previously described it as while a renderer
     // get_state could quietly start a second chain and reach seven.
-    modulePlannerCallAllowance: boundedInteger(env.CONSUMER_MODULE_PLANNER_CALL_ALLOWANCE, 5, 2, 20),
-    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v10',
-    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v8',
+    // Seven covers the worst honest sequence: extract, structural repair,
+    // verify, narrow repair, verify, full re-author, verify. The narrow repair
+    // is tried first because it cannot touch a figure; the re-author is the
+    // fallback when it did not fix the finding, and it is a fresh candidate
+    // facing a fresh audit rather than a second patch. Five stopped the
+    // fallback ever running, which was the point of having one.
+    modulePlannerCallAllowance: boundedInteger(env.CONSUMER_MODULE_PLANNER_CALL_ALLOWANCE, 7, 2, 20),
+    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v12',
+    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v11',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.

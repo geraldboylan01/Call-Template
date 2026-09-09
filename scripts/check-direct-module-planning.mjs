@@ -1083,8 +1083,8 @@ const certificateConfig = {
   modulePlannerModel: 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
-  modulePlannerPromptVersion: 'direct-module-planner-v10',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v8'
+  modulePlannerPromptVersion: 'direct-module-planner-v12',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v11'
 };
 let providerCalls = 0;
 let verifierCalls = 0;
@@ -1466,8 +1466,8 @@ try {
       modulePlannerModel: 'gpt-5.6-luna',
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
-      modulePlannerPromptVersion: 'direct-module-planner-v10',
-      moduleVerifierPromptVersion: 'direct-module-verifier-v8'
+      modulePlannerPromptVersion: 'direct-module-planner-v12',
+      moduleVerifierPromptVersion: 'direct-module-verifier-v11'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],
     throughTurnId: 'turn-2',
