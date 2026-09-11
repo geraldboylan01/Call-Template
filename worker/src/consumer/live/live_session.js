@@ -3811,18 +3811,35 @@ export class ConsumerLiveSession {
             toolAttemptId: attempt.row.id,
             directConfirmationOffer: config.modulePlannerMode === 'apply'
               ? this.directConfirmationOffer : null,
-            // The proposal audit row keeps the provider item identity. Exact
-            // quote offsets remain a T2 responsibility against the stored turn.
-            evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
             // Keep the existing dependency name for the tool contract, but pass
             // only the transcript bound to this response's causal user item.
+            // `confirm_and_run` reads this one; the three below it are read by
+            // `save_facts` alone.
             latestClientTranscript: clientTranscript,
-            // Evidence for a figure the client affirmed rather than restated. Both
-            // are required together and neither is model-controlled: the sourced set
-            // holds only what the CLIENT has said, and the read-back is the turn
-            // they were answering.
-            clientSourcedFigures: this.sourcedFigures,
-            assistantReadBack: responseContext?.precedingAssistantTranscript || '',
+            // NOT SUPPLIED UNDER DIRECT APPLY, BECAUSE NOTHING CAN READ THEM.
+            //
+            // These three exist for the legacy fact writer: the provider item
+            // the evidence is filed against, the client-sourced figure set, and
+            // the assistant turn a bare "yes, that's right" was answering. With
+            // `save_facts` refused at the dispatcher in this mode, handing them
+            // over would be passing a parser its inputs on a path that can no
+            // longer reach it. `confirm_and_run` and `get_state` read none of
+            // them.
+            //
+            // The client-transcript parsing that BUILDS `sourcedFigures` is
+            // left alone: it feeds L2 compliance containment, not this tool,
+            // and L2's own mode handling is not this change's business.
+            ...(config.modulePlannerMode === 'apply' ? {} : {
+              // The proposal audit row keeps the provider item identity. Exact
+              // quote offsets remain a T2 responsibility against the stored turn.
+              evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
+              // Evidence for a figure the client affirmed rather than restated. Both
+              // are required together and neither is model-controlled: the sourced set
+              // holds only what the CLIENT has said, and the read-back is the turn
+              // they were answering.
+              clientSourcedFigures: this.sourcedFigures,
+              assistantReadBack: responseContext?.precedingAssistantTranscript || ''
+            }),
             loadContext: () => loadLiveContext({
               env: this.env,
               config: getConsumerConfig(this.env),

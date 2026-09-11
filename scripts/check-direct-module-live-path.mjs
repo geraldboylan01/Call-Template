@@ -332,13 +332,56 @@ try {
   const frozenExecution = await getRealtimeAnalysisPlanExecution(
     meeting.env, meeting.sessionId, frozenOffer.planId, meeting.meetingId
   );
+  // THE LEGACY FACT WRITER IS UNREACHABLE IN THIS MODE.
+  //
+  // Direct apply stopped ADVERTISING save_facts -- it is absent from the
+  // provider tool list and from the system prompt, because the background
+  // planner reads the transcript itself. The dispatcher did not know that: it
+  // validated against every name the live lane defines, so the name alone still
+  // routed into the legacy fact writer's deterministic reading of client
+  // language -- spoken-number extraction, owner cues, pension identity,
+  // categorical-none presence conflicts and a second approval grammar.
+  //
+  // Nothing in production asked for it; the model had to produce a name it was
+  // never shown. That is exactly why it needed closing, and why a hallucinated
+  // name should now cost a beat of conversation rather than a parser.
+  //
+  // Driven inside an EXISTING client turn on purpose. A turn of its own would
+  // schedule a legitimate extra planning pass and move the call counts this
+  // file pins below, which would hide the very thing being measured.
+  const revisionBeforeSave = (await meeting.env.CONSUMER_DB.prepare(
+    'SELECT current_profile_revision AS revision FROM consumer_sessions WHERE id = ?'
+  ).bind(meeting.sessionId).first()).revision;
+  let refusedSave = null;
   await simulator.turn({
     clientText: 'That seems sensible to me.',
-    act: async () => ({ speech: 'Would you like me to run that plan now?' })
+    act: async ({ callTool }) => {
+      refusedSave = (await callTool('save_facts', {
+        facts: [{ factId: 'cash_savings', value: 25000, certainty: 'stated' }]
+      })).result;
+      return { speech: 'Would you like me to run that plan now?' };
+    }
   });
   await settle(durable, session);
+  assert.equal(refusedSave?.ok, false, 'save_facts must not succeed under direct apply');
+  assert.equal(refusedSave?.code, 'live_tool_not_in_mode',
+    'and must be refused for the mode, not mistaken for an unknown tool or a parser failure');
+  const saveAttempts = (await meeting.env.CONSUMER_DB.prepare(`
+    SELECT status, error_code FROM consumer_realtime_tool_attempts
+    WHERE realtime_session_id = ? AND tool_name = 'save_facts'
+  `).bind(meeting.meetingId).all()).results || [];
+  assert.equal(saveAttempts.length, 1, 'the refusal is still recorded as an attempt, so it stays visible');
+  assert.equal(saveAttempts[0].status, 'rejected');
+  assert.equal(saveAttempts[0].error_code, 'live_tool_not_in_mode');
+  const revisionAfterSave = (await meeting.env.CONSUMER_DB.prepare(
+    'SELECT current_profile_revision AS revision FROM consumer_sessions WHERE id = ?'
+  ).bind(meeting.sessionId).first()).revision;
+  assert.equal(revisionAfterSave, revisionBeforeSave,
+    'a refused save writes no fact: the profile revision cannot move');
+  pass('save_facts is refused at the dispatcher under direct apply, and writes nothing');
+
   assert.equal(session.directConfirmationOffer?.token, frozenOffer.token,
-    'unclear confirmation must not destroy the offer');
+    'unclear confirmation must not destroy the offer, and neither does a refused tool');
   assert.equal(session.directConfirmationOffer?.planId, frozenOffer.planId);
   assert.equal(session.directConfirmationOffer?.readbackFullyDelivered, true);
   assert.equal(session.directConfirmationOffer?.reviewStatus, 'settled');

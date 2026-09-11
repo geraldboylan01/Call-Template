@@ -126,6 +126,32 @@ export const LIVE_TOOL_DEFINITIONS = Object.freeze([
 export const LIVE_TOOL_NAMES = Object.freeze(LIVE_TOOL_DEFINITIONS.map((tool) => tool.name));
 
 /**
+ * The tools a planning mode actually HAS, as opposed to the ones this file can
+ * describe.
+ *
+ * ONE LIST, SO THE ADVERTISED SET AND THE DISPATCHABLE SET CANNOT DIVERGE.
+ * Direct apply already stopped advertising `save_facts` -- it is absent from the
+ * provider's tool list and from the system prompt, because the background
+ * planner reads the transcript itself. The dispatcher did not know that. It
+ * validated against every name this file defines, so a model that produced the
+ * name anyway -- a hallucination, a replayed transcript, a future prompt change
+ * -- was routed into the legacy fact writer and its whole deterministic reading
+ * of client language: spoken-number extraction, owner cues, pension identity,
+ * categorical-none presence conflicts and a second approval grammar.
+ *
+ * That was never meant to be reachable under direct planning. Deriving both the
+ * advertisement and the dispatch from this one predicate is what makes
+ * "unadvertised" mean "unavailable" rather than "unmentioned".
+ */
+export function liveToolNamesForConfig(config) {
+  return LIVE_TOOL_NAMES.filter((name) => liveToolIsActive(name, config));
+}
+
+export function liveToolIsActive(name, config) {
+  return !(name === 'save_facts' && config?.modulePlannerMode === 'apply');
+}
+
+/**
  * The config the shared planning core sees.
  *
  * `realtimeConversationV2Enabled` is what the core uses to mean "this is a
@@ -1796,6 +1822,21 @@ export function assertLiveToolName(name) {
 }
 
 /**
+ * A known tool name that this planning mode does not offer.
+ *
+ * Separate from `assertLiveToolName` on purpose: "no such tool" and "not in this
+ * mode" are different facts, and an operator reading a rejected tool attempt
+ * should be able to tell them apart. Both refuse before any argument is read,
+ * so an unavailable tool cannot reach an executor at all.
+ */
+export function assertLiveToolActiveInMode(name, config) {
+  if (!liveToolIsActive(name, config)) {
+    throw new ConsumerError(400, 'live_tool_not_in_mode', 'That tool is not available in this meeting.');
+  }
+  return name;
+}
+
+/**
  * Run one tool call.
  *
  * A rejection is a normal outcome, not an error: the conversation carries on
@@ -1804,6 +1845,10 @@ export function assertLiveToolName(name) {
  */
 export async function executeLiveTool(name, args, deps) {
   assertLiveToolName(name);
+  // BEFORE ANY ARGUMENT IS READ. The caller turns this into an ordinary tool
+  // rejection, so an unavailable tool costs the conversation a beat and never
+  // reaches the executor whose parser it was trying to run.
+  assertLiveToolActiveInMode(name, deps?.config);
   if (name === 'save_facts') return executeSaveFacts(args, deps);
   if (name === 'get_state') return liveStateProjection(await deps.loadContext());
   try {
