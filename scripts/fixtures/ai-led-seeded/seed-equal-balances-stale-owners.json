@@ -1,0 +1,291 @@
+{
+  "schemaVersion": "AiLedSeededProposalProbeV1",
+  "id": "seed-equal-balances-stale-owners",
+  "originalCaseId": "holdout-pbs-equal-balances-owner-swap",
+  "test": {
+    "id": "holdout-pbs-equal-balances-owner-swap",
+    "moduleId": "personal_balance_sheet",
+    "turns": [
+      {
+        "id": "a1",
+        "role": "assistant",
+        "transcript": "What would help today?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c1",
+        "role": "user",
+        "transcript": "I am Aoife and my spouse is Ben. Please show our household net worth. We have two separate savings accounts, each with 25000: the AIB account is mine and the Bank of Ireland account is Ben's. We jointly own our home worth 400000 with a joint mortgage of 150000.",
+        "answersTurnId": "a1"
+      },
+      {
+        "id": "a2",
+        "role": "assistant",
+        "transcript": "Anything else you own or owe, and what is your monthly spending?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c2",
+        "role": "user",
+        "transcript": "No other accounts, pensions, investments, businesses, properties, assets or debts. We spend 3000 a month. That is the complete list.",
+        "answersTurnId": "a2"
+      },
+      {
+        "id": "a3",
+        "role": "assistant",
+        "transcript": "Anything to correct before I read it back?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c3",
+        "role": "user",
+        "transcript": "Yes, I swapped the owners of the savings accounts. Ben alone owns the AIB account; I alone own the Bank of Ireland account. Each account still has 25000 and they are separate accounts. The home and mortgage are still joint. Everything else stays the same. Go ahead.",
+        "answersTurnId": "a3"
+      }
+    ],
+    "expected": {
+      "values": {
+        "monthlyExpenditure": 3000
+      }
+    },
+    "ready": true,
+    "partner": true,
+    "semanticRubric": "Two distinct cash accounts of 25000 survive. The current AIB owner is Ben and current Bank of Ireland owner is Aoife. The ownership correction must survive even though all amounts and the 300000 net worth remain unchanged. Home and mortgage remain joint."
+  },
+  "seededProposal": {
+    "schemaVersion": "ModulePlanningSnapshotV1",
+    "baseSnapshotRevision": 0,
+    "throughTurnId": "c3",
+    "modules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "outputKey": "generated.pbsInputs",
+        "status": "ready",
+        "selection": {
+          "origin": "client_requested",
+          "reason": "Aoife explicitly asked to see the household net worth."
+        },
+        "inputJson": "{\"currency\":\"EUR\",\"assetPositions\":[{\"id\":\"aoife-aib-savings\",\"label\":\"Aoife's AIB savings account\",\"bucket\":\"spendable_reserves\",\"amount\":25000,\"source\":\"client-reported savings account\"},{\"id\":\"ben-boi-savings\",\"label\":\"Ben's Bank of Ireland savings account\",\"bucket\":\"spendable_reserves\",\"amount\":25000,\"source\":\"client-reported savings account\"},{\"id\":\"joint-home\",\"label\":\"Joint home\",\"bucket\":\"lifestyle_assets\",\"amount\":400000,\"source\":\"client-reported jointly owned home\"}],\"liabilityPositions\":[{\"id\":\"joint-mortgage\",\"label\":\"Joint mortgage\",\"amount\":150000,\"source\":\"client-reported mortgage\"}],\"monthlyExpenditure\":3000,\"reconciliationWarnings\":[],\"currencyWarnings\":[]}",
+        "steeringSummary": "Household net worth includes Aoife’s separate AIB account of €25,000, Ben’s separate Bank of Ireland account of €25,000, a joint home of €400,000 and joint mortgage of €150,000. Monthly spending is €3,000; no other assets or debts.",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [
+          {
+            "path": "/currency",
+            "valueJson": "\"EUR\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/reconciliationWarnings",
+            "valueJson": "[]",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/currencyWarnings",
+            "valueJson": "[]",
+            "source": "planning_policy"
+          }
+        ],
+        "evidence": [
+          {
+            "path": "/assetPositions/0",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "the AIB account is mine and the Bank of Ireland account is Ben's",
+            "profilePath": ""
+          },
+          {
+            "path": "/assetPositions/0/amount",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "each with 25000",
+            "profilePath": ""
+          },
+          {
+            "path": "/assetPositions/1",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "the AIB account is mine and the Bank of Ireland account is Ben's",
+            "profilePath": ""
+          },
+          {
+            "path": "/assetPositions/1/amount",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "each with 25000",
+            "profilePath": ""
+          },
+          {
+            "path": "/assetPositions/2",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "We jointly own our home worth 400000 with a joint mortgage of 150000.",
+            "profilePath": ""
+          },
+          {
+            "path": "/assetPositions/2/amount",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "our home worth 400000",
+            "profilePath": ""
+          },
+          {
+            "path": "/liabilityPositions/0",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "We jointly own our home worth 400000 with a joint mortgage of 150000.",
+            "profilePath": ""
+          },
+          {
+            "path": "/liabilityPositions/0/amount",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "a joint mortgage of 150000",
+            "profilePath": ""
+          },
+          {
+            "path": "/monthlyExpenditure",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "We spend 3000 a month.",
+            "profilePath": ""
+          },
+          {
+            "path": "/assetPositions",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "No other accounts, pensions, investments, businesses, properties, assets or debts. We spend 3000 a month. That is the complete list.",
+            "profilePath": ""
+          },
+          {
+            "path": "/liabilityPositions",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "No other accounts, pensions, investments, businesses, properties, assets or debts. We spend 3000 a month. That is the complete list.",
+            "profilePath": ""
+          }
+        ]
+      },
+      {
+        "moduleId": "pension_projection",
+        "outputKey": "generated.pensionInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No retirement projection was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "liquidity_analysis",
+        "outputKey": "generated.liquidityPlan",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "Savings and spending were supplied for the balance sheet, not a cash-reserve analysis."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "mortgage_analysis",
+        "outputKey": "generated.mortgageInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The mortgage was mentioned as part of net worth, not for a repayment or overpayment analysis."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "loan_analysis",
+        "outputKey": "generated.loanInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No non-housing loan analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "college_funding",
+        "outputKey": "generated.collegeFundingInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No college-funding analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "house_purchase",
+        "outputKey": "generated.housePurchaseInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The existing home was supplied for net worth, not for a future purchase plan."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      }
+    ],
+    "generalAmbiguities": [],
+    "confirmationPrompt": "I’ll run household net worth using Aoife’s separate AIB savings of €25,000, Ben’s separate Bank of Ireland savings of €25,000, your jointly owned €400,000 home, joint mortgage of €150,000, and €3,000 monthly spending, with no other assets or debts. Shall I run exactly that plan?"
+  },
+  "manifest": {
+    "syntheticInjection": true,
+    "sourcePath": "diagnostics/ai-led-comparison-main-v1/r1/holdout-pbs-equal-balances-owner-swap/full_repair.json",
+    "sourceRequestHash": "fe5c3e0765020e7b53dfacc18b161ecda710f910ba5f2f895767c020c455aebc",
+    "sourceProposalHash": "f9f091044bee0c4c8289f51609fcd7b76a32271da348d5e9b99341fc8edd3ee5",
+    "seededProposalHash": "e65f6945c873ee706fd3d37806f4ee37ccf547bbf112ac946449216bff758119",
+    "sourceCallIndex": 1,
+    "sourceRepetition": 1,
+    "sourceArm": "full_repair",
+    "changes": [
+      "Restore the superseded account owners in IDs, labels, steering and confirmation: AIB→Aoife; Bank of Ireland→Ben.",
+      "Leave all balances, distinct-account cardinality, home/mortgage ownership and total net worth unchanged.",
+      "Remove c3 correction entries only for the two savings positions; retain verbatim old-owner/amount evidence and collection closure."
+    ],
+    "normalizerOutcome": {
+      "status": "ready",
+      "inputSupportIssues": []
+    },
+    "grading": "The seeded first proposal is intentionally wrong. Its first independent audit must reject certification. A subsequent supported correction may certify; a genuine unresolved case must remain uncertified. Distinguish safe refusal from successful recovery. Do not pool this injected-proposal probe into the naturally sampled main corpus.",
+    "injection": "All arms receive the identical seededProposal as extractor call 1. No model critique is injected. Use a zero-latency, zero-token synthetic response; mark it synthetic and keep it separate from paid/cached call totals. Then call the unchanged real verifier and recovery logic. Never place this manifest or the test expected/rubric in a provider request."
+  }
+}

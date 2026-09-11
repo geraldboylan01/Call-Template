@@ -40,6 +40,7 @@ import { PLANNING_PLAYBOOK_GUIDANCE } from '../js/planning/playbook_manifest.gen
 import { readJsonPointer } from '../js/planning/utils.js';
 import { approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
 import { runPlanningModuleWithInput } from '../js/planning/module_registry.js';
+import { AI_LED_HOLDOUTS, checkAiLedHoldout } from './ai-led-holdouts.mjs';
 
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
   ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
@@ -48,7 +49,20 @@ const sourcePath = resolve('worker/src/consumer/direct_module_planner.js');
 const workingSource = await readFile(sourcePath, 'utf8');
 // The committed Option 2 interpreter, read from git rather than the tree, so
 // the benchmark cannot drift as the candidate is edited.
-const benchmarkCommit = process.env.AI_LED_BENCHMARK_REF || 'HEAD';
+//
+// PINNED TO THE COMMIT, NOT TO HEAD. This defaulted to HEAD, which was right
+// exactly once -- while the candidate was uncommitted work on top of 30eab9e.
+// The moment the candidate was committed, HEAD became the candidate, and a
+// clean checkout would have loaded the SAME source into both arms and reported
+// a flawless dead heat. That is the worst shape a measurement bug can take: it
+// does not fail, it agrees with you.
+//
+// 30eab9e is "Let the auditor say what a repair may touch, and re-author only
+// if that fails" -- the last commit before the simplified loop, and the Option 2
+// implementation every previously reported benchmark figure was measured
+// against. Override with AI_LED_BENCHMARK_REF to compare against something else.
+const OPTION_2_COMMIT = '30eab9eb9c0737726c9a392ef1805f347aa3b10f';
+const benchmarkCommit = process.env.AI_LED_BENCHMARK_REF || OPTION_2_COMMIT;
 const benchmarkSource = execFileSync('git',
   ['show', `${benchmarkCommit}:worker/src/consumer/direct_module_planner.js`], { encoding: 'utf8' });
 const exported = '\nexport { structuredResponse, DIRECT_SNAPSHOT_SCHEMA, VERIFICATION_SCHEMA, verificationCertificate, publicBrief };\n';
@@ -71,10 +85,12 @@ const ARMS = {
 const checkSource = await readFile('scripts/run-first20-semantic-evals.mjs', 'utf8');
 const checkFunction = checkSource.slice(checkSource.indexOf('function expectedChecks('), checkSource.indexOf('\nfor (const test of cases)'));
 const expectedChecks = new Function('assert', 'readJsonPointer', 'approvedCollegeScenarios', `${checkFunction}; return expectedChecks;`)(assert, readJsonPointer, approvedCollegeScenarios);
-let holdouts = [], checkHoldout = () => [];
-try { const extra = await import('./ai-led-holdouts.mjs'); holdouts = extra.AI_LED_HOLDOUTS; checkHoldout = extra.checkAiLedHoldout; }
-catch (error) { if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error; }
-const allCases = [...FIRST20_SEMANTIC_CORPUS, ...holdouts];
+// The five holdouts are imported at the top, as a HARD dependency: they used to
+// be optional, so a checkout without them ran 12 cases instead of 17 and
+// reported the total as though it were the whole corpus. A missing fixture must
+// stop the run, not shrink it.
+const allCases = [...FIRST20_SEMANTIC_CORPUS, ...AI_LED_HOLDOUTS];
+const checkHoldout = checkAiLedHoldout;
 if (process.argv.includes('--list')) { console.log(JSON.stringify(allCases.map(x => x.id))); process.exit(0); }
 const test = allCases.find(x => x.id === process.env.AI_LED_CASE);
 assert.ok(test, 'AI_LED_CASE must name a case');

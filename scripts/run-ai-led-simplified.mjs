@@ -14,7 +14,7 @@ async function worker() {
     try { const saved = JSON.parse(await readFile(`${path}/summary.json`, 'utf8'));
       if (saved.arms.length === 2) { results.push(saved); continue; }
     } catch {}
-    const child = spawn(process.execPath, ['--env-file=.env.local', 'scripts/compare-ai-led-simplified.mjs'], {
+    const child = spawn(process.execPath, ['--env-file-if-exists=.env', '--env-file-if-exists=.env.local', 'scripts/compare-ai-led-simplified.mjs'], {
       env: { ...process.env, AI_LED_CASE: item.id, AI_LED_REPETITION: String(item.repetition), AI_LED_OUTPUT: output },
       stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';

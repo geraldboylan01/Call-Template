@@ -1,0 +1,273 @@
+{
+  "schemaVersion": "AiLedSeededProposalProbeV1",
+  "id": "seed-withdrawn-rate-forced-ready",
+  "originalCaseId": "holdout-mortgage-fresh-uncertainty",
+  "test": {
+    "id": "holdout-mortgage-fresh-uncertainty",
+    "moduleId": "mortgage_analysis",
+    "turns": [
+      {
+        "id": "a1",
+        "role": "assistant",
+        "transcript": "Which borrowing would you like to review?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c1",
+        "role": "user",
+        "transcript": "My existing home mortgage: balance 240000, 22 years remaining, repayment mortgage, annual rate 4.1 percent. No annual or lump sum overpayments and no fixed payment amount for the illustration.",
+        "answersTurnId": "a1"
+      },
+      {
+        "id": "a2",
+        "role": "assistant",
+        "transcript": "I can use that rate for the illustration. Anything to correct?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c2",
+        "role": "user",
+        "transcript": "Stop: I was reading an old rate letter. I do not know the current interest rate and cannot check now. Do not use 4.1 percent or any guessed rate. The balance and remaining term are current and correct.",
+        "answersTurnId": "a2"
+      }
+    ],
+    "expected": {
+      "values": {
+        "currentBalance": 240000,
+        "remainingTermYears": 22,
+        "annualInterestRate": null
+      }
+    },
+    "ready": false,
+    "unknownPath": "/annualInterestRate",
+    "semanticRubric": "The later uncertainty withdraws support for 4.1 percent. Keep the confirmed balance and term, but do not certify or execute the mortgage. Asking for the unavailable current rate is safe but less helpful than acknowledging that the review must wait."
+  },
+  "seededProposal": {
+    "schemaVersion": "ModulePlanningSnapshotV1",
+    "baseSnapshotRevision": 0,
+    "throughTurnId": "c2",
+    "modules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "outputKey": "generated.pbsInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No balance-sheet review was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "pension_projection",
+        "outputKey": "generated.pensionInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No pension projection was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "liquidity_analysis",
+        "outputKey": "generated.liquidityPlan",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No cash-reserve analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "mortgage_analysis",
+        "outputKey": "generated.mortgageInputs",
+        "status": "ready",
+        "selection": {
+          "origin": "client_requested",
+          "reason": "The client wants to review their existing home mortgage."
+        },
+        "inputJson": "{\"currentBalance\":240000,\"annualInterestRate\":0.041,\"startDateIso\":\"2026-09-05\",\"endDateIso\":null,\"remainingTermYears\":22,\"repaymentType\":\"repayment\",\"fixedPaymentAmount\":null,\"oneOffOverpayment\":0,\"annualOverpayment\":0,\"loanKind\":\"mortgage\"}",
+        "steeringSummary": "Review the existing repayment mortgage using the confirmed €240,000 balance, 4.1% interest rate, 22 years remaining, no overpayments and no supplied fixed payment.",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [
+          {
+            "path": "/loanKind",
+            "valueJson": "\"mortgage\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/startDateIso",
+            "valueJson": "\"2026-09-05\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/repaymentType",
+            "valueJson": "\"repayment\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/endDateIso",
+            "valueJson": "null",
+            "source": "contract_default"
+          },
+          {
+            "path": "/fixedPaymentAmount",
+            "valueJson": "null",
+            "source": "contract_default"
+          },
+          {
+            "path": "/oneOffOverpayment",
+            "valueJson": "0",
+            "source": "contract_default"
+          },
+          {
+            "path": "/annualOverpayment",
+            "valueJson": "0",
+            "source": "contract_default"
+          }
+        ],
+        "evidence": [
+          {
+            "path": "/currentBalance",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "The balance and remaining term are current and correct.",
+            "profilePath": ""
+          },
+          {
+            "path": "/remainingTermYears",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "The balance and remaining term are current and correct.",
+            "profilePath": ""
+          },
+          {
+            "path": "/repaymentType",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "My existing home mortgage: balance 240000, 22 years remaining, repayment mortgage, annual rate 4.1 percent.",
+            "profilePath": ""
+          },
+          {
+            "path": "/oneOffOverpayment",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "No annual or lump sum overpayments and no fixed payment amount for the illustration.",
+            "profilePath": ""
+          },
+          {
+            "path": "/annualOverpayment",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "No annual or lump sum overpayments and no fixed payment amount for the illustration.",
+            "profilePath": ""
+          },
+          {
+            "path": "/fixedPaymentAmount",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "No annual or lump sum overpayments and no fixed payment amount for the illustration.",
+            "profilePath": ""
+          },
+          {
+            "path": "/annualInterestRate",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "My existing home mortgage: balance 240000, 22 years remaining, repayment mortgage, annual rate 4.1 percent. No annual or lump sum overpayments and no fixed payment amount for the illustration.",
+            "profilePath": ""
+          }
+        ]
+      },
+      {
+        "moduleId": "loan_analysis",
+        "outputKey": "generated.loanInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The borrowing is an existing home mortgage, not a non-housing loan."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "college_funding",
+        "outputKey": "generated.collegeFundingInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No college-funding analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "house_purchase",
+        "outputKey": "generated.housePurchaseInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The client described an existing mortgage, not a future home purchase."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      }
+    ],
+    "generalAmbiguities": [],
+    "confirmationPrompt": "I’ll review your existing repayment mortgage using €240,000 at 4.1%, 22 years remaining, no annual or lump-sum overpayments and no fixed payment supplied. Shall I run exactly that plan?"
+  },
+  "manifest": {
+    "syntheticInjection": true,
+    "sourcePath": "diagnostics/ai-led-comparison-main-v1/r1/holdout-mortgage-fresh-uncertainty/full_repair.json",
+    "sourceRequestHash": "a87e27e23bb25b4200fa8a831bd821791cf7730e6346cf56dfb93fdc0d7f5fc6",
+    "sourceProposalHash": "e2338faefd93d46f73c708e2465544d5a6e000338ad4fd9ae2d7fa50852e9cfc",
+    "seededProposalHash": "1702c8d8e0c9b555e7785664edbe57e1ecbed254bb1938af0b0175ac9d347ebd",
+    "sourceCallIndex": 1,
+    "sourceRepetition": 1,
+    "sourceArm": "full_repair",
+    "changes": [
+      "Restore the explicitly withdrawn old-letter rate 4.1% as a supported numeric input.",
+      "Force module ready and remove its missing-rate marker; make steering and confirmation state a definite rate.",
+      "Cite the verbatim earlier rate statement. Keep the later instruction not to use the old rate in the conversation; expected outcome remains unknown and uncertified."
+    ],
+    "normalizerOutcome": {
+      "status": "ready",
+      "inputSupportIssues": []
+    },
+    "grading": "The seeded first proposal is intentionally wrong. Its first independent audit must reject certification. A subsequent supported correction may certify; a genuine unresolved case must remain uncertified. Distinguish safe refusal from successful recovery. Do not pool this injected-proposal probe into the naturally sampled main corpus.",
+    "injection": "All arms receive the identical seededProposal as extractor call 1. No model critique is injected. Use a zero-latency, zero-token synthetic response; mark it synthetic and keep it separate from paid/cached call totals. Then call the unchanged real verifier and recovery logic. Never place this manifest or the test expected/rubric in a provider request."
+  }
+}

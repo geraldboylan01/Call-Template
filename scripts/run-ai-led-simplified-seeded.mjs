@@ -1,16 +1,21 @@
 // The four adversarial seeded probes, both arms, run sequentially per seed.
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
-const seeds = process.env.AI_LED_SEED_DIR || 'diagnostics/ai-led-seeded-proposals-v1';
+// TRACKED FIXTURES, NOT A RUN DIRECTORY. These lived under diagnostics/, which
+// is gitignored, so the adversarial comparison could only be reproduced on the
+// machine that had generated them -- and a clean checkout found an empty
+// directory and reported four probes as zero rather than failing.
+const seeds = process.env.AI_LED_SEED_DIR || 'scripts/fixtures/ai-led-seeded';
 const output = process.env.AI_LED_OUTPUT || 'diagnostics/ai-led-simplified-seeded-v1';
 await mkdir(output, { recursive: true });
 const files = (await readdir(seeds)).filter(name => name.endsWith('.json')).sort();
+if (files.length === 0) throw new Error(`No seeded probes in ${seeds}: an empty run is not a passing one.`);
 const repetition = Number(process.env.AI_LED_REPETITION || 1);
 const results = [];
 for (const file of files) {
   const seed = JSON.parse(await readFile(`${seeds}/${file}`, 'utf8'));
   const path = `${output}/r${repetition}/${seed.id}`;
-  const child = spawn(process.execPath, ['--env-file=.env.local', 'scripts/compare-ai-led-simplified-seeded.mjs'], {
+  const child = spawn(process.execPath, ['--env-file-if-exists=.env', '--env-file-if-exists=.env.local', 'scripts/compare-ai-led-simplified-seeded.mjs'], {
     env: { ...process.env, AI_LED_SEED: `${seeds}/${file}`, AI_LED_REPETITION: String(repetition), AI_LED_OUTPUT: output },
     stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';

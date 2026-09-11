@@ -147,7 +147,12 @@ checked('LIMIT: word boundary counting accepts 50 as unique in 250,50; semantic 
 
 // Separate source-attribution defect: a record-existence quote is treated as
 // evidence that the client supplied ALL defaulted values nested in the record.
-const pensionArchive = JSON.parse(await readFile('diagnostics/first20/paid-v10c-r2b/pension-partners-contributions-correction.json', 'utf8'));
+// A TRACKED FIXTURE, BECAUSE THIS PROBE IS IN THE GATE. It read the paid
+// v10c-r2b run directly out of diagnostics/, which is gitignored, so
+// `npm run check:first20` could not pass on a clean checkout at all. The fixture
+// is a faithful extract of that archive: the same conversation turns and the
+// same first provider response, nothing edited.
+const pensionArchive = JSON.parse(await readFile('scripts/fixtures/first20/pension-partners-contributions-correction.json', 'utf8'));
 const pensionRaw = JSON.parse(pensionArchive.providerCalls[0].response.output.flatMap(item => item.content || []).find(item => item.type === 'output_text').text);
 pensionRaw.modules = pensionRaw.modules.filter(item => item.moduleId === 'pension_projection');
 const pension = pensionRaw.modules[0];
