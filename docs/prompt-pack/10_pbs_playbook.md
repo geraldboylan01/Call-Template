@@ -82,8 +82,12 @@ The `summary` section must use these three rows in this order:
 ```
 Its `subtotalLabel` must also be exactly `"Net worth"`, and `subtotalValue` must equal the `"Net worth"` row.
 
-## Optional PBS Alternatives
-If Gerry asks for a second version of the PBS, keep the current position in `generated.outputsBucketed.sections` and add alternatives in `generated.outputsBucketed.scenarios`.
+## PBS Alternatives (Up To 3)
+If Gerry asks for alternative versions of the PBS, keep the current position in `generated.outputsBucketed.sections` and add the alternatives in `generated.outputsBucketed.scenarios`.
+
+`Current position` is always case 1 and is never listed in `scenarios`. The module supports 4 cases in total, so `scenarios` may hold at most 3 alternatives. A fourth alternative is rejected and the whole module fails to apply.
+
+If Gerry dictates more than three alternatives, build the three that carry the decision and say in SECTION 1 NOTES which case was left out and why.
 
 Each scenario must include:
 - `id`: stable slug, for example `"sell-rental-property"`.
@@ -94,11 +98,20 @@ Each scenario must include:
 
 Each scenario's own `sections` array must also include a `summary` section with `key: "summary"`, the same three summary rows, and the exact `"Net worth"` label.
 
+When there is more than one alternative:
+- Give every scenario a unique `id` and a distinct client-facing `title`. A repeated id breaks the case buttons.
+- Order the alternatives from least to most disruptive, and keep that order if Gerry asks for a revision.
+- Build every scenario from the current position, not from the alternative before it. All six sections are recalculated in every scenario, and `Gross assets`, `Total liabilities`, and `Net worth` must reconcile inside each one.
+- Never write a scenario as a change note such as `as above but without the rental property`. A scenario with missing sections does not render at all.
+- Keep each scenario's `summaryHtml` to one or two sentences. Four full balance sheets is a long payload, and long case notes are what stop it finishing.
+- Make each case a genuinely different decision. Two cases that land on the same net worth by the same route are one case.
+
 Movement entries:
 - Use only these movement actions: `"add"`, `"reduce"`, `"increase"`, or `"remove"`.
 - `from.rowLabel` should exactly match the row label in the current-position section.
 - `to.rowLabel` should exactly match the target row label in the scenario section when that row exists.
 - For a debt that is repaid and disappears from the scenario, keep `to.sectionKey: "liabilities"`, use the original liability row label, and set `action: "reduce"`.
+- Every scenario's `movements` describe the move from the current position into that scenario, never from one alternative into another. Each alternative carries its own movements.
 
 ```json
 {
@@ -112,6 +125,16 @@ Movement entries:
 ```
 
 For a property sale case, remove or reduce the property in `Legacy`, reduce the relevant debt in `Liabilities`, and put the surplus proceeds in the destination Gerry asked for. Use `Liquidity` only when the proceeds are being kept as cash or reserves. If Gerry asks to redirect the equity into a pension, add it to `Longevity` instead. Ensure `Gross assets`, `Total liabilities`, and `Net worth` reconcile independently in that scenario.
+
+A three-alternative payload has this shape. Each `sections` array is the full six-section set for that case.
+
+```json
+"scenarios": [
+  { "id": "sell-rental-hold-cash", "title": "Sell Rental, Hold Cash", "sections": [], "movements": [] },
+  { "id": "sell-rental-fund-pension", "title": "Sell Rental, Fund Pension", "sections": [], "movements": [] },
+  { "id": "downsize-home", "title": "Downsize The Family Home", "sections": [], "movements": [] }
+]
+```
 
 ## Bucket Rules
 - `Lifestyle`
@@ -224,6 +247,7 @@ Include:
 - total liabilities
 - net worth
 - optional liquidity months or longevity reserve multiple if Gerry supplied the relevant inputs
+- one line per alternative case, giving its net worth and the single change that produced it
 
 ## Omit By Default
 - Omit `generated.assumptions` unless Gerry explicitly says `override assumptions`.

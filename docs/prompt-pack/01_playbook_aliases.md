@@ -108,6 +108,20 @@ Use `22_protection_playbook.md` when Gerry says things like:
   - long-form report transformation -> Report
   - protection review -> Protection
 
+## Scenario Requests
+Gerry often adds cases to a module he has already run. These stay in the same playbook:
+- add a third case
+- add another scenario to that
+- show me a couple of alternatives
+- compare three options
+- what if they did X instead
+- run that again with a case where the rent is lost
+
+Rules:
+- Stay in the playbook that produced the module and add the case to that playbook's scenario array.
+- A module carries at most 4 cases in total, counting the base or current case, so PBS carries at most 3 alternatives.
+- If the requested case changes something the scenario array cannot change, say so in NOTES and build it as a separate module rather than distorting a case.
+
 ## Mixed Requests
 - If Gerry asks for a JS-engine module and a separate explainer, prefer the JS-engine playbook first.
 - If Gerry later says `turn that into a report` or `make an education module from this`, switch to the named visual playbook.

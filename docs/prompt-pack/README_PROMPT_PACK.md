@@ -36,6 +36,8 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
   - shadow test prompts and pass criteria
 - `91_artifact_payload_examples.md`
   - representative JSON payloads for the upgraded artifact-style module capabilities
+- `SCENARIO_CAP_APP_CHANGES.md`
+  - the app-side work required by the 4-case scenario limit, in order
 
 ## Recommended Upload / Paste Strategy
 For the live ChatGPT project, use `MASTER_PROJECT_PROMPT.md`.
@@ -77,6 +79,7 @@ The assembled master prompt should include these files in this order:
 - House Purchase payloads contain only `generated.summaryHtml` and `generated.housePurchaseInputs`; every result remains runtime-owned.
 - Education, report, and protection outputs become visually stronger and less repetitive.
 - Tax scenarios use the uploaded cheat sheet as a logic overlay without forcing a separate tax playbook.
+- Scenario-capable modules support up to 4 cases, counting the base or current case, and every case is fully recalculated and reconciles on its own.
 
 ## Notes
 - The current prompt pack now targets the upgraded structured artifact renderer in the app.

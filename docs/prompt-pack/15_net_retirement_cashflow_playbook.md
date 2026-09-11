@@ -113,6 +113,9 @@ Use `scenarios[]` when Gerry wants a case button such as:
 - spouse income included versus excluded
 - lower spending after children finish college
 - foreign pension included versus excluded
+- a staged downside, such as full income, then one source lost, then two
+
+`scenarios[]` supports up to 4 cases. A fifth case is rejected and the whole module fails to apply. If Gerry dictates more, build the 4 that carry the decision and name the one left out in NOTES.
 
 Each scenario should include:
 - `id`
@@ -137,6 +140,13 @@ For changed-income cases, use:
 ```
 
 For scenario-only income, use `additionalIncomeSources`.
+
+With three or four cases:
+- Keep an as-things-stand case first and point `baseScenarioId` at it unless Gerry names a different base.
+- Give each case its own `availableInvestmentFundToday` wherever the fund differs. A fund figure does not carry over from the case before it.
+- Build every case from the full `incomeSources[]` list, not from the previous case. `excludedIncomeSourceIds` always refers to ids in `incomeSources[]`.
+- Keep each `description` to one sentence.
+- In NOTES, give one line per case with the income that changes and the fund assumption for that case.
 
 ## Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.

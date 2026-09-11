@@ -1437,8 +1437,9 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 .pbs-scenario-switcher {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 8px;
   border: 1px solid rgba(133, 177, 226, 0.26);
@@ -1459,8 +1460,11 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 .pbs-scenario-options {
   display: grid;
-  grid-auto-columns: minmax(132px, auto);
-  grid-auto-flow: column;
+  /* auto-fit needs a definite width to count its tracks, and as a flex item
+     with a content-based basis it would resolve to a single column. */
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-auto-flow: row;
   gap: 6px;
   min-width: 0;
   padding: 3px;
@@ -1549,8 +1553,11 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 .pension-scenario-options {
   display: grid;
-  grid-auto-columns: minmax(132px, auto);
-  grid-auto-flow: column;
+  /* auto-fit needs a definite width to count its tracks, and as a flex item
+     with a content-based basis it would resolve to a single column. */
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-auto-flow: row;
   gap: 6px;
   min-width: 0;
   padding: 3px;

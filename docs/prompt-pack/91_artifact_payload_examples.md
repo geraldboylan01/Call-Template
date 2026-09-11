@@ -6,6 +6,8 @@ Representative payloads for testing the upgraded module renderer through the exi
 
 PBS examples should keep the summary contract exact: the summary section uses `key: "summary"`, rows labelled `Gross assets`, `Total liabilities`, and `Net worth`, and `subtotalLabel: "Net worth"`. Scenario `movements` are only animation metadata; keep scenario sections fully recalculated and use canonical movement actions such as `add` and `reduce`.
 
+A module shows at most 4 cases. In PBS, `Current position` is case 1, so `scenarios` holds at most 3 alternatives; the example below uses all three. Every alternative is built from the current position, carries all six sections, and reconciles on its own.
+
 ```json
 {
   "title": "Personal Balance Sheet - Client",
@@ -69,8 +71,8 @@ PBS examples should keep the summary contract exact: the summary section uses `k
       ],
       "scenarios": [
         {
-          "id": "sell-rental-property",
-          "title": "Sell Rental Property",
+          "id": "sell-rental-hold-cash",
+          "title": "Sell Rental, Hold Cash",
           "summaryHtml": "<p>This case shows what changes if the buy-to-let property is sold, the mortgage is cleared, and surplus proceeds move into liquid reserves. Read it against the current balance sheet to see whether the same net worth becomes more flexible and less concentrated. The key question is whether extra liquidity is worth giving up the rental-property exposure.</p>",
           "sections": [
             {
@@ -129,6 +131,136 @@ PBS examples should keep the summary contract exact: the summary section uses `k
               "to": [
                 { "sectionKey": "liabilities", "rowLabel": "Mortgage", "amount": 220000, "action": "reduce" },
                 { "sectionKey": "liquidity", "rowLabel": "Cash from sale", "amount": 120000, "action": "add" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "sell-rental-fund-pension",
+          "title": "Sell Rental, Fund Pension",
+          "summaryHtml": "<p>This case sells the buy-to-let, clears the mortgage, and directs the surplus into pension funding instead of cash. Net worth is unchanged, but more of it is now working toward retirement income.</p>",
+          "sections": [
+            {
+              "key": "lifestyle",
+              "title": "Lifestyle",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Family home", 525000]],
+              "subtotalLabel": "Lifestyle assets",
+              "subtotalValue": 525000
+            },
+            {
+              "key": "liquidity",
+              "title": "Liquidity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Cash", 12000], ["Savings", 18000]],
+              "subtotalLabel": "Liquid reserves",
+              "subtotalValue": 30000
+            },
+            {
+              "key": "longevity",
+              "title": "Longevity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["PRSA", 95000], ["Employer pension", 240000], ["Pension top-up from sale", 120000]],
+              "subtotalLabel": "Longevity assets",
+              "subtotalValue": 455000
+            },
+            {
+              "key": "legacy",
+              "title": "Legacy",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [],
+              "subtotalLabel": "Legacy assets",
+              "subtotalValue": 0
+            },
+            {
+              "key": "liabilities",
+              "title": "Liabilities",
+              "columns": ["Liability", "Amount (€)"],
+              "rows": [],
+              "subtotalLabel": "Total liabilities",
+              "subtotalValue": 0
+            },
+            {
+              "key": "summary",
+              "title": "Summary",
+              "columns": ["Metric", "Amount (€)"],
+              "rows": [["Gross assets", 1010000], ["Total liabilities", 0], ["Net worth", 1010000]],
+              "subtotalLabel": "Net worth",
+              "subtotalValue": 1010000
+            }
+          ],
+          "movements": [
+            {
+              "label": "Sell rental and fund pension",
+              "from": { "sectionKey": "legacy", "rowLabel": "Buy-to-let property", "amount": 340000 },
+              "to": [
+                { "sectionKey": "liabilities", "rowLabel": "Mortgage", "amount": 220000, "action": "reduce" },
+                { "sectionKey": "longevity", "rowLabel": "Pension top-up from sale", "amount": 120000, "action": "add" }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "downsize-home",
+          "title": "Downsize The Family Home",
+          "summaryHtml": "<p>This case keeps the rental property and releases equity by moving to a smaller home. It is the only case that leaves the mortgage in place, so read it against the liabilities row.</p>",
+          "sections": [
+            {
+              "key": "lifestyle",
+              "title": "Lifestyle",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Family home", 350000]],
+              "subtotalLabel": "Lifestyle assets",
+              "subtotalValue": 350000
+            },
+            {
+              "key": "liquidity",
+              "title": "Liquidity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Cash", 12000], ["Savings", 18000], ["Proceeds from downsizing", 175000]],
+              "subtotalLabel": "Liquid reserves",
+              "subtotalValue": 205000
+            },
+            {
+              "key": "longevity",
+              "title": "Longevity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["PRSA", 95000], ["Employer pension", 240000]],
+              "subtotalLabel": "Longevity assets",
+              "subtotalValue": 335000
+            },
+            {
+              "key": "legacy",
+              "title": "Legacy",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Buy-to-let property", 340000]],
+              "subtotalLabel": "Legacy assets",
+              "subtotalValue": 340000
+            },
+            {
+              "key": "liabilities",
+              "title": "Liabilities",
+              "columns": ["Liability", "Amount (€)"],
+              "rows": [["Mortgage", 220000]],
+              "subtotalLabel": "Total liabilities",
+              "subtotalValue": 220000
+            },
+            {
+              "key": "summary",
+              "title": "Summary",
+              "columns": ["Metric", "Amount (€)"],
+              "rows": [["Gross assets", 1230000], ["Total liabilities", 220000], ["Net worth", 1010000]],
+              "subtotalLabel": "Net worth",
+              "subtotalValue": 1010000
+            }
+          ],
+          "movements": [
+            {
+              "label": "Downsize the family home",
+              "from": { "sectionKey": "lifestyle", "rowLabel": "Family home", "amount": 525000 },
+              "to": [
+                { "sectionKey": "lifestyle", "rowLabel": "Family home", "amount": 350000, "action": "reduce" },
+                { "sectionKey": "liquidity", "rowLabel": "Proceeds from downsizing", "amount": 175000, "action": "add" }
               ]
             }
           ]

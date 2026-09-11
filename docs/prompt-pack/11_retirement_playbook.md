@@ -161,6 +161,8 @@ Use rental income fields when Gerry says things like:
 - rental income coming in at retirement
 - with and without rental income
 - rent lost scenario
+- compare a few different rent levels
+- add a third rent case
 
 Rules:
 - Treat `rentalIncomeToday` as gross annual rent in today's money.
@@ -169,10 +171,15 @@ Rules:
 - In target mode, rental income reduces the pension-funded withdrawal needed.
 - In affordable mode, the runtime goal-seeks pension-funded income and then adds gross rental income to show total affordable income.
 - For a simple rent assumption, emit only `rentalIncomeToday`.
-- For with/without or rent-lost comparisons, emit `rentalIncomeScenarios` and `baseScenarioId`.
+- For any comparison of rent levels, emit `rentalIncomeScenarios` and `baseScenarioId`.
+- `rentalIncomeScenarios` supports 2 to 4 cases. A fifth case is rejected and the whole module fails to apply.
 - Each `rentalIncomeScenarios` item must include `id`, `title`, and `rentalIncomeToday`.
+- Every case needs a unique `id` and a distinct title that names the rent level in the client's words, for example `Full rent`, `One property sold`, `Rent halved`, `Rental income lost`.
+- Order the cases from most rental income to least, so the buttons read as a downside ladder.
 - If Gerry names the base case, use that case's `id` as `baseScenarioId`.
 - If Gerry does not name the base case, use the first mentioned case. For generic "with and without rent", default the base to the with-rent case.
+- Rent level is the only thing these cases change. If Gerry wants a case that also changes contributions, retirement age, or growth, that is a separate module; say so in NOTES rather than forcing it into a rent case.
+- In NOTES, give one line per case with its rent assumption in today's money.
 
 ## Couples And State Pension
 Use `pensions[]` when Gerry says:

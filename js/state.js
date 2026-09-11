@@ -1,4 +1,5 @@
 import { normalizeReport } from './report.js';
+import { MAX_MODULE_SCENARIO_CASES, MAX_PBS_SCENARIO_ALTERNATIVES } from './scenario_cap.js';
 
 import { normalizeVideoSummary } from './video_summary.js';
 import {
@@ -12,6 +13,46 @@ const SESSION_VERSION = 1;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+/**
+ * What had to be changed to make an imported session renderable.
+ *
+ * A published link is a promise that was already kept once, so importing one
+ * never throws over a payload that is only too large by today's rules. The
+ * engine normalisers reject an over-cap payload on the way in; this side drops
+ * the extra cases and records why, so the client still sees their plan.
+ */
+const sessionImportWarnings = [];
+const MAX_SESSION_IMPORT_WARNINGS = 50;
+
+function recordSessionImportWarning(message) {
+  if (sessionImportWarnings.length >= MAX_SESSION_IMPORT_WARNINGS) {
+    return;
+  }
+
+  sessionImportWarnings.push(message);
+
+  if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+    console.warn(`[CallCanvas] ${message}`);
+  }
+}
+
+/** Returns the warnings raised since the last drain, and clears them. */
+export function drainSessionImportWarnings() {
+  return sessionImportWarnings.splice(0, sessionImportWarnings.length);
+}
+
+function capImportedScenarioCases(cases, limit, label, noun = 'cases') {
+  if (cases.length <= limit) {
+    return cases;
+  }
+
+  recordSessionImportWarning(
+    `${label} carried ${cases.length} ${noun}; kept the first ${limit} because a module shows at most ${MAX_MODULE_SCENARIO_CASES} cases.`
+  );
+
+  return cases.slice(0, limit);
 }
 
 function makeSessionId() {
@@ -778,8 +819,14 @@ function normalizeCollegeFundingInputs(collegeFundingInputs) {
       })
       .filter(Boolean);
 
-    if (scenarios.length > 0) {
-      normalized.scenarios = scenarios;
+    const capped = capImportedScenarioCases(
+      scenarios,
+      MAX_MODULE_SCENARIO_CASES,
+      'collegeFundingInputs.scenarios'
+    );
+
+    if (capped.length > 0) {
+      normalized.scenarios = capped;
     }
   }
 
@@ -948,29 +995,38 @@ function normalizePbsScenarioMovements(movements) {
 }
 
 function normalizeOutputsBucketedScenarios(scenarios) {
-  return Array.isArray(scenarios)
-    ? scenarios
-      .filter((scenario) => scenario && typeof scenario === 'object' && !Array.isArray(scenario))
-      .map((scenario, index) => {
-        const sections = normalizeOutputsBucketedSections(scenario.sections);
-        if (sections.length === 0) {
-          return null;
-        }
+  if (!Array.isArray(scenarios)) {
+    return [];
+  }
 
-        return {
-          id: typeof scenario.id === 'string' && scenario.id.trim()
-            ? scenario.id.trim()
-            : `scenario-${index + 1}`,
-          title: typeof scenario.title === 'string' && scenario.title.trim()
-            ? scenario.title.trim()
-            : `Alternative ${index + 1}`,
-          summaryHtml: typeof scenario.summaryHtml === 'string' ? scenario.summaryHtml : '',
-          sections,
-          movements: normalizePbsScenarioMovements(scenario.movements)
-        };
-      })
-      .filter(Boolean)
-    : [];
+  const normalized = scenarios
+    .filter((scenario) => scenario && typeof scenario === 'object' && !Array.isArray(scenario))
+    .map((scenario, index) => {
+      const sections = normalizeOutputsBucketedSections(scenario.sections);
+      if (sections.length === 0) {
+        return null;
+      }
+
+      return {
+        id: typeof scenario.id === 'string' && scenario.id.trim()
+          ? scenario.id.trim()
+          : `scenario-${index + 1}`,
+        title: typeof scenario.title === 'string' && scenario.title.trim()
+          ? scenario.title.trim()
+          : `Alternative ${index + 1}`,
+        summaryHtml: typeof scenario.summaryHtml === 'string' ? scenario.summaryHtml : '',
+        sections,
+        movements: normalizePbsScenarioMovements(scenario.movements)
+      };
+    })
+    .filter(Boolean);
+
+  return capImportedScenarioCases(
+    normalized,
+    MAX_PBS_SCENARIO_ALTERNATIVES,
+    'outputsBucketed.scenarios',
+    'alternatives'
+  );
 }
 
 function normalizeOutputsBucketed(outputsBucketed) {
@@ -1121,8 +1177,14 @@ function normalizePensionInputs(pensionInputs) {
       })
       .filter(Boolean);
 
-    if (scenarios.length > 0) {
-      normalized.rentalIncomeScenarios = scenarios;
+    const capped = capImportedScenarioCases(
+      scenarios,
+      MAX_MODULE_SCENARIO_CASES,
+      'pensionInputs.rentalIncomeScenarios'
+    );
+
+    if (capped.length > 0) {
+      normalized.rentalIncomeScenarios = capped;
     }
   }
 
@@ -1681,6 +1743,8 @@ export function exportPublishedSession(session) {
 }
 
 export function importSession(input) {
+  sessionImportWarnings.length = 0;
+
   let parsed = input;
 
   if (typeof input === 'string') {
@@ -1711,6 +1775,8 @@ export function importSession(input) {
 }
 
 export function importPublishedSession(input) {
+  sessionImportWarnings.length = 0;
+
   let parsed = input;
 
   if (typeof input === 'string') {

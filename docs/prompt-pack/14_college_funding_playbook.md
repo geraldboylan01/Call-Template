@@ -118,6 +118,8 @@ Each scenario needs:
 - `title`
 - `annualCostTodayPerChild` or `oneOffCostTodayPerChild`
 
+`scenarios` supports up to 4 cases, which is exactly what the at-home / away-from-home / car-support shorthand produces. A fifth case is rejected and the whole module fails to apply. If Gerry describes more cost options than that, build the 4 that bracket the decision, keep the cheapest and the most expensive among them, and name the option left out in NOTES.
+
 ## Optional Inputs
 - `currentYear`
 - `currencySymbol` (use `€` for Irish euro planning, not `EUR`)
@@ -133,6 +135,8 @@ If Gerry gives only the common at-home / away-from-home / car support pattern, y
 - `carSupportTodayPerChild`
 
 The app will create four standard scenarios from those values.
+
+Use the shorthand or an explicit `scenarios` array, not both. The shorthand already fills the 4-case limit, so any extra explicit case pushes the module over it.
 
 ## Child Timing Rules
 - Use `children[]` whenever children have different current ages, different college start ages, or different course durations.

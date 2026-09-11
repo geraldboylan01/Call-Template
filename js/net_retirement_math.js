@@ -1,3 +1,5 @@
+import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
+
 const DEFAULT_CURRENT_YEAR = new Date().getFullYear();
 const DEFAULT_CURRENT_AGE = 60;
 const DEFAULT_HORIZON_END_AGE = 100;
@@ -314,6 +316,12 @@ function normalizeScenarios(rawScenarios, inputs, incomeSources) {
   const sourceScenarios = Array.isArray(rawScenarios) && rawScenarios.length > 0
     ? rawScenarios
     : [{ id: 'base', title: 'Base case' }];
+
+  if (sourceScenarios.length > MAX_MODULE_SCENARIO_CASES) {
+    throw new Error(
+      `generated.netRetirementInputs.scenarios supports at most ${MAX_MODULE_SCENARIO_CASES} cases; received ${sourceScenarios.length}.`
+    );
+  }
 
   const usedIds = new Set();
   return sourceScenarios.map((scenario, index) => {

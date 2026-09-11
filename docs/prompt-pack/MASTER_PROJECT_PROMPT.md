@@ -101,6 +101,24 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
+## Scenario Rules (All Playbooks)
+Several playbooks support switchable cases. The same limits apply everywhere.
+
+- A module may show at most 4 cases, counting the base case that is already on screen.
+  - PBS: `Current position` is case 1, so `generated.outputsBucketed.scenarios` may hold at most 3 alternatives.
+  - Retirement: `generated.pensionInputs.rentalIncomeScenarios` may hold at most 4 cases.
+  - Net Retirement Cash Flow: `generated.netRetirementInputs.scenarios` may hold at most 4 cases.
+  - College Funding: `generated.collegeFundingInputs.scenarios` may hold at most 4 cases.
+- A fifth case is rejected and the whole module fails to apply. Never emit one.
+- If Gerry dictates more cases than the limit allows, build the ones that carry the decision and say in NOTES which case was left out and why. Do not quietly drop one.
+- Every case needs a unique `id` and a distinct client-facing `title`. Never reuse an id, and never put the word `scenario` in a title.
+- Put the base or current case first, then order the rest from least to most disruptive. Keep that order if Gerry asks for a revision.
+- Each case must stand on its own. Recalculate everything that case changes and reconcile it independently. Never write a case as a change note such as `same as above but without the rental income`.
+- Cases must be genuinely different decisions. Two cases that reach the same place by the same route are one case.
+- Keep per-case copy to one or two sentences. Three or four full cases already make a long payload, and long case notes are what stop it finishing.
+- Finish the JSON object. If a multi-case payload is running long, shorten the case notes and the summary, never the sections, and never stop before the closing braces.
+- In NOTES, give one line per case with that case's headline number, so the comparison reads without opening the module.
+
 ## Client Explanation Standard
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
@@ -357,8 +375,12 @@ The `summary` section must use these three rows in this order:
 ```
 Its `subtotalLabel` must also be exactly `"Net worth"`, and `subtotalValue` must equal the `"Net worth"` row.
 
-### Optional PBS Alternatives
-If Gerry asks for a second version of the PBS, keep the current position in `generated.outputsBucketed.sections` and add alternatives in `generated.outputsBucketed.scenarios`.
+### PBS Alternatives (Up To 3)
+If Gerry asks for alternative versions of the PBS, keep the current position in `generated.outputsBucketed.sections` and add the alternatives in `generated.outputsBucketed.scenarios`.
+
+`Current position` is always case 1 and is never listed in `scenarios`. The module supports 4 cases in total, so `scenarios` may hold at most 3 alternatives. A fourth alternative is rejected and the whole module fails to apply.
+
+If Gerry dictates more than three alternatives, build the three that carry the decision and say in SECTION 1 NOTES which case was left out and why.
 
 Each scenario must include:
 - `id`: stable slug, for example `"sell-rental-property"`.
@@ -369,11 +391,20 @@ Each scenario must include:
 
 Each scenario's own `sections` array must also include a `summary` section with `key: "summary"`, the same three summary rows, and the exact `"Net worth"` label.
 
+When there is more than one alternative:
+- Give every scenario a unique `id` and a distinct client-facing `title`. A repeated id breaks the case buttons.
+- Order the alternatives from least to most disruptive, and keep that order if Gerry asks for a revision.
+- Build every scenario from the current position, not from the alternative before it. All six sections are recalculated in every scenario, and `Gross assets`, `Total liabilities`, and `Net worth` must reconcile inside each one.
+- Never write a scenario as a change note such as `as above but without the rental property`. A scenario with missing sections does not render at all.
+- Keep each scenario's `summaryHtml` to one or two sentences. Four full balance sheets is a long payload, and long case notes are what stop it finishing.
+- Make each case a genuinely different decision. Two cases that land on the same net worth by the same route are one case.
+
 Movement entries:
 - Use only these movement actions: `"add"`, `"reduce"`, `"increase"`, or `"remove"`.
 - `from.rowLabel` should exactly match the row label in the current-position section.
 - `to.rowLabel` should exactly match the target row label in the scenario section when that row exists.
 - For a debt that is repaid and disappears from the scenario, keep `to.sectionKey: "liabilities"`, use the original liability row label, and set `action: "reduce"`.
+- Every scenario's `movements` describe the move from the current position into that scenario, never from one alternative into another. Each alternative carries its own movements.
 
 ```json
 {
@@ -387,6 +418,16 @@ Movement entries:
 ```
 
 For a property sale case, remove or reduce the property in `Legacy`, reduce the relevant debt in `Liabilities`, and put the surplus proceeds in the destination Gerry asked for. Use `Liquidity` only when the proceeds are being kept as cash or reserves. If Gerry asks to redirect the equity into a pension, add it to `Longevity` instead. Ensure `Gross assets`, `Total liabilities`, and `Net worth` reconcile independently in that scenario.
+
+A three-alternative payload has this shape. Each `sections` array is the full six-section set for that case.
+
+```json
+"scenarios": [
+  { "id": "sell-rental-hold-cash", "title": "Sell Rental, Hold Cash", "sections": [], "movements": [] },
+  { "id": "sell-rental-fund-pension", "title": "Sell Rental, Fund Pension", "sections": [], "movements": [] },
+  { "id": "downsize-home", "title": "Downsize The Family Home", "sections": [], "movements": [] }
+]
+```
 
 ### Bucket Rules
 - `Lifestyle`
@@ -446,6 +487,7 @@ Include:
 - total liabilities
 - net worth
 - optional liquidity months or longevity reserve multiple if Gerry supplied the relevant inputs
+- one line per alternative case, giving its net worth and the single change that produced it
 
 ### Omit By Default
 - Omit `generated.assumptions` unless Gerry explicitly says `override assumptions`.
@@ -568,6 +610,8 @@ Use rental income fields when Gerry says things like:
 - rental income coming in at retirement
 - with and without rental income
 - rent lost scenario
+- compare a few different rent levels
+- add a third rent case
 
 Rules:
 - Treat `rentalIncomeToday` as gross annual rent in today's money.
@@ -576,10 +620,15 @@ Rules:
 - In target mode, rental income reduces the pension-funded withdrawal needed.
 - In affordable mode, the runtime goal-seeks pension-funded income and then adds gross rental income to show total affordable income.
 - For a simple rent assumption, emit only `rentalIncomeToday`.
-- For with/without or rent-lost comparisons, emit `rentalIncomeScenarios` and `baseScenarioId`.
+- For any comparison of rent levels, emit `rentalIncomeScenarios` and `baseScenarioId`.
+- `rentalIncomeScenarios` supports 2 to 4 cases. A fifth case is rejected and the whole module fails to apply.
 - Each `rentalIncomeScenarios` item must include `id`, `title`, and `rentalIncomeToday`.
+- Every case needs a unique `id` and a distinct title that names the rent level in the client's words, for example `Full rent`, `One property sold`, `Rent halved`, `Rental income lost`.
+- Order the cases from most rental income to least, so the buttons read as a downside ladder.
 - If Gerry names the base case, use that case's `id` as `baseScenarioId`.
 - If Gerry does not name the base case, use the first mentioned case. For generic "with and without rent", default the base to the with-rent case.
+- Rent level is the only thing these cases change. If Gerry wants a case that also changes contributions, retirement age, or growth, that is a separate module; say so in NOTES rather than forcing it into a rent case.
+- In NOTES, give one line per case with its rent assumption in today's money.
 
 ### Couples And State Pension
 Use `pensions[]` when Gerry says:
@@ -725,7 +774,9 @@ Each income source should include:
 Do not use the default pension State Pension logic from the retirement playbook here. If Gerry says 50% of the Irish State Pension, enter it as a named net income source if he gives or approves the amount.
 
 ### Scenario Rules
-Use `scenarios[]` when Gerry wants a case button such as keeping or losing rental income, including or excluding spouse income, changing spending, or comparing foreign pension assumptions.
+Use `scenarios[]` when Gerry wants a case button such as keeping or losing rental income, including or excluding spouse income, changing spending, comparing foreign pension assumptions, or a staged downside where income sources are lost one at a time.
+
+`scenarios[]` supports up to 4 cases. A fifth case is rejected and the whole module fails to apply. If Gerry dictates more, build the 4 that carry the decision and name the one left out in NOTES.
 
 Each scenario should include `id` and `title`.
 
@@ -738,6 +789,13 @@ Scenario optional keys:
 - `additionalIncomeSources`
 
 For lost-income cases, prefer `excludedIncomeSourceIds`. For changed-income cases, use `incomeSourceOverrides`.
+
+With three or four cases:
+- Keep an as-things-stand case first and point `baseScenarioId` at it unless Gerry names a different base.
+- Give each case its own `availableInvestmentFundToday` wherever the fund differs. A fund figure does not carry over from the case before it.
+- Build every case from the full `incomeSources[]` list, not from the previous case. `excludedIncomeSourceIds` always refers to ids in `incomeSources[]`.
+- Keep each `description` to one sentence.
+- In NOTES, give one line per case with the income that changes and the fund assumption for that case.
 
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
@@ -1222,6 +1280,8 @@ Each scenario needs:
 - `title`
 - `annualCostTodayPerChild` or `oneOffCostTodayPerChild`
 
+`scenarios` supports up to 4 cases, which is exactly what the at-home / away-from-home / car-support shorthand produces. A fifth case is rejected and the whole module fails to apply. If Gerry describes more cost options than that, build the 4 that bracket the decision, keep the cheapest and the most expensive among them, and name the option left out in NOTES.
+
 ### Optional Inputs
 - `currentYear`
 - `currencySymbol`
@@ -1237,6 +1297,8 @@ If Gerry gives only the common at-home / away-from-home / car support pattern, y
 - `carSupportTodayPerChild`
 
 The app will create four standard scenarios from those values.
+
+Use the shorthand or an explicit `scenarios` array, not both. The shorthand already fills the 4-case limit, so any extra explicit case pushes the module over it.
 
 ### Child Timing Rules
 - Use `children[]` whenever children have different current ages, different college start ages, or different course durations.
