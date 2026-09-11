@@ -87,6 +87,10 @@ const HFCS_DECILE_BANDS = Object.freeze([
 ]);
 const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
 const PBS_CURRENT_SCENARIO_ID = 'current';
+/** How long a flow chip lives, matching its transition in styles/base.css. */
+const PBS_FLOW_CHIP_LIFETIME_MS = 820;
+/** Gap between the undo leg and the apply leg of an alternative-to-alternative move. */
+const PBS_FLOW_LEG_STAGGER_MS = 700;
 const PBS_SCENARIO_CHARTS_UPDATED_EVENT = 'callcanvas:pbs-scenario-charts-updated';
 const PBS_NET_WORTH_TOKENS = new Set(['networth', 'netassets', 'netwealth']);
 const PBS_BALANCE_CHANGE_WORDS = /\b(change|difference|increase|decrease|movement|delta|gap|variance)\b/i;
@@ -6824,20 +6828,58 @@ function getPbsMovementPlans(movements, { reverse = false } = {}) {
   });
 }
 
-function getPbsTransitionMovementConfig(previousCase, nextCase) {
-  if (!previousCase || !nextCase) {
-    return { movements: [], reverse: false };
+/**
+ * The movement lists to play, in order, for a move between two cases.
+ *
+ * A case's `movements` describe the step from the CURRENT position to that
+ * case, and nothing else. So a move between two alternatives is not described
+ * by either list on its own: it is the previous one undone, then the next one
+ * applied. With a single alternative that transition was rare; with three it is
+ * the common click, and playing nothing there left the client with only the
+ * content highlight to go on.
+ */
+function getPbsTransitionMovementLegs(previousCase, nextCase) {
+  if (!previousCase || !nextCase || previousCase.id === nextCase.id) {
+    return [];
   }
 
-  if (previousCase.id === PBS_CURRENT_SCENARIO_ID && nextCase.id !== PBS_CURRENT_SCENARIO_ID) {
-    return { movements: nextCase.movements, reverse: false };
+  const previousIsCurrent = previousCase.id === PBS_CURRENT_SCENARIO_ID;
+  const nextIsCurrent = nextCase.id === PBS_CURRENT_SCENARIO_ID;
+
+  if (previousIsCurrent) {
+    return nextIsCurrent ? [] : [{ movements: nextCase.movements, reverse: false }];
   }
 
-  if (previousCase.id !== PBS_CURRENT_SCENARIO_ID && nextCase.id === PBS_CURRENT_SCENARIO_ID) {
-    return { movements: previousCase.movements, reverse: true };
+  if (nextIsCurrent) {
+    return [{ movements: previousCase.movements, reverse: true }];
   }
 
-  return { movements: [], reverse: false };
+  return [
+    { movements: previousCase.movements, reverse: true },
+    { movements: nextCase.movements, reverse: false }
+  ];
+}
+
+/**
+ * Flattens the legs into plans, staggering each leg behind the one before it so
+ * the value visibly returns to the current position and then moves out again.
+ * A leg that animates nothing costs no delay.
+ */
+function getPbsTransitionMovementPlans(previousCase, nextCase) {
+  const plans = [];
+  let delay = 0;
+
+  getPbsTransitionMovementLegs(previousCase, nextCase).forEach(({ movements, reverse }) => {
+    const legPlans = getPbsMovementPlans(movements, { reverse });
+    if (legPlans.length === 0) {
+      return;
+    }
+
+    legPlans.forEach((plan) => plans.push({ ...plan, delay }));
+    delay += PBS_FLOW_LEG_STAGGER_MS;
+  });
+
+  return plans;
 }
 
 function escapePbsSelectorValue(value) {
@@ -6881,52 +6923,63 @@ function animatePbsFlowChips({
   nextContent,
   currencySymbol
 }) {
-  const { movements, reverse } = getPbsTransitionMovementConfig(previousCase, nextCase);
-  const plans = getPbsMovementPlans(movements, { reverse });
+  const plans = getPbsTransitionMovementPlans(previousCase, nextCase);
   if (plans.length === 0 || isPbsReducedMotionPreferred()) {
     markPbsScenarioContentUpdated(nextContent);
     return;
   }
 
-  let animatedCount = 0;
-  plans.forEach((plan) => {
-    const startRect = findFirstPbsRect(previousRects, plan.startKeys);
-    const endRect = findFirstPbsRect(nextRects, plan.endKeys);
-    if (!startRect || !endRect) {
+  // The rects are already measured, so whether a plan can animate is known now
+  // even for a leg that has not started yet.
+  const runnable = plans
+    .map((plan) => ({
+      plan,
+      startRect: findFirstPbsRect(previousRects, plan.startKeys),
+      endRect: findFirstPbsRect(nextRects, plan.endKeys)
+    }))
+    .filter(({ startRect, endRect }) => startRect && endRect);
+
+  if (runnable.length === 0) {
+    markPbsScenarioContentUpdated(nextContent);
+    return;
+  }
+
+  runnable.forEach(({ plan, startRect, endRect }) => {
+    const launch = () => {
+      const chip = document.createElement('span');
+      chip.className = 'pbs-flow-chip';
+      if (plan.action) {
+        chip.dataset.action = plan.action;
+      }
+      chip.textContent = formatBucketedCurrency(plan.amount, currencySymbol);
+
+      const startX = startRect.left + (startRect.width / 2);
+      const startY = startRect.top + (startRect.height / 2);
+      const endX = endRect.left + (endRect.width / 2);
+      const endY = endRect.top + (endRect.height / 2);
+
+      chip.style.transform = `translate3d(${startX}px, ${startY}px, 0) translate(-50%, -50%) scale(0.96)`;
+      document.body.appendChild(chip);
+
+      requestAnimationFrame(() => {
+        chip.classList.add('is-moving');
+        chip.style.transform = `translate3d(${endX}px, ${endY}px, 0) translate(-50%, -50%) scale(1)`;
+      });
+
+      window.setTimeout(() => {
+        chip.remove();
+      }, PBS_FLOW_CHIP_LIFETIME_MS);
+
+      pulsePbsAnchors(nextContent, plan.pulseKeys);
+    };
+
+    if (plan.delay > 0) {
+      window.setTimeout(launch, plan.delay);
       return;
     }
 
-    animatedCount += 1;
-    const chip = document.createElement('span');
-    chip.className = 'pbs-flow-chip';
-    if (plan.action) {
-      chip.dataset.action = plan.action;
-    }
-    chip.textContent = formatBucketedCurrency(plan.amount, currencySymbol);
-
-    const startX = startRect.left + (startRect.width / 2);
-    const startY = startRect.top + (startRect.height / 2);
-    const endX = endRect.left + (endRect.width / 2);
-    const endY = endRect.top + (endRect.height / 2);
-
-    chip.style.transform = `translate3d(${startX}px, ${startY}px, 0) translate(-50%, -50%) scale(0.96)`;
-    document.body.appendChild(chip);
-
-    requestAnimationFrame(() => {
-      chip.classList.add('is-moving');
-      chip.style.transform = `translate3d(${endX}px, ${endY}px, 0) translate(-50%, -50%) scale(1)`;
-    });
-
-    window.setTimeout(() => {
-      chip.remove();
-    }, 820);
-
-    pulsePbsAnchors(nextContent, plan.pulseKeys);
+    launch();
   });
-
-  if (animatedCount === 0) {
-    markPbsScenarioContentUpdated(nextContent);
-  }
 }
 
 function buildPbsScenarioSwitcher(cases, onSelect) {

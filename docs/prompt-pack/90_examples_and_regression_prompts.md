@@ -28,6 +28,12 @@ For each prompt below:
 - Fresh-start House Purchase outputs pass only when `lendingCategory` and each applicant's `schemeBuyerStatus` remain separate.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.
+- Fail if any module emits more than 4 cases, counting the base or current case. PBS fails above 3 entries in `scenarios`.
+- Pass only if every case has a unique id, a distinct client-facing title, and its own fully recalculated figures.
+- PBS multi-case outputs pass only if every alternative carries all six sections and reconciles to its own `Gross assets`, `Total liabilities`, and `Net worth`.
+- Fail if a case is written as a change note against another case instead of a complete case.
+- Fail if a multi-case payload stops before the final closing brace.
+- Pass only if NOTES carries one line per case with that case's headline number.
 
 ## Summary Clarity Checklist
 Every regression output should pass this client-clarity test:
@@ -78,6 +84,30 @@ Checks:
 - scenario redirects 170000 to `Longevity`, not `Liquidity`, because the prompt says it goes into the pension
 - scenario net worth remains 665000 before tax and sale-cost adjustments
 - movement actions use canonical `reduce` for the repaid buy-to-let mortgage and `add` for the pension redirect
+
+### PBS-5
+Prompt:
+`Use the PBS playbook. Client age 46. Assets: family home 560000; buy-to-let property 280000; cash 10000; DC pension 200000. Liabilities: family home mortgage 275000; buy-to-let mortgage 110000. Give me three cases: sell the buy-to-let and hold the equity as cash, sell the buy-to-let and put the equity into the pension, and downsize the family home to 400000 and hold the released equity as cash.`
+
+Checks:
+- current net worth is 665000
+- `generated.outputsBucketed.scenarios` contains exactly three entries with unique ids
+- every scenario carries all six sections in order, including its own `summary` with the exact `Net worth` label
+- every scenario reconciles independently to 665000 before tax and sale costs
+- the cash case adds 170000 to `Liquidity`, the pension case adds 170000 to `Longevity`, and the downsizing case adds 160000 to `Liquidity` while keeping both mortgages in view
+- every scenario's `movements` are anchored to the current position, not to the scenario before it
+- NOTES gives one line per case with its net worth and the change that produced it
+
+### PBS-6
+Prompt:
+`Use the PBS playbook. Same balance sheet as before. Now show me five cases: sell the buy-to-let for cash, sell the buy-to-let into the pension, downsize the home, clear the family home mortgage from a 275000 inheritance, and leave everything untouched for five years.`
+
+Checks:
+- emits at most three alternatives in `scenarios`
+- NOTES names which cases were left out and why
+- does not merge two distinct decisions into one case to fit the limit
+- does not emit a fourth or fifth scenario
+- still returns valid JSON that pastes cleanly
 
 ## Retirement Regression Prompts
 
@@ -153,6 +183,19 @@ Checks:
 - keeps the two pension entries named
 - does not emit fake outputs or charts
 
+### RET-7
+Prompt:
+`Run the retirement playbook for Sarah. Age 42. Pension 180000. Salary 85000. Personal 8 percent. Employer 6 percent. Retire at 67. Growth 5 percent. Target 42000 in today's money. Rental income 18000 gross a year today. Show three cases: full rent, one property sold so rent drops to 9000, and rent lost completely.`
+
+Checks:
+- `rentalIncomeScenarios` contains three entries with unique ids
+- `rentalIncomeToday` values are 18000, 9000, and 0, in that order
+- `baseScenarioId` points at the full-rent case
+- top-level `rentalIncomeToday` matches the base case
+- titles name the rent level in client words and avoid the word `scenario`
+- does not emit fake outputs or charts
+- NOTES gives one line per case with its rent assumption in today's money
+
 ## Net Retirement Cash Flow Regression Prompts
 
 ### NETRET-1
@@ -167,6 +210,19 @@ Checks:
 - uses `presentValueRate` for the PV growth assumption
 - omits fake outputs, tables, and charts
 - mentions the net required fund / gross pension compatibility caveat
+
+### NETRET-2
+Prompt:
+`Use the net retirement cash flow playbook. Household age 60 to 100. Net expenditure 90000. Net Irish rent 10000. Net EU rent 14000. Include 50 percent Irish State Pension from age 66 as 7781.80 today. PV growth 4 percent. Expenditure inflation 2 percent. Investable assets 1027000. Give me four cases: keep both rentals, sell the Irish rental so assets rise to 1477000 and Irish rent is lost, sell the EU rental so assets rise to 1327000 and EU rent is lost, and sell both so assets rise to 1777000 with no rental income.`
+
+Checks:
+- `scenarios` contains exactly four entries with unique ids
+- the keep-both case is first and is named by `baseScenarioId`
+- each case states its own `availableInvestmentFundToday`
+- lost income is modelled through `excludedIncomeSourceIds` referring to ids in `incomeSources[]`, not by rewriting the income list per case
+- the 50% State Pension source stays present in every case
+- omits fake outputs, tables, and charts
+- NOTES gives one line per case and keeps the net required fund versus gross pension caveat
 
 ## Mortgage Regression Prompts
 

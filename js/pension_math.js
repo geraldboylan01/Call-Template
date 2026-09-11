@@ -5,6 +5,7 @@ import {
   irishArfMinimumRate,
   normalizeStatePensionFraction
 } from './planning/ireland_rules.js';
+import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
 
 const DEFAULT_INFLATION_RATE = 0.02;
 const DEFAULT_WAGE_GROWTH_RATE = 0.02;
@@ -90,6 +91,12 @@ function normalizeRentalIncomeScenarios(rawValue) {
 
   if (!Array.isArray(rawValue)) {
     throw new Error('generated.pensionInputs.rentalIncomeScenarios must be an array when provided.');
+  }
+
+  if (rawValue.length > MAX_MODULE_SCENARIO_CASES) {
+    throw new Error(
+      `generated.pensionInputs.rentalIncomeScenarios supports at most ${MAX_MODULE_SCENARIO_CASES} cases; received ${rawValue.length}.`
+    );
   }
 
   const usedIds = new Set();

@@ -96,6 +96,24 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - `insights[]` and `annotations[]` entries must be objects, never plain strings.
   - Do not emit Chart.js config, callbacks, plugins, HTML, JavaScript, or CSS.
 
+## Scenario Rules (All Playbooks)
+Several playbooks support switchable cases. The same limits apply everywhere.
+
+- A module may show at most 4 cases, counting the base case that is already on screen.
+  - PBS: `Current position` is case 1, so `generated.outputsBucketed.scenarios` may hold at most 3 alternatives.
+  - Retirement: `generated.pensionInputs.rentalIncomeScenarios` may hold at most 4 cases.
+  - Net Retirement Cash Flow: `generated.netRetirementInputs.scenarios` may hold at most 4 cases.
+  - College Funding: `generated.collegeFundingInputs.scenarios` may hold at most 4 cases.
+- A fifth case is rejected and the whole module fails to apply. Never emit one.
+- If Gerry dictates more cases than the limit allows, build the ones that carry the decision and say in NOTES which case was left out and why. Do not quietly drop one.
+- Every case needs a unique `id` and a distinct client-facing `title`. Never reuse an id, and never put the word `scenario` in a title.
+- Put the base or current case first, then order the rest from least to most disruptive. Keep that order if Gerry asks for a revision.
+- Each case must stand on its own. Recalculate everything that case changes and reconcile it independently. Never write a case as a change note such as `same as above but without the rental income`.
+- Cases must be genuinely different decisions. Two cases that reach the same place by the same route are one case.
+- Keep per-case copy to one or two sentences. Three or four full cases already make a long payload, and long case notes are what stop it finishing.
+- Finish the JSON object. If a multi-case payload is running long, shorten the case notes and the summary, never the sections, and never stop before the closing braces.
+- In NOTES, give one line per case with that case's headline number, so the comparison reads without opening the module.
+
 ## Client Explanation Standard
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 

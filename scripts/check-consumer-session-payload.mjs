@@ -11,10 +11,19 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
+import { normalizeCollegeFundingInputs } from '../js/college_funding_math.js';
+import { normalizeNetRetirementInputs } from '../js/net_retirement_math.js';
+import {
+  validateOutputsBucketedPayload,
+  validateOutputsBucketedScenariosPayload
+} from '../js/outputs_bucketed_contract.js';
+import { normalizePensionInputs } from '../js/pension_math.js';
 import { applyProfilePatch, createHouseholdProfile, runPlanningModule } from '../js/planning/index.js';
 import { buildPublishedSessionFromCall, canPublishModule } from '../js/planning/session_payload.js';
-import { importPublishedSession } from '../js/state.js';
+import { MAX_MODULE_SCENARIO_CASES, MAX_PBS_SCENARIO_ALTERNATIVES } from '../js/scenario_cap.js';
+import { drainSessionImportWarnings, importPublishedSession } from '../js/state.js';
 
 const NOW = '2026-08-02T09:00:00.000Z';
 const provenance = {
@@ -221,5 +230,188 @@ check('a pension result with no rows does not publish',
     profile: pensionProfile, results: [{ moduleId: 'pension_projection', outputs: { columns: [], rows: [] } }]
   }).session.modules.length === 0);
 
+/* ================================================= the scenario cap ===
+ *
+ * A module shows at most 4 cases, counting the base or current case. The rule
+ * is enforced twice over, in opposite directions, and both halves are checked
+ * here because getting only one of them right is worse than neither:
+ *
+ *   - the engine normalisers REJECT an over-cap payload, so a fifth case fails
+ *     loudly at the point it is authored rather than rendering as a partial
+ *     set nobody can explain;
+ *   - the session importer TOLERATES one, because a client link published
+ *     before the cap existed is a promise that was already made.
+ */
+
+const checkThrows = (label, run, pattern) => {
+  let message = '';
+  try {
+    run();
+  } catch (error) {
+    message = error.message;
+  }
+  check(label, Boolean(message) && pattern.test(message), message || 'nothing was thrown');
+};
+
+// The prompt pack's worked examples are the fixtures. Copying them in here
+// would let the document and the code drift apart, which is the failure the
+// cap itself is guarding against.
+const examplePayloads = [
+  ...readFileSync(new URL('../docs/prompt-pack/91_artifact_payload_examples.md', import.meta.url), 'utf8')
+    .matchAll(/```json\n([\s\S]*?)\n```/g)
+].map(([, body]) => JSON.parse(body));
+
+const exampleGenerated = (predicate) => examplePayloads.map((payload) => payload.generated).find(predicate);
+
+/* ----------------------------------------- PBS: three alternatives, no more */
+
+const pbsExample = exampleGenerated((generated) => generated.outputsBucketed?.scenarios);
+check('the documented PBS example carries the full three alternatives',
+  pbsExample.outputsBucketed.scenarios.length === MAX_PBS_SCENARIO_ALTERNATIVES);
+
+const validatedPbs = validateOutputsBucketedPayload(pbsExample.outputsBucketed);
+check('a three-alternative PBS payload applies cleanly',
+  validatedPbs.scenarios.length === MAX_PBS_SCENARIO_ALTERNATIVES,
+  JSON.stringify(validatedPbs.scenarios?.map((scenario) => scenario.id)));
+
+const pbsAlternatives = pbsExample.outputsBucketed.scenarios;
+// The message counts alternatives, not cases, so the number in it matches what
+// the payload actually contains.
+checkThrows('a fourth PBS alternative is rejected by count',
+  () => validateOutputsBucketedScenariosPayload(
+    [...pbsAlternatives, { ...pbsAlternatives[0], id: 'one-too-many' }],
+    'generated.outputsBucketed.scenarios'
+  ),
+  /generated\.outputsBucketed\.scenarios supports at most 3 alternatives; received 4\./);
+
+checkThrows('two PBS alternatives sharing an id are rejected',
+  () => validateOutputsBucketedScenariosPayload(
+    [pbsAlternatives[0], { ...pbsAlternatives[1], id: pbsAlternatives[0].id }],
+    'generated.outputsBucketed.scenarios'
+  ),
+  /\.id must be unique\./);
+
+/* --------------------------------------- the engines: four cases, no more */
+
+const casesOf = (count, build) => Array.from({ length: count }, (_, index) => build(index));
+
+const pensionExample = exampleGenerated((generated) => generated.pensionInputs?.rentalIncomeScenarios);
+const rentalCases = (count) => casesOf(count, (index) => ({
+  id: `rental-case-${index + 1}`, title: `Rental case ${index + 1}`, rentalIncomeToday: 18_000 - (index * 1_000)
+}));
+check('four rental income cases normalise',
+  normalizePensionInputs({ ...pensionExample.pensionInputs, baseScenarioId: 'rental-case-1', rentalIncomeScenarios: rentalCases(MAX_MODULE_SCENARIO_CASES) })
+    .rentalIncomeScenarios.length === MAX_MODULE_SCENARIO_CASES);
+checkThrows('a fifth rental income case is rejected',
+  () => normalizePensionInputs({ ...pensionExample.pensionInputs, baseScenarioId: 'rental-case-1', rentalIncomeScenarios: rentalCases(5) }),
+  /generated\.pensionInputs\.rentalIncomeScenarios supports at most 4 cases; received 5\./);
+
+const netRetirementExample = exampleGenerated((generated) => generated.netRetirementInputs?.scenarios);
+const netCases = (count) => casesOf(count, (index) => ({
+  id: `net-case-${index + 1}`, title: `Net case ${index + 1}`, availableInvestmentFundToday: 1_027_000 + (index * 50_000)
+}));
+check('four net retirement cases normalise',
+  normalizeNetRetirementInputs({ ...netRetirementExample.netRetirementInputs, baseScenarioId: 'net-case-1', scenarios: netCases(MAX_MODULE_SCENARIO_CASES) })
+    .scenarios.length === MAX_MODULE_SCENARIO_CASES);
+checkThrows('a fifth net retirement case is rejected',
+  () => normalizeNetRetirementInputs({ ...netRetirementExample.netRetirementInputs, baseScenarioId: 'net-case-1', scenarios: netCases(5) }),
+  /generated\.netRetirementInputs\.scenarios supports at most 4 cases; received 5\./);
+
+const collegeExample = exampleGenerated((generated) => generated.collegeFundingInputs);
+const { collegeFundingInputs: collegeShorthand } = collegeExample;
+const collegeWithoutShorthand = { ...collegeShorthand };
+delete collegeWithoutShorthand.atHomeAnnualCostTodayPerChild;
+delete collegeWithoutShorthand.awayAnnualCostTodayPerChild;
+delete collegeWithoutShorthand.carSupportTodayPerChild;
+const collegeCases = (count) => casesOf(count, (index) => ({
+  id: `college-case-${index + 1}`, title: `College case ${index + 1}`, annualCostTodayPerChild: 5_000 + (index * 2_500)
+}));
+
+// The shorthand is exactly at the cap on its own: at home and away, each with
+// and without car support.
+check('the at-home / away shorthand expands to the four standard scenarios',
+  normalizeCollegeFundingInputs(collegeShorthand).scenarios.length === MAX_MODULE_SCENARIO_CASES);
+check('four explicit college cases normalise',
+  normalizeCollegeFundingInputs({ ...collegeWithoutShorthand, scenarios: collegeCases(MAX_MODULE_SCENARIO_CASES) })
+    .scenarios.length === MAX_MODULE_SCENARIO_CASES);
+checkThrows('a fifth college case is rejected',
+  () => normalizeCollegeFundingInputs({ ...collegeWithoutShorthand, scenarios: collegeCases(5) }),
+  /generated\.collegeFundingInputs\.scenarios supports at most 4 cases; received 5\./);
+// Sent together they are eight cases dressed as two fields, and the payload
+// does not say which set was meant.
+checkThrows('the shorthand and an explicit scenarios array cannot be sent together',
+  () => normalizeCollegeFundingInputs({ ...collegeShorthand, scenarios: collegeCases(2) }),
+  /must not combine the at-home\/away cost shorthand with an explicit scenarios array/);
+
+/* ------------------------------- the importer: tolerate, do not throw */
+
+const publishedPbsModule = session.modules[0];
+const overCapPbsSession = {
+  ...session,
+  modules: [{
+    ...publishedPbsModule,
+    generated: {
+      ...publishedPbsModule.generated,
+      outputsBucketed: {
+        ...publishedPbsModule.generated.outputsBucketed,
+        scenarios: casesOf(5, (index) => ({
+          id: `published-alternative-${index + 1}`,
+          title: `Published alternative ${index + 1}`,
+          sections: publishedPbsModule.generated.outputsBucketed.sections
+        }))
+      }
+    }
+  }]
+};
+
+drainSessionImportWarnings();
+const importedOverCap = importPublishedSession(overCapPbsSession);
+const importedPbsWarnings = drainSessionImportWarnings();
+check('a published session carrying five PBS alternatives still imports',
+  importedOverCap.modules.length === 1);
+check('the extra PBS alternatives are dropped rather than rejected',
+  importedOverCap.modules[0].generated.outputsBucketed.scenarios.length === MAX_PBS_SCENARIO_ALTERNATIVES,
+  String(importedOverCap.modules[0].generated.outputsBucketed.scenarios.length));
+check('the ones kept are the first three, in order',
+  importedOverCap.modules[0].generated.outputsBucketed.scenarios.map((scenario) => scenario.id).join()
+    === 'published-alternative-1,published-alternative-2,published-alternative-3');
+check('dropping them is reported rather than silent',
+  importedPbsWarnings.length === 1 && /outputsBucketed\.scenarios carried 5 alternatives; kept the first 3/.test(importedPbsWarnings[0]),
+  JSON.stringify(importedPbsWarnings));
+
+const collegeModuleId = 'module-college-over-cap';
+const overCapCollegeSession = {
+  version: 1,
+  sessionId: 'session-cap-college',
+  clientName: 'Cap Client',
+  modules: [{
+    id: collegeModuleId,
+    title: 'College Funding',
+    generated: {
+      summaryHtml: '<p>Published before the cap existed.</p>',
+      collegeFundingInputs: { ...collegeWithoutShorthand, scenarios: collegeCases(5) }
+    }
+  }],
+  order: [collegeModuleId],
+  activeModuleId: collegeModuleId
+};
+
+drainSessionImportWarnings();
+const importedCollege = importPublishedSession(overCapCollegeSession);
+const importedCollegeWarnings = drainSessionImportWarnings();
+check('a published session carrying five college cases imports with four',
+  importedCollege.modules[0].generated.collegeFundingInputs.scenarios.length === MAX_MODULE_SCENARIO_CASES,
+  String(importedCollege.modules[0].generated.collegeFundingInputs.scenarios.length));
+check('the dropped college cases are reported',
+  importedCollegeWarnings.length === 1 && /collegeFundingInputs\.scenarios carried 5 cases; kept the first 4/.test(importedCollegeWarnings[0]),
+  JSON.stringify(importedCollegeWarnings));
+
+// A payload inside the cap must leave the channel silent, or a warning means
+// nothing.
+drainSessionImportWarnings();
+importPublishedSession(session);
+check('an in-cap session imports with no warnings', drainSessionImportWarnings().length === 0);
+
 console.info(`[SessionPayload] ${checks} checks passed: a finished call converts into a payload the `
-  + 'app accepts, with the required sections, reconciling totals and bar charts only.');
+  + 'app accepts, with the required sections, reconciling totals and bar charts only, and the '
+  + '4-case cap is rejected on the way in and tolerated on the way back out.');

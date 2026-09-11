@@ -74,6 +74,17 @@ Playbooks should only emit the subset they are responsible for.
   - `insights[]`: concise metric card objects below the chart with `label`, optional `value`, optional `detail`, optional `tone`, and optional `featured`. Do not emit strings inside `insights[]`.
 - Chart metadata is rendered by trusted components only. Do not emit Chart.js options, plugins, callbacks, HTML, or JavaScript.
 
+## Scenario Limits
+- A module renders at most 4 selectable cases, counting the base case already on screen.
+- PBS: `Current position` is case 1, so `generated.outputsBucketed.scenarios` holds at most 3 alternatives.
+- Retirement: `generated.pensionInputs.rentalIncomeScenarios` holds at most 4 cases.
+- Net Retirement Cash Flow: `generated.netRetirementInputs.scenarios` holds at most 4 cases.
+- College Funding: `generated.collegeFundingInputs.scenarios` holds at most 4 cases, which is exactly what the at-home / away-from-home shorthand produces. Do not combine the shorthand with an explicit `scenarios` array.
+- Case `id` values must be unique inside a module. A repeated id breaks case selection.
+- Every case carries its own fully recalculated figures. Nothing is inherited from the case before it.
+- An over-limit payload is rejected with a validation error naming the module and the case count, rather than rendering a partial set.
+- Validator status: the cap is a prompt-pack rule today. The matching hard rejection in the payload validators is a pending app change; until it ships, an over-limit payload renders extra cases instead of failing.
+
 ## PBS Support
 - Preferred output path: `generated.outputsBucketed`
 - Optional inputs path: `generated.pbsInputs`
@@ -83,6 +94,7 @@ Playbooks should only emit the subset they are responsible for.
 - PBS `outputsBucketed.sections` must include the six standard sections in order: `lifestyle`, `liquidity`, `longevity`, `legacy`, `liabilities`, `summary`.
 - The summary section must use `key: "summary"` and the exact rows `Gross assets`, `Total liabilities`, and `Net worth`; use `Net worth` as the row label and subtotal label even when the values are known-values-only.
 - PBS alternatives belong in `generated.outputsBucketed.scenarios[]`; every scenario must contain fully recalculated sections, including its own `summary` section with the exact `Net worth` label.
+- `generated.outputsBucketed.scenarios` holds at most 3 alternatives. `Current position` is case 1 of the 4-case limit and is never listed in `scenarios`.
 - PBS `movements` are optional animation metadata. Use canonical actions only: `add`, `reduce`, `increase`, or `remove`. Prefer exact `rowLabel` values that match the visible source or destination rows.
 
 ## Pension Support
@@ -119,6 +131,7 @@ Playbooks should only emit the subset they are responsible for.
 - The runtime supplies defaults for omitted `inflationRate`, `wageGrowthRate`, `horizonEndAge`, `currentYear`, and `minDrawdownMode`; pension target-mode defaults to depleting by age 100, and household mode defaults the horizon to the later member's age-100 calendar year.
 - `rentalIncomeToday` is gross annual rent in today's money and defaults to `0`.
 - `rentalIncomeScenarios` enables pension case switching. Each item should include `id`, `title`, and `rentalIncomeToday`; `baseScenarioId` selects the first visible case.
+- `rentalIncomeScenarios` holds 2 to 4 cases, ordered from most rental income to least. Rent level is the only lever these cases change.
 - `pensions[]` enables couple/household retirement projections. Each item should include `id`, `title`, ages, salary, pot, and contribution percentages.
 - Couple payloads should also include legacy top-level pension keys for compatibility. Use the first member's ages, household totals for salary/current pot, and salary-weighted household contribution percentages; the runtime uses `pensions[]` for the actual household maths.
 - `incomeStartYear` can anchor the first household drawdown year for staggered retirements; `requiredPotReferenceYear` can anchor the later combined-pot reference year. If omitted in household mode, the runtime defaults to earliest and latest member retirement years respectively.
@@ -147,6 +160,7 @@ Playbooks should only emit the subset they are responsible for.
 - `presentValueRate` is the after-tax net growth or discount rate used to convert future annual net shortfalls into the required net fund today.
 - `incomeSources[]` supports named net income sources with `id`, `title`, `annualAmountToday`, optional `type`, `startAge` or `startYear`, optional `endAge` or `endYear`, and `inflationIndexed`.
 - Scenario switching is supported through `scenarios[]`. Each scenario supports `id`, `title`, optional `description`, optional `availableInvestmentFundToday`, optional `annualExpenditureToday`, `excludedIncomeSourceIds[]`, `incomeSourceOverrides[]`, and `additionalIncomeSources[]`.
+- `scenarios[]` holds at most 4 cases. Each case states its own fund and expenditure wherever they differ; nothing carries over from the previous case, and `excludedIncomeSourceIds` always refers to ids in `incomeSources[]`.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
 - Required fund outputs are after-tax net figures. Do not compare them directly with pension balances or gross pension withdrawals unless pension withdrawal tax has been allowed for separately.
 
@@ -202,7 +216,7 @@ Playbooks should only emit the subset they are responsible for.
   - `oneOffCostTodayPerChild`
   - `interpretation`
   - `tone`
-- Shorthand at-home/away inputs are also supported: `atHomeAnnualCostTodayPerChild`, `awayAnnualCostTodayPerChild`, and `carSupportTodayPerChild`.
+- Shorthand at-home/away inputs are also supported: `atHomeAnnualCostTodayPerChild`, `awayAnnualCostTodayPerChild`, and `carSupportTodayPerChild`. These produce four standard scenarios, which fills the 4-case limit, so do not send them alongside an explicit `scenarios` array.
 - The runtime validates unique child ids, non-negative current ages, start age greater than current age, positive durations, non-negative inflation, and plain numeric money inputs.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
 

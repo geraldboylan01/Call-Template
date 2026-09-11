@@ -1,3 +1,5 @@
+import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
+
 const DEFAULT_CURRENT_YEAR = new Date().getFullYear();
 const DEFAULT_INFLATION_RATE = 0.02;
 const DEFAULT_CHILDREN_COUNT = 1;
@@ -271,11 +273,15 @@ function normalizeScenario(rawScenario, index, shared) {
   return normalized;
 }
 
+const AT_HOME_ANNUAL_KEYS = ['atHomeAnnualCostTodayPerChild', 'atHomeAnnualCostToday'];
+const AWAY_ANNUAL_KEYS = ['awayAnnualCostTodayPerChild', 'awayAnnualCostToday'];
+const CAR_SUPPORT_KEYS = ['carSupportTodayPerChild', 'carSupportToday'];
+
 function buildDefaultScenarios(raw) {
   const scenarios = [];
-  const atHomeAnnual = firstDefinedNumber(raw, ['atHomeAnnualCostTodayPerChild', 'atHomeAnnualCostToday']);
-  const awayAnnual = firstDefinedNumber(raw, ['awayAnnualCostTodayPerChild', 'awayAnnualCostToday']);
-  const carSupport = firstDefinedNumber(raw, ['carSupportTodayPerChild', 'carSupportToday']);
+  const atHomeAnnual = firstDefinedNumber(raw, AT_HOME_ANNUAL_KEYS);
+  const awayAnnual = firstDefinedNumber(raw, AWAY_ANNUAL_KEYS);
+  const carSupport = firstDefinedNumber(raw, CAR_SUPPORT_KEYS);
 
   if (isFiniteNumber(atHomeAnnual)) {
     scenarios.push({
@@ -402,12 +408,35 @@ export function normalizeCollegeFundingInputs(raw) {
     shared.collegeDurationYears = collegeDurationYears;
   }
 
-  const rawScenarios = Array.isArray(raw.scenarios) && raw.scenarios.length > 0
+  const hasExplicitScenarios = Array.isArray(raw.scenarios) && raw.scenarios.length > 0;
+
+  // The at-home / away shorthand expands to the four standard scenarios on its
+  // own. Sent alongside an explicit list it is either ignored or over the cap,
+  // and either way the payload does not say which set was meant.
+  if (
+    hasExplicitScenarios
+    && (
+      isFiniteNumber(firstDefinedNumber(raw, AT_HOME_ANNUAL_KEYS))
+      || isFiniteNumber(firstDefinedNumber(raw, AWAY_ANNUAL_KEYS))
+    )
+  ) {
+    throw new Error(
+      'generated.collegeFundingInputs must not combine the at-home/away cost shorthand with an explicit scenarios array; send one or the other.'
+    );
+  }
+
+  const rawScenarios = hasExplicitScenarios
     ? raw.scenarios
     : buildDefaultScenarios(raw);
 
   if (!Array.isArray(rawScenarios) || rawScenarios.length === 0) {
     throw new Error('generated.collegeFundingInputs.scenarios must include at least one scenario.');
+  }
+
+  if (rawScenarios.length > MAX_MODULE_SCENARIO_CASES) {
+    throw new Error(
+      `generated.collegeFundingInputs.scenarios supports at most ${MAX_MODULE_SCENARIO_CASES} cases; received ${rawScenarios.length}.`
+    );
   }
 
   const usedIds = new Set();
