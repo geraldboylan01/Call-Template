@@ -1,6 +1,19 @@
 # Astra handoff — the simplified AI-led loop
 
-11 September 2026. Candidate commit **`40deb248a1b5ba578bc4f0de0be83d7f1742dd77`** on `phase3-codex-round4`. Nothing deployed. Evidence: [docs/evidence/ai-led-baseline-2026-09-11/](evidence/ai-led-baseline-2026-09-11/README.md).
+11 September 2026. Branch `phase3-codex-round4`. Nothing deployed.
+
+## What you are auditing
+
+**Audit `40deb248a1b5ba578bc4f0de0be83d7f1742dd77`.** That is the last commit that changes behaviour, and every number below was measured against it.
+
+`a60ce36` is the branch tip and adds only this handoff and the evidence files — no code, tests, fixtures or prompts. Checking out the tip is fine; just note that nothing between `40deb248` and it is behaviour to review.
+
+| | |
+| --- | --- |
+| how the loop works, and what was deleted | [ai-led-simplified-results.md](ai-led-simplified-results.md) — implementation detail, per-file |
+| the measured baseline, and how to re-run it | [evidence/ai-led-baseline-2026-09-11/](evidence/ai-led-baseline-2026-09-11/README.md) |
+
+The implementation document was written at `2ae83f0` and **its result tables are superseded** by the evidence directory; it is accurate about the design, not about the current totals. Where they differ, the evidence directory is current.
 
 ---
 
@@ -47,6 +60,8 @@ No production prompt, financial assumption, engine, architecture or rollout sett
 
 Three failures in this run were provider infrastructure, not architecture: `house-joint-cash-ringfence` timed out in **both arms symmetrically** in r2, and one Option 2 seeded row hit `module_planner_unavailable`. House Purchase passed once (candidate, r1) — the first time observed — and we are treating that as one observation, not a fix.
 
+**House is a module-specific problem and we have not tuned the core loop around it.** It has the widest native contract, the largest quote-copying burden and an open input-contract defect of its own; it fails under both arms and failed under every arm of your earlier four-way comparison. We added no House-specific handling and no second semantic coverage ledger, per your own recommendation. It is a canary blocker, not evidence that the recovery architecture is wrong.
+
 ### The one-revision limitation, which fails safe
 
 Collapsing the ladder costs a second attempt. When the auditor scopes a proposal `presentation` but its financial content is actually wrong, the revision is spent on wording and there is no second chance. Observed twice: an equal-value owner swap in the seeded probes, and `seed-superseded-borrower-restored` r2 in this baseline, where the auditor asked for `reinterpretation`, the fresh audit then asked for `presentation`, and the budget was already spent.
@@ -57,7 +72,9 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.
 
-We left it deliberately, and the reason is not conservatism. At [live_session.js:1552](../worker/src/consumer/live/live_session.js:1552) a recognised approval **skips the direct planner pass entirely** — so it is not really an approval filter, it is the assertion that *this turn added no financial information requiring review*. That is currently the only thing standing between a delivered, certified, already-approved plan and a second stochastic verifier opinion. `check-live-certified-approval.mjs` proves it: scenario 1 executes under a reversing verifier only because the classifier matched; scenario 2 sends the non-approval turn *"Do I need to do it?"*, lets the reversal retire the offer, and asserts that as correct.
+**This is not the target architecture.** It is a deterministic reader of client language sitting in the one place the architecture says AI should own, and it should go. It is still here because it is currently load-bearing, for one specific reason.
+
+At [live_session.js:1552](../worker/src/consumer/live/live_session.js:1552) a recognised approval **skips the direct planner pass entirely** — so it is not really an approval filter, it is the assertion that *this turn added no financial information requiring review*. Its job today is to stop a pure approval turn needlessly reopening an already-delivered, already-certified plan to another stochastic planner and verifier pass. That is the only thing standing between such a plan and a second opinion that can withdraw it. `check-live-certified-approval.mjs` proves it: scenario 1 executes under a reversing verifier only because the classifier matched; scenario 2 sends the non-approval turn *"Do I need to do it?"*, lets the reversal retire the offer, and asserts that as correct.
 
 One correction to our own record: the 2026-09-05 fix was noted as comparing the certificate-*independent* `directModuleCandidateMeaningKey`. In the code both live barriers use `directModulePlanMeaningKey`, which folds in certificate identity, and `realtime_analysis.js:239` additionally requires `latest.brief.readyToConfirm === true`. A verifier reversal therefore still blocks, and the regex is what stands in front of it.
 
@@ -69,6 +86,15 @@ Recognising approval never authorises execution by itself: offer token, `readbac
 
 **1. Is there a remaining P0/P1 route by which a stale, changed or uncertified plan can execute?** We believe not, and the barriers are unchanged from your last review — latest-certificate check, frozen native inputs, exact read-back hash, causal turn binding, plan nonce, profile revision, idempotent receipt. What is new since you looked is the refusal-application rule, which mutates snapshot state on a non-pass verdict. It only ever moves a module *away* from `ready`, runs only when no certificate exists in that pass, and is pinned by a regression asserting a passing verdict is untouched. We would like that reasoning checked rather than accepted.
 
-**2. Is the AI-led approval direction sound without recreating verifier reversal?** Replacing the grammar is right in principle — "did this person agree" is semantic. But removing it routes every approval through a fresh stochastic verdict, which is the shape of the 2026-09-05 stall. We think the prerequisite is a measured reversal rate on transcripts that gained nothing but a read-back and an assent, plus a non-stochastic way to say "this turn changed nothing" — the certificate-independent candidate key is the obvious candidate, and neither barrier uses it today. Is that the right sequence, and is there a barrier design that does not depend on either a regex or a second model opinion?
+**2. Is the intended AI-led approval direction sound, without recreating the 2026-09-05 verifier reversal?**
+
+The direction we want to take, and want you to judge:
+
+- **AI decides the meaning of the latest turn** — whether it is pure approval, or carries a correction, a condition, uncertainty, a question, or any other new meaning. That is a semantic judgement and belongs to AI, not to a dictionary.
+- **Deterministic code enforces only protocol facts**: that the answer is causally bound to the exact current delivered certified offer, that the certificate is valid and current, that a superseding plan retires the old one, and that execution is idempotent. Nothing in that list requires reading what the client said.
+
+**We are explicitly not proposing a deterministic proof that meaning is unchanged.** Equal native inputs do not provide one, and neither does a certificate-independent meaning key: a client can correct an owner, narrow an exclusion or withdraw certainty without moving a single figure, which is exactly what the equal-value owner-swap probe demonstrates. `direct_module_identity.js` says as much in its own comments, and `check-live-certified-approval.mjs` records that comparing the candidate alone cannot separate a real correction from model variance. Any design that leans on input equality to decide "nothing changed" should be treated as unsound, including if we propose it.
+
+So the open question is genuinely open: if AI owns "is this pure approval", what stops a pure approval turn being re-read by a fresh planner and verifier pass that can disagree with itself and withdraw a plan the client has already approved? We think a measured reversal rate on transcripts that gained only a read-back and an assent is a prerequisite to answering that. Is that the right sequence, and what barrier design holds without either a regex or a second stochastic opinion?
 
 **3. Go / no-go for controlled Type and Speak canaries?** Our reading is **no-go**, on your own criteria: House Purchase remains unavailable, the laboratory has established nothing about real audio, delivery or device behaviour, and the approval work above is outstanding. The candidate is at parity on the corpus and better on the adversarial probes with a lower ceiling, which we read as "ready to keep testing", not "ready to meet a person". We would like that confirmed or overruled, and if overruled, what the narrowest safe canary would be.

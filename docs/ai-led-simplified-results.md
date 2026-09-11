@@ -1,5 +1,14 @@
 # The simplified AI-led loop: implementation and measured comparison
 
+> **Result tables here are superseded.** They record the run made while this
+> change was uncommitted. The current measured baseline — taken from a clean
+> worktree at `40deb248`, and the one to cite — is
+> [docs/evidence/ai-led-baseline-2026-09-11/](evidence/ai-led-baseline-2026-09-11/README.md).
+> Where the two differ, the evidence directory is current: the paired totals moved
+> (simplified 27→29 of 34) and the seeded total moved **8/8 → 7/8**, which is the
+> one-revision scope limitation described below recurring. Everything this
+> document says about the design, the deletions and the tests remains accurate.
+
 11 September 2026. Benchmark source `30eab9e` (Option 2, read from git). Candidate source is the working tree. **Nothing was deployed.** No financial assumption values, independent-verifier requirements, deterministic engines, authentication or rollout settings were changed.
 
 ## What the loop is now
