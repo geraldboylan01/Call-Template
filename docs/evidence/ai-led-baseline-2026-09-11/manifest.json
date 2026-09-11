@@ -1,0 +1,98 @@
+{
+  "recordedAt": "2026-09-11",
+  "candidateCommit": "40deb248a1b5ba578bc4f0de0be83d7f1742dd77",
+  "benchmarkCommit": "30eab9eb9c0737726c9a392ef1805f347aa3b10f",
+  "benchmarkDescription": "Option 2 — the last commit before the simplified loop; every previously reported benchmark figure was measured against it",
+  "sourceHashes": {
+    "benchmark": "6487eb2092bc72cf080b08c37e99716e8fba3b224228337377b15aab2a6867f5",
+    "candidate": "51ed3b79b5a02d485c2102bc7c1e44035f31e6fdeb3c3253d06bfc78310f574d"
+  },
+  "providerConfig": {
+    "model": "gpt-5.6-luna",
+    "reasoning": "low",
+    "perCallMs": 30000,
+    "budgetMs": 90000
+  },
+  "scope": "Synthetic planning laboratory; no production changes, browser, speech, or deployment",
+  "corpusIntegrity": {
+    "cases": 17,
+    "holdouts": 5,
+    "repetitions": 2,
+    "pairedRows": 68,
+    "expectedPairedRows": 68,
+    "completePairs": 34,
+    "everyPairSharedFirstResponse": true,
+    "seededFixtures": 4,
+    "seededRows": 16
+  },
+  "headline": {
+    "paired": {
+      "option2": {
+        "n": 34,
+        "pass": 28,
+        "under45": 27,
+        "readyCases": 22,
+        "readyCertified": 16,
+        "readyUnder45": 15,
+        "blockedCases": 12,
+        "blockedCorrect": 12,
+        "medianMs": 19747,
+        "meanMs": 25286,
+        "maxCalls": 6,
+        "totalCalls": 88,
+        "paidCalls": 71,
+        "errors": 1,
+        "certifiedButWrong": 0,
+        "lastCandidateValuesCorrect": 33
+      },
+      "simplified": {
+        "n": 34,
+        "pass": 29,
+        "under45": 29,
+        "readyCases": 22,
+        "readyCertified": 17,
+        "readyUnder45": 17,
+        "blockedCases": 12,
+        "blockedCorrect": 12,
+        "medianMs": 18413,
+        "meanMs": 20477,
+        "maxCalls": 4,
+        "totalCalls": 75,
+        "paidCalls": 58,
+        "errors": 1,
+        "certifiedButWrong": 0,
+        "lastCandidateValuesCorrect": 33
+      }
+    },
+    "seeded": {
+      "option2": {
+        "n": 8,
+        "pass": 5,
+        "under45": 5,
+        "maxCalls": 4,
+        "certifiedButWrong": 0,
+        "errors": 1
+      },
+      "simplified": {
+        "n": 8,
+        "pass": 7,
+        "under45": 7,
+        "maxCalls": 4,
+        "certifiedButWrong": 0,
+        "errors": 0
+      }
+    }
+  },
+  "gate": {
+    "command": "npm run check:consumer",
+    "exitCode": 0,
+    "targetsExecuted": 74
+  },
+  "safety": {
+    "check-first20-verifier-rejection": "3/3, zero engine runs from the superseded input",
+    "check-live-certified-approval": "20/20",
+    "check-first20-repair-preservation": "18/18",
+    "check-first20-semantic-integrity": "pass, no provider traffic"
+  },
+  "omitted": "Raw provider request/response envelopes (~31MB across both suites). They contain no secrets — the harness records request bodies, not headers — but they are repeated full prompts and carry no audit value beyond the per-call verdicts, scopes, explanations, timings and token counts retained here."
+}

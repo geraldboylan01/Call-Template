@@ -1,0 +1,1091 @@
+{
+  "groups": {
+    "option2": {
+      "n": 8,
+      "pass": 5,
+      "under45": 5,
+      "maxCalls": 4,
+      "certifiedButWrong": 0,
+      "errors": 1
+    },
+    "simplified": {
+      "n": 8,
+      "pass": 7,
+      "under45": 7,
+      "maxCalls": 4,
+      "certifiedButWrong": 0,
+      "errors": 0
+    }
+  },
+  "perSeed": {
+    "seed-equal-balances-stale-owners": {
+      "option2": "1/2",
+      "simplified": "2/2"
+    },
+    "seed-hypothetical-rate-promoted": {
+      "option2": "2/2",
+      "simplified": "2/2"
+    },
+    "seed-superseded-borrower-restored": {
+      "option2": "2/2",
+      "simplified": "1/2"
+    },
+    "seed-withdrawn-rate-forced-ready": {
+      "option2": "0/2",
+      "simplified": "2/2"
+    }
+  },
+  "rows": [
+    {
+      "rep": "r1",
+      "id": "seed-equal-balances-stale-owners",
+      "originalCaseId": "holdout-pbs-equal-balances-owner-swap",
+      "arm": "option2",
+      "pass": false,
+      "passUnder45s": false,
+      "elapsedMs": 10655,
+      "calls": 2,
+      "paidCalls": 1,
+      "certified": false,
+      "failures": [
+        {
+          "name": "pipeline completes",
+          "message": "The background module planner is temporarily unavailable."
+        }
+      ],
+      "error": {
+        "name": "ConsumerError",
+        "code": "module_planner_unavailable",
+        "message": "The background module planner is temporarily unavailable."
+      },
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 10619,
+          "verdict": null,
+          "scope": null,
+          "explanation": null
+        }
+      ],
+      "finalVerdict": null
+    },
+    {
+      "rep": "r1",
+      "id": "seed-equal-balances-stale-owners",
+      "originalCaseId": "holdout-pbs-equal-balances-owner-swap",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 22196,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 6258,
+          "verdict": "needs_clarification",
+          "scope": "reinterpretation",
+          "explanation": "The proposed balance-sheet amounts and joint home/mortgage are supported, and the module selection is correctly attributed to the client. However, the proposed savings-account owners and read-back still use the superseded c1 attribution. The later explicit correction in c3 requires the account labels, supporting citations, steering summary, and confirmation prompt to be rebuilt. This is a content correction, so the single revision must be an reinterpretation rather than presentation-only."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 11568
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 4333,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The personal balance sheet is the only selected module and is explicitly requested by Aoife. The proposed inputs correctly preserve the later ownership correction: Ben owns the AIB savings account, Aoife owns the Bank of Ireland savings account, both at 25,000, with the home and mortgage jointly held. The complete-list statement correctly supports the absence of other assets and debts, and monthly spending of 3,000 is included. The evidence quotes are verbatim, from the cited turns, and establish the corresponding values. The confirmation prompt accurately reads back the material inputs, ownership, joint status, monthly spending, and exclusion of other assets and debts without adding claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "revisionScope": "none",
+        "revisionTargets": [],
+        "explanation": "The personal balance sheet is the only selected module and is explicitly requested by Aoife. The proposed inputs correctly preserve the later ownership correction: Ben owns the AIB savings account, Aoife owns the Bank of Ireland savings account, both at 25,000, with the home and mortgage jointly held. The complete-list statement correctly supports the absence of other assets and debts, and monthly spending of 3,000 is included. The evidence quotes are verbatim, from the cited turns, and establish the corresponding values. The confirmation prompt accurately reads back the material inputs, ownership, joint status, monthly spending, and exclusion of other assets and debts without adding claims."
+      }
+    },
+    {
+      "rep": "r1",
+      "id": "seed-hypothetical-rate-promoted",
+      "originalCaseId": "mortgage-correction-hypothetical",
+      "arm": "option2",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 22069,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5677,
+          "verdict": "reject",
+          "scope": "input",
+          "explanation": "The client explicitly corrected the rate to 4.1% and said not to use the hypothetical 6% rate. The proposed input incorrectly uses 0.06, and the confirmation prompt repeats 6%, so the financial content and read-back must be corrected. The cited c2 quotation is valid because it is a contiguous span containing both the confirmed 4.1% rate and the instruction not to use 6%."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 9359
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 6974,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The mortgage module is correctly selected as client_requested and is fully supported by the conversation. The later correction and reconfirmation establish a current balance of about €240,000, a 4.1% annual rate, 22 years remaining, repayment structure, €500 annual overpayment, no lump-sum overpayment, and no supplied fixed payment amount. The normal calculation date is correctly applied as the start date. Aoife and Ben’s joint ownership is accurately reflected in the steering summary and confirmation prompt. The prompt reads back all material client-authored inputs and assumptions without adding unsupported claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "repairScope": "none",
+        "repairTargets": [],
+        "explanation": "The mortgage module is correctly selected as client_requested and is fully supported by the conversation. The later correction and reconfirmation establish a current balance of about €240,000, a 4.1% annual rate, 22 years remaining, repayment structure, €500 annual overpayment, no lump-sum overpayment, and no supplied fixed payment amount. The normal calculation date is correctly applied as the start date. Aoife and Ben’s joint ownership is accurately reflected in the steering summary and confirmation prompt. The prompt reads back all material client-authored inputs and assumptions without adding unsupported claims."
+      }
+    },
+    {
+      "rep": "r1",
+      "id": "seed-hypothetical-rate-promoted",
+      "originalCaseId": "mortgage-correction-hypothetical",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 23806,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 7880,
+          "verdict": "reject",
+          "scope": "reinterpretation",
+          "explanation": "The mortgage module is correctly selected and most inputs are supported, but the proposed annualInterestRate is 6% even though the client explicitly corrected the rate to 4.1% and said not to use 6%. The confirmation prompt repeats the incorrect 6% rate and omits the jointly held Aoife-and-Ben ownership context. Re-author the mortgage proposal using 4.1% and rebuild the confirmation wording and supporting ownership information."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 10880
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5022,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The mortgage module is correctly selected as client_requested and is supported by the conversation. The proposed inputs preserve the later corrected and reconfirmed 4.1% rate, approximately €240,000 balance, 22-year remaining term, repayment structure, joint ownership by Aoife and Ben, €500 annual overpayment, no lump-sum overpayment, no fixed payment amount, and the normal calculation date. The confirmation prompt accurately reads back the material inputs without adding claims or misattributing the request."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "revisionScope": "none",
+        "revisionTargets": [],
+        "explanation": "The mortgage module is correctly selected as client_requested and is supported by the conversation. The proposed inputs preserve the later corrected and reconfirmed 4.1% rate, approximately €240,000 balance, 22-year remaining term, repayment structure, joint ownership by Aoife and Ben, €500 annual overpayment, no lump-sum overpayment, no fixed payment amount, and the normal calculation date. The confirmation prompt accurately reads back the material inputs without adding claims or misattributing the request."
+      }
+    },
+    {
+      "rep": "r1",
+      "id": "seed-superseded-borrower-restored",
+      "originalCaseId": "holdout-loan-changed-selected-borrower",
+      "arm": "option2",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 21079,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 7101,
+          "verdict": "reject",
+          "scope": "input",
+          "explanation": "The client's later explicit correction in c2 supersedes the original request in c1. The proposed module still analyses Aoife's loan, retains her 18000 balance, 8.5 percent rate, four-year term and 500 annual overpayment, and its selection reason and citations rely on superseded evidence. It must instead analyse Ben's loan with the corrected figures and exclusions. The confirmation prompt also reads back the superseded Aoife scenario."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 9529
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 4394,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The proposed loan_analysis input correctly follows Aoife’s later explicit correction and selects Ben’s separate car loan only. The balance (€9,000), annual rate (7%), remaining term (exactly two years), repayment type, zero annual overpayment, zero lump sum, and absence of a fixed payment are all supported by c2. The earlier €500 overpayment and Aoife’s loan are correctly excluded. The evidence quotes are verbatim contiguous spans from c2 and establish the cited values. The confirmation prompt accurately reads back the material inputs, ownership, exclusions, and assumptions without misattribution."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "repairScope": "none",
+        "repairTargets": [],
+        "explanation": "The proposed loan_analysis input correctly follows Aoife’s later explicit correction and selects Ben’s separate car loan only. The balance (€9,000), annual rate (7%), remaining term (exactly two years), repayment type, zero annual overpayment, zero lump sum, and absence of a fixed payment are all supported by c2. The earlier €500 overpayment and Aoife’s loan are correctly excluded. The evidence quotes are verbatim contiguous spans from c2 and establish the cited values. The confirmation prompt accurately reads back the material inputs, ownership, exclusions, and assumptions without misattribution."
+      }
+    },
+    {
+      "rep": "r1",
+      "id": "seed-superseded-borrower-restored",
+      "originalCaseId": "holdout-loan-changed-selected-borrower",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 24546,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 8501,
+          "verdict": "needs_clarification",
+          "scope": "reinterpretation",
+          "explanation": "The later client turn explicitly replaces the earlier request: Aoife's loan must be excluded and Ben's loan must be selected. The proposed module still selects Aoife, carries forward her €18,000 balance, 8.5% rate, four-year term, and €500 annual overpayment, and its evidence cites only the superseded turn c1. The selection reason and steering summary are therefore also incorrect. The confirmation prompt repeats the superseded scenario, omits the later Ben scenario, and is not approved. A full reinterpretation is required because the borrower, selected entity, figures, overpayment scenario, and selection attribution must all change."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 10454
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5563,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The proposed loan analysis correctly reflects Ben’s car loan after Aoife’s explicit correction. The balance, interest rate, remaining term, repayment structure, zero annual overpayment, zero lump sum, and absent fixed payment are supported by the later client turn. Aoife’s loan and the superseded €500 annual overpayment are correctly excluded. The confirmation prompt accurately identifies the selected owner, material inputs, assumptions, and exclusions."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "revisionScope": "none",
+        "revisionTargets": [],
+        "explanation": "The proposed loan analysis correctly reflects Ben’s car loan after Aoife’s explicit correction. The balance, interest rate, remaining term, repayment structure, zero annual overpayment, zero lump sum, and absent fixed payment are supported by the later client turn. Aoife’s loan and the superseded €500 annual overpayment are correctly excluded. The confirmation prompt accurately identifies the selected owner, material inputs, assumptions, and exclusions."
+      }
+    },
+    {
+      "rep": "r1",
+      "id": "seed-withdrawn-rate-forced-ready",
+      "originalCaseId": "holdout-mortgage-fresh-uncertainty",
+      "arm": "option2",
+      "pass": false,
+      "passUnder45s": false,
+      "elapsedMs": 17731,
+      "calls": 3,
+      "paidCalls": 2,
+      "certified": false,
+      "failures": [
+        {
+          "name": "readiness",
+          "message": "The expression evaluated to a falsy value:"
+        },
+        {
+          "name": "input /annualInterestRate",
+          "message": "Expected values to be strictly deep-equal:"
+        },
+        {
+          "name": "uncertain rate remains unknown",
+          "message": "The expression evaluated to a falsy value:"
+        },
+        {
+          "name": "holdout: withdrawn certainty or completeness blocks certification",
+          "message": "Unexpected status ready"
+        }
+      ],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5354,
+          "verdict": "needs_clarification",
+          "scope": "input",
+          "explanation": "The balance (€240,000), remaining term (22 years), repayment structure, zero annual and lump-sum overpayments, and absent fixed payment are supported. However, the later client correction supersedes 4.1%: the proposed annualInterestRate remains 0.041, the c1 citation is no longer valid, the module cannot be ready, and the confirmation prompt incorrectly reads back 4.1% as usable. The planner must remove the rate from the ready input or obtain a later current rate before proceeding."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 12317
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "needs_clarification",
+        "unsupportedPaths": [
+          "/modules/mortgage_analysis/input/annualInterestRate",
+          "/modules/mortgage_analysis/evidence/5",
+          "/modules/mortgage_analysis/status",
+          "/confirmationPrompt"
+        ],
+        "omittedSupportedInformation": [
+          "The client explicitly withdrew the 4.1% rate, said the current rate is unknown and unavailable to check, and instructed that neither 4.1% nor a guessed rate be used. The mortgage analysis is therefore blocked pending a current rate or a later answer."
+        ],
+        "unresolvedAmbiguities": [],
+        "clarifications": [
+          {
+            "id": "mortgage-rate",
+            "question": "What is the mortgage’s current annual interest rate? You said the 4.1% rate is outdated and must not be used; if you cannot check it now, should I leave the mortgage review paused until you can provide the current rate?",
+            "relatedModuleIds": [
+              "mortgage_analysis"
+            ],
+            "relatedPaths": [
+              "/annualInterestRate"
+            ]
+          }
+        ],
+        "confirmationPromptApproved": false,
+        "repairScope": "input",
+        "repairTargets": [
+          {
+            "moduleId": "mortgage_analysis",
+            "path": "/annualInterestRate"
+          }
+        ],
+        "explanation": "The balance (€240,000), remaining term (22 years), repayment structure, zero annual and lump-sum overpayments, and absent fixed payment are supported. However, the later client correction supersedes 4.1%: the proposed annualInterestRate remains 0.041, the c1 citation is no longer valid, the module cannot be ready, and the confirmation prompt incorrectly reads back 4.1% as usable. The planner must remove the rate from the ready input or obtain a later current rate before proceeding."
+      }
+    },
+    {
+      "rep": "r1",
+      "id": "seed-withdrawn-rate-forced-ready",
+      "originalCaseId": "holdout-mortgage-fresh-uncertainty",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 5868,
+      "calls": 2,
+      "paidCalls": 1,
+      "certified": false,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5855,
+          "verdict": "needs_clarification",
+          "scope": "reinterpretation",
+          "explanation": "The existing mortgage is correctly selected, and the €240,000 balance, 22-year remaining term, repayment structure, absence of overpayments, and absence of a fixed illustration payment are supported. However, the later client correction supersedes 4.1%; the proposed 0.041 rate, ready status, steering summary, and confirmation prompt incorrectly present it as current and confirmed. The module must be re-authored as collecting or otherwise blocked pending the client’s current rate; the confirmation prompt must not mention 4.1%."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "needs_clarification",
+        "unsupportedPaths": [
+          "/mortgage_analysis/annualInterestRate"
+        ],
+        "omittedSupportedInformation": [
+          "/mortgage_analysis/annualInterestRate",
+          "/mortgage_analysis/status",
+          "/mortgage_analysis/missing"
+        ],
+        "unresolvedAmbiguities": [
+          "The current mortgage interest rate is unknown: the client explicitly withdrew the earlier 4.1% figure and said not to use any guessed rate. A current rate or an explicit decision to proceed without one is still required."
+        ],
+        "clarifications": [
+          {
+            "id": "mortgage-rate",
+            "question": "What is the mortgage’s current annual interest rate? If you cannot check it now, should I leave the mortgage analysis collecting and not run the illustration until you can provide it?",
+            "relatedModuleIds": [
+              "mortgage_analysis"
+            ],
+            "relatedPaths": [
+              "/annualInterestRate",
+              "/status"
+            ]
+          }
+        ],
+        "confirmationPromptApproved": false,
+        "revisionScope": "reinterpretation",
+        "revisionTargets": [
+          {
+            "moduleId": "mortgage_analysis",
+            "path": "/annualInterestRate"
+          }
+        ],
+        "explanation": "The existing mortgage is correctly selected, and the €240,000 balance, 22-year remaining term, repayment structure, absence of overpayments, and absence of a fixed illustration payment are supported. However, the later client correction supersedes 4.1%; the proposed 0.041 rate, ready status, steering summary, and confirmation prompt incorrectly present it as current and confirmed. The module must be re-authored as collecting or otherwise blocked pending the client’s current rate; the confirmation prompt must not mention 4.1%."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-equal-balances-stale-owners",
+      "originalCaseId": "holdout-pbs-equal-balances-owner-swap",
+      "arm": "option2",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 22458,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 7230,
+          "verdict": "reject",
+          "scope": "input",
+          "explanation": "The balance-sheet amounts, joint home, joint mortgage, monthly spending, and exclusion of other assets and debts are supported. However, c3 explicitly corrects the savings-account owners, while the proposed labels, evidence, steering summary, and confirmation prompt still use the original reversed ownership. The financial inputs and their support must be corrected; this is not merely a citation or wording issue."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 8692
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 6515,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The ready personal balance sheet module is fully supported. The latest client correction correctly changes the savings-account ownership to Ben/AIB and Aoife/Bank of Ireland while preserving the €25,000 balances and separate-account structure. The joint home and mortgage, €3,000 monthly spending, and complete-list exclusion are supported by contiguous conversation evidence. The module selection is correctly attributed to the client's explicit household-net-worth request, and the confirmation prompt accurately reads back the material inputs without adding claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "repairScope": "none",
+        "repairTargets": [],
+        "explanation": "The ready personal balance sheet module is fully supported. The latest client correction correctly changes the savings-account ownership to Ben/AIB and Aoife/Bank of Ireland while preserving the €25,000 balances and separate-account structure. The joint home and mortgage, €3,000 monthly spending, and complete-list exclusion are supported by contiguous conversation evidence. The module selection is correctly attributed to the client's explicit household-net-worth request, and the confirmation prompt accurately reads back the material inputs without adding claims."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-equal-balances-stale-owners",
+      "originalCaseId": "holdout-pbs-equal-balances-owner-swap",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 23448,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 7379,
+          "verdict": "reject",
+          "scope": "reinterpretation",
+          "explanation": "The household balance-sheet selection, amounts, joint home, joint mortgage, spending, exclusions, and client-requested attribution are otherwise supported. However, the proposed content has not applied the later explicit ownership correction: its labels and read-back assign the two savings accounts to the wrong people. Because ownership is material input content, this requires a full reinterpretation rather than a presentation-only citation fix. The confirmation prompt is also inaccurate because it repeats the superseded owners."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 11878
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 4136,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The ready personal balance sheet correctly reflects Aoife and Ben's corrected separate savings-account ownership, the joint home and mortgage, €3,000 monthly spending, and the confirmed absence of other assets or debts. The selected analysis is genuinely client-requested, the evidence citations establish the proposed values, and the confirmation prompt accurately reads back all material inputs without adding unsupported claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "revisionScope": "none",
+        "revisionTargets": [],
+        "explanation": "The ready personal balance sheet correctly reflects Aoife and Ben's corrected separate savings-account ownership, the joint home and mortgage, €3,000 monthly spending, and the confirmed absence of other assets or debts. The selected analysis is genuinely client-requested, the evidence citations establish the proposed values, and the confirmation prompt accurately reads back all material inputs without adding unsupported claims."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-hypothetical-rate-promoted",
+      "originalCaseId": "mortgage-correction-hypothetical",
+      "arm": "option2",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 21843,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 6240,
+          "verdict": "needs_clarification",
+          "scope": "input",
+          "explanation": "The mortgage is correctly selected as client_requested, and the balance, term, repayment type, overpayment, no lump-sum overpayment and absent fixed payment are supported. However, the proposed annualInterestRate is 0.06 even though the client explicitly corrected the rate to 4.1% and said not to use 6%; it should be 0.041. The confirmation prompt repeats the same incorrect 6% figure and must be updated after correcting the input."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 10381
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5196,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The ready mortgage analysis is correctly selected from the client’s explicit request. The balance, corrected 4.1% rate, 22-year remaining term, repayment structure, joint Aoife/Ben ownership, €500 annual overpayment, zero lump-sum overpayment, and absence of a supplied fixed payment are supported by the conversation. The normal server calculation date is correctly used, the excluded hypothetical 6% rate is not included, and the confirmation prompt accurately reads back the material inputs without misattributing the analysis or adding unsupported claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "repairScope": "none",
+        "repairTargets": [],
+        "explanation": "The ready mortgage analysis is correctly selected from the client’s explicit request. The balance, corrected 4.1% rate, 22-year remaining term, repayment structure, joint Aoife/Ben ownership, €500 annual overpayment, zero lump-sum overpayment, and absence of a supplied fixed payment are supported by the conversation. The normal server calculation date is correctly used, the excluded hypothetical 6% rate is not included, and the confirmation prompt accurately reads back the material inputs without misattributing the analysis or adding unsupported claims."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-hypothetical-rate-promoted",
+      "originalCaseId": "mortgage-correction-hypothetical",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 27057,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 6752,
+          "verdict": "reject",
+          "scope": "reinterpretation",
+          "explanation": "The conversation establishes a corrected mortgage rate of 4.1% in c2 and reconfirms it in c3; the client explicitly says not to use the hypothetical 6% rate. The proposed input, steering summary, and confirmation prompt incorrectly use 6%. The remaining mortgage facts are supported: about €240,000 balance, 22 years remaining, repayment basis, €500 annual overpayment, no lump-sum overpayment, and no fixed payment amount. Because the proposed financial figure itself must change, one complete reinterpretation is required rather than a presentation-only revision."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 14291
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5959,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The mortgage module is correctly selected as client_requested and is supported by the conversation. The later correction and reconfirmation establish the balance as about €240,000, the rate as 4.1%, the remaining term as 22 years, repayment structure, €500 annual overpayment, no lump-sum overpayment, and no fixed payment amount. The normal calculation date is correctly taken from server policy, and the confirmation prompt accurately reads back the material inputs, joint ownership, and assumptions without adding claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "revisionScope": "none",
+        "revisionTargets": [],
+        "explanation": "The mortgage module is correctly selected as client_requested and is supported by the conversation. The later correction and reconfirmation establish the balance as about €240,000, the rate as 4.1%, the remaining term as 22 years, repayment structure, €500 annual overpayment, no lump-sum overpayment, and no fixed payment amount. The normal calculation date is correctly taken from server policy, and the confirmation prompt accurately reads back the material inputs, joint ownership, and assumptions without adding claims."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-superseded-borrower-restored",
+      "originalCaseId": "holdout-loan-changed-selected-borrower",
+      "arm": "option2",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 20839,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": true,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 8097,
+          "verdict": "reject",
+          "scope": "input",
+          "explanation": "The proposed loan module preserves Aoife's earlier request and figures, but c2 is an explicit later correction that supersedes c1. The selected loan must be Ben's, with €9,000 balance, 7% rate, two years remaining, zero annual overpayment and zero lump sum. The c1 citations therefore no longer support the proposed inputs, and the selection reason and confirmation prompt are also superseded. The proposal's server defaults for loan kind, start date, repayment type, and null fixed payment may otherwise remain unchanged."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 8359
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 4358,
+          "verdict": "pass",
+          "scope": "none",
+          "explanation": "The ready loan_analysis module correctly switches the review to Ben’s car loan, superseding Aoife’s earlier selection and €500 annual overpayment. The balance, interest rate, remaining term, repayment type, zero overpayments, and absent fixed payment are supported by the later client turn. The citations are verbatim contiguous spans from that turn and establish the respective values. The confirmation prompt accurately reads back the material inputs, exclusions, ownership, and assumptions without misattributing the analysis or adding unsupported claims."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "pass",
+        "unsupportedPaths": [],
+        "omittedSupportedInformation": [],
+        "unresolvedAmbiguities": [],
+        "clarifications": [],
+        "confirmationPromptApproved": true,
+        "repairScope": "none",
+        "repairTargets": [],
+        "explanation": "The ready loan_analysis module correctly switches the review to Ben’s car loan, superseding Aoife’s earlier selection and €500 annual overpayment. The balance, interest rate, remaining term, repayment type, zero overpayments, and absent fixed payment are supported by the later client turn. The citations are verbatim contiguous spans from that turn and establish the respective values. The confirmation prompt accurately reads back the material inputs, exclusions, ownership, and assumptions without misattributing the analysis or adding unsupported claims."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-superseded-borrower-restored",
+      "originalCaseId": "holdout-loan-changed-selected-borrower",
+      "arm": "simplified",
+      "pass": false,
+      "passUnder45s": false,
+      "elapsedMs": 32940,
+      "calls": 4,
+      "paidCalls": 3,
+      "certified": false,
+      "failures": [
+        {
+          "name": "readiness",
+          "message": "Expected values to be strictly equal:"
+        },
+        {
+          "name": "input /annualInterestRate",
+          "message": "Expected values to be strictly deep-equal:"
+        },
+        {
+          "name": "input /remainingTermYears",
+          "message": "Expected values to be strictly deep-equal:"
+        },
+        {
+          "name": "verification and certificate decision",
+          "message": "Expected values to be strictly equal:"
+        }
+      ],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 7227,
+          "verdict": "reject",
+          "scope": "reinterpretation",
+          "explanation": "The later client correction in c2 supersedes c1: the proposal incorrectly retains Aoife's loan, the €500 annual overpayment, and the original client-requested attribution. It must be fully re-authored for Ben's separate loan. The confirmation prompt is also inaccurate because it says Aoife's review was requested and Ben's loan is excluded."
+        },
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 15731
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 9934,
+          "verdict": "needs_clarification",
+          "scope": "presentation",
+          "explanation": "The proposed loan values, Ben's ownership, selection attribution, exclusions, and certainty are correct. However, the rate and term citations are too narrow to establish that those figures belong to Ben; they must include the preceding owner-identifying words in the same contiguous sentence. The confirmation prompt also needs to mention the client-authored normal repayment structure. These are provenance and presentation defects only; no financial value needs to change."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "needs_clarification",
+        "unsupportedPaths": [
+          "/loan_analysis/annualInterestRate",
+          "/loan_analysis/remainingTermYears"
+        ],
+        "omittedSupportedInformation": [
+          "The confirmation prompt omits Ben's client-authored normal repayment structure."
+        ],
+        "unresolvedAmbiguities": [],
+        "clarifications": [
+          {
+            "id": "planner-correction-1",
+            "question": "Planner must widen the citations for Ben's interest rate and remaining term to the contiguous sentence: \"His current figures are definitely 9000 outstanding, 7 percent a year and exactly two years remaining.\" Also add the normal repayment structure to the confirmation read-back.",
+            "relatedModuleIds": [
+              "loan_analysis"
+            ],
+            "relatedPaths": [
+              "/annualInterestRate",
+              "/remainingTermYears",
+              "/repaymentType"
+            ]
+          }
+        ],
+        "confirmationPromptApproved": false,
+        "revisionScope": "presentation",
+        "revisionTargets": [
+          {
+            "moduleId": "loan_analysis",
+            "path": "/annualInterestRate"
+          },
+          {
+            "moduleId": "loan_analysis",
+            "path": "/remainingTermYears"
+          }
+        ],
+        "explanation": "The proposed loan values, Ben's ownership, selection attribution, exclusions, and certainty are correct. However, the rate and term citations are too narrow to establish that those figures belong to Ben; they must include the preceding owner-identifying words in the same contiguous sentence. The confirmation prompt also needs to mention the client-authored normal repayment structure. These are provenance and presentation defects only; no financial value needs to change."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-withdrawn-rate-forced-ready",
+      "originalCaseId": "holdout-mortgage-fresh-uncertainty",
+      "arm": "option2",
+      "pass": false,
+      "passUnder45s": false,
+      "elapsedMs": 5893,
+      "calls": 2,
+      "paidCalls": 1,
+      "certified": false,
+      "failures": [
+        {
+          "name": "readiness",
+          "message": "The expression evaluated to a falsy value:"
+        },
+        {
+          "name": "input /annualInterestRate",
+          "message": "Expected values to be strictly deep-equal:"
+        },
+        {
+          "name": "uncertain rate remains unknown",
+          "message": "The expression evaluated to a falsy value:"
+        },
+        {
+          "name": "holdout: withdrawn certainty or completeness blocks certification",
+          "message": "Unexpected status ready"
+        }
+      ],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5884,
+          "verdict": "needs_clarification",
+          "scope": "input",
+          "explanation": "The later client correction supersedes the earlier 4.1% rate. The proposed input incorrectly keeps 0.041, marks the module ready, cites the superseded c1 statement as evidence for the rate, and confirms the obsolete rate in the prompt. The balance and remaining term are supported by c2, and the overpayment and fixed-payment values are supported by c1. The planner must remove or block the rate-dependent input until the client provides a verified current rate, and revise the confirmation wording accordingly."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "needs_clarification",
+        "unsupportedPaths": [
+          "/modules/mortgage_analysis/input/annualInterestRate",
+          "/modules/mortgage_analysis/status",
+          "/modules/mortgage_analysis/steeringSummary",
+          "/modules/mortgage_analysis/evidence/5",
+          "/confirmationPrompt"
+        ],
+        "omittedSupportedInformation": [
+          "The client explicitly corrected the earlier 4.1% rate and said the current interest rate is unknown and cannot currently be checked. The mortgage analysis must not use 4.1% or any guessed rate.",
+          "The mortgage module should retain the confirmed current balance of €240,000, 22 years remaining, repayment structure, no annual or lump-sum overpayments, and no supplied fixed payment."
+        ],
+        "unresolvedAmbiguities": [
+          "The current mortgage interest rate is genuinely unknown and must be supplied by the client before a rate-dependent mortgage illustration can be ready."
+        ],
+        "clarifications": [
+          {
+            "id": "mortgage-rate",
+            "question": "What is the mortgage’s current annual interest rate? Please provide it when you can verify it; I won’t use the old 4.1% figure or guess a rate.",
+            "relatedModuleIds": [
+              "mortgage_analysis"
+            ],
+            "relatedPaths": [
+              "/annualInterestRate"
+            ]
+          }
+        ],
+        "confirmationPromptApproved": false,
+        "repairScope": "input",
+        "repairTargets": [
+          {
+            "moduleId": "mortgage_analysis",
+            "path": "/annualInterestRate"
+          }
+        ],
+        "explanation": "The later client correction supersedes the earlier 4.1% rate. The proposed input incorrectly keeps 0.041, marks the module ready, cites the superseded c1 statement as evidence for the rate, and confirms the obsolete rate in the prompt. The balance and remaining term are supported by c2, and the overpayment and fixed-payment values are supported by c1. The planner must remove or block the rate-dependent input until the client provides a verified current rate, and revise the confirmation wording accordingly."
+      }
+    },
+    {
+      "rep": "r2",
+      "id": "seed-withdrawn-rate-forced-ready",
+      "originalCaseId": "holdout-mortgage-fresh-uncertainty",
+      "arm": "simplified",
+      "pass": true,
+      "passUnder45s": true,
+      "elapsedMs": 5846,
+      "calls": 2,
+      "paidCalls": 1,
+      "certified": false,
+      "failures": [],
+      "error": null,
+      "injectedManifest": null,
+      "stages": [
+        {
+          "stage": "module_planning_snapshot_v1",
+          "synthetic": true,
+          "reused": false,
+          "ms": 0
+        },
+        {
+          "stage": "module_input_verification_v1",
+          "synthetic": false,
+          "reused": false,
+          "ms": 5808,
+          "verdict": "needs_clarification",
+          "scope": "reinterpretation",
+          "explanation": "The mortgage selection and the €240,000 balance, 22-year remaining term, repayment structure, no overpayments, and no supplied fixed payment are supported. However, the client explicitly withdrew the earlier 4.1% rate and said the current rate is unknown, so the proposed 0.041 value, ready status, steering summary, and confirmation prompt are incorrect. The single revision must rebuild the mortgage proposal with the rate missing or collecting rather than restoring or guessing 4.1%."
+        }
+      ],
+      "finalVerdict": {
+        "schemaVersion": "ModuleInputVerificationV1",
+        "verdict": "needs_clarification",
+        "unsupportedPaths": [
+          "/modules/mortgage_analysis/input/annualInterestRate",
+          "/modules/mortgage_analysis/status",
+          "/modules/mortgage_analysis/steeringSummary",
+          "/proposedSnapshot/confirmationPrompt"
+        ],
+        "omittedSupportedInformation": [
+          "The later client correction states that the 4.1% rate is not current, must not be used, and that the current rate is unknown and currently unavailable to check."
+        ],
+        "unresolvedAmbiguities": [
+          "The current mortgage interest rate is unknown and cannot be supplied until the client can check it."
+        ],
+        "clarifications": [
+          {
+            "id": "mortgage-rate",
+            "question": "What is the mortgage’s current annual interest rate, as shown on your latest rate statement or lender information? If you cannot check it yet, should I leave the mortgage analysis collecting and wait for you to provide it later?",
+            "relatedModuleIds": [
+              "mortgage_analysis"
+            ],
+            "relatedPaths": [
+              "/annualInterestRate"
+            ]
+          }
+        ],
+        "confirmationPromptApproved": false,
+        "revisionScope": "reinterpretation",
+        "revisionTargets": [
+          {
+            "moduleId": "mortgage_analysis",
+            "path": "/annualInterestRate"
+          }
+        ],
+        "explanation": "The mortgage selection and the €240,000 balance, 22-year remaining term, repayment structure, no overpayments, and no supplied fixed payment are supported. However, the client explicitly withdrew the earlier 4.1% rate and said the current rate is unknown, so the proposed 0.041 value, ready status, steering summary, and confirmation prompt are incorrect. The single revision must rebuild the mortgage proposal with the rate missing or collecting rather than restoring or guessing 4.1%."
+      }
+    }
+  ]
+}
