@@ -11,19 +11,25 @@ const date = '2026-09-08';
 const policy = buildDirectModulePolicyEnvelope({ calculationDateIso: date, baseCurrency: 'EUR' });
 const config = { allowedModules: ['mortgage_analysis'], modulePlannerModel: 'scripted',
   modulePlannerTimeoutMs: 30000, modulePlannerReasoningEffort: 'low',
-  modulePlannerPromptVersion: 'direct-module-planner-v12', moduleVerifierPromptVersion: 'direct-module-verifier-v11' };
+  modulePlannerPromptVersion: 'direct-module-planner-v13', moduleVerifierPromptVersion: 'direct-module-verifier-v12' };
 const original = 'My repayment mortgage is 240000 euro at 4.1 percent for 22 years with no overpayments.';
 const correction = 'I checked the statement. The mortgage balance is 340000 euro, not the 240000 I gave earlier.';
 const turns = [{ id: 't1', role: 'user', transcript: original }, { id: 't2', role: 'user', transcript: correction }];
 const profile = { revision: 1, assumptions: { calculationDateIso: date, values: {} }, preferences: { baseCurrency: 'EUR' } };
 const pass = { schemaVersion: 'ModuleInputVerificationV1', verdict: 'pass', unsupportedPaths: [],
-  omittedSupportedInformation: [], unresolvedAmbiguities: [], clarifications: [], confirmationPromptApproved: true, explanation: 'scripted pass' };
+  omittedSupportedInformation: [], unresolvedAmbiguities: [], clarifications: [], confirmationPromptApproved: true,
+  revisionScope: 'none', revisionTargets: [], explanation: 'scripted pass' };
 const omission = { ...pass, verdict: 'needs_clarification', confirmationPromptApproved: false,
-  omittedSupportedInformation: ['/annualOverpayment'],
+  omittedSupportedInformation: ['/annualOverpayment'], revisionScope: 'reinterpretation',
   clarifications: [{ id: 'omission', question: 'Please confirm the overpayment treatment.', relatedModuleIds: ['mortgage_analysis'], relatedPaths: ['/annualOverpayment'] }] };
 const rejection = { ...pass, verdict: 'reject', confirmationPromptApproved: false,
   unresolvedAmbiguities: ['The proposed balance retains the superseded 240000 instead of the corrected 340000.'],
   clarifications: [{ id: 'correction', question: 'May I use the corrected 340000 balance?', relatedModuleIds: ['mortgage_analysis'], relatedPaths: ['/currentBalance'] }] };
+// The auditor asserting the figures are right and only their support is wrong.
+const presentationOnly = { ...omission, revisionScope: 'presentation',
+  unsupportedPaths: ['/annualOverpayment'],
+  revisionTargets: [{ moduleId: 'mortgage_analysis', path: '/annualOverpayment' }] };
+const noRevision = { ...omission, revisionScope: 'none' };
 
 function proposal({ balance = 340000, omit = null, overpayment = 0, assumptionValue = 0,
   balanceQuote = balance === 340000 ? '340000 euro' : '240000 euro', ambiguities = [] } = {}) {
@@ -35,7 +41,7 @@ function proposal({ balance = 340000, omit = null, overpayment = 0, assumptionVa
   const assumptions = directModulePolicyEntries('mortgage_analysis', input, policy)
     .filter(entry => entry.mode === 'default')
     .map(entry => ({ path: entry.path, source: entry.source, valueJson: JSON.stringify(entry.path === '/annualOverpayment' ? assumptionValue : entry.value) }));
-  return { schemaVersion: MODULE_PLANNING_SNAPSHOT_V1, baseSnapshotRevision: 0, throughTurnId: 't2',
+  return { schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
     modules: [{ moduleId: 'mortgage_analysis', outputKey: DIRECT_MODULE_CONTRACTS.mortgage_analysis.outputKey,
       status: 'ready', inputJson: JSON.stringify(input), selection: { origin: 'client_requested', reason: '' },
       steeringSummary: '', missing: [], ambiguities, assumptions, evidence }], generalAmbiguities: [],
@@ -73,9 +79,18 @@ for (const assumptionValue of [0, 500, null]) {
     assert.ok(item.inputSupportIssues.includes('/annualOverpayment'));
     assert.ok(!item.assumptions.some(entry => entry.path === '/annualOverpayment'));
   });
-  const failed = await run([raw, raw]);
-  checked(`Fix A disclosure ${assumptionValue} cannot gain a certificate through a repeated repair`, () => {
-    assert.equal(failed.result.certificate, null); assert.equal(failed.calls.length, 2);
+  // WAS: the server repaired provenance before any audit, so this drove
+  // extract -> structural repair and asserted two calls. The unsupported
+  // proposal now reaches the auditor with its structural diagnostics, and the
+  // one revision it asks for cannot rescue a value that stays uncited.
+  const failed = await run([raw, presentationOnly, { confirmationPrompt: null, entries: [] }]);
+  checked(`Fix A disclosure ${assumptionValue} cannot gain a certificate through its one revision`, () => {
+    assert.equal(failed.result.certificate, null); assert.equal(failed.calls.length, 3);
+    assert.equal(failed.calls[1].kind, 'module_input_verification_v1',
+      'the auditor sees the proposal, rather than provenance being repaired behind its back');
+    assert.deepEqual(failed.calls[1].envelope.structuralDiagnostics.map(item => (
+      { moduleId: item.moduleId, paths: item.paths })),
+      [{ moduleId: 'mortgage_analysis', paths: ['/annualOverpayment'] }]);
   });
 }
 const explicitDefault = normalized(proposal());
@@ -90,23 +105,33 @@ checked('omitted undeclared native default still throws', () => assert.throws(()
 const structural = proposal({ omit: 'currentBalance' });
 const corrected = proposal();
 const stale = proposal({ balance: 240000 });
-const blocked = await run([structural, corrected, omission, stale, rejection]);
-checked('second repair may reintroduce stale meaning, but fresh rejection blocks certification', () => {
-  assert.equal(blocked.calls.length, 5); assert.equal(blocked.result.certificate, null);
-  assert.equal(blocked.calls[4].envelope.proposedSnapshot.modules[0].input.currentBalance, 240000);
-  assert.equal(blocked.result.snapshot.modules[0].input.currentBalance, 340000);
+const blocked = await run([structural, omission, stale, rejection]);
+checked('a reinterpretation may reintroduce stale meaning, but fresh rejection blocks certification', () => {
+  // WAS five calls: a structural repair, an audit, a full re-author and a
+  // second audit. Four now -- author, review, one revision, review.
+  assert.equal(blocked.calls.length, 4); assert.equal(blocked.result.certificate, null);
+  assert.equal(blocked.calls[3].envelope.proposedSnapshot.modules[0].input.currentBalance, 240000);
+  // THE STATE AND THE VERDICT MOVE TOGETHER, AND THE REFUSAL IS APPLIED. The
+  // re-author reintroduced the superseded 240,000; the audit refused it and
+  // named /currentBalance as what it could not resolve; so the state reports
+  // that figure as unknown rather than continuing to assert a number an
+  // independent review had just rejected. The corrected 340,000 is NOT written
+  // here either: reading the correction is the planner's job, not the server's.
+  assert.equal(blocked.result.snapshot.modules[0].input.currentBalance, null);
+  assert.notEqual(blocked.result.snapshot.modules[0].status, 'ready');
+  assert.equal(blocked.result.verification.clarifications[0].id, 'correction');
 });
-checked('both repairs and both verifications retain every original and correction turn', () => {
+checked('the revision and both verifications retain every original and correction turn', () => {
   for (const call of blocked.calls) assert.deepEqual(call.envelope.conversation.map(turn => turn.text), [original, correction]);
 });
-const trusted = await run([structural, corrected, omission, stale, pass]);
-checked('LIMIT: representation-only is a prompt rule; an erroneous final verifier pass can certify a stale repair', () => {
+const trusted = await run([structural, omission, stale, pass]);
+checked('LIMIT: an erroneous final verifier pass can still certify a stale reinterpretation', () => {
   assert.ok(trusted.result.certificate);
   assert.equal(trusted.result.snapshot.modules[0].input.currentBalance, 240000);
 });
 const ambiguous = proposal({ omit: 'currentBalance', ambiguities: [{ id: 'owner', question: 'Whose mortgage?', relatedPaths: ['/currentBalance'] }] });
 const open = await run([ambiguous]);
-checked('an explicitly declared genuine ambiguity never enters either repair path', () => {
+checked('an explicitly declared genuine ambiguity never enters the revision path', () => {
   assert.equal(open.calls.length, 1); assert.equal(open.result.certificate, null);
 });
 

@@ -50,10 +50,15 @@ const armedAt = armed.deadlineAt;
 assert.ok(Number.isFinite(armedAt) && armedAt > Date.now(), 'a boundary arms an absolute ceiling');
 assert.ok(armedAt - Date.now() <= 90_000, 'and it is the configured budget, not longer');
 assert.equal(armed.callsUsed, 0, 'and an allowance the whole operation shares');
-// Seven: extract, structural repair, verify, narrow repair, verify, full
-// re-author, verify. The narrow repair is tried first because it cannot touch
-// a figure; the re-author is the fallback when it did not fix the finding.
-assert.equal(armed.callAllowance, 7);
+// FOUR: author, review, revision, review. The graph has a fixed ceiling now --
+// one proposal, one independent audit, at most one revision in the form that
+// audit chose, and the fresh audit that must approve it.
+//
+// WAS SEVEN, for a three-branch recovery ladder: extract, structural repair,
+// verify, narrow repair, verify, full re-author, verify. Nothing needs the
+// extra three, and leaving them available only hides a graph that has started
+// looping.
+assert.equal(armed.callAllowance, 4);
 assert.ok(armed.controller instanceof AbortController, 'and one cancellation signal for every stage in it');
 
 // A get_state inside a typed request must inherit that request's REMAINING

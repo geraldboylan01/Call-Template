@@ -564,9 +564,16 @@ export function getConsumerConfig(env) {
     // fallback when it did not fix the finding, and it is a fresh candidate
     // facing a fresh audit rather than a second patch. Five stopped the
     // fallback ever running, which was the point of having one.
-    modulePlannerCallAllowance: boundedInteger(env.CONSUMER_MODULE_PLANNER_CALL_ALLOWANCE, 7, 2, 20),
-    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v12',
-    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v11',
+    // AUTHOR, REVIEW, REVISION, REVIEW. The planning graph has a fixed ceiling
+    // of four calls: one proposal, one independent audit, at most one revision
+    // in the form that audit chose, and the fresh audit that must approve it.
+    // It was seven for the old three-branch recovery ladder, where a structural
+    // repair, a narrow patch and a full re-author could each carry their own
+    // audit. Nothing needs the extra three, and leaving them available only
+    // hides a graph that has started looping.
+    modulePlannerCallAllowance: boundedInteger(env.CONSUMER_MODULE_PLANNER_CALL_ALLOWANCE, 4, 2, 20),
+    modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v13',
+    moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v12',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.

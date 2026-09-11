@@ -98,10 +98,18 @@ check('an adviser statement cannot clear a client acknowledgement', () => {
 
 const pass = { schemaVersion: 'ModuleInputVerificationV1', verdict: 'pass', unsupportedPaths: [],
   omittedSupportedInformation: [], unresolvedAmbiguities: [], clarifications: [],
-  confirmationPromptApproved: true, explanation: 'The client established every input.' };
+  confirmationPromptApproved: true, revisionScope: 'none', revisionTargets: [],
+  explanation: 'The client established every input.' };
+// The auditor says what must change, and there are two forms it may ask for.
+// `reject` asks for a complete re-author because the financial content is
+// wrong; `rejectPresentation` asserts the figures are right and only the
+// read-back and its citations need replacing.
 const reject = { ...pass, verdict: 'reject', confirmationPromptApproved: false,
+  revisionScope: 'reinterpretation',
   explanation: 'The readback needs a correction.', clarifications: [{ id: 'readback',
     question: 'Please confirm the stated inputs.', relatedModuleIds: ['mortgage_analysis'], relatedPaths: [] }] };
+const rejectPresentation = (targets = []) => ({ ...reject, revisionScope: 'presentation',
+  revisionTargets: targets, unsupportedPaths: targets.map((item) => item.path) });
 const response = (value, tokens, index) => new Response(JSON.stringify({
   id: `response-${index}`, status: 'completed',
   output: [{ content: [{ type: 'output_text', text: JSON.stringify(value) }] }],
@@ -165,18 +173,31 @@ const brokenCitation = () => {
   candidate.modules[0].evidence[0].quote = 'My mortgage balance ... 240000';
   return candidate;
 };
-await checkAsync('malformed ready citation is repaired on the same transcript before independent verification', async () => {
-  const { result, requests } = await fixtureRun([[brokenCitation(), 101], [raw(), 203], [pass, 307]]);
-  assert.equal(requests.length, 3);
-  assert.deepEqual(requests[1].conversation, requests[0].conversation);
-  assert.deepEqual(requests[1].serverPolicy, requests[0].serverPolicy);
-  // The repair is told which paths failed AND why each citation was dropped.
+await checkAsync('a malformed ready citation reaches the auditor, and one presentation revision fixes it', async () => {
+  // WAS: the server repaired provenance BEFORE any audit, spending a call to
+  // fix citations for figures no independent reviewer had yet looked at.
+  //
+  // A citation the server cannot resolve downgrades its module out of ready, so
+  // that proposal used to be invisible to the auditor -- "not every module
+  // ready" meant verification was skipped entirely. It is the same finding seen
+  // from two sides: the auditor now sees the proposal AND the paths the server
+  // refused, and decides whether the figures are right and only their support
+  // failed, or whether the value should not be there at all.
+  const targets = [{ moduleId: 'mortgage_analysis', path: '/currentBalance' }];
+  const { result, requests } = await fixtureRun([
+    [brokenCitation(), 101], [rejectPresentation(targets), 203], [{ confirmationPrompt: null, entries: [
+      { moduleId: 'mortgage_analysis', path: '/currentBalance', source: 'conversation',
+        turnId: 'c1', quote: transcript, profilePath: '' }
+    ] }, 307], [pass, 401]
+  ]);
+  assert.equal(requests.length, 4, 'author, review, revision, review');
+  // The auditor is told which paths failed AND why each citation was dropped.
   // This fixture's own quote -- 'My mortgage balance ... 240000' -- is an
   // ellipsis splice, which is the commonest real failure: the establishing
   // words are not contiguous, so the model reassembles them. Told only the
   // path, it cannot tell that from a citation it forgot, and it re-sends the
   // same spliced quote. Told the reason, it can widen the span instead.
-  assert.deepEqual(requests[1].priorAuditFindings.structuralSupportIssues, [{
+  assert.deepEqual(requests[1].structuralDiagnostics, [{
     moduleId: 'mortgage_analysis',
     paths: ['/currentBalance'],
     droppedCitations: [{
@@ -186,22 +207,44 @@ await checkAsync('malformed ready citation is repaired on the same transcript be
       reason: 'quote_is_not_a_contiguous_substring_of_that_turn'
     }]
   }]);
-  const failedProposal = requests[1].priorAuditFindings.failedProposal;
-  assert.equal(failedProposal.confirmationPrompt, brokenCitation().confirmationPrompt);
-  assert.equal(failedProposal.modules[0].input.currentBalance, 240000);
-  assert.deepEqual(failedProposal.modules[0].evidence,
-    brokenCitation().modules[0].evidence.filter((entry) => entry.path !== '/currentBalance'));
-  assert.ok(requests[2].proposedSnapshot);
+  assert.equal(requests[1].proposedSnapshot.modules[0].input.currentBalance, 240000,
+    'the auditor judges the figure itself, not just its citation');
+  // The revision is handed the same failed proposal and the same targets.
+  assert.deepEqual(requests[2].revisionTargets, targets);
+  assert.deepEqual(requests[2].conversation, requests[0].conversation);
+  assert.deepEqual(requests[2].serverPolicy, requests[0].serverPolicy);
+  assert.equal(requests[2].failedProposal.modules[0].input.currentBalance, 240000);
   assert.ok(result.certificate);
   assert.equal(result.snapshot.modules[0].status, 'ready');
-  assert.equal(result.extractionUsage.input_tokens + result.verificationUsage.input_tokens, 611);
-  assert.equal(result.extractionUsage.output_tokens + result.verificationUsage.output_tokens, 614);
+  assert.equal(result.snapshot.modules[0].evidence.find((entry) => entry.path === '/currentBalance').quote,
+    transcript, 'the replaced citation is the one that survives');
+  assert.equal(result.extractionUsage.input_tokens + result.verificationUsage.input_tokens, 1012);
+  assert.equal(result.extractionUsage.output_tokens + result.verificationUsage.output_tokens, 1016);
   assert.equal(result.extractionUsage.input_tokens_details.cached_tokens
-    + result.verificationUsage.input_tokens_details.cached_tokens, 304);
+    + result.verificationUsage.input_tokens_details.cached_tokens, 504);
 });
-await checkAsync('semantic repair receives the exact failed current proposal and material readback, not old planning state', async () => {
+await checkAsync('a presentation revision replaces the read-back and the citations together', async () => {
+  // The two used to be separate branches, so a finding that involved both could
+  // only be sent down one of them and the other half stayed broken.
+  const targets = [{ moduleId: 'mortgage_analysis', path: '/currentBalance' }];
+  const replacement = 'Comparing Aoife’s repayment mortgage: €240,000 at 4.1% over 22 years. Shall I run that?';
+  const { result, requests } = await fixtureRun([
+    [brokenCitation(), 101], [rejectPresentation(targets), 203],
+    [{ confirmationPrompt: replacement, entries: [
+      { moduleId: 'mortgage_analysis', path: '/currentBalance', source: 'conversation',
+        turnId: 'c1', quote: transcript, profilePath: '' }
+    ] }, 307], [pass, 401]
+  ]);
+  assert.equal(requests.length, 4);
+  assert.ok(result.certificate);
+  assert.equal(result.snapshot.confirmationPrompt, replacement, 'the read-back is replaced');
+  assert.equal(result.snapshot.modules[0].evidence.find((entry) => entry.path === '/currentBalance').quote,
+    transcript, 'and so is the citation, in the same revision');
+  assert.equal(result.snapshot.modules[0].input.currentBalance, 240000,
+    'and the figure it supports is untouched');
+});
+await checkAsync('a reinterpretation receives the exact failed current proposal and material readback, not old planning state', async () => {
   const candidate = raw();
-  candidate.baseSnapshotRevision = 9;
   candidate.confirmationPrompt = 'Compare Aoife’s repayment mortgage: about €240,000 at 4.1% over 22 years, '
     + 'with no lump-sum or annual overpayment. Shall I run exactly that plan?';
   const previous = normalizeDirectSnapshot(raw(), normalizeOptions);
@@ -211,52 +254,68 @@ await checkAsync('semantic repair receives the exact failed current proposal and
     previousSnapshot: previous
   });
   assert.equal(requests.length, 4);
-  const repair = requests[2].priorAuditFindings;
-  assert.deepEqual(repair.failedProposal, requests[1].proposedSnapshot);
-  assert.equal(repair.failedProposal.snapshotRevision, 10);
-  assert.equal(repair.failedProposal.confirmationPrompt, candidate.confirmationPrompt);
-  assert.notEqual(repair.failedProposal.confirmationPrompt, requests[2].previousSnapshot.confirmationPrompt);
-  assert.deepEqual(requests[3].proposedSnapshot.modules[0].input, repair.failedProposal.modules[0].input);
+  const revision = requests[2].priorAuditFindings;
+  assert.deepEqual(revision.failedProposal, requests[1].proposedSnapshot);
+  assert.equal(revision.failedProposal.confirmationPrompt, candidate.confirmationPrompt);
+  assert.notEqual(revision.failedProposal.confirmationPrompt, requests[2].previousSnapshot.confirmationPrompt);
+  // THE SERVER OWNS THE BOOKKEEPING, SO THE MODEL IS NOT SHOWN IT.
+  // A re-author handed the rejected proposal used to copy that proposal's own
+  // revision back as its base, and a complete correct rebuild was discarded
+  // over a number it had no way to reason about.
+  assert.equal(revision.failedProposal.snapshotRevision, undefined);
+  assert.equal(revision.failedProposal.baseSnapshotRevision, undefined);
+  assert.equal(revision.failedProposal.throughTurnId, undefined);
+  assert.equal(result.snapshot.snapshotRevision, 10, 'and binds the right revision anyway');
+  assert.equal(result.snapshot.throughTurnId, 'c1');
+  assert.deepEqual(requests[3].proposedSnapshot.modules[0].input, revision.failedProposal.modules[0].input);
   assert.ok(result.certificate);
   assert.equal(result.extractionUsage.input_tokens + result.verificationUsage.input_tokens, 1012);
 });
-// WAS: "...and cannot buy a second repair", asserting three calls.
+// WAS: "a structural repair still needs semantic approval, and two repairs is
+// the ceiling", asserting five calls across two error classes.
 //
-// That assertion encoded the defect, and the paid v9 corpus is the evidence.
-// `reject` here carries no unresolvedAmbiguities and withholds
-// confirmationPromptApproved -- planner bookkeeping, the exact class the repair
-// mechanism exists for, and the exact shape of the real house-purchase verdict
-// (eight omittedSupportedInformation entries on /confirmationPrompt) and the
-// real college verdict (one stale citation in unsupportedPaths). Under the
-// shared budget both had spent it on provenance before the auditor ever ran, so
-// both asked the client to supply what they had already said.
-//
-// The first half of the claim is unchanged and still proven here: a structural
-// repair buys NO semantic approval. What changed is the ceiling -- two repairs,
-// one per class -- and a plan that still cannot pass is still refused.
-await checkAsync('a structural repair still needs semantic approval, and two repairs is the ceiling', async () => {
+// There is one class now and one revision. The first half of the claim is
+// unchanged and still proven here: a revision buys NO semantic approval, and a
+// plan that still cannot pass is still refused.
+await checkAsync('one revision is the ceiling, and it buys no semantic approval', async () => {
+  const targets = [{ moduleId: 'mortgage_analysis', path: '/currentBalance' }];
   const { result, requests } = await fixtureRun([
-    [brokenCitation(), 101], [raw(), 203], [reject, 307], [raw(), 401], [reject, 503]
+    [brokenCitation(), 101], [rejectPresentation(targets), 203],
+    [{ confirmationPrompt: null, entries: [
+      { moduleId: 'mortgage_analysis', path: '/currentBalance', source: 'conversation',
+        turnId: 'c1', quote: transcript, profilePath: '' }
+    ] }, 307], [reject, 401]
   ]);
-  assert.equal(requests.length, 5, 'provenance and the audit each get one repair, and no more');
-  assert.ok(requests[1].priorAuditFindings.structuralSupportIssues, 'the second call repairs provenance');
-  assert.ok(requests[3].priorAuditFindings.omittedSupportedInformation !== undefined,
-    'the fourth call repairs the audit finding, and is told what the auditor rejected');
+  assert.equal(requests.length, 4, 'author, review, one revision, review -- and no more');
   assert.equal(result.certificate, null);
   assert.equal(result.brief.readyToConfirm, false);
   assert.equal(result.verification.verdict, 'reject');
-  // 101 + 203 + 307 + 401 + 503: every completed call billed exactly once.
-  assert.equal(result.extractionUsage.input_tokens, 1208);
-  assert.equal(result.verificationUsage.input_tokens, 307);
+  // THE LATEST INDEPENDENT JUDGEMENT IS THE ONE REPORTED. The second audit
+  // refused the revised proposal, and that is the verdict the client's question
+  // comes from -- not the older one, which described a proposal that no longer
+  // exists.
+  assert.equal(result.verification.revisionScope, 'reinterpretation');
+  assert.equal(result.verificationUsage.input_tokens, 401);
+  // 101 + 203 + 307: every completed call billed exactly once, including the
+  // superseded first audit.
+  assert.equal(result.extractionUsage.input_tokens, 611);
 });
-await checkAsync('failed structural repair stays unconfirmable and every completed call is metered', async () => {
-  const { result, requests } = await fixtureRun([[brokenCitation(), 101], [brokenCitation(), 203]]);
-  assert.equal(requests.length, 2);
+await checkAsync('a presentation revision that leaves a value uncited is refused, and changes nothing', async () => {
+  // A citation revision that leaves a value unsupported has made the proposal
+  // LESS supported, not more. The server downgraded it -- the planner decided
+  // nothing -- so it is refused and the original question stands. This is the
+  // line that stops a dropped quote retiring a figure the client gave.
+  const targets = [{ moduleId: 'mortgage_analysis', path: '/currentBalance' }];
+  const { result, requests } = await fixtureRun([
+    [brokenCitation(), 101], [rejectPresentation(targets), 203],
+    [{ confirmationPrompt: null, entries: [] }, 307]
+  ]);
+  assert.equal(requests.length, 3, 'an unsupported candidate is abandoned before a second audit');
   assert.equal(result.certificate, null);
-  assert.equal(result.verification, null);
   assert.equal(result.snapshot.modules[0].status, 'needs_clarification');
-  assert.equal(result.extractionUsage.input_tokens, 304);
-  assert.equal(result.extractionUsage.output_tokens, 306);
+  assert.equal(result.snapshot.modules[0].input.currentBalance, 240000,
+    'the proposal is exactly as it was');
+  assert.equal(result.extractionUsage.input_tokens, 408);
 });
 await checkAsync('genuine missing information never triggers structural self-repair', async () => {
   const candidate = raw();

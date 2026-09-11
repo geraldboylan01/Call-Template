@@ -56,8 +56,6 @@ function snapshotBody({ omitEvidenceFor = null, confirmationPrompt = PROMPT, amb
   const policy = directModulePolicyEntries('mortgage_analysis', INPUT, POLICY);
   return {
     schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
-    baseSnapshotRevision: 0,
-    throughTurnId: 'turn-1',
     modules: [{
       moduleId: 'mortgage_analysis',
       outputKey: DIRECT_MODULE_CONTRACTS.mortgage_analysis.outputKey,
@@ -84,19 +82,22 @@ const VERDICTS = {
   pass: {
     schemaVersion: 'ModuleInputVerificationV1', verdict: 'pass',
     unsupportedPaths: [], omittedSupportedInformation: [], unresolvedAmbiguities: [],
-    clarifications: [], confirmationPromptApproved: true, explanation: 'scripted pass'
+    clarifications: [], confirmationPromptApproved: true,
+    revisionScope: 'none', revisionTargets: [], explanation: 'scripted pass'
   },
   omission: {
     schemaVersion: 'ModuleInputVerificationV1', verdict: 'fail',
     unsupportedPaths: [], omittedSupportedInformation: ['/annualOverpayment'], unresolvedAmbiguities: [],
     clarifications: [{ moduleIds: ['mortgage_analysis'], paths: ['/annualOverpayment'], question: 'Do you make any yearly overpayments?' }],
-    confirmationPromptApproved: false, explanation: 'the planner omitted a supported value'
+    confirmationPromptApproved: false, revisionScope: 'reinterpretation', revisionTargets: [],
+    explanation: 'the planner omitted a supported value'
   },
   ambiguity: {
     schemaVersion: 'ModuleInputVerificationV1', verdict: 'fail',
     unsupportedPaths: [], omittedSupportedInformation: [], unresolvedAmbiguities: ['whose mortgage'],
     clarifications: [{ moduleIds: ['mortgage_analysis'], paths: ['/currentBalance'], question: 'Is that mortgage yours or held jointly?' }],
-    confirmationPromptApproved: false, explanation: 'two readings are possible'
+    confirmationPromptApproved: false, revisionScope: 'reinterpretation', revisionTargets: [],
+    explanation: 'two readings are possible'
   }
 };
 
@@ -108,7 +109,8 @@ async function run(script, { deadlineAt = null, config = CONFIG } = {}) {
     const body = JSON.parse(request.body);
     const kind = body.text?.format?.name === 'module_planning_snapshot_v1' ? 'extract' : 'verify';
     const envelope = JSON.parse(body.input?.[1]?.content || '{}');
-    calls.push({ kind, findings: envelope.priorAuditFindings || null, proposal: envelope.proposedSnapshot || null });
+    calls.push({ kind, findings: envelope.priorAuditFindings || null, proposal: envelope.proposedSnapshot || null,
+      diagnostics: envelope.structuralDiagnostics || null });
     const next = script[calls.length - 1];
     assert.ok(next, `the script must cover model call ${calls.length} (${kind})`);
     assert.equal(next.kind, kind, `call ${calls.length} should be a ${next.kind}, not a ${kind}`);
@@ -155,8 +157,8 @@ const repaired = await run([
 assert.equal(repaired.calls.length, 4);
 ok(repaired.calls[2].findings, 'the repair extraction is given the audit findings');
 assert.deepEqual(repaired.calls[2].findings.omittedSupportedInformation, ['/annualOverpayment']);
-ok(/independent audit rejected the current failedProposal/.test(repaired.calls[2].findings.instruction),
-  'the repair instruction tells the planner the findings are about its own work');
+ok(/independent audit rejected the proposal in failedProposal/.test(repaired.calls[2].findings.instruction),
+  'the revision instruction tells the planner the findings are about its own work');
 assert.deepEqual(repaired.calls[2].findings.failedProposal, repaired.calls[1].proposal,
   'the repair receives exactly the proposal the verifier rejected');
 ok(!repaired.calls[0].findings, 'the first extraction is never given findings');
@@ -188,7 +190,7 @@ const stubborn = await run([
 assert.equal(stubborn.calls.length, 4, 'the repair budget is exactly one attempt, never a loop');
 assert.equal(stubborn.result.certificate, null);
 assert.equal(stubborn.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
-pass('a repair that does not pass keeps the original verdict and the original question');
+pass('a revision that does not pass leaves the client with a question, never a certificate');
 
 const failedRepair = await run([
   { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'annualOverpayment' }) },
@@ -200,66 +202,69 @@ assert.equal(failedRepair.result.certificate, null);
 assert.equal(failedRepair.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
 pass('an unreadable repair is abandoned without spending a verification, and changes nothing');
 
-/* ------------- structural provenance and the audit are separate budgets ---- */
+/* ------------- structural provenance is reviewed, not repaired blind ------- */
 
 // THE DEFECT THIS PINS, found in the paid v9 corpus. Structural provenance and
-// the semantic verifier shared ONE repair budget, and structural runs first. A
+// the semantic verifier shared ONE repair budget, and structural ran first. A
 // snapshot needing a citation repaired therefore spent the budget before the
 // verifier had ever seen it, and the verifier's own finding -- a stale quote,
 // a read-back omission, both squarely the planner's own bookkeeping -- had no
 // repair left. College asked a parent to reconfirm an age they had already
-// corrected. House purchase asked for figures already given. Exactly the
-// failure the repair mechanism exists to prevent.
+// corrected. House purchase asked for figures already given.
+//
+// THE FIX IS NO LONGER A SECOND BUDGET. They were never two problems: a bad
+// citation and the prose that recites it are one proposal seen from two sides.
+// A provenance failure is now REPORTED to the auditor rather than repaired
+// behind its back, so one judgement covers both -- and the auditor can say the
+// figure should not be there at all, instead of the planner spending a call
+// perfecting a quote for a value that was wrong.
 //
 // `currentBalance` carries no policy assumption, so omitting its citation is a
-// STRUCTURAL provenance failure, not a semantic one -- which is what makes this
-// sequence different from the four above.
+// structural provenance failure rather than a semantic one.
 
-const structuralThenSemantic = await run([
+const structuralReviewed = await run([
   { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) },
-  { kind: 'extract', value: snapshotBody() },
   { kind: 'verify', value: VERDICTS.omission },
   { kind: 'extract', value: snapshotBody() },
   { kind: 'verify', value: VERDICTS.pass }
 ]);
-assert.equal(structuralThenSemantic.calls.length, 5,
-  'an adopted structural repair no longer forfeits the audit repair: two classes, one attempt each');
-ok(structuralThenSemantic.calls[1].findings?.structuralSupportIssues,
-  'the second call repairs provenance and is told which paths failed');
-ok(structuralThenSemantic.calls[3].findings?.omittedSupportedInformation,
-  'the fourth call repairs the audit finding and is told what the auditor rejected');
-ok(Boolean(structuralThenSemantic.result.certificate),
+assert.equal(structuralReviewed.calls.length, 4,
+  'author, review, one revision, review -- not a structural repair before anyone had looked');
+ok(structuralReviewed.calls[1].proposal,
+  'the auditor sees the proposal whose provenance failed, rather than a repair made behind its back');
+assert.deepEqual(structuralReviewed.calls[1].diagnostics?.map((item) => item.paths), [['/currentBalance']],
+  'and is told exactly which paths the server could not resolve');
+ok(structuralReviewed.calls[2].findings?.structuralDiagnostics,
+  'the revision is told the same thing');
+ok(Boolean(structuralReviewed.result.certificate),
   'the plan the client hears is certified rather than turned into a question they already answered');
-assert.deepEqual(structuralThenSemantic.result.verification.clarifications, []);
-pass('a citation repair and a read-back repair are separate budgets: five calls, two repairs, one certificate');
+assert.deepEqual(structuralReviewed.result.verification.clarifications, []);
+pass('a provenance gap reaches the auditor, and one revision fixes it: four calls, one certificate');
 
-// AND THE CEILING IS STILL TWO. A stubborn planner spends both and stops.
-const bothSpent = await run([
+// AND THE CEILING IS ONE. A stubborn planner spends it and stops.
+const spent = await run([
   { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) },
-  { kind: 'extract', value: snapshotBody() },
   { kind: 'verify', value: VERDICTS.omission },
   { kind: 'extract', value: snapshotBody() },
   { kind: 'verify', value: VERDICTS.omission }
 ]);
-assert.equal(bothSpent.calls.length, 5, 'two repairs is the whole budget, never a loop');
-assert.equal(bothSpent.result.certificate, null);
-assert.equal(bothSpent.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
-pass('two repairs is the ceiling: a planner that still cannot fix itself asks, and does not keep paying');
+assert.equal(spent.calls.length, 4, 'one revision is the whole budget, never a loop');
+assert.equal(spent.result.certificate, null);
+assert.equal(spent.result.verification.clarifications[0].question, 'Do you make any yearly overpayments?');
+pass('one revision is the ceiling: a planner that still cannot fix itself asks, and does not keep paying');
 
-// A REJECTED STRUCTURAL REPAIR NEVER REACHES THE AUDIT AT ALL. The module is
-// still not ready, so it is not eligible for verification and no certificate
-// can exist. The forfeit rule in the planner is therefore defensive rather than
-// load-bearing today -- it exists so the "a planner that could not fix itself
-// does not get paid twice" rule survives a later change to the eligibility
-// rules. This pins the behaviour that makes it unreachable.
-const structuralRejected = await run([
+// A REVISION THAT LEAVES PROVENANCE BROKEN NEVER REACHES A SECOND AUDIT. The
+// module is still not ready, the server downgraded it rather than the planner
+// deciding anything, so the candidate is refused and no certificate can exist.
+const stillBroken = await run([
   { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) },
+  { kind: 'verify', value: VERDICTS.omission },
   { kind: 'extract', value: snapshotBody({ omitEvidenceFor: 'currentBalance' }) }
 ]);
-assert.equal(structuralRejected.calls.length, 2,
-  'a structural repair that did not clear provenance stops there and never buys a verification');
-assert.equal(structuralRejected.result.certificate, null);
-pass('a failed provenance repair leaves the module unverifiable and unconfirmable, at no further cost');
+assert.equal(stillBroken.calls.length, 3,
+  'a revision that did not clear provenance stops there and never buys a second verification');
+assert.equal(stillBroken.result.certificate, null);
+pass('a failed provenance revision leaves the module unconfirmable, at no further cost');
 
 /* ------------ neither repair may settle a genuinely competing reading ------ */
 
@@ -278,7 +283,14 @@ const ambiguousModule = await run([
 assert.equal(ambiguousModule.calls.length, 1,
   'a competing reading is never repaired structurally, even alongside a real provenance gap');
 assert.equal(ambiguousModule.result.certificate, null);
-pass('a repair fixes representation, never meaning: an ambiguous module goes straight to the client');
+// WAS: "a repair fixes representation, never meaning". A reinterpretation is
+// now allowed to correct the planner's own mistaken reading of a conversation
+// that is actually complete -- that is what the auditor asks for when it says
+// the financial content is wrong. What survives unchanged, and is what this
+// case pins, is the prohibition on INVENTING an answer to genuine uncertainty:
+// a module carrying its own competing readings goes to the person, and no
+// scope can turn that into work the planner does alone.
+pass('a competing reading is never settled internally: an ambiguous module goes straight to the client');
 
 /* ------------- the turn's clock, not just each call's, bounds the work ----- */
 
@@ -326,13 +338,13 @@ pass('a budget with room left behaves exactly as an unbounded pass does');
 const billed = (run) => Number(run.result.extractionUsage?.input_tokens || 0)
   + Number(run.result.verificationUsage?.input_tokens || 0);
 assert.equal(billed(clean), 200, 'a clean pass bills its two calls');
-assert.equal(billed(repaired), 400, 'an adopted repair bills all four of its calls');
-assert.equal(billed(stubborn), 400, 'a repair that failed its second audit is still billed in full');
-assert.equal(billed(failedRepair), 300, 'an abandoned repair bills the extraction it actually made');
-assert.equal(billed(structuralThenSemantic), 500, 'two repairs bill all five of their calls');
-assert.equal(billed(bothSpent), 500, 'two repairs that still do not pass are billed in full');
-assert.equal(billed(structuralRejected), 200, 'a failed provenance repair bills its two extractions and buys no audit');
+assert.equal(billed(repaired), 400, 'an adopted revision bills all four of its calls');
+assert.equal(billed(stubborn), 400, 'a revision that failed its second audit is still billed in full');
+assert.equal(billed(failedRepair), 300, 'an abandoned revision bills the extraction it actually made');
+assert.equal(billed(structuralReviewed), 400, 'a reviewed provenance gap bills all four of its calls');
+assert.equal(billed(spent), 400, 'a revision that still does not pass is billed in full');
+assert.equal(billed(stillBroken), 300, 'a revision that never earned a second audit bills the three calls it made');
 checks += 7;
-pass('a repair is metered whether or not it is adopted; no model call is free');
+pass('a revision is metered whether or not it is adopted; no model call is free');
 
 console.info(`[LiveInternalRepair] ${checks} checks passed.`);

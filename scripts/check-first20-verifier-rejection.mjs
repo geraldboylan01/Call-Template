@@ -113,7 +113,21 @@ try {
   await settle(durable, session);
   const latest = await getLatestRealtimeMeetingBrief(meeting.env, meeting.sessionId, meeting.meetingId);
   assert.equal(latest.brief.verificationCertificate, null);
-  assert.equal(latest.brief.directModuleSnapshot.modules.find((item) => item.moduleId === 'mortgage_analysis').input.currentBalance, 240000);
+  // WAS: the brief kept the extractor's stale 240,000 as current state.
+  //
+  // The client corrected the balance to 340,000, the extractor missed it, and
+  // the independent review named `/currentBalance` as the thing it could not
+  // resolve. Execution was blocked either way -- that is what the three checks
+  // below prove, and they are unchanged -- but the conversation went on holding
+  // a figure the client had just corrected and the review had just refused.
+  //
+  // The review names the path; the server only applies that answer. The balance
+  // is now unknown and back on the list of what is needed, and 340,000 is NOT
+  // written here: reading the correction is the planner's job, not the server's.
+  const refusedRow = latest.brief.directModuleSnapshot.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.equal(refusedRow.input.currentBalance, null);
+  assert.notEqual(refusedRow.status, 'ready');
+  assert.ok(refusedRow.missing.some((need) => need.path === '/currentBalance'));
   await check('a verifier rejection retires the delivered offer even when extraction missed the correction', async () => {
     assert.equal(session.directConfirmationOffer, null);
   });
