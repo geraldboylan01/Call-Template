@@ -101,19 +101,6 @@ const PBS_BUCKET_DEFINITIONS = Object.freeze({
   longevity: 'Pensions and long-term investments intended to fund later-life income.',
   legacy: 'Illiquid, concentrated, optional, or higher-risk assets such as property, business interests, or single holdings.'
 });
-const CLIENT_GUIDE_COPY = Object.freeze({
-  pbs: 'Start with net worth, then read the buckets as jobs for your money: spending reserves, retirement funding, concentrated assets, and debts.',
-  liquidity: 'Start with current cash versus the target reserve, then decide whether the priority is building the emergency fund or assigning surplus cash to a job.',
-  pension: 'Start with the required pension pot and chart, then use the assumptions table to see which facts drive the retirement projection.',
-  netRetirement: 'Start with the annual net shortfall, then read the required net investment fund as an after-tax funding target.',
-  collegeFunding: 'Start with the funding range, then compare today’s-money and future nominal costs before deciding what to ring-fence.',
-  housePurchase: 'Start with the route-to-home summary, then check the four readiness gates before exploring what-if changes.',
-  mortgage: 'Start with repayment, term, and interest; the chart and outputs show how overpayments change the path.',
-  loan: 'Start with payoff timing and interest cost; the assumptions show the balance, rate, payment structure, and overpayment being tested.',
-  education: 'Start with the plain-English frame and hero visual, then use the steps and references for detail.',
-  report: 'Start with the executive picture, then read supporting visuals, scenarios, and verification points.',
-  protection: 'Start with the support buffer and employer-check items; these figures are planning anchors, not insurer quotes.'
-});
 const RETIREMENT_EURO_FORMATTER = new Intl.NumberFormat('en-IE', {
   style: 'currency',
   currency: 'EUR',
@@ -2670,126 +2657,84 @@ function getPlaybookDisplayContext(module) {
   if (isHousePurchaseModule(module)) {
     return {
       key: 'housePurchase',
-      heading: 'House Purchase Planner',
-      guide: CLIENT_GUIDE_COPY.housePurchase
+      heading: 'House Purchase Planner'
     };
   }
 
   if (isLiquidityPlanModule(module)) {
     return {
       key: 'liquidity',
-      heading: 'Liquidity Plan',
-      guide: CLIENT_GUIDE_COPY.liquidity
+      heading: 'Liquidity Plan'
     };
   }
 
   if (isPersonalBalanceSheetModule(module)) {
     return {
       key: 'pbs',
-      heading: 'Personal Balance Sheet',
-      guide: CLIENT_GUIDE_COPY.pbs
+      heading: 'Personal Balance Sheet'
     };
   }
 
   if (isPensionModule(module)) {
     return {
       key: 'pension',
-      heading: 'Retirement Projection',
-      guide: CLIENT_GUIDE_COPY.pension
+      heading: 'Retirement Projection'
     };
   }
 
   if (isNetRetirementModule(module)) {
     return {
       key: 'netRetirement',
-      heading: 'Net Retirement Cash Flow',
-      guide: CLIENT_GUIDE_COPY.netRetirement
+      heading: 'Net Retirement Cash Flow'
     };
   }
 
   if (isCollegeFundingModule(module)) {
     return {
       key: 'collegeFunding',
-      heading: 'College Funding',
-      guide: CLIENT_GUIDE_COPY.collegeFunding
+      heading: 'College Funding'
     };
   }
 
   if (isLoanProjectionModule(module)) {
     return {
       key: 'loan',
-      heading: 'Loan Projection',
-      guide: CLIENT_GUIDE_COPY.loan
+      heading: 'Loan Projection'
     };
   }
 
   if (isMortgageProjectionModule(module)) {
     return {
       key: 'mortgage',
-      heading: 'Mortgage Projection',
-      guide: CLIENT_GUIDE_COPY.mortgage
+      heading: 'Mortgage Projection'
     };
   }
 
   if (isEducationModule(module)) {
     return {
       key: 'education',
-      heading: 'Education Guide',
-      guide: CLIENT_GUIDE_COPY.education
+      heading: 'Education Guide'
     };
   }
 
   if (isProtectionReportModule(module)) {
     return {
       key: 'protection',
-      heading: 'Protection Planning',
-      guide: CLIENT_GUIDE_COPY.protection
+      heading: 'Protection Planning'
     };
   }
 
   if (isReportModule(module)) {
     return {
       key: 'report',
-      heading: 'Client Report',
-      guide: CLIENT_GUIDE_COPY.report
+      heading: 'Client Report'
     };
   }
 
   return {
     key: 'generated',
-    heading: 'Generated Content',
-    guide: ''
+    heading: 'Generated Content'
   };
-}
-
-function normalizeGuideComparisonText(value) {
-  return String(value || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-function shouldRenderClientGuide(summaryHtml, guideText) {
-  const guide = normalizeGuideComparisonText(guideText);
-  if (!guide) {
-    return false;
-  }
-
-  const summary = normalizeGuideComparisonText(htmlToPlainText(summaryHtml || ''));
-  return !summary.includes(guide);
-}
-
-function buildClientGuideLine(summaryHtml, guideText) {
-  if (!shouldRenderClientGuide(summaryHtml, guideText)) {
-    return null;
-  }
-
-  const guide = document.createElement('p');
-  guide.className = 'client-guide-line';
-  guide.textContent = guideText;
-  return guide;
 }
 
 function isAffordablePensionMode(module) {
@@ -5585,18 +5530,14 @@ function buildPbsBucketTitleLine(title, sectionToken) {
   return titleLine;
 }
 
-function buildPbsLeadCopy(summaryHtml, guideText = '') {
+function buildPbsLeadCopy(summaryHtml) {
   const safeHtml = sanitizeSummaryHtml(summaryHtml || '');
-  const guideLine = buildClientGuideLine(safeHtml, guideText);
-  if (!safeHtml && !guideLine) {
+  if (!safeHtml) {
     return null;
   }
 
   const lead = document.createElement('div');
   lead.className = 'pbs-main-summary generated-summary-content';
-  if (guideLine) {
-    lead.appendChild(guideLine);
-  }
   if (safeHtml) {
     const summary = document.createElement('div');
     summary.className = 'generated-summary-copy';
@@ -6520,7 +6461,6 @@ function buildOutputsBucketedDetailCard(section, {
 
 function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements = {}, {
   summaryHtml = '',
-  guideText = '',
   module = null,
   readOnly = false,
   onEditGeneratedText = null
@@ -6537,7 +6477,7 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
   const outputStack = document.createElement('div');
   outputStack.className = 'pbs-outputs-stack';
 
-  const leadCopy = buildPbsLeadCopy(summaryHtml, guideText);
+  const leadCopy = buildPbsLeadCopy(summaryHtml);
   if (leadCopy) {
     outputStack.appendChild(leadCopy);
   }
@@ -7032,7 +6972,6 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
   readOnly = false,
   onEditGeneratedText = null
 } = {}) {
-  const displayContext = getPlaybookDisplayContext(module);
   const cases = getPbsScenarioCases(outputsBucketed, summaryHtml)
     .filter((pbsCase, index) => (
       index === 0
@@ -7045,6 +6984,12 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
 
   const shell = document.createElement('div');
   shell.className = 'pbs-scenario-shell';
+
+  // The summary is rendered here rather than inside the case content, so the
+  // switcher can sit between the two: the buttons then sit directly above
+  // every figure they change, which is what they are for.
+  const summaryHost = document.createElement('div');
+  summaryHost.className = 'pbs-scenario-summary-host';
 
   const contentHost = document.createElement('div');
   contentHost.className = 'pbs-scenario-content-host';
@@ -7065,9 +7010,9 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     const selectedOutputsBucketed = getOutputsBucketedForPbsCase(outputsBucketed, nextCase);
     updatePbsScenarioChartsCard(module, selectedOutputsBucketed, nextCase, contentHost);
     const sectionEnhancements = getOutputsBucketedSectionEnhancements(module, selectedOutputsBucketed);
+    // No summaryHtml: the summary is built separately below so it can sit
+    // above the switcher.
     const nextContent = buildOutputsBucketedMatrixContent(selectedOutputsBucketed, sectionEnhancements, {
-      summaryHtml: nextCase.summaryHtml,
-      guideText: displayContext.guide,
       module,
       readOnly,
       onEditGeneratedText: nextCase.id === PBS_CURRENT_SCENARIO_ID ? onEditGeneratedText : null
@@ -7076,6 +7021,17 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     if (!nextContent) {
       return;
     }
+
+    const nextSummary = buildPbsLeadCopy(nextCase.summaryHtml);
+    if (nextSummary) {
+      nextSummary.classList.add('pbs-scenario-content');
+      nextSummary.classList.toggle('is-entering', animate);
+      summaryHost.replaceChildren(nextSummary);
+    } else {
+      summaryHost.replaceChildren();
+    }
+    // An empty host would still take a grid row and its gap.
+    summaryHost.hidden = !nextSummary;
 
     nextContent.classList.add('pbs-scenario-content');
     nextContent.dataset.scenarioId = nextCase.id;
@@ -7089,6 +7045,7 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     }
 
     requestAnimationFrame(() => {
+      nextSummary?.classList.remove('is-entering');
       nextContent.classList.remove('is-entering');
       const nextRects = capturePbsAnchorRects(nextContent);
       animatePbsNumericValues(nextContent, previousValues);
@@ -7115,10 +7072,13 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
       }
       renderCase(index, { animate: true });
     });
-    shell.appendChild(switcher.element);
   }
 
   renderCase(selectedIndex);
+  shell.appendChild(summaryHost);
+  if (switcher) {
+    shell.appendChild(switcher.element);
+  }
   shell.appendChild(contentHost);
   return shell;
 }
@@ -7177,7 +7137,6 @@ function buildOutputsBucketedCard(module, outputsBucketed, {
 }
 
 function buildSummaryCard(summaryHtml, {
-  guideText = '',
   module = null,
   readOnly = false,
   onEditGeneratedText = null,
@@ -7194,11 +7153,6 @@ function buildSummaryCard(summaryHtml, {
   content.className = 'generated-summary-content';
 
   const safeHtml = sanitizeSummaryHtml(summaryHtml || '');
-  const guideLine = buildClientGuideLine(safeHtml, guideText);
-  if (guideLine) {
-    content.appendChild(guideLine);
-  }
-
   if (!safeHtml) {
     const empty = document.createElement('p');
     empty.className = 'generated-empty';
@@ -9296,7 +9250,6 @@ function renderReportSummaryCard(summaryHtml, module, {
   onEditGeneratedText = null
 } = {}) {
   const card = buildSummaryCard(summaryHtml || '', {
-    guideText: getPlaybookDisplayContext(module).guide,
     module,
     readOnly,
     onEditGeneratedText
@@ -11459,8 +11412,6 @@ function buildHousePurchaseHeroCard(module, projection, { readOnly, onEditHouseP
   story.appendChild(detail);
 
   const safeSummary = sanitizeSummaryHtml(module?.generated?.summaryHtml || '');
-  const guide = buildClientGuideLine(safeSummary, CLIENT_GUIDE_COPY.housePurchase);
-  if (guide) story.appendChild(guide);
   if (safeSummary) {
     const summary = document.createElement('div');
     summary.className = 'house-purchase-hero-summary generated-summary-copy';
@@ -12522,7 +12473,6 @@ function renderEducationModule(module, options = {}) {
 
   grid.appendChild(buildEducationTopicCard(module, education, { readOnly, onEditGeneratedText }));
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || '', {
-    guideText: displayContext.guide,
     module,
     readOnly,
     onEditGeneratedText
@@ -12742,7 +12692,6 @@ function renderCollegeFundingModule(module, {
   }
 
   grid.appendChild(buildSummaryCard(module?.generated?.summaryHtml || '', {
-    guideText: displayContext.guide,
     module,
     readOnly,
     onEditGeneratedText
@@ -12924,7 +12873,6 @@ function buildGeneratedSection(module, {
     }));
   } else {
     grid.appendChild(buildSummaryCard(generated.summaryHtml, {
-      guideText: displayContext.guide,
       module,
       readOnly,
       onEditGeneratedText
@@ -13105,7 +13053,6 @@ export function patchFocusedGeneratedCards({
       grid,
       selector: '[data-generated-card="summary"]',
       replacement: buildSummaryCard(cardModule.generated?.summaryHtml || '', {
-        guideText: getPlaybookDisplayContext(cardModule).guide,
         module: cardModule,
         readOnly,
         onEditGeneratedText
