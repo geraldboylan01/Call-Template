@@ -89,8 +89,10 @@ const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy']
 const PBS_CURRENT_SCENARIO_ID = 'current';
 /** How long a flow chip lives, matching its transition in styles/base.css. */
 const PBS_FLOW_CHIP_LIFETIME_MS = 820;
-/** Gap between the undo leg and the apply leg of an alternative-to-alternative move. */
-const PBS_FLOW_LEG_STAGGER_MS = 700;
+/** Below this, a difference between two cases is rounding, not a movement. */
+const PBS_FLOW_MINIMUM_AMOUNT = 1;
+/** More chips than this at once is a swarm rather than an explanation. */
+const PBS_MAX_FLOW_CHIPS = 6;
 const PBS_SCENARIO_CHARTS_UPDATED_EVENT = 'callcanvas:pbs-scenario-charts-updated';
 const PBS_NET_WORTH_TOKENS = new Set(['networth', 'netassets', 'netwealth']);
 const PBS_BALANCE_CHANGE_WORDS = /\b(change|difference|increase|decrease|movement|delta|gap|variance)\b/i;
@@ -6778,7 +6780,155 @@ function getPbsMovementPlans(movements, { reverse = false } = {}) {
  * the common click, and playing nothing there left the client with only the
  * content highlight to go on.
  */
-function getPbsTransitionMovementLegs(previousCase, nextCase) {
+/**
+ * What a case's rows are worth, keyed the way the animation anchors them.
+ *
+ * The summary section is skipped: its rows are totals derived from the others,
+ * so counting them would animate the same money twice.
+ */
+function getPbsCaseRowAmounts(pbsCase) {
+  const amounts = new Map();
+
+  (Array.isArray(pbsCase?.sections) ? pbsCase.sections : []).forEach((section) => {
+    const sectionToken = normalizeSectionToken(section?.key || section?.title || '');
+    if (!sectionToken || sectionToken.endsWith('summary')) {
+      return;
+    }
+
+    (Array.isArray(section?.rows) ? section.rows : []).forEach((row) => {
+      if (!Array.isArray(row)) {
+        return;
+      }
+
+      const label = typeof row[0] === 'string' ? row[0].trim() : '';
+      const amount = getOptionalFiniteNumber(row[1]);
+      if (!label || amount === null) {
+        return;
+      }
+
+      const key = getPbsRowAnchorKey(sectionToken, label);
+      const existing = amounts.get(key);
+      amounts.set(key, {
+        sectionToken,
+        amount: (existing?.amount ?? 0) + amount
+      });
+    });
+  });
+
+  return amounts;
+}
+
+/**
+ * The movement between two alternatives, derived from their own figures.
+ *
+ * Neither case's authored `movements` describes this step: each one describes
+ * the step from the CURRENT position, so composing them animates a round trip
+ * back through the current position and out again. That is not the change the
+ * client is looking at. Reading the two sets of rows instead gives the actual
+ * delta -- what went down, what went up -- between the case on screen and the
+ * one being opened.
+ *
+ * A shrinking asset releases money; a shrinking debt absorbs it. That sign
+ * flip is the only thing that makes liabilities behave correctly here, and
+ * getting it wrong points every arrow the wrong way.
+ */
+function getPbsDirectMovementPlans(previousCase, nextCase) {
+  const before = getPbsCaseRowAmounts(previousCase);
+  const after = getPbsCaseRowAmounts(nextCase);
+
+  const sources = [];
+  const destinations = [];
+
+  new Set([...before.keys(), ...after.keys()]).forEach((key) => {
+    const meta = after.get(key) || before.get(key);
+    const previousAmount = before.get(key)?.amount ?? 0;
+    const nextAmount = after.get(key)?.amount ?? 0;
+    const flow = meta.sectionToken === 'liabilities'
+      ? previousAmount - nextAmount
+      : nextAmount - previousAmount;
+
+    if (Math.abs(flow) < PBS_FLOW_MINIMUM_AMOUNT) {
+      return;
+    }
+
+    (flow < 0 ? sources : destinations).push({
+      sectionToken: meta.sectionToken,
+      keys: [key, getPbsSectionAnchorKey(meta.sectionToken)],
+      remaining: Math.abs(flow)
+    });
+  });
+
+  // Biggest movement first, so the largest change on the page reads clearly
+  // even when the tail is trimmed.
+  sources.sort((left, right) => right.remaining - left.remaining);
+  destinations.sort((left, right) => right.remaining - left.remaining);
+
+  const plans = [];
+  const spend = (source, destination, amount) => {
+    plans.push({
+      amount,
+      action: destination.sectionToken === 'liabilities' ? 'reduce' : 'add',
+      startKeys: source.keys,
+      endKeys: destination.keys,
+      pulseKeys: destination.keys
+    });
+    source.remaining -= amount;
+    destination.remaining -= amount;
+  };
+  const isSpent = (entry) => entry.remaining < PBS_FLOW_MINIMUM_AMOUNT;
+
+  // A row that fell by exactly what another row gained is almost certainly one
+  // movement: a family home down €175,000 against downsizing proceeds up
+  // €175,000 is the downsizing itself. Pairing purely by size would spend that
+  // €175,000 against some larger destination first and then describe the
+  // remainder as a movement that never happened, so match the equal pairs
+  // before anything else gets to claim them.
+  sources.forEach((source) => {
+    if (isSpent(source)) {
+      return;
+    }
+
+    const match = destinations.find((destination) => (
+      !isSpent(destination)
+      && Math.abs(destination.remaining - source.remaining) < PBS_FLOW_MINIMUM_AMOUNT
+    ));
+
+    if (match) {
+      spend(source, match, source.remaining);
+    }
+  });
+
+  // Whatever is left has no clean counterpart, so fill largest against largest.
+  const openSources = sources.filter((source) => !isSpent(source));
+  const openDestinations = destinations.filter((destination) => !isSpent(destination));
+  let sourceIndex = 0;
+  let destinationIndex = 0;
+
+  while (sourceIndex < openSources.length && destinationIndex < openDestinations.length) {
+    const source = openSources[sourceIndex];
+    const destination = openDestinations[destinationIndex];
+    spend(source, destination, Math.min(source.remaining, destination.remaining));
+
+    if (isSpent(source)) {
+      sourceIndex += 1;
+    }
+    if (isSpent(destination)) {
+      destinationIndex += 1;
+    }
+  }
+
+  return plans.slice(0, PBS_MAX_FLOW_CHIPS);
+}
+
+/**
+ * The chips to play for a move between two cases.
+ *
+ * A case's authored `movements` describe the step from the current position, so
+ * they are exactly right whenever the current position is one end of the move,
+ * and they are the author's own account of it. Between two alternatives there
+ * is no authored description, so it is derived from the figures.
+ */
+function getPbsTransitionMovementPlans(previousCase, nextCase) {
   if (!previousCase || !nextCase || previousCase.id === nextCase.id) {
     return [];
   }
@@ -6786,40 +6936,19 @@ function getPbsTransitionMovementLegs(previousCase, nextCase) {
   const previousIsCurrent = previousCase.id === PBS_CURRENT_SCENARIO_ID;
   const nextIsCurrent = nextCase.id === PBS_CURRENT_SCENARIO_ID;
 
+  if (previousIsCurrent && nextIsCurrent) {
+    return [];
+  }
+
   if (previousIsCurrent) {
-    return nextIsCurrent ? [] : [{ movements: nextCase.movements, reverse: false }];
+    return getPbsMovementPlans(nextCase.movements, { reverse: false });
   }
 
   if (nextIsCurrent) {
-    return [{ movements: previousCase.movements, reverse: true }];
+    return getPbsMovementPlans(previousCase.movements, { reverse: true });
   }
 
-  return [
-    { movements: previousCase.movements, reverse: true },
-    { movements: nextCase.movements, reverse: false }
-  ];
-}
-
-/**
- * Flattens the legs into plans, staggering each leg behind the one before it so
- * the value visibly returns to the current position and then moves out again.
- * A leg that animates nothing costs no delay.
- */
-function getPbsTransitionMovementPlans(previousCase, nextCase) {
-  const plans = [];
-  let delay = 0;
-
-  getPbsTransitionMovementLegs(previousCase, nextCase).forEach(({ movements, reverse }) => {
-    const legPlans = getPbsMovementPlans(movements, { reverse });
-    if (legPlans.length === 0) {
-      return;
-    }
-
-    legPlans.forEach((plan) => plans.push({ ...plan, delay }));
-    delay += PBS_FLOW_LEG_STAGGER_MS;
-  });
-
-  return plans;
+  return getPbsDirectMovementPlans(previousCase, nextCase);
 }
 
 function escapePbsSelectorValue(value) {
@@ -6869,8 +6998,8 @@ function animatePbsFlowChips({
     return;
   }
 
-  // The rects are already measured, so whether a plan can animate is known now
-  // even for a leg that has not started yet.
+  // A plan can only animate if both ends are on screen: a row that exists in
+  // one case and not the other has no rect at that end.
   const runnable = plans
     .map((plan) => ({
       plan,
@@ -6885,40 +7014,31 @@ function animatePbsFlowChips({
   }
 
   runnable.forEach(({ plan, startRect, endRect }) => {
-    const launch = () => {
-      const chip = document.createElement('span');
-      chip.className = 'pbs-flow-chip';
-      if (plan.action) {
-        chip.dataset.action = plan.action;
-      }
-      chip.textContent = formatBucketedCurrency(plan.amount, currencySymbol);
-
-      const startX = startRect.left + (startRect.width / 2);
-      const startY = startRect.top + (startRect.height / 2);
-      const endX = endRect.left + (endRect.width / 2);
-      const endY = endRect.top + (endRect.height / 2);
-
-      chip.style.transform = `translate3d(${startX}px, ${startY}px, 0) translate(-50%, -50%) scale(0.96)`;
-      document.body.appendChild(chip);
-
-      requestAnimationFrame(() => {
-        chip.classList.add('is-moving');
-        chip.style.transform = `translate3d(${endX}px, ${endY}px, 0) translate(-50%, -50%) scale(1)`;
-      });
-
-      window.setTimeout(() => {
-        chip.remove();
-      }, PBS_FLOW_CHIP_LIFETIME_MS);
-
-      pulsePbsAnchors(nextContent, plan.pulseKeys);
-    };
-
-    if (plan.delay > 0) {
-      window.setTimeout(launch, plan.delay);
-      return;
+    const chip = document.createElement('span');
+    chip.className = 'pbs-flow-chip';
+    if (plan.action) {
+      chip.dataset.action = plan.action;
     }
+    chip.textContent = formatBucketedCurrency(plan.amount, currencySymbol);
 
-    launch();
+    const startX = startRect.left + (startRect.width / 2);
+    const startY = startRect.top + (startRect.height / 2);
+    const endX = endRect.left + (endRect.width / 2);
+    const endY = endRect.top + (endRect.height / 2);
+
+    chip.style.transform = `translate3d(${startX}px, ${startY}px, 0) translate(-50%, -50%) scale(0.96)`;
+    document.body.appendChild(chip);
+
+    requestAnimationFrame(() => {
+      chip.classList.add('is-moving');
+      chip.style.transform = `translate3d(${endX}px, ${endY}px, 0) translate(-50%, -50%) scale(1)`;
+    });
+
+    window.setTimeout(() => {
+      chip.remove();
+    }, PBS_FLOW_CHIP_LIFETIME_MS);
+
+    pulsePbsAnchors(nextContent, plan.pulseKeys);
   });
 }
 
