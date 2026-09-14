@@ -18,6 +18,10 @@ import {
 } from '../worker/src/consumer/direct_module_planner.js';
 import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
 import { getLatestRealtimeMeetingBrief, getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  approvalDecisionResponse
+} from './live-harness/approval-script.mjs';
 
 const pass = (message) => console.info(`[DirectModuleLivePath] PASS: ${message}`);
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -155,6 +159,9 @@ let holdNextExtraction = null;
 globalThis.fetch = async (_url, request) => {
   const body = JSON.parse(request.body);
   const requestBody = JSON.parse(body.input?.[1]?.content || '{}');
+  if (body.text?.format?.name === APPROVAL_DECISION_SCHEMA_NAME) {
+    return approvalDecisionResponse(requestBody);
+  }
   let value;
   if (body.text?.format?.name === 'module_planning_snapshot_v1') {
     extractionCalls += 1;

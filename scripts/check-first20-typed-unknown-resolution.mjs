@@ -5,6 +5,10 @@ import assert from 'node:assert/strict';
 import { attachTypedSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { directModuleTestInputs } from './live-harness/direct-fixtures.mjs';
 import { getLatestRealtimeMeetingBrief } from '../worker/src/consumer/realtime_repository.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  approvalDecisionResponse
+} from './live-harness/approval-script.mjs';
 
 const INPUT = directModuleTestInputs(new Date().toISOString().slice(0, 10)).mortgage_analysis;
 const DETAILS = 'Please analyse my repayment mortgage. The balance is €240,000, there are 22 years remaining and I want no overpayments.';
@@ -27,6 +31,7 @@ globalThis.fetch = async (_url, request) => {
     return { ok: true, json: async () => ({ status: 'completed', output, usage: {} }) };
   }
   const envelope = JSON.parse(body.input[1].content);
+  if (schema === APPROVAL_DECISION_SCHEMA_NAME) return approvalDecisionResponse(envelope);
   if (schema === 'module_planning_snapshot_v1') {
     const source = envelope.conversation.find((turn) => turn.text === DETAILS);
     const answer = envelope.conversation.find((turn) => turn.text === ANSWER);

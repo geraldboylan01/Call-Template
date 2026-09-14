@@ -59,6 +59,11 @@ import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifyExecutionApproval } from './execution_approval.js';
 import {
+  approvalAuthorisesExecution,
+  decideExecutionApproval,
+  EXECUTION_APPROVAL_REQUEST_V1
+} from './approval_decision.js';
+import {
   classifyRealtimeProviderError,
   realtimeTranscriptionUsageFromEvent,
   realtimeUsageFromResponse
@@ -66,6 +71,7 @@ import {
 import { emitSessionSummary } from '../learning_signals.js';
 import { LIVE_PROMPT_VERSION, liveDirectModuleStateItem, liveVolatileStateItem } from './catalogue_prompt.js';
 import {
+  approvalRefusal,
   executeLiveTool,
   LIVE_TOOLSET_VERSION,
   liveStateProjection,
@@ -106,6 +112,17 @@ const MAX_TYPED_MESSAGE_CHARACTERS = 4_000;
  * -- not this window -- is the authority on what is known.
  */
 const MAX_TYPED_CONTEXT_TURNS = 16;
+/**
+ * How far back the approval reader is allowed to look.
+ *
+ * It is answering one narrow question -- what did this reply mean, given what
+ * it was answering -- so it needs the read-back, whatever was said after it,
+ * and the reply itself. That exchange is short by construction: a delivered
+ * offer is either approved, changed, or retired by the next review. A wider
+ * window would only invite the reader to re-read the plan, which is not its
+ * job and not its authority.
+ */
+const MAX_APPROVAL_CONTEXT_TURNS = 12;
 /**
  * What Planéir opens a typed meeting with if the renderer is unavailable.
  *
@@ -1548,8 +1565,15 @@ export class ConsumerLiveSession {
     await this.touch();
     const answersDirectOffer = this.turnAnswersDirectOffer(turn);
     if (answersDirectOffer) turn.confirmationOfferToken = this.directConfirmationOffer.token;
-    const confirmsPublishedDirectSnapshot = answersDirectOffer
-      && classifyExecutionApproval(transcript) === 'affirmed';
+    // WHAT THIS TURN MEANT IS DECIDED ONCE, HERE, AND NOT BY CODE.
+    //
+    // Started, not awaited. The provider is already replying, and this is the
+    // path that must not grow a model call between a client finishing a
+    // sentence and the assistant being allowed to speak. Everything that needs
+    // the answer -- the scheduling decision below, the confirmation barrier,
+    // the state read at the pre-confirmation boundary -- awaits this same
+    // promise wherever it genuinely has to wait.
+    const approvalDecision = answersDirectOffer ? this.directApprovalDecisionFor(turn) : null;
     // THE OBLIGATION IS REGISTERED BEFORE THE DRAIN, NOT AFTER IT.
     // A deferred get_state resumes inside drainDeferredEvidenceTools below and
     // waits on the planning chain. If this turn were queued after that drain,
@@ -1558,9 +1582,39 @@ export class ConsumerLiveSession {
     // first turn. Scheduling here is what makes "wait for planning" mean "wait
     // for planning that has seen this turn". Nothing is awaited: the pass still
     // runs detached, and Realtime is already speaking.
-    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off'
-      && !confirmsPublishedDirectSnapshot) {
-      this.scheduleDirectModulePlanning(storedTurn.id);
+    // What the scheduling decision settles to, so a caller that must not race
+    // it -- the typed lane, which awaits this turn's planning pass before it
+    // renders a reply -- can wait for the decision rather than for a promise
+    // that had not been created yet.
+    turn.approvalSettled = Promise.resolve();
+    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
+      // A PURE APPROVAL OF THE DELIVERED PLAN IS THE ONE TURN THAT MUST NOT
+      // REOPEN IT. Everything else does, exactly as before -- a correction, a
+      // condition, a question, an unreadable answer, and any failure of the
+      // reader itself. That is the fresh-rejection barrier, and this change
+      // narrows nothing about it: only a positive reading of "they agreed to
+      // this, and added nothing" skips the pass, and the reading fails closed.
+      //
+      // The wait happens inside waitUntil, so the obligation is registered as
+      // soon as the answer exists without the reply path ever blocking on it.
+      if (!approvalDecision) this.scheduleDirectModulePlanning(storedTurn.id);
+      else {
+        turn.approvalSettled = approvalDecision
+          .then(async (decision) => {
+            if (approvalAuthorisesExecution(decision)) return;
+            // A CHANGE RETIRES THE DELIVERED OFFER, exactly as a fresh verifier
+            // rejection does. The client has said something that makes the
+            // read-back they heard no longer a true statement of what they
+            // want, so what they were shown must stop being approvable
+            // immediately -- not merely stop being executable by this turn.
+            // Whatever the review concludes next has to be certified, read
+            // back, and approved on its own.
+            if (decision?.decision === 'semantic_change') await this.clearDirectConfirmationOffer();
+            this.scheduleDirectModulePlanning(storedTurn.id);
+          })
+          .catch(() => this.scheduleDirectModulePlanning(storedTurn.id));
+        this.state.waitUntil(turn.approvalSettled);
+      }
     }
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);
@@ -1716,6 +1770,17 @@ export class ConsumerLiveSession {
     this.registerStoppedClientTurn({ item_id: itemId });
     await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode,
       unknownFieldId: body?.unknownFieldId });
+
+    // WAIT FOR THE DECISION BEFORE WAITING FOR ITS CONSEQUENCE.
+    //
+    // Whether this turn owes a planning pass at all now depends on what it
+    // meant, and that is decided off the reply path. Awaiting the chain first
+    // would find it empty on an approval turn that actually carried a
+    // correction, render a card from the snapshot BEFORE that correction, and
+    // reintroduce the one thing the awaited pass exists to prevent: a screen
+    // showing a field the client has just changed.
+    await (this.clientTurnsByItemId.get(itemId)?.approvalSettled || Promise.resolve())
+      .catch(() => {});
 
     // (1) above. A failed pass is not fatal: the turn is already durable and the
     // renderer falls back to the last good state rather than stalling.
@@ -2235,6 +2300,196 @@ export class ConsumerLiveSession {
     const offer = this.directConfirmationOffer;
     return Boolean(offer && !offer.superseded && turn?.answersTurnId
       && [offer.assistantTurnId, ...(offer.confirmationTurnIds || [])].includes(turn.answersTurnId));
+  }
+
+  /**
+   * THE CONTEXT A PERSON WOULD NEED TO KNOW WHAT "YES" MEANT.
+   *
+   * `turnAnswersDirectOffer` above is a causal binding, not a reading: it says
+   * this reply is attached to the offer's own read-back OR to an assistant turn
+   * that continued that exchange. That second clause is what lets a client ask
+   * a question, get an answer, and then approve -- and it is also how a "yes"
+   * to some LATER assistant question arrived at the approval barrier wearing
+   * the offer's binding. Deterministic code cannot tell those apart, because
+   * telling them apart means knowing what was asked and what was answered.
+   *
+   * So the envelope carries both: the exact certified offer as it was
+   * delivered, and the exact assistant utterance this reply was bound to when
+   * the client began speaking. When they are the same turn the reply is an
+   * answer to the plan. When they are not, something else was asked in between
+   * and is quoted here too, and the reader decides which proposition the client
+   * addressed.
+   *
+   * Everything in it is a server record. The client's own words appear once,
+   * whole, unnormalised and labelled as evidence.
+   */
+  async buildExecutionApprovalEnvelope(turn) {
+    const offer = this.directConfirmationOffer;
+    if (!offer) return null;
+    const turns = await listRecentRealtimeFinalTurns(
+      this.env, this.meta.sessionId, this.meta.leaseId, MAX_APPROVAL_CONTEXT_TURNS
+    ).catch(() => []);
+    const answered = turns.find((item) => item.id === turn?.answersTurnId) || null;
+    const readbackIndex = turns.findIndex((item) => item.id === offer.assistantTurnId);
+    const replyIndex = turns.findIndex((item) => item.id === turn?.storedTurnId);
+    return {
+      schemaVersion: EXECUTION_APPROVAL_REQUEST_V1,
+      offer: {
+        offerToken: String(offer.token),
+        planId: String(offer.planId || ''),
+        certificateSignature: String(offer.certificateSignature || ''),
+        snapshotRevision: Number(offer.snapshotRevision || 0),
+        deliveredAsTurnId: offer.assistantTurnId || null,
+        // The certified string, byte for byte as the client received it. The
+        // model is being asked whether they agreed to THIS, so it must be this
+        // and not a summary of it.
+        deliveredConfirmationPrompt: String(offer.confirmationPrompt || '')
+      },
+      turn: {
+        turnId: turn?.storedTurnId || null,
+        ordinal: Number(turn?.ordinal || 0)
+      },
+      answeredUtterance: {
+        turnId: turn?.answersTurnId || null,
+        isTheCertifiedOffer: Boolean(turn?.answersTurnId
+          && turn.answersTurnId === offer.assistantTurnId),
+        text: answered?.role === 'assistant' ? String(answered.transcript || '') : ''
+      },
+      interveningContext: (readbackIndex >= 0
+        ? turns.slice(readbackIndex + 1, replyIndex > readbackIndex ? replyIndex : turns.length)
+        : []
+      ).map((item) => ({
+        role: item.role === 'assistant' ? 'assistant' : 'client',
+        turnId: item.id,
+        text: String(item.transcript || '')
+      })),
+      clientReply: String(turn?.transcript || '')
+    };
+  }
+
+  /**
+   * What this client turn meant, asked at most once and remembered.
+   *
+   * Resolves to `null` for every turn that is not answering a delivered offer,
+   * which is almost all of them: no offer, a superseded one, a turn bound to
+   * some other part of the conversation, or a deployment that is not running
+   * direct apply. Nothing is spent on those.
+   *
+   * The memo is keyed by turn AND offer, so a newly certified offer is a new
+   * question even when the same words answer it.
+   */
+  directApprovalDecisionFor(turn) {
+    // KEPT ON THE TURN, NOT IN A TABLE KEYED BY THE OFFER.
+    //
+    // A reading of `semantic_change` RETIRES the offer it was about, so a table
+    // keyed by the live offer loses the answer at the exact moment the barrier
+    // needs it and silently asks a second time -- which is how one turn would
+    // end up with two readings that can disagree. The turn owns its own
+    // reading; the offer it was taken against is recorded inside it and checked
+    // again at the barrier.
+    if (turn?.approvalDecision) return turn.approvalDecision;
+    const offer = this.directConfirmationOffer;
+    if (getConsumerConfig(this.env).modulePlannerMode !== 'apply'
+      || !offer || !this.turnAnswersDirectOffer(turn)) return Promise.resolve(null);
+    const pending = (async () => {
+      // ITS OWN BUDGET, BECAUSE IT IS NOT PLANNING.
+      //
+      // Spending the turn's planning allowance on this would make a genuine
+      // approval unreadable whenever the previous turn's pass had already used
+      // its calls -- a refusal caused by arithmetic somewhere else entirely.
+      // One call, its own clock, and it joins the set that a closing meeting
+      // cancels, so ending a call still stops it.
+      const operation = {
+        id: crypto.randomUUID(),
+        deadlineAt: Date.now() + Number(
+          getConsumerConfig(this.env).modulePlannerTimeoutMs || 30_000
+        ),
+        callAllowance: 1,
+        callsUsed: 0,
+        controller: new AbortController()
+      };
+      this.directModulePlanningOperations.add(operation);
+      let envelope = null;
+      let decision;
+      try {
+        envelope = await this.buildExecutionApprovalEnvelope(turn);
+        decision = await decideExecutionApproval({
+          env: this.env,
+          config: getConsumerConfig(this.env),
+          envelope,
+          operation
+        });
+      } catch (_error) {
+        // A REFUSAL IS AN ORDINARY OUTCOME AND A THROW IS NOT. This promise is
+        // awaited on the tool path and on the client-turn path; rejecting would
+        // surface a server fault on the turn the client agreed, when the right
+        // answer is simply that nothing established what they meant.
+        decision = { decision: 'unclear', answeredProposition: 'none', reason: 'approval reading failed', source: 'unavailable', latencyMs: 0 };
+      } finally {
+        this.directModulePlanningOperations.delete(operation);
+      }
+      // The reading is bound to the state it was taken against. Both are
+      // checked again at the barrier; recording them is what makes a wrong
+      // execution legible afterwards rather than a mystery.
+      const bound = Object.freeze({
+        ...decision,
+        offerToken: String(offer.token),
+        certificateSignature: String(offer.certificateSignature || ''),
+        turnId: turn.storedTurnId || null,
+        turnOrdinal: Number(turn.ordinal || 0)
+      });
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta?.sessionId,
+        leaseId: this.meta?.leaseId,
+        direction: 'server',
+        eventType: 'live.approval.decided',
+        // Structural only: no transcript, no prompt, no figure.
+        payload: {
+          decision: bound.decision,
+          answeredProposition: bound.answeredProposition,
+          source: bound.source,
+          offerToken: bound.offerToken,
+          turnOrdinal: bound.turnOrdinal,
+          answeredTheOffer: envelope?.answeredUtterance?.isTheCertifiedOffer === true,
+          latencyMs: Number(bound.latencyMs || 0)
+        }
+      }).catch(() => {});
+      return bound;
+    })();
+    turn.approvalDecision = pending;
+    return pending;
+  }
+
+  /**
+   * NOTHING MAY EXECUTE ON BEHALF OF A TURN THE CLIENT HAS MOVED PAST.
+   *
+   * `clientTurnOrdinal` is allocated when the client STARTS speaking, not when
+   * their words finish being transcribed, so this sees a newer turn from the
+   * moment it begins -- which is the only moment that helps. By the time ASR
+   * lands, a parked approval may already have run.
+   *
+   * This is a control fact and nothing else. It does not read either turn, and
+   * a newer turn blocks execution whether it is a correction, a question or a
+   * cough: what it means is not knowable here, and a plan must not run while
+   * the answer to that is outstanding.
+   */
+  executionFenceFor(turn) {
+    const boundOrdinal = Number(turn?.ordinal || 0);
+    const refusal = (code, message) => ({ ok: false, code, refusal: { ok: false, code, retryable: true, message } });
+    return () => {
+      if (!boundOrdinal) {
+        return refusal('confirmation_context_invalid',
+          'That confirmation is not attached to anything the client said. Read the current plan '
+          + 'back in full and ask again.');
+      }
+      if (this.clientTurnOrdinal > boundOrdinal) {
+        return refusal('confirmation_superseded_by_turn',
+          'The client has spoken again since they agreed, so that agreement is no longer their '
+          + 'latest word. Do not run the plan. Answer what they just said, then read the current '
+          + 'plan back and ask again.');
+      }
+      return { ok: true };
+    };
   }
 
   async beginDirectReadbackAttempt(response) {
@@ -3552,13 +3807,37 @@ export class ConsumerLiveSession {
   async executeToolCallWithTranscript(event, clientTranscript) {
     const name = String(event.name || '');
     const callId = String(event.call_id || '');
-    const approvalOffer = this.directConfirmationOffer;
+    const toolConfig = getConsumerConfig(this.env);
     const approvalResponse = this.responseContextsById.get(String(event.response_id || ''));
     const approvalTurn = this.clientTurnsByItemId.get(approvalResponse?.causeItemId);
+    // THE READING, AWAITED ONCE, SHARED BY EVERY BRANCH BELOW.
+    //
+    // `confirm_and_run` cannot proceed without it. `get_state` waits for it too
+    // because the pre-confirmation state read is where the next read-back is
+    // built: if this turn changed the plan, the model must not be handed a
+    // snapshot that predates the change, and whether it changed the plan is
+    // exactly what this answers. Both are already blocking tool boundaries.
+    //
+    // Memoized per turn and offer, so the parked-then-resumed path below, the
+    // barrier, and the scheduling decision on the client-turn path are all the
+    // same answer to the same question, bought once.
+    const approvalDecision = toolConfig.modulePlannerMode === 'apply'
+      && (name === 'confirm_and_run' || name === 'get_state')
+      ? await this.directApprovalDecisionFor(approvalTurn)
+      : null;
+    // The scheduling consequence of that reading, not just the reading: a
+    // state read must not conclude the background lane is idle while the
+    // obligation this turn owes is still being registered.
+    if (approvalDecision) await (approvalTurn?.approvalSettled || Promise.resolve()).catch(() => {});
+    // READ AFTER THE AWAITS, NEVER BEFORE THEM. A review that settled while the
+    // approval was being read may have retired this offer, and a stale local
+    // copy taken at entry would park a tool call against a plan that no longer
+    // exists.
+    const approvalOffer = this.directConfirmationOffer;
     let proposedToken = '';
     try { proposedToken = JSON.parse(event.arguments || '{}')?.confirmationToken || ''; } catch (_error) { /* invalid tool */ }
-    if (name === 'confirm_and_run' && getConsumerConfig(this.env).modulePlannerMode === 'apply'
-      && classifyExecutionApproval(clientTranscript) === 'affirmed'
+    if (name === 'confirm_and_run' && toolConfig.modulePlannerMode === 'apply'
+      && approvalAuthorisesExecution(approvalDecision)
       && this.turnAnswersDirectOffer(approvalTurn) && proposedToken === approvalOffer?.token
       && !approvalOffer.readbackFullyDelivered && !approvalOffer.deliveryAttempt?.interrupted
       && approvalOffer.deliveryAttempt?.transcriptMatched && approvalOffer.deliveryAttempt?.responseCompleted) {
@@ -3602,8 +3881,16 @@ export class ConsumerLiveSession {
       if (attempt.replayed) {
         result = attempt.result;
       } else {
+        // TWO LANES, TWO SOURCES OF AUTHORITY, AND ONLY ONE OF THEM READS WORDS.
+        //
+        // Under direct apply the answer came from the bounded approval reader
+        // above, bound to this exact offer and to the utterance the client was
+        // actually answering. The archived comparison lane is not the target
+        // architecture and is not in production; it keeps the reader it has.
         const affirmedConfirmation = name === 'confirm_and_run'
-          && classifyExecutionApproval(clientTranscript) === 'affirmed';
+          && (config.modulePlannerMode === 'apply'
+            ? approvalAuthorisesExecution(approvalDecision)
+            : classifyExecutionApproval(clientTranscript) === 'affirmed');
         const directOfferMatches = Boolean(
           affirmedConfirmation
           && this.directConfirmationOffer
@@ -3613,7 +3900,27 @@ export class ConsumerLiveSession {
         const directPlanningUnsettled = this.directModulePlanningPending > 0
           || this.directModulePlanningOutstanding.length > 0
           || this.directConfirmationOffer?.reviewStatus !== 'settled';
-        if (affirmedConfirmation && config.modulePlannerMode === 'apply'
+        // THE FENCE, CHECKED BEFORE ANY OTHER CONFIRMATION VERDICT.
+        //
+        // A turn the client has already moved past does not get told to read
+        // the plan back again, and does not get told its review is pending:
+        // both instructions would have the meeting act on an agreement that is
+        // no longer their latest word. It gets told what actually happened.
+        if (name === 'confirm_and_run' && config.modulePlannerMode === 'apply') {
+          const fenced = this.executionFenceFor(causalTurn)();
+          if (!fenced.ok) result = fenced.refusal;
+          // SAID HERE, BECAUSE THE OFFER IS ALREADY GONE BY NOW.
+          //
+          // Retiring the offer above is right, and it means the tool's own
+          // gate can no longer tell "they changed the plan" from "there is no
+          // plan". The difference matters to the meeting: one says acknowledge
+          // the change and re-plan, the other says read the current plan back.
+          // The refusal is the tool's own, imported rather than restated.
+          else if (approvalDecision?.decision === 'semantic_change') {
+            result = approvalRefusal(approvalDecision);
+          }
+        }
+        if (!result && affirmedConfirmation && config.modulePlannerMode === 'apply'
           && !directOfferMatches) {
           result = {
             ok: false,
@@ -3621,7 +3928,7 @@ export class ConsumerLiveSession {
             retryable: true,
             message: 'The verified plan must be read back again before it can run. Call get_state, summarize that current plan, and ask for confirmation.'
           };
-        } else if (directOfferMatches && directPlanningUnsettled) {
+        } else if (!result && directOfferMatches && directPlanningUnsettled) {
           result = {
             ok: false,
             code: 'module_planning_pending',
@@ -3629,7 +3936,7 @@ export class ConsumerLiveSession {
             message: 'The same offer is waiting for its background review. Clarify whether the client wants this plan to run; do not replace the offer or invent new inputs.'
           };
         }
-        if (affirmedConfirmation
+        if (!result && affirmedConfirmation
           && config.modulePlannerMode !== 'apply'
           && config.plannerReconciliationMode !== 'legacy') {
           const lease = await getRealtimeLease(
@@ -3811,6 +4118,16 @@ export class ConsumerLiveSession {
             toolAttemptId: attempt.row.id,
             directConfirmationOffer: config.modulePlannerMode === 'apply'
               ? this.directConfirmationOffer : null,
+            // THE DECISION, NOT THE WORDS. Under direct apply the tool is given
+            // what the client's answer meant, already bound to this offer and
+            // this turn, and the deterministic gate there checks which decision
+            // came back. Nothing in the tool reads the transcript to find out.
+            executionApproval: config.modulePlannerMode === 'apply' ? approvalDecision : null,
+            // Evaluated by the tool immediately before it confirms a plan and
+            // runs an engine -- after its own awaits, where a newer client turn
+            // can still arrive. See executionFenceFor.
+            executionFence: config.modulePlannerMode === 'apply'
+              ? this.executionFenceFor(causalTurn) : null,
             // Keep the existing dependency name for the tool contract, but pass
             // only the transcript bound to this response's causal user item.
             // `confirm_and_run` reads this one; the three below it are read by

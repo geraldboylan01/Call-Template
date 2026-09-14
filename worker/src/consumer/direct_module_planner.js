@@ -307,6 +307,23 @@ function moduleError(moduleId, status, code, message, details = undefined) {
   return error;
 }
 
+/**
+ * Which prompt a call belongs to, for the server-side diagnostics only. An
+ * unlisted name is an extractor, which is what every caller was before this map
+ * existed.
+ */
+const PLANNER_STAGES = Object.freeze({
+  module_input_verification_v1: 'verifier',
+  execution_approval_decision_v1: 'approval'
+});
+
+/** Which configured prompt identity each stage's diagnostics should name. */
+const PROMPT_VERSION_KEYS = Object.freeze({
+  extractor: 'modulePlannerPromptVersion',
+  verifier: 'moduleVerifierPromptVersion',
+  approval: 'approvalDecisionPromptVersion'
+});
+
 function outputText(payload) {
   if (typeof payload?.output_text === 'string' && payload.output_text.trim()) return payload.output_text.trim();
   for (const item of payload?.output || []) {
@@ -317,10 +334,20 @@ function outputText(payload) {
   return '';
 }
 
-async function structuredResponse({ env, config, systemPrompt, name, schema, body, operation = null }) {
+/**
+ * ONE STRUCTURED PROVIDER CALL, WITH ONE SET OF RULES ABOUT SPENDING IT.
+ *
+ * Exported because the execution approval reader is a different question asked
+ * of the same provider under the same discipline: the operation's deadline and
+ * call allowance, the pre-dispatch refusal, the abort that reaches work already
+ * in flight, and the diagnostics that made the first production failure
+ * legible. A second copy of this would be a second place for a deadline to stop
+ * meaning anything.
+ */
+export async function structuredPlannerResponse({ env, config, systemPrompt, name, schema, body, operation = null }) {
   const clientRequestId = crypto.randomUUID();
   const startedAt = Date.now();
-  const stage = name === 'module_input_verification_v1' ? 'verifier' : 'extractor';
+  const stage = PLANNER_STAGES[name] || 'extractor';
   let response;
   const failure = (status, code, message) => Object.assign(new ConsumerError(status, code, message), {
     // Server-only operational context; no prompt, financial input, credential,
@@ -328,7 +355,7 @@ async function structuredResponse({ env, config, systemPrompt, name, schema, bod
     plannerDiagnostics: {
       plannerStage: stage,
       model: config.modulePlannerModel,
-      promptVersion: stage === 'verifier' ? config.moduleVerifierPromptVersion : config.modulePlannerPromptVersion,
+      promptVersion: PROMPT_VERSION_KEYS[stage] ? config[PROMPT_VERSION_KEYS[stage]] : null,
       providerStatus: Number.isInteger(response?.status) ? response.status : null,
       providerRequestId: String(response?.headers?.get?.('x-request-id') || '').slice(0, 200) || null,
       clientRequestId,
@@ -1619,7 +1646,7 @@ export async function interpretDirectModuleConversation({
   // reinterpretation below. Everything else -- transcript window, policy,
   // contracts -- is identical, so a revision cannot quietly widen what the
   // planner may consider.
-  const extract = (priorFindings = null) => structuredResponse({
+  const extract = (priorFindings = null) => structuredPlannerResponse({
     env,
     config,
     operation: pass,
@@ -1726,7 +1753,7 @@ export async function interpretDirectModuleConversation({
     currentProfileContext, allowedModuleIds: config.allowedModules
   };
   const revisePresentation = async (candidate, targets, findings) => {
-    const response = observe(await structuredResponse({
+    const response = observe(await structuredPlannerResponse({
       env,
       config,
       operation: pass,
@@ -1837,7 +1864,7 @@ export async function interpretDirectModuleConversation({
     || (structuralDiagnosticsFor(snapshot).length > 0
       && snapshot.generalAmbiguities.length === 0
       && relevantModules.every((item) => item.status === 'ready' || item.inputSupportIssues?.length));
-  const verify = (candidate) => structuredResponse({
+  const verify = (candidate) => structuredPlannerResponse({
     env,
     config,
     operation: pass,

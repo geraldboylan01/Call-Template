@@ -70,6 +70,24 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 
 ### The approval grammar we did not touch
 
+> **SUPERSEDED, 14 September 2026.** Astra's audit found three P1 execution
+> bypasses at this boundary and the section below is now a record of the
+> architecture that produced them, not of the code. `execution_approval.js`
+> no longer decides anything on the direct/apply path: what a client's answer
+> meant is read by a bounded AI decision in
+> [approval_decision.js](../worker/src/consumer/live/approval_decision.js),
+> given the complete reply, the exact assistant utterance it answered, the
+> exact delivered certified offer and the turns in between. Deterministic code
+> now enforces only control facts, and an execution-time fence blocks a plan
+> whose approval the client has already spoken past. The three bypasses are
+> committed as regressions in
+> [check-live-approval-meaning.mjs](../scripts/check-live-approval-meaning.mjs).
+> The grammar survives only in the archived comparison lane, which is not in
+> production. **Open question 2 below is answered by that change and open
+> question 1's list of barriers is now one barrier longer.** Nothing is
+> deployed.
+
+
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.
 
 **This is not the target architecture.** It is a deterministic reader of client language sitting in the one place the architecture says AI should own, and it should go. It is still here because it is currently load-bearing, for one specific reason.

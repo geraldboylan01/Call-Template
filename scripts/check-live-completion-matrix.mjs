@@ -19,6 +19,10 @@ import { readJsonPointer, sha256Json } from '../js/planning/utils.js';
 import { decryptJson, sha256Base64Url, stableStringify } from '../worker/src/consumer/crypto.js';
 import { getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
 import { confirmAndRunRealtimeAnalysisPlan } from '../worker/src/consumer/realtime_analysis.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  approvalDecisionResponse
+} from './live-harness/approval-script.mjs';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const INPUTS = directModuleTestInputs(TODAY);
@@ -47,6 +51,7 @@ const SCENARIOS = [
 const rows = [];
 const spokenResults = new Map();
 const originalFetch = globalThis.fetch;
+let approvalCount = 0;
 let scenario;
 let extractionCount = 0;
 let verificationCount = 0;
@@ -107,6 +112,10 @@ globalThis.fetch = async (_url, request) => {
     return { ok: true, json: async () => ({ status: 'completed', output, usage: {} }) };
   }
   const envelope = JSON.parse(body.input?.[1]?.content || '{}');
+  if (body.text?.format?.name === APPROVAL_DECISION_SCHEMA_NAME) {
+    approvalCount += 1;
+    return approvalDecisionResponse(envelope);
+  }
   let value;
   if (body.text?.format?.name === 'module_planning_snapshot_v1') {
     extractionCount += 1;
@@ -191,6 +200,7 @@ try {
       const offer = structuredClone(rig.session.directConfirmationOffer);
       const frozen = await getRealtimeAnalysisPlanExecution(meeting.env, meeting.sessionId, offer.planId, meeting.meetingId);
       const modelCallsBeforeApproval = extractionCount + verificationCount;
+      const approvalReadingsBefore = approvalCount;
       const approvalStarted = performance.now();
       const { result } = await turn({ text: approval, tool: 'confirm_and_run', args: { confirmationToken: token } });
       const observedAt = performance.now();
@@ -199,6 +209,10 @@ try {
       assert.equal(result?.status, 'complete', label);
       assert.equal(result?.completedCount, scenario.moduleIds.length, label);
       assert.equal(extractionCount + verificationCount, modelCallsBeforeApproval, `${label}: approval must not re-plan`);
+      // ONE READING, AND ONLY A READING. The approval turn buys exactly one
+      // bounded decision about what the client meant, and buys back neither a
+      // planner nor a verifier pass over financial content nobody changed.
+      assert.equal(approvalCount - approvalReadingsBefore, 1, `${label}: the approval turn is read exactly once`);
       const plans = (await meeting.env.CONSUMER_DB.prepare('SELECT * FROM consumer_realtime_analysis_plans WHERE session_id = ?').bind(meeting.sessionId).all()).results;
       assert.equal(plans.length, 1, `${label}: one frozen offer`);
       assert.equal(plans[0].id, frozen.row.id);

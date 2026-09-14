@@ -574,6 +574,13 @@ export function getConsumerConfig(env) {
     modulePlannerCallAllowance: boundedInteger(env.CONSUMER_MODULE_PLANNER_CALL_ALLOWANCE, 4, 2, 20),
     modulePlannerPromptVersion: text(env.CONSUMER_MODULE_PLANNER_PROMPT_VERSION) || 'direct-module-planner-v13',
     moduleVerifierPromptVersion: text(env.CONSUMER_MODULE_VERIFIER_PROMPT_VERSION) || 'direct-module-verifier-v12',
+    // The bounded reader that decides what a client's answer to a delivered
+    // certified offer meant. Versioned separately from the planner and the
+    // verifier because it is a separate question with a separate failure mode:
+    // those two decide whether a plan is right, and this one decides only
+    // whether the client agreed to it.
+    approvalDecisionPromptVersion: text(env.CONSUMER_APPROVAL_DECISION_PROMPT_VERSION)
+      || 'execution-approval-reader-v1',
     // Additive and fail-closed: an unset or mistyped value preserves the
     // current single-turn auditor. Tests may inject shadow/apply without any
     // production wrangler or deployment configuration change.

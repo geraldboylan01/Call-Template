@@ -58,7 +58,11 @@ import {
   DIRECT_MODULE_IDS,
   MODULE_PLANNING_SNAPSHOT_V1
 } from '../worker/src/consumer/direct_module_planner.js';
-import { classifyExecutionApproval } from '../worker/src/consumer/live/execution_approval.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  approvalDecisionResponse,
+  scriptedApprovalDecision
+} from './live-harness/approval-script.mjs';
 
 const pass = (message) => console.info(`[CertifiedApproval] PASS: ${message}`);
 let checks = 0;
@@ -107,6 +111,8 @@ const PBS_INPUT = Object.freeze({
 
 let extractionCalls = 0;
 let verificationCalls = 0;
+let approvalCalls = 0;
+const approvalEnvelopes = [];
 
 /**
  * The extractor never wavers. In production it produced a ready snapshot on
@@ -202,6 +208,10 @@ globalThis.fetch = async (_url, init) => {
   } else if (body.text?.format?.name === 'module_input_verification_v1') {
     verificationCalls += 1;
     value = verifierReverses ? REVERSED_VERDICT : PASS_VERDICT;
+  } else if (body.text?.format?.name === APPROVAL_DECISION_SCHEMA_NAME) {
+    approvalCalls += 1;
+    approvalEnvelopes.push(requestBody);
+    return approvalDecisionResponse(requestBody);
   } else {
     throw new Error(`Unexpected model request ${body.text?.format?.name || 'unknown'}`);
   }
@@ -218,9 +228,20 @@ globalThis.fetch = async (_url, init) => {
 /* ------------------------------------------------------------- the checks */
 
 // The utterance itself, before any machinery. This is what production stored.
-equal(classifyExecutionApproval(APPROVAL), 'affirmed',
-  'The approval Whisper produced for this client must read as agreement, not as an unclear answer.');
-pass('the production approval utterance classifies as agreement');
+//
+// It used to be checked against a dictionary here, and "Ja." was added to that
+// dictionary because of this call. The reading is now a judgement made in
+// context by a bounded model, so what this asserts is the judgement -- that a
+// competent reader, shown this reply to this read-back, calls it agreement to
+// the offer and nothing else. The dictionary is gone; the obligation is not.
+{
+  const reading = scriptedApprovalDecision({ clientReply: APPROVAL });
+  equal(reading.decision, 'pure_approval',
+    'The approval Whisper produced for this client must read as agreement, not as an unclear answer.');
+  equal(reading.answeredProposition, 'offer',
+    'and as agreement to the plan that was read back, not to something else');
+}
+pass('the production approval utterance reads as agreement to the delivered offer');
 
 const meeting = await newLiveMeeting('live-certified-approval', {
   CONSUMER_MODULE_PLANNER_MODE: 'apply',
@@ -263,6 +284,8 @@ pass('the certified plan is read back verbatim and the offer is armed');
 
 // FROM HERE THE VERIFIER REVERSES ITSELF, exactly as production's did.
 verifierReverses = true;
+const extractionCallsBeforeApproval = extractionCalls;
+const verificationCallsBeforeApproval = verificationCalls;
 
 let confirmationResult = null;
 await simulator.turn({
@@ -284,6 +307,34 @@ pass('the client’s approval of a delivered certified plan executes it');
 
 equal(session.directConfirmationOffer?.planId, deliveredOffer.planId,
   'a background pass must not swap the plan the client approved');
+
+// THE READER WAS ASKED, AND IT WAS ASKED THE RIGHT QUESTION. A decision made
+// without the delivered offer, or without the utterance the client was
+// answering, is not the architecture -- it is a coin toss with a schema.
+equal(approvalCalls, 1, 'the approval turn must be read exactly once, not once per barrier');
+{
+  const envelope = approvalEnvelopes.at(-1);
+  equal(envelope.clientReply, APPROVAL, 'the reader must see the complete client reply');
+  equal(envelope.offer.deliveredConfirmationPrompt, CONFIRMATION_PROMPT,
+    'the reader must see the exact certified offer as it was delivered');
+  equal(envelope.offer.offerToken, deliveredOffer.token, 'bound to the delivered offer token');
+  equal(envelope.answeredUtterance.isTheCertifiedOffer, true,
+    'and must be told that this reply answered the read-back itself');
+  equal(envelope.answeredUtterance.text, CONFIRMATION_PROMPT,
+    'the utterance the client answered is the certified read-back, quoted in full');
+  ok(envelope.turn.ordinal > 0, 'the decision is bound to a server-owned turn ordinal');
+}
+pass('the approval reader is given the offer, the answered utterance and the reply');
+
+// NO SECOND OPINION ON AN UNCHANGED PLAN. The reversing verifier is still
+// armed; a pure approval must not have invited it back in. Counted across the
+// approval turn rather than absolutely, so this measures what the approval
+// cost and not what the three turns before it cost.
+equal(verificationCalls - verificationCallsBeforeApproval, 0,
+  'a pure approval must not rerun the verifier over a plan the client already accepted');
+equal(extractionCalls - extractionCallsBeforeApproval, 0,
+  'and must not rerun the planner either');
+pass('an approved plan is not reopened by the planner or the verifier');
 
 const runs = (await meeting.env.CONSUMER_DB.prepare(`
   SELECT status FROM consumer_module_runs WHERE session_id = ? AND module_id = 'personal_balance_sheet'

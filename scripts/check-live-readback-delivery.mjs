@@ -13,6 +13,12 @@ import {
   createRealtimeLease, prepareRealtimeAnalysisPlan, setRealtimeConsent
 } from '../worker/src/consumer/realtime_repository.js';
 import { handleConsumerRequest } from '../worker/src/consumer/router.js';
+import { installScriptedApprovalReader } from './live-harness/approval-script.mjs';
+
+// The approval reader is the only model call this file can reach, and it is
+// scripted rather than spent. Everything the file actually tests -- delivery
+// evidence, parking, resumption, idempotency -- is real.
+installScriptedApprovalReader();
 
 let checks = 0;
 function equal(actual, expected, message) {
@@ -157,7 +163,17 @@ for (const failure of ['cleared', 'cancelled', 'compliance', 'barge_in', 'wrong_
   // the natural approval reaches the sideband.
   await session.handleProviderMessage(JSON.stringify({ type: 'input_audio_buffer.speech_started' }));
   equal(session.directConfirmationOffer.deliveryAttempt.interrupted, false, 'Missing sideband output events do not invent a barge-in');
-  session.clientTurnsByItemId.set('item_approval', { answersTurnId: session.directConfirmationOffer.assistantTurnId });
+  session.clientTurnsByItemId.set('item_approval', {
+    itemId: 'item_approval',
+    // The turn the approval is bound to, and its place in the conversation.
+    // The execution fence reads the ordinal; a turn without one cannot execute.
+    ordinal: ++session.clientTurnOrdinal,
+    status: 'completed',
+    // The client's actual words, on the turn, where the approval reader's
+    // envelope is built from. The tool argument below carries the same text.
+    transcript: 'Grand, go ahead',
+    answersTurnId: session.directConfirmationOffer.assistantTurnId
+  });
   session.responseContextsById.set('resp_approval', { causeItemId: 'item_approval' });
   const event = {
     name: 'confirm_and_run', call_id: 'call_once', response_id: 'resp_approval',

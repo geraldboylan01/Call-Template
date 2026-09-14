@@ -25,7 +25,15 @@
 import assert from 'node:assert/strict';
 
 import { attachTypedSession, newLiveMeeting } from './live-harness/session.mjs';
-import { classifyExecutionApproval } from '../worker/src/consumer/live/execution_approval.js';
+import { executeLiveTool } from '../worker/src/consumer/live/live_tools.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  scriptedApprovalDecision
+} from './live-harness/approval-script.mjs';
+
+// Only what `assertLiveToolActiveInMode` reads. The gate below refuses before
+// it reads anything else, which is the point being asserted.
+const TOOL_MODE_CONFIG = Object.freeze({ plannerReconciliationMode: 'apply' });
 import { listRealtimeFinalTurns } from '../worker/src/consumer/realtime_repository.js';
 
 let checks = 0;
@@ -124,27 +132,105 @@ function responseWithCandidate(session, token = 'dmc_typed_test') {
     'a superseded offer cannot be approved by a turn bound to its read-back');
 }
 
-/* ------------------------------------- the approval classifier is unchanged */
+/* ----------------------------------- words alone authorise nothing any more */
 
-// Typed text is the SAME deterministic gate voice uses, and it behaves better
-// here because there is no ASR punctuation to reason about.
-for (const [text, verdict] of [
-  ['yes, go ahead', 'affirmed'],
-  ['Yes please, run that plan', 'affirmed'],
-  ['that sounds right', 'affirmed'],
-  ['no', 'rejected'],
-  ['not now', 'rejected'],
-  // Anything that is not a clean whole-clause refusal falls to `ambiguous`,
-  // which is the safe verdict: ambiguous does not run, and does not end the
-  // meeting either. Planéir asks again.
-  ['no, not yet', 'ambiguous'],
-  ['yes but change the retirement age to 62', 'ambiguous'],
-  ['why do you need my retirement age?', 'ambiguous'],
-  ['yes if the pension figure is right', 'ambiguous'],
-  ['I think so', 'ambiguous']
+/**
+ * THIS BLOCK USED TO BE A DICTIONARY TEST.
+ *
+ * It listed ten typed utterances and the verdict a deterministic grammar gave
+ * each one, and it passed for as long as the grammar and the list agreed with
+ * each other -- which is a test of a list, not of a barrier. What it could
+ * never show is the case that actually got through: the same words meaning
+ * something different because of what had just been asked.
+ *
+ * So the assertion is now the architectural one. Under direct apply the gate
+ * consumes a bounded decision the coordinator made about this reply, against
+ * this offer, and there is no transcript it will accept instead. Feed it the
+ * most unambiguous approval anyone could type, with no decision attached, and
+ * it must refuse -- because the words were never the authority.
+ */
+// A delivered, settled offer, so the refusals below are about the ANSWER and
+// not about there being nothing to answer.
+const DELIVERED_OFFER = Object.freeze({
+  token: 'dmc_anything',
+  planId: 'realtime_plan_anything',
+  certificateSignature: 'certificate-anything',
+  readbackFullyDelivered: true,
+  reviewStatus: 'settled',
+  superseded: false
+});
+
+for (const transcript of [
+  'yes, go ahead',
+  'Yes please, run that plan',
+  'that sounds right',
+  'Yes. Go ahead. Run the plan. Thanks.'
 ]) {
-  equal(classifyExecutionApproval(text), verdict, `"${text}" classifies as ${verdict}`);
+  const refused = await executeLiveTool('confirm_and_run', { confirmationToken: 'dmc_anything' }, {
+    config: { modulePlannerMode: 'apply', ...TOOL_MODE_CONFIG },
+    directConfirmationOffer: DELIVERED_OFFER,
+    latestClientTranscript: transcript,
+    // No executionApproval: nothing decided that this meant approval.
+    loadContext: async () => { throw new Error('the gate must refuse before it loads anything'); }
+  });
+  equal(refused.ok, false, `"${transcript}" cannot authorise execution on its own`);
+  equal(refused.code, 'confirmation_required', `"${transcript}" is an undecided answer, not a refusal`);
 }
+equal(
+  (await executeLiveTool('confirm_and_run', { confirmationToken: 'dmc_anything' }, {
+    config: { modulePlannerMode: 'apply', ...TOOL_MODE_CONFIG },
+    directConfirmationOffer: DELIVERED_OFFER,
+    latestClientTranscript: 'yes, go ahead',
+    executionApproval: { decision: 'semantic_change', answeredProposition: 'offer' },
+    loadContext: async () => { throw new Error('a change must refuse before it loads anything'); }
+  })).code,
+  'confirmation_carries_change',
+  'a reply carrying a change is refused as a change, so the meeting cannot re-offer the old plan'
+);
+equal(
+  (await executeLiveTool('confirm_and_run', { confirmationToken: 'dmc_anything' }, {
+    config: { modulePlannerMode: 'apply', ...TOOL_MODE_CONFIG },
+    directConfirmationOffer: DELIVERED_OFFER,
+    latestClientTranscript: 'yes, go ahead',
+    executionApproval: { decision: 'pure_approval', answeredProposition: 'other_assistant_question' },
+    loadContext: async () => { throw new Error('the wrong proposition must refuse before it loads anything'); }
+  })).code,
+  'confirmation_answers_other_question',
+  'agreement to some other question is not agreement to the plan'
+);
+equal(
+  (await executeLiveTool('confirm_and_run', { confirmationToken: 'dmc_anything' }, {
+    config: { modulePlannerMode: 'apply', ...TOOL_MODE_CONFIG },
+    directConfirmationOffer: DELIVERED_OFFER,
+    latestClientTranscript: 'yes, go ahead',
+    // A genuine approval -- of the plan that was on the table before this one.
+    executionApproval: {
+      decision: 'pure_approval',
+      answeredProposition: 'offer',
+      offerToken: 'dmc_the_previous_offer',
+      certificateSignature: 'certificate-anything'
+    },
+    loadContext: async () => { throw new Error('a decision about another offer must refuse before it loads anything'); }
+  })).code,
+  'confirmation_context_invalid',
+  'a decision taken against a different offer cannot authorise this one'
+);
+equal(
+  (await executeLiveTool('confirm_and_run', { confirmationToken: 'dmc_anything' }, {
+    config: { modulePlannerMode: 'apply', ...TOOL_MODE_CONFIG },
+    directConfirmationOffer: DELIVERED_OFFER,
+    latestClientTranscript: 'yes, go ahead',
+    executionApproval: {
+      decision: 'pure_approval',
+      answeredProposition: 'offer',
+      offerToken: 'dmc_anything',
+      certificateSignature: 'certificate-from-an-earlier-review'
+    },
+    loadContext: async () => { throw new Error('a decision against another certificate must refuse before it loads anything'); }
+  })).code,
+  'confirmation_context_invalid',
+  'nor one taken against a certificate the offer no longer carries'
+);
 
 /* ------------------------------------------ a plan nobody certified is inert */
 
@@ -249,6 +335,9 @@ const { settle } = await import('./live-harness/session.mjs');
         unsupportedPaths: [], omittedSupportedInformation: [], unresolvedAmbiguities: [],
         clarifications: [], confirmationPromptApproved: true, explanation: 'ok'
       });
+    }
+    if (schema === APPROVAL_DECISION_SCHEMA_NAME) {
+      return wrap(scriptedApprovalDecision(JSON.parse(body.input.find((item) => item.role === 'user').content)));
     }
     if (schema) return wrap({ ok: true });
     const step = script[Math.min(scriptIndex, script.length - 1)];
