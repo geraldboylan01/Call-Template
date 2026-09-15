@@ -86,6 +86,18 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 > production. **Open question 2 below is answered by that change and open
 > question 1's list of barriers is now one barrier longer.** Nothing is
 > deployed.
+>
+> **Second review, 15 September 2026.** Astra's follow-up found three
+> remaining P1s of a different kind: the readings were right and the
+> barriers were right, and a plan could still run because the server
+> learned that the client had spoken again later than they actually spoke.
+> The meeting now keeps one causal clock, advanced the instant client
+> input REACHES it -- the socket listener before anything is queued, a
+> typed request before anything is awaited -- and one admission test,
+> asked again synchronously at the last instruction before the
+> deterministic engine. Schedules in
+> [check-live-approval-meaning.mjs](../scripts/check-live-approval-meaning.mjs).
+> Still nothing deployed.
 
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.

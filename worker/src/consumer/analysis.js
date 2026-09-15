@@ -123,21 +123,59 @@ export async function runStoredConsumerAnalysis({ env, config, sessionRow, profi
   }
 }
 
+/**
+ * THE LAST GATE BEFORE MONEY IS COMPUTED.
+ *
+ * `admitExecution` is a SYNCHRONOUS predicate supplied by the live lane. It
+ * answers whether the approval that got us here is still the client's latest
+ * word and still bound to the exact offer, certificate and delivery it was
+ * taken against. It reads only in-memory coordinator state, which is what lets
+ * it be asked at a point where no await may intervene.
+ *
+ * It is asked TWICE, and both are load-bearing:
+ *
+ *   - before `createAnalysisRun`, so a withdrawn approval does not leave a run
+ *     record behind for something that never should have started; and
+ *   - immediately before `runConsumerAnalysisWithInputs`, which is the
+ *     instruction the deterministic engine actually begins at. There is no
+ *     await between that check and the call, so nothing can arrive in between.
+ *
+ * Absent (the archived lane, and every non-live caller) it admits everything,
+ * which is exactly today's behaviour for those callers.
+ */
+function assertExecutionAdmitted(admitExecution) {
+  if (typeof admitExecution !== 'function') return;
+  const admitted = admitExecution();
+  if (admitted?.ok === true) return;
+  throw new ConsumerError(
+    409,
+    'execution_admission_withdrawn',
+    'The client’s approval is no longer current, so the analysis was not started.',
+    { admissionCode: String(admitted?.code || 'unknown') }
+  );
+}
+
 export async function runStoredConsumerAnalysisWithInputs({
   env,
   config,
   sessionRow,
   profile,
-  moduleInputs
+  moduleInputs,
+  admitExecution = null
 }) {
   if (!sessionRow.confirmed_profile_revision
     || Number(sessionRow.confirmed_profile_revision) !== Number(sessionRow.current_profile_revision)) {
     throw new ConsumerError(409, 'profile_confirmation_required', 'Confirm the current plan before running an analysis.');
   }
   const moduleIds = Object.keys(moduleInputs || {});
+  assertExecutionAdmitted(admitExecution);
   const run = await createAnalysisRun(env, sessionRow, profile, moduleIds, moduleInputs);
   try {
     const moduleExecutions = [];
+    // THE BARRIER. Synchronous, and the statement immediately before the
+    // engine call below -- no await, no scheduling boundary, nothing that
+    // could let a newer client turn arrive unnoticed between the two.
+    assertExecutionAdmitted(admitExecution);
     const result = await runConsumerAnalysisWithInputs({
       profile,
       moduleInputs,

@@ -1799,20 +1799,23 @@ async function executeConfirmAndRun(_args, deps) {
     ? { ...config, allowedModules: deps.config.allowedModules }
     : config;
 
-  // THE LAST THING CHECKED BEFORE ANYTHING IS COMPUTED OR PERSISTED.
+  // ASKED AGAIN HERE, AND AGAIN BELOW, AND AGAIN AT THE ENGINE.
   //
   // Everything above this line is a read. Everything below it confirms a plan
   // and runs an engine against the client's money. Between the approval being
   // decided and this point there are several awaits -- the approval reader
-  // itself, the delivery drain that can resume a parked tool call minutes
-  // later, the context load, the frozen plan load -- and the client may have
-  // spoken again in any of them. Cancelling the assistant's speech does not
-  // help: the speech is not what would be wrong.
+  // itself, the delivery drain that can resume a parked tool call much later,
+  // the context load, the frozen plan load -- and the client may have spoken
+  // again in any of them. Cancelling the assistant's speech does not help: the
+  // speech is not what would be wrong.
   //
-  // So the fence is evaluated HERE, against the turn the approval was bound
-  // to, rather than anywhere earlier where it could still be overtaken.
-  const fence = deps.executionFence ? deps.executionFence() : { ok: true };
-  if (!fence.ok) return fence.refusal;
+  // This call is the cheap one: it stops a superseded approval before anything
+  // is written. It is NOT the barrier. The barrier is the same test asked
+  // synchronously at the last instruction before the engine, and it is passed
+  // down rather than evaluated here precisely so there is one definition of
+  // admission and three places that honour it.
+  const admitted = deps.admitExecution ? deps.admitExecution() : { ok: true };
+  if (!admitted.ok) return admitted.refusal;
 
   // A duplicate approval joins the existing execution receipt. Confirming the
   // profile again after completion would regress the persisted results stage.
@@ -1831,6 +1834,9 @@ async function executeConfirmAndRun(_args, deps) {
   const executed = await confirmAndRunRealtimeAnalysisPlan({
     env: deps.env,
     config: executionConfig,
+    // The admission test travels with the execution. It is re-asked at the
+    // last synchronous instruction before the deterministic engine begins.
+    admitExecution: direct ? deps.admitExecution : null,
     sessionId: context.sessionRow.id,
     planId: prepared.row.id,
     planNonce: prepared.planNonce,
@@ -1896,7 +1902,12 @@ const CONFIRM_AND_RUN_STATE_CODES = Object.freeze({
   analysis_not_ready: MODULE_FAILURE_CODES.EXECUTION_FAILED,
   profile_confirmation_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
   profile_revision_conflict: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  analysis_plan_not_confirmed: MODULE_FAILURE_CODES.READINESS_NOT_MET
+  analysis_plan_not_confirmed: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  // Raised by the execution-time admission test when the client has spoken
+  // again, or the offer moved, between approval and the engine. It is not a
+  // fault: the plan simply is not the client's latest word any more, and the
+  // meeting should deal with what they just said and ask again.
+  execution_admission_withdrawn: MODULE_FAILURE_CODES.READINESS_NOT_MET
 });
 
 /**

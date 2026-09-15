@@ -185,7 +185,12 @@ export async function confirmAndRunRealtimeAnalysisPlan({
   sessionId,
   planId,
   planNonce,
-  expectedRevision
+  expectedRevision,
+  // A SYNCHRONOUS PREDICATE OWNED BY THE LIVE COORDINATOR, carried rather than
+  // re-derived. It answers whether this approval is still the client's latest
+  // word and still bound to this exact offer, certificate and delivery. It is
+  // handed down one more level, to the last instruction before the engine.
+  admitExecution = null
 }) {
   const confirmed = await confirmRealtimeAnalysisPlan(env, {
     sessionId,
@@ -314,7 +319,8 @@ export async function confirmAndRunRealtimeAnalysisPlan({
           config,
           sessionRow,
           profile,
-          moduleInputs: confirmed.input.moduleInputs
+          moduleInputs: confirmed.input.moduleInputs,
+          admitExecution
         })
       : await runStoredConsumerAnalysis({
           env,

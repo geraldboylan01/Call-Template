@@ -58,6 +58,25 @@ export class LiveProviderSimulator {
   }
 
   /**
+   * One frame delivered the way the real socket delivers it.
+   *
+   * `send` above hands the event straight to the handler and waits for it,
+   * which is what almost every test wants: one event, settled, next. It is NOT
+   * how production receives anything. Production has a listener that registers
+   * the arrival and then QUEUES the event behind everything already in flight,
+   * and that queue is where a stale approval used to win a race -- newer speech
+   * sitting behind the very approval it should have invalidated.
+   *
+   * This returns the chain promise without awaiting it, so a test can put an
+   * event on the wire while an earlier one is still being processed and observe
+   * what the server does with the order it really sees.
+   */
+  deliverToSocket(event) {
+    this.events.push(event.type);
+    return this.session.receiveProviderSocketMessage(JSON.stringify(event));
+  }
+
+  /**
    * One tool call, and the result the model is handed back.
    *
    * The result is read off the socket rather than from a return value, because
