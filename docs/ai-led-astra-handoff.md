@@ -118,6 +118,18 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 > when the server knows everything the client sent AND the most recent
 > thing they sent is the turn it belongs to. No arrival is ever taken back
 > and no turn's place ever moves. Nothing deployed.
+>
+> **Fifth review, 16 September 2026.** Two left. An arrival stopped being
+> pending when the server knew WHICH turn it was, which for a reply to the
+> delivered plan is long before it knows what it MEANT -- so the hold now
+> travels with the reading and is released only once the offer has been
+> retired or the review scheduled. And a rebuilt Durable Object did not
+> recognise a resent message as a turn it already had, so an old "Yes"
+> was rebound to whatever the assistant had asked last; a replayed
+> message is now restored from the durable record with the proposition it
+> actually answered, and with no place in the conversation. A typed reply
+> is also bound to its own message rather than to the head of a queue.
+> Nothing deployed.
 
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.

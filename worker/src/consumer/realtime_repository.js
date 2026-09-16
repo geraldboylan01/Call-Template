@@ -1419,6 +1419,33 @@ export async function recordRealtimeUsage(env, request) {
   };
 }
 
+/**
+ * THE TURN THIS PROVIDER ITEM ALREADY IS, IF THE MEETING HAS ONE.
+ *
+ * A Durable Object can be rebuilt between two requests, and everything it knew
+ * about which question a client turn answered lived in memory. This is where
+ * that fact actually persists, so a message the client resends can be
+ * recognised as the turn it already is -- answering the question it originally
+ * answered -- instead of being taken for something new and bound to whatever
+ * the assistant asked last.
+ *
+ * Structural only: the id and the causal link, never the transcript.
+ */
+export async function getRealtimeFinalTurnByProviderItem(env, leaseId, providerItemId, role = 'user') {
+  const providerItemHash = await sha256Base64Url(String(providerItemId));
+  const row = await db(env).prepare(`
+    SELECT id, answers_turn_id, meeting_sequence FROM consumer_realtime_final_turns
+    WHERE realtime_session_id = ? AND provider_item_id_hash_b64u = ? AND role = ?
+    LIMIT 1
+  `).bind(leaseId, providerItemHash, role).first();
+  if (!row) return null;
+  return {
+    id: row.id,
+    answersTurnId: row.answers_turn_id || null,
+    meetingSequence: safeInteger(row.meeting_sequence)
+  };
+}
+
 export async function recordRealtimeFinalTurn(env, request) {
   const raw = typeof request.transcript === 'string' ? request.transcript.trim() : '';
   if (!raw || raw.length > 12_000 || !['user', 'assistant'].includes(request.role)) {

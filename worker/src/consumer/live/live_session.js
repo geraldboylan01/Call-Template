@@ -35,6 +35,7 @@ import {
   completeRealtimeToolAttempt,
   getRealtimeLease,
   getLatestRealtimeMeetingBrief,
+  getRealtimeFinalTurnByProviderItem,
   listRecentRealtimeFinalTurns,
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
@@ -1857,6 +1858,15 @@ export class ConsumerLiveSession {
     // renders a reply -- can wait for the decision rather than for a promise
     // that had not been created yet.
     turn.approvalSettled = Promise.resolve();
+    // WHEN THIS ARRIVAL STOPS BLOCKING EXECUTION, and not one instruction
+    // earlier. Knowing WHICH turn a message is is not the same as knowing what
+    // it MEANT: a reply that answers the delivered plan is agreement or a
+    // correction, and which one it is comes back from the reader. Until then
+    // nothing has been retired and nothing has been scheduled, so a later
+    // approval finding "nothing pending" would be finding only that nobody had
+    // looked yet. Every path below sets this, and the arrival is released by
+    // whichever one runs -- never by falling out of the function.
+    let releaseArrival = () => this.resolveClientInputArrival(itemId);
     if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
       // A PURE APPROVAL OF THE DELIVERED PLAN IS THE ONE TURN THAT MUST NOT
       // REOPEN IT. Everything else does, exactly as before -- a correction, a
@@ -1869,6 +1879,10 @@ export class ConsumerLiveSession {
       // soon as the answer exists without the reply path ever blocking on it.
       if (!approvalDecision) this.scheduleDirectModulePlanning(storedTurn.id);
       else {
+        // The consequence of this turn is not known yet, so the hold travels
+        // with the decision and is released by it -- after the offer has been
+        // retired or the review scheduled, never before.
+        releaseArrival = () => {};
         turn.approvalSettled = approvalDecision
           .then(async (decision) => {
             if (approvalAuthorisesExecution(decision)) return;
@@ -1882,16 +1896,15 @@ export class ConsumerLiveSession {
             if (decision?.decision === 'semantic_change') await this.clearDirectConfirmationOffer();
             this.scheduleDirectModulePlanning(storedTurn.id);
           })
-          .catch(() => this.scheduleDirectModulePlanning(storedTurn.id));
+          .catch(() => this.scheduleDirectModulePlanning(storedTurn.id))
+          // A REFUSED READING IS STILL A SETTLED ONE. The catch above schedules
+          // the review, so by here the consequence is in state whichever way
+          // the reading went, and there is no path that leaves the hold on.
+          .finally(() => this.resolveClientInputArrival(itemId));
         this.state.waitUntil(turn.approvalSettled);
       }
     }
-    // THE SERVER NOW KNOWS WHAT THIS ARRIVAL WAS, and has registered whatever
-    // it owes. Not one line earlier: a turn that has been transcribed but whose
-    // review has not been scheduled is financial context the plan has not
-    // incorporated, and releasing the hold there would let a later approval run
-    // against a conversation the server had heard and not yet understood.
-    this.resolveClientInputArrival(itemId);
+    releaseArrival();
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);
     // An unclear answer retains the invitation while detached semantic review
@@ -2018,6 +2031,68 @@ export class ConsumerLiveSession {
   }
 
   /**
+   * A MESSAGE THIS MEETING HAS ALREADY RECORDED IS A REPLAY, whatever this
+   * object happens to remember.
+   *
+   * A Durable Object can be rebuilt between two requests. Everything it knew
+   * about which question a client turn answered lived in memory; everything it
+   * wrote down, including which assistant turn spoke last, did not. So a retry
+   * carrying a client turn id the conversation had already used was not
+   * recognised as a retry at all. It became a brand new turn -- and a brand new
+   * turn is bound to whatever the assistant asked LAST.
+   *
+   * The client had said "Yes" to an offer of an explanation. After a rebuild
+   * that same "Yes" was answering "shall I run exactly that plan?", a question
+   * they had never been asked when they said it, and it ran.
+   *
+   * So before a typed message is allowed to become a turn, the durable record
+   * is asked whether it already IS one. If it is, that turn is restored with
+   * the proposition it actually answered, already complete, so the ordinary
+   * retry path takes over: no second turn, no second planning pass, and no
+   * authority it did not have when the client sent it.
+   *
+   * ORDINAL ZERO IS DELIBERATE. This turn is not something the client has just
+   * done -- it is something they did before, sent again -- so it is not the
+   * most recent client input and the execution barrier refuses it on that
+   * basis alone. A client who wants the plan run after a rebuild says so, and
+   * that is a turn of its own, read on its own.
+   */
+  async adoptRecordedClientTurn(itemId) {
+    if (!itemId || this.clientTurnsByItemId.has(itemId) || !this.meta) return null;
+    const recorded = await getRealtimeFinalTurnByProviderItem(
+      this.env, this.meta.leaseId, itemId, 'user'
+    ).catch(() => null);
+    if (!recorded?.id) return null;
+    const turn = {
+      itemId,
+      ordinal: 0,
+      status: 'completed',
+      transcript: '',
+      stoppedAt: 0,
+      storedTurnId: recorded.id,
+      // THE PROPOSITION IT ANSWERED, from the only place that survives a
+      // rebuild. Never `lastCompletedAssistantTurnId`, which is where the
+      // conversation is NOW rather than where it was when they answered.
+      answersTurnId: recorded.answersTurnId,
+      replayedFromRecord: true
+    };
+    this.clientTurnsByItemId.set(itemId, turn);
+    // CAUSALLY ATTACHED, WITH NO AUTHORITY. If the question this turn answered
+    // was the certified read-back, then it belongs to that exchange and the
+    // assistant's reply to it belongs there too -- which is what lets the
+    // client approve again afterwards and be heard. It grants the replay
+    // nothing: its ordinal still says it is not something they have just done.
+    if (this.turnAnswersDirectOffer(turn)) {
+      turn.confirmationOfferToken = this.directConfirmationOffer.token;
+    }
+    this.pruneLiveTurnLedger();
+    // The request took a sequence at the door, as every arrival does. It names
+    // nothing new, so nothing is left outstanding for the meeting to wait on.
+    this.resolveClientInputArrival(itemId);
+    return turn;
+  }
+
+  /**
    * The client's own name for a typed message, or a fresh one.
    *
    * Stated once and used by both the ingress registration and the turn record,
@@ -2083,6 +2158,7 @@ export class ConsumerLiveSession {
     // second id here would give the turn a generation the door never issued,
     // and a fresh random one on every retry.
     const itemId = ingressItemId || ConsumerLiveSession.typedInputItemId(body);
+    await this.adoptRecordedClientTurn(itemId);
     this.registerStoppedClientTurn({ item_id: itemId });
     await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode,
       unknownFieldId: body?.unknownFieldId });
@@ -2102,7 +2178,24 @@ export class ConsumerLiveSession {
     // renderer falls back to the last good state rather than stalling.
     await this.directModulePlanningChain.catch(() => {});
 
-    const response = this.bindResponseContext(`txt_${crypto.randomUUID()}`, {});
+    // A TYPED REPLY ANSWERS THE MESSAGE THAT ASKED FOR IT, AND IT KNOWS WHICH.
+    //
+    // `bindResponseContext` takes the oldest turn off a queue, which is right
+    // for a provider that starts responses on its own and tells us nothing
+    // about which speech caused them. A typed request is not that: it IS the
+    // turn. Taking from the queue instead let two concurrent requests swap
+    // turns -- one request's reply bound to the other's message -- and every
+    // downstream barrier then asked its questions about the wrong turn: the
+    // wrong approval reading, the wrong causal binding, and a request that
+    // could wait forever on a decision belonging to somebody else's sentence.
+    const rootResponseId = `txt_${crypto.randomUUID()}`;
+    this.unboundAutoResponseTurnIds = this.unboundAutoResponseTurnIds
+      .filter((pending) => pending !== itemId);
+    const response = this.createResponseContext({
+      responseId: rootResponseId,
+      rootResponseId,
+      causeItemId: itemId
+    });
     if (!response) throw new ConsumerError(503, 'live_text_response_unavailable', 'The typed meeting could not open a turn.');
 
     const rendered = await renderLiveAssistantText({
