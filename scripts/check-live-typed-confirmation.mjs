@@ -268,7 +268,7 @@ equal(
  * so `offer.assistantTurnId === assistant[0].id` passed. In the real
  * `handleTextMessage` the root response was finalized as well, the certified
  * prompt was written TWICE, and the second write moved
- * `lastCompletedAssistantTurnId` -- which is what the client's next turn binds
+ * the proposition cursor -- which is what the client's next turn binds
  * to. Offer pointed at turn A, approval at turn B, and every approval was
  * refused with `confirmation_context_invalid`, permanently, because a delivered
  * offer is never re-presented.
@@ -368,7 +368,7 @@ const { settle } = await import('./live-harness/session.mjs');
     'the certified plan is persisted EXACTLY ONCE -- twice desynchronises the offer from the approval');
   const offer = session.directConfirmationOffer;
   equal(offer.assistantTurnId, promptTurns[0].id, 'the offer binds to the turn the client was shown');
-  equal(session.lastCompletedAssistantTurnId, promptTurns[0].id,
+  equal(session.boundProposition(), promptTurns[0].id,
     'and that is the turn the client\'s next message will answer');
 
   script = [{ tool: 'confirm_and_run', args: { confirmationToken: offer.token } }, 'Running it now.'];

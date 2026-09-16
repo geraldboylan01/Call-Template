@@ -140,6 +140,17 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 > lookup that fails is unknown rather than absent, and refuses. And
 > client input the server could not write down keeps its execution hold
 > instead of disappearing from safety state. Nothing deployed.
+>
+> **Seventh review, 17 September 2026.** Five more, and they are two
+> invariants rather than five patches. The proposition a client's next
+> reply is bound to is now a durable, ranked, write-ahead cursor with
+> explicit ownership: a reply to input the client has moved past cannot
+> take binding (and a typed one is withheld), binding moves to nothing
+> before a proposition's turn is written so a failed write never falls
+> back to an older question, and only the request that owns a reply
+> commitment can give it up. The unresolved-input barrier is durable, and
+> a hold inherited across a rebuild is released only by retiring the plan
+> it could have changed. Nothing deployed.
 
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.

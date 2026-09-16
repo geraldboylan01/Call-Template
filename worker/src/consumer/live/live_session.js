@@ -532,6 +532,10 @@ export class ConsumerLiveSession {
     // its sequence immediately and the first event that names the utterance
     // adopts it, so one utterance never becomes two arrivals.
     this.unnamedClientInputSequence = null;
+    // Holds restored from a previous instance. See the load block.
+    this.inheritedClientInput = new Set();
+    this.clientInputLedgerWrites = Promise.resolve();
+    this.propositionLedgerWrites = Promise.resolve();
     this.latestClientTranscriptOrdinal = 0;
     this.clientTurnsByItemId = new Map();
     this.unboundAutoResponseTurnIds = [];
@@ -553,7 +557,12 @@ export class ConsumerLiveSession {
     // a creation, and retiring everything on any error was equally wrong in
     // the other direction.
     // The assistant turn a new client turn will be answering.
-    this.lastCompletedAssistantTurnId = null;
+    // THE PROPOSITION A CLIENT'S NEXT REPLY IS BOUND TO. Durable; see
+    // `beginPresentation`. It replaces "the last assistant turn that happened to
+    // be stored", which moved backwards when a write failed, sideways when a late
+    // reply finished after an earlier one, and not at all across a rebuild.
+    this.propositionCursor = { rank: [0, 0], state: 'none', assistantTurnId: null, token: null };
+    this.presentationIndex = 0;
     this.pendingServerResponses = new Map();
     this.serverResponseEventSeq = 0;
     this.pendingTerminalization = null;
@@ -578,7 +587,30 @@ export class ConsumerLiveSession {
       // hibernated -- which is precisely what happens while someone reads a
       // plan and decides -- so `answersTurnId` came back null and the approval
       // no longer bound to the offer it was answering.
-      this.lastCompletedAssistantTurnId = await this.state.storage.get('lastCompletedAssistantTurnId') || null;
+      // Both ledgers come back exactly as they were written. A rebuild must not
+      // restore authority that was withheld before it, and must not forget a
+      // hold that was keeping execution closed.
+      const storedPropositions = await this.state.storage.get('propositionLedger') || null;
+      if (storedPropositions?.cursor) {
+        this.propositionCursor = storedPropositions.cursor;
+        this.presentationIndex = Number(storedPropositions.presentationIndex || 0);
+      }
+      const storedInput = await this.state.storage.get('clientInputLedger') || null;
+      if (storedInput) {
+        this.clientInputSequence = Number(storedInput.sequence || 0);
+        this.pendingClientInput = new Map(
+          (storedInput.pending || []).map((entry) => [Number(entry.sequence), entry.itemId || null])
+        );
+        this.clientInputSequenceByItemId = new Map(
+          (storedInput.byItemId || []).map((entry) => [String(entry.itemId), Number(entry.sequence)])
+        );
+        // An arrival that was outstanding when the object stopped was being
+        // decided by a request that no longer exists. Nothing in this instance
+        // will ever finish deciding it, so it is remembered as inherited: it
+        // blocks until something accountable settles it, and never merely by
+        // being forgotten.
+        this.inheritedClientInput = new Set(this.pendingClientInput.keys());
+      }
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
@@ -655,6 +687,12 @@ export class ConsumerLiveSession {
         // that named nothing, including on a throw.
         const arrival = this.beginClientInputArrival();
         try {
+          // ON DISK BEFORE ANYTHING ELSE. The clock already moved in memory on the
+          // line above; this makes the hold survive a rebuild before the request
+          // does any work a rebuild could interrupt. A write that fails refuses
+          // the request, and the hold stays -- nothing proceeds on a barrier that
+          // is not written down.
+          await arrival.written;
           return json(await this.handleTextMessage(await readInternalJson(request), arrival));
         } finally {
           // Every path out, including a throw and a body that never arrived.
@@ -909,6 +947,34 @@ export class ConsumerLiveSession {
    * it turned out to be. Until then the server does not know what the client
    * said, and an approval that arrived after it may not execute past it.
    */
+  /**
+   * THE UNRESOLVED-INPUT BARRIER, WRITTEN DOWN.
+   *
+   * Everything about which client input is still outstanding used to live in
+   * memory, so a rebuild forgot every hold -- including the ones that existed
+   * precisely because the server could not account for what the client said.
+   * The approval that was refused before the rebuild then ran after it.
+   *
+   * Written on every change, in order. The typed ingress awaits this before it
+   * reads a request body, so a typed hold is on disk before the request can do
+   * anything; speech is registered on a listener that cannot await, and relies
+   * on the socket keeping this object alive while the write lands.
+   */
+  persistClientInputLedger() {
+    const snapshot = {
+      sequence: this.clientInputSequence,
+      pending: [...this.pendingClientInput.entries()]
+        .map(([sequence, itemId]) => ({ sequence, itemId })),
+      byItemId: [...this.clientInputSequenceByItemId.entries()]
+        .map(([itemId, sequence]) => ({ itemId, sequence }))
+    };
+    this.clientInputLedgerWrites = this.clientInputLedgerWrites
+      .catch(() => {})
+      .then(() => this.state.storage.put('clientInputLedger', snapshot));
+    this.state.waitUntil(this.clientInputLedgerWrites.catch(() => {}));
+    return this.clientInputLedgerWrites;
+  }
+
   registerClientInputArrival(itemId) {
     const key = String(itemId || '');
     if (key) {
@@ -919,6 +985,7 @@ export class ConsumerLiveSession {
       if (this.unnamedClientInputSequence === null) {
         this.unnamedClientInputSequence = ++this.clientInputSequence;
         this.pendingClientInput.set(this.unnamedClientInputSequence, null);
+        this.persistClientInputLedger();
       }
       return this.unnamedClientInputSequence;
     }
@@ -928,6 +995,7 @@ export class ConsumerLiveSession {
     this.unnamedClientInputSequence = null;
     this.pendingClientInput.set(sequence, key);
     this.rememberClientInputSequence(key, sequence);
+    this.persistClientInputLedger();
     return sequence;
   }
 
@@ -961,12 +1029,18 @@ export class ConsumerLiveSession {
     if (!key) {
       if (this.unnamedClientInputSequence !== null) {
         this.pendingClientInput.delete(this.unnamedClientInputSequence);
+        this.inheritedClientInput.delete(this.unnamedClientInputSequence);
         this.unnamedClientInputSequence = null;
+        this.persistClientInputLedger();
       }
       return;
     }
     const sequence = this.clientInputSequenceByItemId.get(key);
-    if (sequence !== undefined) this.pendingClientInput.delete(sequence);
+    if (sequence !== undefined) {
+      this.pendingClientInput.delete(sequence);
+      this.inheritedClientInput.delete(sequence);
+    }
+    this.persistClientInputLedger();
   }
 
   /**
@@ -996,7 +1070,7 @@ export class ConsumerLiveSession {
   beginClientInputArrival() {
     const sequence = ++this.clientInputSequence;
     this.pendingClientInput.set(sequence, null);
-    const ticket = { sequence, settled: false };
+    const ticket = { sequence, settled: false, written: this.persistClientInputLedger() };
     ticket.claim = (itemId) => {
       const key = String(itemId || '');
       if (ticket.settled || !key) return sequence;
@@ -1011,16 +1085,19 @@ export class ConsumerLiveSession {
         // in flight when it arrived is refused -- fail-closed, and recovered by
         // the client approving again, which is a turn of its own.
         this.pendingClientInput.delete(sequence);
+        this.persistClientInputLedger();
         return known;
       }
       this.pendingClientInput.set(sequence, key);
       this.rememberClientInputSequence(key, sequence);
+      this.persistClientInputLedger();
       return sequence;
     };
     ticket.resolveAsNothing = () => {
       if (ticket.settled) return;
       ticket.settled = true;
       this.pendingClientInput.delete(sequence);
+      this.persistClientInputLedger();
     };
     return ticket;
   }
@@ -1101,8 +1178,10 @@ export class ConsumerLiveSession {
         stoppedAt: Date.now(),
         // Bound WHEN THE CLIENT STARTS SPEAKING, not when their words finish
         // being transcribed. By the time ASR lands the assistant may already
-        // have asked something else.
-        answersTurnId: this.lastCompletedAssistantTurnId || null
+        // have asked something else. Bound to the authoritative proposition,
+        // which is nothing at all while a newer one is still being presented or
+        // could not be written down -- never to one the client has moved past.
+        answersTurnId: this.boundProposition()
       };
       this.clientTurnsByItemId.set(itemId, turn);
       this.unboundAutoResponseTurnIds.push(itemId);
@@ -2123,7 +2202,7 @@ export class ConsumerLiveSession {
       stoppedAt: 0,
       storedTurnId: recorded.id,
       // THE PROPOSITION IT ANSWERED, from the only place that survives a
-      // rebuild. Never `lastCompletedAssistantTurnId`, which is where the
+      // rebuild. Never the current proposition cursor, which is where the
       // conversation is NOW rather than where it was when they answered.
       answersTurnId: recorded.answersTurnId,
       replayedFromRecord: true
@@ -2138,6 +2217,29 @@ export class ConsumerLiveSession {
       turn.confirmationOfferToken = this.directConfirmationOffer.token;
     }
     this.pruneLiveTurnLedger();
+    // AN INHERITED HOLD IS SETTLED BY WHAT IT COULD HAVE CHANGED, NOT BY BEING
+    // FOUND. This message was being decided by an instance that no longer
+    // exists, and nothing here can finish that decision -- the reading, the
+    // retirement, the review all died with it. What the record does prove is
+    // that the words are durable, so any NEW certificate will be built from a
+    // transcript that includes them. The one thing that could still run without
+    // them is the plan already on the table. So that is retired first, and only
+    // then is the hold released: nothing can execute until a fresh certificate
+    // exists, and a fresh certificate cannot leave this message out.
+    //
+    // This reads nothing the client said. It is the same action a correction
+    // would have caused, taken because nobody can now say it was not one.
+    const heldSequence = this.clientInputSequenceByItemId.get(itemId);
+    if (heldSequence !== undefined && this.inheritedClientInput.has(heldSequence)) {
+      if (this.directConfirmationOffer) await this.clearDirectConfirmationOffer();
+      this.state.waitUntil(appendRealtimeEvent(this.env, {
+        sessionId: this.meta?.sessionId,
+        leaseId: this.meta?.leaseId,
+        direction: 'server',
+        eventType: 'live.client.inherited_input_settled',
+        payload: { itemId, storedTurnId: recorded.id }
+      }).catch(() => {}));
+    }
     // The request took a sequence at the door, as every arrival does. It names
     // nothing new, so nothing is left outstanding for the meeting to wait on.
     this.resolveClientInputArrival(itemId);
@@ -2186,14 +2288,19 @@ export class ConsumerLiveSession {
     // The budget covers the WHOLE request: the awaited pass, the renderer, and
     // any get_state the renderer makes -- not just the first await.
     const disarmPlanningDeadline = this.armDirectModulePlanningDeadline();
+    // What THIS request owns, and nothing another request owns. Carried down
+    // rather than looked up by message id, because every request for a message
+    // shares that id and only one of them created its reply commitment.
+    const requestContext = { commitmentOwner: null };
     try {
-      return await this.handleTextMessageWithinBudget(body, itemId);
+      return await this.handleTextMessageWithinBudget(body, itemId, requestContext);
     } catch (error) {
-      // A reply that never happened must not leave other requests for this
-      // message waiting on a promise nobody will ever settle.
+      // A reply its owner never produced must not leave other requests for this
+      // message waiting on a promise nobody will ever settle. A request that
+      // does not own the commitment holds no token and changes nothing.
       const abandoned = this.clientTurnsByItemId.get(itemId);
-      if (abandoned?.assistantCommitment && abandoned.abandonAssistantCommitment) {
-        abandoned.abandonAssistantCommitment(error);
+      if (requestContext.commitmentOwner && abandoned?.abandonAssistantCommitment) {
+        abandoned.abandonAssistantCommitment(requestContext.commitmentOwner, error);
       }
       throw error;
     } finally {
@@ -2201,7 +2308,7 @@ export class ConsumerLiveSession {
     }
   }
 
-  async handleTextMessageWithinBudget(body, ingressItemId = null) {
+  async handleTextMessageWithinBudget(body, ingressItemId = null, requestContext = {}) {
     const text = String(body?.text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TYPED_MESSAGE_CHARACTERS);
     if (!text) throw new ConsumerError(400, 'live_text_message_invalid', 'That message is empty.');
     const inputMode = body?.inputMode === 'form' ? 'form' : 'text';
@@ -2260,24 +2367,42 @@ export class ConsumerLiveSession {
     // two requests cannot both decide they are the first.
     const committedTurn = this.clientTurnsByItemId.get(itemId);
     if (committedTurn?.assistantCommitment) return committedTurn.assistantCommitment;
+    // A MESSAGE THE CLIENT HAS ALREADY MOVED PAST GETS NO NEW PROPOSITION.
+    // Checked before the renderer is paid for: a replay of an old message, or a
+    // message whose later sibling has already been answered, could only ever
+    // produce a reply that must be withheld. The authoritative check is still
+    // the one in `beginPresentation`, which is where a race is actually decided.
+    if (committedTurn && ConsumerLiveSession.comparePropositionRank(
+      [Number(committedTurn.ordinal || 0), Number.MAX_SAFE_INTEGER],
+      this.propositionCursor.rank
+    ) < 0) {
+      return { ok: true, turnId: itemId, superseded: true, assistantText: '', readback: false, fallback: false };
+    }
     let commitReply = () => {};
-    let abandonCommitment = () => {};
+    // OWNERSHIP IS A TOKEN, NOT A COINCIDENCE OF MESSAGE ID. Only the request
+    // that created this commitment holds it, and only that request may give the
+    // commitment up. A resend whose own lookup failed, or any other request for
+    // the same message that throws, is not the owner and cannot tear down a
+    // reply another request is still producing.
+    const commitmentOwner = crypto.randomUUID();
     if (committedTurn) {
       committedTurn.assistantCommitment = new Promise((resolve, reject) => {
         commitReply = resolve;
-        abandonCommitment = (error) => {
-          // A reply that failed committed nothing, so the next attempt is free
-          // to produce one rather than inheriting a failure for ever.
+        committedTurn.abandonAssistantCommitment = (owner, error) => {
+          if (owner !== commitmentOwner) return false;
+          // A reply its owner failed to produce committed nothing, so the next
+          // attempt is free to produce one rather than inheriting that failure.
           delete committedTurn.assistantCommitment;
           delete committedTurn.abandonAssistantCommitment;
           reject(error);
+          return true;
         };
       });
-      committedTurn.abandonAssistantCommitment = abandonCommitment;
       // Nothing awaits this promise unless another request adopts it, and an
       // unadopted rejection is not an error anyone reported.
       committedTurn.assistantCommitment.catch(() => {});
     }
+    if (committedTurn) requestContext.commitmentOwner = commitmentOwner;
 
     // A TYPED REPLY ANSWERS THE MESSAGE THAT ASKED FOR IT, AND IT KNOWS WHICH.
     //
@@ -2321,7 +2446,7 @@ export class ConsumerLiveSession {
     // `deliverCertifiedReadback` persists the certified prompt on its own
     // continuation response and binds the offer to THAT turn id. Finalizing the
     // root response as well wrote the same text a second time -- and the second
-    // write moved `lastCompletedAssistantTurnId`, which is what the client's
+    // write moved the proposition cursor, which is what the client's
     // next turn records in `answersTurnId`. So the offer pointed at turn A, the
     // approval pointed at turn B, `turnAnswersDirectOffer` was false, and
     // `confirm_and_run` refused every approval with
@@ -2329,8 +2454,13 @@ export class ConsumerLiveSession {
     // is never re-presented. The barrier was right; there were simply two turns
     // where the client had seen one plan.
     const delivered = await this.deliverCertifiedReadback(response, text);
-    const assistantText = delivered || rendered.text;
+    let assistantText = delivered || rendered.text;
     if (!delivered) await this.finalizeTypedAssistantTurn(response, assistantText);
+    // WITHHELD, NOT RETURNED. A reply that could not take binding answers
+    // something the client has already moved past; returning it would put a
+    // question on their screen that their next answer will not be read against.
+    const superseded = response.superseded === true;
+    if (superseded) assistantText = '';
 
     // THE WHOLE REPLY IS BUILT BEFORE THE MEETING CAN BE STOPPED.
     //
@@ -2346,8 +2476,9 @@ export class ConsumerLiveSession {
       ok: true,
       turnId: itemId,
       assistantText,
-      readback: Boolean(delivered),
-      fallback: rendered.fallback === true && !delivered,
+      readback: Boolean(delivered) && !superseded,
+      fallback: rendered.fallback === true && !delivered && !superseded,
+      ...(superseded ? { superseded: true } : {}),
       // The meeting has reached its allowance. The client keeps this reply and
       // their whole transcript; there is simply no next turn.
       ...(stopped ? { closed: 'budget_exhausted' } : {}),
@@ -2505,6 +2636,12 @@ export class ConsumerLiveSession {
       readbackResponse,
       String(candidate.confirmationPrompt)
     );
+    // A read-back that could not take binding was never put in front of the
+    // client, so it must not be reported as delivered.
+    if (readbackResponse.superseded) {
+      response.superseded = true;
+      return '';
+    }
     return String(candidate.confirmationPrompt);
   }
 
@@ -2519,6 +2656,18 @@ export class ConsumerLiveSession {
   async finalizeTypedAssistantTurn(response, text) {
     const transcript = String(text || '').trim().slice(0, MAX_ASSISTANT_TRANSCRIPT);
     if (!transcript) return null;
+    // BEFORE ANYTHING IS WRITTEN OR RETURNED. A typed reply that cannot take
+    // binding -- because the client has already been answered about something
+    // later -- is withheld, so it never reaches a screen where it could be
+    // mistaken for the current question.
+    const presentation = await this.beginPresentation(
+      this.causeSequenceForResponse(response),
+      { canWithhold: true }
+    );
+    if (!presentation) {
+      response.superseded = true;
+      return null;
+    }
     response.assistantTranscript = transcript;
     response.assistantDone = true;
     response.assistantItemId = `${response.responseId}_assistant`;
@@ -2532,11 +2681,9 @@ export class ConsumerLiveSession {
       role: 'assistant',
       transcript
     }).catch(() => null);
-    if (stored?.id) {
-      // The proposition the client's next turn will answer. Reply binding for
-      // the read-back is built entirely on this id.
-      this.lastCompletedAssistantTurnId = stored.id;
-      await this.state.storage.put('lastCompletedAssistantTurnId', stored.id).catch(() => {});
+    // Promoted only if this presentation still owns binding and its turn was
+    // actually written. Reply binding for the read-back is built on this id.
+    if (stored?.id && await this.completePresentation(presentation, stored.id)) {
       response.storedAssistantTurnId = stored.id;
     }
     // Ordinary typed replies can continue a delivered offer too. Voice calls
@@ -2679,6 +2826,22 @@ export class ConsumerLiveSession {
     if (!delta) return;
     const response = this.responseContextForEvent(event);
     if (!response) return;
+    // THE FIRST WORD SPOKEN IS WHEN THIS PROPOSITION REACHES THE CLIENT. Binding
+    // moves to it -- as nothing, until its turn is written -- before anything
+    // the client says next can be registered, because the provider delivers
+    // their speech on this same ordered stream after this event. Speech cannot
+    // be withheld once it is playing.
+    if (!response.presentationBegun) {
+      response.presentationBegun = true;
+      // NOT CAUGHT. If binding cannot be written down while this is already
+      // playing, the durable record would point at a question the client has
+      // moved past and a rebuild would restore it. The event chain fails the
+      // meeting closed instead.
+      response.presentation = await this.beginPresentation(
+        this.causeSequenceForResponse(response),
+        { canWithhold: false }
+      );
+    }
     response.assistantTranscript =
       `${response.assistantTranscript}${delta}`.slice(0, MAX_ASSISTANT_TRANSCRIPT);
     this.syncCurrentResponseAliases(response);
@@ -2726,6 +2889,21 @@ export class ConsumerLiveSession {
     response.assistantItemId = String(event.item_id || `${response.responseId}_assistant`);
     this.syncCurrentResponseAliases(response);
 
+    // WRITTEN AHEAD, even for a response whose words arrived with no deltas:
+    // binding moves to this proposition as nothing before its turn is written,
+    // so a failed write can never leave it on the question before.
+    if (!response.presentationBegun) {
+      response.presentationBegun = true;
+      // NOT CAUGHT. If binding cannot be written down while this is already
+      // playing, the durable record would point at a question the client has
+      // moved past and a rebuild would restore it. The event chain fails the
+      // meeting closed instead.
+      response.presentation = await this.beginPresentation(
+        this.causeSequenceForResponse(response),
+        { canWithhold: false }
+      );
+    }
+
     const storedAssistantTurn = await recordRealtimeFinalTurn(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
@@ -2736,9 +2914,10 @@ export class ConsumerLiveSession {
     // The proposition a client turn will answer. Held here because only the
     // live session knows it: stored row order is ASR completion order, and
     // reconstructing the pairing from it later gets terse answers wrong.
-    if (storedAssistantTurn?.id) {
-      this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
-      await this.state.storage.put('lastCompletedAssistantTurnId', storedAssistantTurn.id).catch(() => {});
+    // Promoted only by the presentation that still owns binding, and only once
+    // its turn is really written.
+    if (storedAssistantTurn?.id
+      && await this.completePresentation(response.presentation, storedAssistantTurn.id)) {
       response.storedAssistantTurnId = storedAssistantTurn.id;
     }
 
@@ -2813,6 +2992,125 @@ export class ConsumerLiveSession {
       eventType: 'live.completion.milestone',
       payload: { milestone, planId: this.directConfirmationOffer?.planId || null, recordedAtMs: Date.now() }
     }).catch(() => {});
+  }
+
+  /* ------------------------------------------- the authoritative proposition */
+
+  /**
+   * WHAT A CLIENT'S NEXT REPLY IS AN ANSWER TO.
+   *
+   * Binding used to be "the last assistant turn that happened to be stored",
+   * and every way that phrase can be false produced a plan running against a
+   * question the client never saw: a write that failed left binding on the turn
+   * BEFORE; a reply to an earlier message that finished late moved it sideways;
+   * a rebuild lost the in-memory commitment that kept duplicates in line; and a
+   * request that did not own a reply could tear it down.
+   *
+   * So there is one cursor, and three rules govern it.
+   *
+   *   RANKED. Every presentation carries [cause, order]: the client input it
+   *   answers, then the order it began being presented. A presentation whose
+   *   rank is below the cursor's is answering something the client has already
+   *   moved past, and cannot take binding.
+   *
+   *   WRITTEN AHEAD. The cursor moves to PRESENTING -- which binds to nothing --
+   *   and that move is durably stored BEFORE the proposition can reach the
+   *   client. Only a successful write of the assistant turn promotes it to
+   *   RECORDED. A failed write therefore leaves binding on nothing, never on an
+   *   older question, and a rebuild in between finds PRESENTING, not the past.
+   *
+   *   OWNED. Only the presentation that moved the cursor can promote it. A late
+   *   completion for a presentation that has since been overtaken changes
+   *   nothing.
+   *
+   * None of this reads a word of what anybody said. It is ordering and
+   * durability; what a reply MEANS is still the reader's.
+   */
+  boundProposition() {
+    return this.propositionCursor.state === 'recorded'
+      ? this.propositionCursor.assistantTurnId
+      : null;
+  }
+
+  static comparePropositionRank(left, right) {
+    const [leftCause, leftOrder] = left || [0, 0];
+    const [rightCause, rightOrder] = right || [0, 0];
+    if (leftCause !== rightCause) return leftCause < rightCause ? -1 : 1;
+    if (leftOrder !== rightOrder) return leftOrder < rightOrder ? -1 : 1;
+    return 0;
+  }
+
+  persistPropositionLedger() {
+    const snapshot = {
+      cursor: structuredClone(this.propositionCursor),
+      presentationIndex: this.presentationIndex
+    };
+    this.propositionLedgerWrites = this.propositionLedgerWrites
+      .catch(() => {})
+      .then(() => this.state.storage.put('propositionLedger', snapshot));
+    this.state.waitUntil(this.propositionLedgerWrites.catch(() => {}));
+    return this.propositionLedgerWrites;
+  }
+
+  /**
+   * A proposition is about to reach the client. Returns the presentation that
+   * owns binding, or null when it must not take binding.
+   *
+   * `canWithhold` says whether the caller can still keep this proposition from
+   * the client. A typed reply can: it has not been returned yet, and a reply
+   * that cannot take binding is not returned at all. Speech cannot: by the time
+   * the server hears it the client is hearing it too, so a spoken proposition
+   * that is older than the cursor makes binding UNKNOWN rather than leaving it
+   * pointing at something the client may no longer be answering.
+   *
+   * THE CURSOR IS DURABLE BEFORE THIS RETURNS. If storage refuses the write,
+   * this throws, and nothing is presented against a binding that is not on disk.
+   */
+  async beginPresentation(causeSequence, { canWithhold }) {
+    const rank = [Number(causeSequence || 0), ++this.presentationIndex];
+    if (ConsumerLiveSession.comparePropositionRank(rank, this.propositionCursor.rank) < 0) {
+      if (!canWithhold) {
+        this.propositionCursor = {
+          rank: this.propositionCursor.rank,
+          state: 'presenting',
+          assistantTurnId: null,
+          token: null
+        };
+      }
+      await this.persistPropositionLedger();
+      return null;
+    }
+    const token = crypto.randomUUID();
+    this.propositionCursor = { rank, state: 'presenting', assistantTurnId: null, token };
+    await this.persistPropositionLedger();
+    return { token, rank };
+  }
+
+  /**
+   * The proposition's assistant turn has been written, or has failed to be.
+   * Only the presentation that still owns the cursor may promote it, and only
+   * with a stored turn id -- a failed write leaves binding on nothing.
+   */
+  async completePresentation(presentation, storedAssistantTurnId) {
+    if (!presentation?.token || this.propositionCursor.token !== presentation.token) return false;
+    if (!storedAssistantTurnId) return false;
+    this.propositionCursor = {
+      rank: presentation.rank,
+      state: 'recorded',
+      assistantTurnId: storedAssistantTurnId,
+      token: presentation.token
+    };
+    await this.persistPropositionLedger().catch(() => {});
+    return true;
+  }
+
+  /** The input sequence a response is answering, for ranking its proposition. */
+  causeSequenceForResponse(response) {
+    const causeItemId = response?.causeItemId
+      || response?.continuationChain?.rootCauseItemId
+      || null;
+    const cause = causeItemId ? this.clientTurnsByItemId.get(causeItemId) : null;
+    return Number(cause?.ordinal || 0);
   }
 
   turnAnswersDirectOffer(turn) {

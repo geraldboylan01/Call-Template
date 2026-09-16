@@ -59,6 +59,13 @@ export function interleavingDatabase(database) {
     const index = list.findIndex((entry) => entry.matcher.test(sql.replace(/\s+/g, ' ')));
     if (index < 0) return null;
     const entry = list[index];
+    // `skip` lets a test aim past earlier statements of the same shape: the
+    // client turn and the assistant turn share one INSERT, and a fault meant
+    // for the assistant's must not land on the client's.
+    if (entry.skip > 0) {
+      entry.skip -= 1;
+      return null;
+    }
     if (entry.once) list.splice(index, 1);
     return entry;
   };
@@ -105,20 +112,21 @@ export function interleavingDatabase(database) {
     /** The statements seen since arming, so a test can calibrate on them. */
     statements: () => [...log],
     /** Make the next statement matching `matcher` fail, as storage does. */
-    failOnce(matcher, message = 'storage is unavailable') {
-      faults.push({ matcher, message, once: true });
+    failOnce(matcher, message = 'storage is unavailable', { skip = 0 } = {}) {
+      faults.push({ matcher, message, once: true, skip });
     },
     /**
      * Hold the next statement matching `matcher` open, so a test can stand
      * inside someone else's awaited read. Returns the release and a promise
      * that settles when the statement is actually reached.
      */
-    gateOnce(matcher) {
+    gateOnce(matcher, { skip = 0 } = {}) {
       let openGate;
       let reached;
       const entry = {
         matcher,
         once: true,
+        skip,
         open: new Promise((resolve) => { openGate = resolve; }),
         reached: () => {}
       };
