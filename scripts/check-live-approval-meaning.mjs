@@ -382,6 +382,11 @@ const runCount = async (meeting) => Number((await meeting.env.CONSUMER_DB.prepar
   'SELECT COUNT(*) AS n FROM consumer_module_runs WHERE session_id = ?'
 ).bind(meeting.sessionId).first()).n);
 
+/** How many assistant turns this meeting has committed so far. */
+const assistantTurnCount = async (meeting) => Number((await meeting.env.CONSUMER_DB.prepare(
+  "SELECT COUNT(*) AS n FROM consumer_realtime_final_turns WHERE realtime_session_id = ? AND role = 'assistant'"
+).bind(meeting.meetingId).first()).n);
+
 /** The certified offer's own plan row, in the state it ended in. */
 const planStatuses = async (meeting) => ((await meeting.env.CONSUMER_DB.prepare(
   'SELECT status FROM consumer_realtime_analysis_plans WHERE session_id = ?'
@@ -1289,21 +1294,26 @@ for (const clientSpeaksAgain of [true, false]) {
     const turnsBefore = rig.session.clientTurnsByItemId.size;
     // Fired after the original has opened its own reply, so the resend is a
     // second request racing it rather than one that steals its turn binding --
-    // the ordering a browser retry actually produces.
-    rig.interleave.arm(7, async () => {
-      // The browser gives up waiting and resends the same message. Its own
-      // reply goes at the FRONT of the scripted queue: this request is the one
-      // being rendered right now, and the original's tool call is still to come.
-      typedRendererSteps.unshift({ speech: 'Still working on it.' });
-      await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId }));
-      const turn = [...rig.session.clientTurnsByItemId.values()].at(-1);
-      turnsWhenRetried = rig.session.clientTurnsByItemId.size;
-      ordinalWhenRetried = turn.ordinal;
+    // the ordering a browser retry actually produces. Started, not awaited:
+    // the resend now ADOPTS the original's reply rather than writing a second
+    // one, so waiting for it here would be waiting for the request that is
+    // waiting for this callback.
+    let resendInFlight = null;
+    rig.interleave.arm(7, () => {
+      resendInFlight = rig.session
+        .fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId }))
+        .then((response) => response.json());
     });
-    await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId }));
+    const originalReply = await (await rig.session
+      .fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId }))).json();
+    const resentReply = await resendInFlight;
     rig.session.dispatchTextToolCall = dispatch;
     rig.interleave.disarm();
     await settle(rig.durable, rig.session);
+    turnsWhenRetried = rig.session.clientTurnsByItemId.size;
+    ordinalWhenRetried = [...rig.session.clientTurnsByItemId.values()].at(-1).ordinal;
+    equal(resentReply.assistantText, originalReply.assistantText,
+      'the resend adopts the reply its original committed, rather than writing a second one');
 
     // IDENTITY RETAINED.
     equal(turnsWhenRetried, turnsBefore + 1, 'the resend adds no turn of its own');
@@ -1634,6 +1644,433 @@ for (const clientSpeaksAgain of [true, false]) {
       `G4: agreeing again after a rebuild must work (${JSON.stringify(freshResult?.code)})`);
     equal(await runCount(meeting), 1, 'G4: exactly once');
     pass('G4: a rebuilt meeting will not run an answer the client gave before it was rebuilt');
+  }
+
+  /* ===================== Astra's fourth review: four more ================== */
+
+  /* --- H1: the client answers the question they were shown ---------------- */
+
+  /**
+   * TWO REPLIES TO ONE MESSAGE, AND THE CLIENT ONLY EVER SAW ONE.
+   *
+   * A typed request can be lost after the server has done the work. The
+   * browser resends, and for a moment two requests are answering the same
+   * message. Each opened its own reply, each wrote its own assistant turn, and
+   * whichever finished LAST became the proposition the client's next answer
+   * would be read against -- whether or not it was the one they were shown.
+   *
+   * So the client is shown "would you like me to explain what that covers?",
+   * says "Yes", and that Yes is read against a plan read-back they never saw.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-two-replies-one-message');
+    const RESENT_ID = 'tworeplies-000001';
+    const QUESTION_THEY_SAW = 'Would you like me to explain what that covers?';
+
+    // The original request is held inside its own work. Its reply will be the
+    // certified read-back -- a proposition the client is never going to see,
+    // because this request's answer is the one that gets lost.
+    const assistantTurnsBefore = await assistantTurnCount(rig.meeting);
+    const gate = rig.interleave.gateOnce(/INSERT INTO consumer_realtime_events/i);
+    // One reply is scripted for the client to see. The second is the one the
+    // late request would have written if it were allowed to write its own.
+    typedRendererSteps = [
+      { speech: QUESTION_THEY_SAW },
+      { speech: 'Shall I run exactly that plan now?' }
+    ];
+    const original = rig.session
+      .fetch(typedRequest({ text: 'What does that cover?', clientTurnId: RESENT_ID }))
+      .then((r) => r.json());
+    await gate.arrived;
+
+    // The browser gives up and resends. This is the reply the client reads.
+    const resent = await (await rig.session
+      .fetch(typedRequest({ text: 'What does that cover?', clientTurnId: RESENT_ID }))).json();
+
+    gate.release();
+    const originalReply = await original;
+    await settle(rig.durable, rig.session);
+
+    // COMMITTED, NOT MERELY LAST. The point is not that some ordering rule
+    // picks a winner afterwards -- it is that there was never more than one
+    // thing to pick. One message, one assistant turn written, and every request
+    // that answers that message hands back those same words. Whatever reached
+    // the client's screen, it was this proposition, because no other existed.
+    equal(await assistantTurnCount(rig.meeting) - assistantTurnsBefore, 1,
+      'H1: one client message commits exactly one assistant turn, however many requests ask for it');
+    equal(resent.assistantText, QUESTION_THEY_SAW,
+      'H1: the client was shown the reply their resend came back with');
+    equal(originalReply.assistantText, resent.assistantText,
+      'H1: and both requests answering one message carry the same proposition');
+    equal(originalReply.turnId, resent.turnId, 'H1: and name the same client turn');
+    equal(typedRendererSteps.length, 1,
+      'H1: the reply the late request would have written was never written');
+
+    // They answer the question they were shown -- and the reader answers the
+    // question IT is shown, which is the whole hazard: a competent reading of
+    // "Yes" is agreement to run the plan only if the utterance it answered was
+    // asking that. Nothing about the words settles it.
+    approvalScript = {
+      Yes: (envelope) => (/run exactly that plan/i.test(envelope?.answeredUtterance?.text || '')
+        ? { decision: 'pure_approval', proposition: 'offer' }
+        : { decision: 'pure_approval', proposition: 'other_assistant_question' })
+    };
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer?.token || 'gone' } },
+      { speech: 'Running that now.' }
+    ];
+    let toolResult = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      toolResult = await dispatch(...args);
+      return toolResult;
+    };
+    await rig.session.fetch(typedRequest({ text: 'Yes' }));
+    rig.session.dispatchTextToolCall = dispatch;
+    await settle(rig.durable, rig.session);
+
+    equal(toolResult?.ok, false,
+      'H1: agreeing to the question they were shown does not run a plan they were not');
+    equal(await runCount(rig.meeting), 0, 'H1: zero engine executions');
+    pass('H1: one client message commits one proposition, and a late reply cannot replace it');
+  }
+
+  /* --- H2: a replay landing on top of live semantic work ------------------ */
+
+  /**
+   * THE LOOKUP THAT CHECKED LIVE STATE, THEN WENT AWAY AND CAME BACK.
+   *
+   * Adoption asked "is there a live turn for this message?" before awaiting
+   * the durable record, and acted on that answer afterwards. In between, a
+   * correction with the same id could arrive, become a live turn, and acquire
+   * an unresolved meaning -- and adoption would then replace it with a
+   * finished, historical turn and release the hold its meaning was still
+   * sitting behind.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-adoption-races-correction');
+    const SHARED_ID = 'adoptrace-000001';
+    const CORRECTION = 'Actually, leave my wife\'s pension out of it.';
+    approvalScript = {
+      [CORRECTION]: { decision: 'semantic_change', reason: 'narrows the plan to one pension' },
+      'Yes, go ahead.': { decision: 'pure_approval' }
+    };
+
+    // A replay request reaches its identity lookup and is held there.
+    const lookupGate = rig.interleave.gateOnce(
+      /SELECT id, answers_turn_id, meeting_sequence FROM consumer_realtime_final_turns/i
+    );
+    typedRendererSteps = [];
+    const replay = rig.session
+      .fetch(typedRequest({ text: CORRECTION, clientTurnId: SHARED_ID }))
+      .then((r) => r.json()).catch(() => null);
+    await lookupGate.arrived;
+
+    // While it is held, the same message arrives again and becomes a live turn
+    // whose meaning is still being decided.
+    const held = holdApprovalReaderFor(CORRECTION);
+    const live = rig.session
+      .fetch(typedRequest({ text: CORRECTION, clientTurnId: SHARED_ID }))
+      .then((r) => r.json()).catch(() => null);
+    await held.entered;
+
+    // The replies, in the order the requests will actually reach the renderer.
+    // Both requests for the correction are held behind its undecided meaning --
+    // one waiting on the reader, the other adopting its reply -- so the
+    // approval is the first to render, and the correction's single reply
+    // follows when its meaning is released.
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer.token } },
+      { speech: 'Running that now.' },
+      { speech: 'Let me take that in.' }
+    ];
+
+    // The lookup returns. It must not bury the live turn it now finds.
+    lookupGate.release();
+    await new Promise((resolve) => setImmediate(resolve));
+    const sharedItem = `msg_${SHARED_ID}`;
+    const stillLive = rig.session.clientTurnsByItemId.get(sharedItem);
+    equal(stillLive?.replayedFromRecord, undefined,
+      'H2: the live turn is still the live turn, not a historical one written over it');
+    ok([...rig.session.pendingClientInput.keys()].length > 0,
+      'H2: and the hold its undecided meaning owns is still in place');
+    let toolResult = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      toolResult = await dispatch(...args);
+      return toolResult;
+    };
+    await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.' }));
+    rig.session.dispatchTextToolCall = dispatch;
+
+    equal(await runCount(rig.meeting), 0,
+      'H2: zero engine executions while a correction adoption raced is still undecided');
+    equal(toolResult?.ok, false, 'H2: the approval is refused');
+
+    held.release();
+    await Promise.all([replay, live]);
+    await settle(rig.durable, rig.session);
+    equal(await runCount(rig.meeting), 0, 'H2: and nothing runs once it settles');
+    pass('H2: durable adoption cannot bury a live turn that gained meaning while it looked');
+  }
+
+  /* --- H3: the identity lookup fails, which is not the same as absent ----- */
+
+  /**
+   * "I DO NOT KNOW" IS NOT "THERE IS NOTHING".
+   *
+   * A failed SELECT was caught and read as proof that this message had never
+   * been a turn -- so a replay after a rebuild became a brand new turn, bound
+   * to whatever the assistant had asked last, and carried an old answer into a
+   * question it had never been asked.
+   */
+  {
+    const meeting = await newLiveMeeting('approval-replay-lookup-fails', {
+      CONSUMER_MODULE_PLANNER_MODE: 'apply',
+      CONSUMER_TYPED_LANE_ENABLED: 'true',
+      OPENAI_API_KEY: 'synthetic-test-key'
+    });
+    const interleave = interleavingDatabase(meeting.env.CONSUMER_DB);
+    meeting.env.CONSUMER_DB = interleave.database;
+    const rig = await attachTypedSession(meeting);
+    const REPLAYED_ID = 'lookupfail-000001';
+
+    typedRendererSteps = [{ speech: 'Thanks. Would you like me to explain what a balance sheet covers?' }];
+    await rig.session.handleTextMessage({ text: POSITION_TURN });
+    await settle(rig.durable, rig.session);
+    typedRendererSteps = [{ speech: 'It is everything you own and owe. Roughly how much do you spend each month?' }];
+    await rig.session.handleTextMessage({ text: 'Yes', clientTurnId: REPLAYED_ID });
+    await settle(rig.durable, rig.session);
+    typedRendererSteps = [{ speech: 'Okay. Let me line that up.' }];
+    await rig.session.handleTextMessage({ text: SPEND_TURN });
+    await settle(rig.durable, rig.session);
+    typedRendererSteps = [{ tool: 'get_state', args: {} }, { speech: 'Here is the plan.' }];
+    const presented = await rig.session.handleTextMessage({ text: SNAPSHOT_TURN });
+    await settle(rig.durable, rig.session);
+    equal(presented.readback, true, 'the certified plan is put in front of the client');
+    const offerToken = rig.session.directConfirmationOffer.token;
+
+    const rebuilt = await attachTypedSession(meeting, { initial: Object.fromEntries(rig.durable.values) });
+    approvalScript = { Yes: { decision: 'pure_approval' } };
+    // Storage cannot answer whether this message is already a turn.
+    interleave.failOnce(
+      /SELECT id, answers_turn_id, meeting_sequence FROM consumer_realtime_final_turns/i
+    );
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: offerToken } },
+      { speech: 'Running that now.' }
+    ];
+    let toolResult = null;
+    const dispatch = rebuilt.session.dispatchTextToolCall.bind(rebuilt.session);
+    rebuilt.session.dispatchTextToolCall = async (...args) => {
+      toolResult = await dispatch(...args);
+      return toolResult;
+    };
+    const replayed = await (await rebuilt.session
+      .fetch(typedRequest({ text: 'Yes', clientTurnId: REPLAYED_ID }))).json();
+    rebuilt.session.dispatchTextToolCall = dispatch;
+    await settle(rebuilt.durable, rebuilt.session);
+
+    equal(replayed.ok, false,
+      'H3: a message whose identity storage could not confirm is refused, not adopted as new');
+    equal(await runCount(meeting), 0,
+      'H3: zero engine executions when identity is unknown rather than known absent');
+    pass('H3: a failed identity lookup blocks, because unknown is not absent');
+  }
+
+  /* --- H4: the client spoke, and the server could not write it down ------- */
+
+  /**
+   * INPUT THAT CANNOT BE PERSISTED HAS STILL HAPPENED.
+   *
+   * The hold on an arrival was installed alongside the turn's planning
+   * obligation, and that obligation needs a stored turn id. When the write
+   * failed there was no id, so no obligation, so no hold -- and the arrival was
+   * released even though nothing had been decided about what the client said.
+   * The correction vanished from execution safety state precisely because the
+   * server could not record it.
+   */
+  {
+    const meeting = await newLiveMeeting('approval-persistence-fails-speak', {
+      CONSUMER_MODULE_PLANNER_MODE: 'apply',
+      OPENAI_API_KEY: 'synthetic-test-key'
+    });
+    const interleave = interleavingDatabase(meeting.env.CONSUMER_DB);
+    meeting.env.CONSUMER_DB = interleave.database;
+    const rig = await attachLiveSession(meeting);
+    const simulator = new LiveProviderSimulator(rig);
+    const { session, durable } = rig;
+
+    await simulator.turn({ clientText: POSITION_TURN, act: async () => ({ speech: 'Thanks. Roughly how much a month?' }) });
+    await settle(durable, session);
+    await simulator.turn({ clientText: SPEND_TURN, act: async () => ({ speech: 'Okay. Let me line that up.' }) });
+    await settle(durable, session);
+    let token = null;
+    await simulator.turn({
+      clientText: SNAPSHOT_TURN,
+      act: async ({ callTool }) => {
+        const state = await callTool('get_state', {});
+        token = state.result?.confirmationToken || null;
+        return { speech: state.result.confirmationPrompt };
+      }
+    });
+    await settle(durable, session);
+    ok(token, 'the spoken meeting reaches a delivered certified offer');
+
+    // The client corrects the plan, and the write of their words fails.
+    const CORRECTION = 'Actually, leave my wife\'s pension out of it.';
+    approvalScript = {
+      [CORRECTION]: { decision: 'semantic_change', reason: 'narrows the plan to one pension' },
+      'Yes, go ahead.': { decision: 'pure_approval' }
+    };
+    interleave.failOnce(/INSERT INTO consumer_realtime_final_turns/i);
+    await simulator.send({ type: 'input_audio_buffer.speech_stopped', item_id: 'item_unwritable_correction' });
+    await simulator.send({
+      type: 'conversation.item.input_audio_transcription.completed',
+      item_id: 'item_unwritable_correction',
+      transcript: CORRECTION
+    });
+    const correctionResponse = await simulator.startResponse();
+    await simulator.finishResponse(correctionResponse);
+
+    // They then say yes.
+    await simulator.send({ type: 'input_audio_buffer.speech_stopped', item_id: 'item_after_unwritable' });
+    await simulator.send({
+      type: 'conversation.item.input_audio_transcription.completed',
+      item_id: 'item_after_unwritable',
+      transcript: 'Yes, go ahead.'
+    });
+    const approvalResponse = await simulator.startResponse();
+    await simulator.send({
+      type: 'response.function_call_arguments.done',
+      response_id: approvalResponse.responseId,
+      call_id: 'call_after_unwritable',
+      name: 'confirm_and_run',
+      arguments: JSON.stringify({ confirmationToken: token })
+    });
+    await settle(durable, session);
+
+    equal(await runCount(meeting), 0,
+      'H4: zero engine executions after client input the server could not write down');
+    pass('H4: input that cannot be persisted still holds execution closed');
+  }
+
+  /* --- H5: the ordinary paths still work, on both transports ------------- */
+
+  /**
+   * THE CONTROL FOR ALL FOUR. Every fix above closes something, and a barrier
+   * that closes everything is not a barrier, it is a wall. So: a typed meeting
+   * and a spoken meeting, each run straight through, each approving once, each
+   * buying nothing extra from the planner or the verifier -- and a second
+   * identical request to each still joining the receipt rather than starting a
+   * second analysis.
+   */
+  for (const transport of ['type', 'speak']) {
+    approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
+
+    if (transport === 'type') {
+      const rig = await typedMeetingWithDeliveredOffer('approval-ordinary-type');
+      // Counted across the approval turn, not across the whole meeting: the
+      // three passes that certified the plan are the point of the plan.
+      const extractionsBefore = extractionCalls;
+      const verificationsBefore = verificationCalls;
+      typedRendererSteps = [
+        { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer.token } },
+        { speech: 'Running that now.' }
+      ];
+      let result = null;
+      const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+      rig.session.dispatchTextToolCall = async (...args) => {
+        result = await dispatch(...args);
+        return result;
+      };
+      await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId: 'ordinary-typed-01' }));
+      await settle(rig.durable, rig.session);
+      equal(result?.ok, true, `H5: an ordinary typed approval executes (${JSON.stringify(result?.code)})`);
+      equal(await runCount(rig.meeting), 1, 'H5: exactly once');
+      equal(extractionCalls - extractionsBefore, 0, 'H5: with no planner pass');
+      equal(verificationCalls - verificationsBefore, 0, 'H5: and no verifier pass');
+
+      // The same message again: idempotent, and one proposition still.
+      const repeated = await (await rig.session
+        .fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId: 'ordinary-typed-01' }))).json();
+      rig.session.dispatchTextToolCall = dispatch;
+      await settle(rig.durable, rig.session);
+      equal(repeated.ok, true, 'H5: resending it is answered');
+      equal(await runCount(rig.meeting), 1, 'H5: and runs nothing a second time');
+    } else {
+      const { meeting, simulator, token, session, durable } = await meetingWithDeliveredOffer('approval-ordinary-speak');
+      const extractionsBefore = extractionCalls;
+      const verificationsBefore = verificationCalls;
+      let result = null;
+      await simulator.turn({
+        clientText: 'Yes, go ahead.',
+        act: async ({ callTool, speak }) => {
+          result = (await callTool('confirm_and_run', { confirmationToken: token })).result;
+          await speak(result?.speakableText || 'Running that now.');
+          return { alreadySpoken: true };
+        }
+      });
+      await settle(durable, session);
+      equal(result?.ok, true, `H5: an ordinary spoken approval executes (${JSON.stringify(result?.code)})`);
+      equal(await runCount(meeting), 1, 'H5: exactly once');
+      equal(extractionCalls - extractionsBefore, 0, 'H5: with no planner pass');
+      equal(verificationCalls - verificationsBefore, 0, 'H5: and no verifier pass');
+      let duplicate = null;
+      await simulator.turn({
+        clientText: 'Yes, go ahead.',
+        act: async ({ callTool, speak }) => {
+          duplicate = (await callTool('confirm_and_run', { confirmationToken: token })).result;
+          await speak('It is already running.');
+          return { alreadySpoken: true };
+        }
+      });
+      await settle(durable, session);
+      equal(await runCount(meeting), 1, 'H5: and a duplicate approval runs nothing again');
+      ok(duplicate, 'H5: the duplicate is answered rather than dropped');
+    }
+    pass(`H5: the ordinary ${transport} path still works end to end`);
+  }
+
+  /* --- H6: a correction still needs fresh certification ------------------- */
+
+  /**
+   * And the other direction: a reply that changes the plan must still retire
+   * it and require the whole loop again, on the transport where three of these
+   * fixes live.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-correction-still-recertifies');
+    const CORRECTION = 'Actually, leave my wife\'s pension out of it.';
+    approvalScript = {
+      [CORRECTION]: { decision: 'semantic_change', reason: 'narrows the plan to one pension' },
+      'Yes, go ahead.': { decision: 'pure_approval' }
+    };
+    const extractionsBefore = extractionCalls;
+    typedRendererSteps = [{ speech: 'Understood -- leaving that out.' }];
+    await rig.session.fetch(typedRequest({ text: CORRECTION }));
+    await settle(rig.durable, rig.session);
+    equal(rig.session.directConfirmationOffer, null,
+      'H6: a correction retires the certified plan');
+    ok(extractionCalls > extractionsBefore,
+      'H6: and sends the conversation back through interpretation');
+
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: 'dmc_the_retired_one' } },
+      { speech: 'Let me read the new plan back.' }
+    ];
+    let refused = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      refused = await dispatch(...args);
+      return refused;
+    };
+    await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.' }));
+    rig.session.dispatchTextToolCall = dispatch;
+    await settle(rig.durable, rig.session);
+    equal(refused?.ok, false, 'H6: and nothing can be approved until a new plan is certified');
+    equal(await runCount(rig.meeting), 0, 'H6: zero engine executions');
+    pass('H6: a correction still retires the plan and requires fresh certification');
   }
 
   /* ------------------ currency and order cannot move backwards, ever ------- */

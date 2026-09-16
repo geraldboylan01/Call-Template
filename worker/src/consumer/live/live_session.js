@@ -1867,6 +1867,30 @@ export class ConsumerLiveSession {
     // looked yet. Every path below sets this, and the arrival is released by
     // whichever one runs -- never by falling out of the function.
     let releaseArrival = () => this.resolveClientInputArrival(itemId);
+    // INPUT THE SERVER COULD NOT WRITE DOWN HAS STILL HAPPENED.
+    //
+    // The hold was installed alongside the turn's planning obligation, and that
+    // obligation needs a stored turn id. When the write failed there was no id,
+    // so no obligation, so no hold -- and the arrival was released although
+    // nothing had been decided about what the client said. The correction
+    // disappeared from execution safety state precisely because the server
+    // could not record it.
+    //
+    // So a turn that could not be persisted keeps its hold instead. Nothing
+    // runs against a conversation with a hole in it. The meeting can still
+    // talk; a later message naming the same item clears the hold if it can be
+    // recorded, and otherwise this meeting simply never executes, which is the
+    // correct end for one whose record of the client is incomplete.
+    if (!storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
+      releaseArrival = () => {};
+      this.state.waitUntil(appendRealtimeEvent(this.env, {
+        sessionId: this.meta?.sessionId,
+        leaseId: this.meta?.leaseId,
+        direction: 'server',
+        eventType: 'live.client.turn_unrecorded',
+        payload: { itemId, ordinal: Number(turn.ordinal || 0) }
+      }).catch(() => {}));
+    }
     if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
       // A PURE APPROVAL OF THE DELIVERED PLAN IS THE ONE TURN THAT MUST NOT
       // REOPEN IT. Everything else does, exactly as before -- a correction, a
@@ -2059,9 +2083,37 @@ export class ConsumerLiveSession {
    */
   async adoptRecordedClientTurn(itemId) {
     if (!itemId || this.clientTurnsByItemId.has(itemId) || !this.meta) return null;
-    const recorded = await getRealtimeFinalTurnByProviderItem(
-      this.env, this.meta.leaseId, itemId, 'user'
-    ).catch(() => null);
+    let recorded;
+    try {
+      recorded = await getRealtimeFinalTurnByProviderItem(
+        this.env, this.meta.leaseId, itemId, 'user'
+      );
+    } catch (_error) {
+      // "I DO NOT KNOW" IS NOT "THERE IS NOTHING".
+      //
+      // A caught failure here used to read as proof that this message had never
+      // been a turn, so a replay after a rebuild became a brand new turn --
+      // bound to whatever the assistant had asked last, and carrying an old
+      // answer into a question it had never been asked. Only PROVEN ABSENCE may
+      // create a turn. Unknown identity refuses the request, and the arrival it
+      // took at the door stays outstanding, so nothing executes past a message
+      // the server cannot account for. A later request for the same message
+      // that does get an answer clears both.
+      throw new ConsumerError(
+        503,
+        'live_turn_identity_unavailable',
+        'That message could not be identified. Please try again in a moment.'
+      );
+    }
+    // REVALIDATED AFTER THE AWAIT, NOT ONLY BEFORE IT.
+    //
+    // The check at the top of this method answered a question about a moment
+    // that has now passed. While the lookup was in flight the same message
+    // could arrive, become a live turn, and acquire a meaning nobody has
+    // decided yet -- and adoption would then replace that turn with a finished,
+    // historical one and release the hold its meaning was still sitting behind.
+    // A live turn always wins: it is the one with obligations.
+    if (this.clientTurnsByItemId.has(itemId)) return null;
     if (!recorded?.id) return null;
     const turn = {
       itemId,
@@ -2136,6 +2188,14 @@ export class ConsumerLiveSession {
     const disarmPlanningDeadline = this.armDirectModulePlanningDeadline();
     try {
       return await this.handleTextMessageWithinBudget(body, itemId);
+    } catch (error) {
+      // A reply that never happened must not leave other requests for this
+      // message waiting on a promise nobody will ever settle.
+      const abandoned = this.clientTurnsByItemId.get(itemId);
+      if (abandoned?.assistantCommitment && abandoned.abandonAssistantCommitment) {
+        abandoned.abandonAssistantCommitment(error);
+      }
+      throw error;
     } finally {
       disarmPlanningDeadline();
     }
@@ -2177,6 +2237,47 @@ export class ConsumerLiveSession {
     // (1) above. A failed pass is not fatal: the turn is already durable and the
     // renderer falls back to the last good state rather than stalling.
     await this.directModulePlanningChain.catch(() => {});
+
+    // ONE MESSAGE, ONE PROPOSITION, WHOEVER ASKS FOR IT.
+    //
+    // A typed request can be lost after the server has done the work, and the
+    // browser resends. For a moment two requests are answering the same
+    // message. Each used to open its own reply and write its own assistant
+    // turn, and whichever finished LAST became the proposition the client's
+    // next answer would be read against -- whether or not it was the one they
+    // were shown. The client sees "shall I explain what that covers?", says
+    // yes, and that yes is read against a plan read-back that was written after
+    // their screen had already settled.
+    //
+    // Trying to work out afterwards which reply reached them is not something a
+    // server can do. So there is only ever one reply to work out: the first
+    // request to reach this line commits to producing it, and every other
+    // request for the same message ADOPTS that commitment and returns the very
+    // same words. Whatever the client saw, it was this proposition, because
+    // there was no other one to see.
+    //
+    // Claimed synchronously -- check and set with no await between them -- so
+    // two requests cannot both decide they are the first.
+    const committedTurn = this.clientTurnsByItemId.get(itemId);
+    if (committedTurn?.assistantCommitment) return committedTurn.assistantCommitment;
+    let commitReply = () => {};
+    let abandonCommitment = () => {};
+    if (committedTurn) {
+      committedTurn.assistantCommitment = new Promise((resolve, reject) => {
+        commitReply = resolve;
+        abandonCommitment = (error) => {
+          // A reply that failed committed nothing, so the next attempt is free
+          // to produce one rather than inheriting a failure for ever.
+          delete committedTurn.assistantCommitment;
+          delete committedTurn.abandonAssistantCommitment;
+          reject(error);
+        };
+      });
+      committedTurn.abandonAssistantCommitment = abandonCommitment;
+      // Nothing awaits this promise unless another request adopts it, and an
+      // unadopted rejection is not an error anyone reported.
+      committedTurn.assistantCommitment.catch(() => {});
+    }
 
     // A TYPED REPLY ANSWERS THE MESSAGE THAT ASKED FOR IT, AND IT KNOWS WHICH.
     //
@@ -2241,7 +2342,7 @@ export class ConsumerLiveSession {
     const card = await this.typedCardState();
     const stopped = await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => false);
     if (!stopped) await this.touch();
-    return {
+    const reply = {
       ok: true,
       turnId: itemId,
       assistantText,
@@ -2255,6 +2356,10 @@ export class ConsumerLiveSession {
       // filled in -- see the awaited pass at the top of this method.
       card
     };
+    // THE PROPOSITION THIS MESSAGE COMMITTED. Anyone else asking about this
+    // message gets this object, not a second opinion rendered later.
+    commitReply(reply);
+    return reply;
   }
 
   /**

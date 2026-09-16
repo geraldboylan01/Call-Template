@@ -130,6 +130,16 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 > actually answered, and with no place in the conversation. A typed reply
 > is also bound to its own message rather than to the head of a queue.
 > Nothing deployed.
+>
+> **Sixth review, 16 September 2026.** Four more, all of them the server
+> trusting something it had not established. One typed message now
+> commits exactly one assistant proposition and every request for that
+> message adopts it, so a late or lost reply cannot replace what was
+> offered. Durable adoption revalidates live state after its await and
+> never buries a turn that gained meaning while it looked. An identity
+> lookup that fails is unknown rather than absent, and refuses. And
+> client input the server could not write down keeps its execution hold
+> instead of disappearing from safety state. Nothing deployed.
 
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.

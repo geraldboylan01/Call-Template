@@ -50,13 +50,36 @@ export function interleavingDatabase(database) {
     if (settling && typeof settling.then === 'function') await settling;
   };
 
+  // Faults and gates, addressed by the statement they belong to. A storage
+  // layer that can only succeed cannot be used to ask what happens when it
+  // does not, and three of the schedules here are about exactly that.
+  const faults = [];
+  const gates = [];
+  const interceptFor = (list, sql) => {
+    const index = list.findIndex((entry) => entry.matcher.test(sql.replace(/\s+/g, ' ')));
+    if (index < 0) return null;
+    const entry = list[index];
+    if (entry.once) list.splice(index, 1);
+    return entry;
+  };
+
+  const beforeIntercepts = async (sql) => {
+    const gate = interceptFor(gates, sql);
+    if (gate) {
+      gate.reached();
+      await gate.open;
+    }
+    const fault = interceptFor(faults, sql);
+    if (fault) throw new Error(fault.message);
+  };
+
   const wrapStatement = (statement, sql) => ({
     sql,
     get values() { return statement.values; },
     bind: (...values) => wrapStatement(statement.bind(...values), sql),
-    first: async () => { await beforeStatement(sql); return statement.first(); },
-    all: async () => { await beforeStatement(sql); return statement.all(); },
-    run: async () => { await beforeStatement(sql); return statement.run(); }
+    first: async () => { await beforeStatement(sql); await beforeIntercepts(sql); return statement.first(); },
+    all: async () => { await beforeStatement(sql); await beforeIntercepts(sql); return statement.all(); },
+    run: async () => { await beforeStatement(sql); await beforeIntercepts(sql); return statement.run(); }
   });
 
   return {
@@ -81,6 +104,29 @@ export function interleavingDatabase(database) {
     },
     /** The statements seen since arming, so a test can calibrate on them. */
     statements: () => [...log],
+    /** Make the next statement matching `matcher` fail, as storage does. */
+    failOnce(matcher, message = 'storage is unavailable') {
+      faults.push({ matcher, message, once: true });
+    },
+    /**
+     * Hold the next statement matching `matcher` open, so a test can stand
+     * inside someone else's awaited read. Returns the release and a promise
+     * that settles when the statement is actually reached.
+     */
+    gateOnce(matcher) {
+      let openGate;
+      let reached;
+      const entry = {
+        matcher,
+        once: true,
+        open: new Promise((resolve) => { openGate = resolve; }),
+        reached: () => {}
+      };
+      const arrived = new Promise((resolve) => { reached = resolve; });
+      entry.reached = reached;
+      gates.push(entry);
+      return { arrived, release: () => openGate() };
+    },
     disarm() {
       armed = false;
       callback = null;

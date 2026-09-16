@@ -94,7 +94,13 @@ const FIXTURE_DECISIONS = new Map(Object.entries({
  */
 export function scriptedApprovalDecision(envelope, script = {}) {
   const reply = String(envelope?.clientReply || '');
-  const entry = script[reply] || FIXTURE_DECISIONS.get(reply) || null;
+  // A FIXTURE MAY READ THE ENVELOPE. Some of what a reader concludes genuinely
+  // depends on what it was shown -- a bare "yes" means one thing against
+  // "shall I run that plan?" and another against "shall I explain it?" -- and a
+  // test about being shown the wrong question needs a reader that answers the
+  // question it was given rather than one that already knows the answer.
+  const declared = script[reply] || FIXTURE_DECISIONS.get(reply) || null;
+  const entry = typeof declared === 'function' ? declared(envelope) : declared;
   if (!entry) {
     return {
       schemaVersion: SCHEMA_VERSION,
