@@ -651,7 +651,7 @@ for (const clientSpeaksAgain of [true, false]) {
       type: 'input_audio_buffer.speech_started',
       item_id: 'item_client_speaks_again'
     });
-    equal(session.clientInputGeneration > session.clientTurnsByItemId.get(itemId).ordinal, true,
+    equal(session.clientInputSequence > session.clientTurnsByItemId.get(itemId).ordinal, true,
       'speech starting is itself newer input: the clock moves before a word is transcribed');
   }
 
@@ -714,7 +714,7 @@ for (const clientSpeaksAgain of [true, false]) {
     type: 'input_audio_buffer.speech_started',
     item_id: 'item_arrived_while_blocked'
   });
-  equal(session.clientInputGeneration > approvalGeneration, true,
+  equal(session.clientInputSequence > approvalGeneration, true,
     'arrival is registered by the listener, ahead of a queue it is not allowed to wait in');
 
   release();
@@ -776,7 +776,9 @@ for (const clientSpeaksAgain of [true, false]) {
       deliver() {
         controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
         controller.close();
-      }
+      },
+      /** The body never arrives: a dropped connection, mid-request. */
+      fail() { controller.error(new Error('the client connection dropped mid-body')); }
     };
   }
 
@@ -855,17 +857,17 @@ for (const clientSpeaksAgain of [true, false]) {
   // synchronous anyway; this pins the property rather than that coincidence.
   {
     const rig = await typedMeetingWithDeliveredOffer('approval-typed-ingress-clock');
-    const before = rig.session.clientInputGeneration;
+    const before = rig.session.clientInputSequence;
     typedRendererSteps = [{ speech: 'Let me check.' }];
     const pending = rig.session.handleTextMessage({ text: CLARIFYING_LATER_MESSAGE });
-    equal(rig.session.clientInputGeneration, before + 1,
+    equal(rig.session.clientInputSequence, before + 1,
       'the clock moves at the door, before the request awaits anything');
     await pending;
     await settle(rig.durable, rig.session);
     // And an empty request is not something the client said.
-    const afterMessage = rig.session.clientInputGeneration;
+    const afterMessage = rig.session.clientInputSequence;
     await rig.session.handleTextMessage({ text: '   ' }).catch(() => {});
-    equal(rig.session.clientInputGeneration, afterMessage,
+    equal(rig.session.clientInputSequence, afterMessage,
       'an empty message is refused, not treated as the client speaking again');
     pass('C: a typed message registers as newer input before the request awaits anything');
   }
@@ -973,7 +975,7 @@ for (const clientSpeaksAgain of [true, false]) {
     { at: engineEntry, where: 'at the last await before the engine', barrier: 'execution_admission_withdrawn' }
   ]) {
     const rig = await typedMeetingWithDeliveredOffer(`approval-typed-http-arrival-${at}`);
-    const approvalGeneration = rig.session.clientInputGeneration + 1;
+    const approvalGeneration = rig.session.clientInputSequence + 1;
     let correction = null;
     let correctionInFlight = null;
     let clockMovedWhileUnread = false;
@@ -988,7 +990,7 @@ for (const clientSpeaksAgain of [true, false]) {
         // whose bytes have arrived but have not been drained would be.
         correctionInFlight = rig.session.fetch(correction.request).then((r) => r.json());
         // SYNCHRONOUSLY, while that body is still unread.
-        clockMovedWhileUnread = rig.session.clientInputGeneration > approvalGeneration;
+        clockMovedWhileUnread = rig.session.clientInputSequence > approvalGeneration;
       }
     });
 
@@ -1013,17 +1015,179 @@ for (const clientSpeaksAgain of [true, false]) {
     pass(`D: a correction at the door with its body unread stops the older approval, ${where}`);
   }
 
-  /* ---------------------------- a retry is the same message, not a newer one */
+  /* ======================= Astra's third review: three reorderings ========= */
 
   /**
-   * THE COST OF MOVING THE CLOCK BEFORE READING THE BODY, PAID BACK.
+   * THE INVARIANT THESE THREE ARE ABOUT.
    *
-   * Registering at the door means registering before the server knows whether
-   * this is a new message or the client's browser resending one it never got a
-   * reply to. A retry that counted as a new utterance would supersede an
-   * approval nobody had replaced, and the meeting would ask the same question
-   * forever. So the ticket settles: a known id retires it and returns the
-   * generation that id already had.
+   * Once newer genuine client input has ARRIVED, an approval belonging to an
+   * earlier client-input generation must never regain authority to execute.
+   *
+   * The clock alone does not give that. A clock answers "is anything newer than
+   * me?", and all three of these slip past that question in different ways: by
+   * being newer than the unread thing rather than older than it, by resending
+   * until they are newest, and by waiting for the unread thing to be forgotten.
+   * What they have in common is that the server let a plan run while it did not
+   * yet know everything the client had sent.
+   */
+
+  /* -- E1: an unread correction, overtaken by an approval that came after it - */
+
+  /**
+   * The correction is at the door with its body unread. The approval arrives
+   * AFTER it, so it is the newest thing the client has sent -- and a barrier
+   * that only asks "is anything newer than me?" says no, correctly, and lets it
+   * run. The correction is older, and was never read.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-overtakes-unread');
+    const correction = suspendedTypedRequest({ text: CORRECTION_MESSAGE });
+    const correctionInFlight = rig.session.fetch(correction.request).then((r) => r.json());
+
+    approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer.token } },
+      { speech: 'Running that now.' }
+    ];
+    let toolResult = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      toolResult = await dispatch(...args);
+      return toolResult;
+    };
+    await (await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.' }))).json();
+    rig.session.dispatchTextToolCall = dispatch;
+    await settle(rig.durable, rig.session);
+
+    equal(await runCount(rig.meeting), 0,
+      'E1: zero engine executions while a correction that arrived first is still unread');
+    equal(toolResult?.ok, false, 'E1: the approval is refused');
+    typedRendererSteps.push({ speech: 'Understood -- leaving that out.' });
+    correction.deliver();
+    await correctionInFlight;
+    await settle(rig.durable, rig.session);
+    equal(await runCount(rig.meeting), 0, 'E1: and still nothing once the correction lands');
+    pass('E1: an approval cannot overtake an earlier client message the server has not read');
+  }
+
+  /* -- E2: an unidentified retry, resent until it is the newest thing said --- */
+
+  /**
+   * The approval carries no clientTurnId, so every resend is a NEW utterance
+   * with a new id and a newer place in the queue. The first one is correctly
+   * refused because the correction arrived after it. The second is newer than
+   * the correction -- so on a clock alone it is current, and it runs, past a
+   * correction that has still never been read.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-retry-overtakes');
+    approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
+
+    // The approval is sent, and the correction arrives while it is in flight.
+    let correction = null;
+    let correctionInFlight = null;
+    const firstAttempt = await approveTyped(rig, {
+      at: 3,
+      overHttp: true,
+      onFire: () => {
+        correction = suspendedTypedRequest({ text: CORRECTION_MESSAGE });
+        correctionInFlight = rig.session.fetch(correction.request).then((r) => r.json());
+      }
+    });
+    equal(firstAttempt.toolResult?.ok, false,
+      'E2: the first attempt is refused, because the correction arrived after it');
+    equal(await runCount(rig.meeting), 0, 'E2: and nothing has run');
+
+    // The client's browser resends the approval. It carries no clientTurnId, so
+    // the server has no way to know it is the same words -- it is simply the
+    // newest thing that has arrived.
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer?.token || 'gone' } },
+      { speech: 'Running that now.' }
+    ];
+    let retryResult = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      retryResult = await dispatch(...args);
+      return retryResult;
+    };
+    await (await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.' }))).json();
+    rig.session.dispatchTextToolCall = dispatch;
+    await settle(rig.durable, rig.session);
+
+    equal(await runCount(rig.meeting), 0,
+      'E2: zero engine executions from an approval resent until it was the newest thing said');
+    equal(retryResult?.ok, false, 'E2: the resent approval is refused too');
+    typedRendererSteps.push({ speech: 'Understood -- leaving that out.' });
+    correction.deliver();
+    await correctionInFlight;
+    await settle(rig.durable, rig.session);
+    equal(await runCount(rig.meeting), 0, 'E2: and still nothing once the correction lands');
+    pass('E2: resending an approval until it is newest cannot carry it past unread input');
+  }
+
+  /* -- E3: a failed body, and the approval it was supposed to have killed ---- */
+
+  /**
+   * The correction arrives while the approval is in flight, and its connection
+   * then drops before the body is read. If arriving is something the server can
+   * take back -- if the clock can be wound down when a request turns out to
+   * have carried nothing readable -- then the approval it had invalidated
+   * becomes current again, and runs. Arrival has to be irreversible.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-failed-body-restores');
+    let correction = null;
+    let correctionInFlight = null;
+
+    const { toolResult } = await approveTyped(rig, {
+      at: engineEntry,
+      overHttp: true,
+      onFire: () => {
+        correction = suspendedTypedRequest({ text: CORRECTION_MESSAGE });
+        correctionInFlight = rig.session.fetch(correction.request).then((r) => r.json()).catch(() => null);
+        // The connection drops. The route will never learn what this said --
+        // which is exactly why it must go on counting as something the client
+        // sent.
+        correction.fail();
+      }
+    });
+    await correctionInFlight;
+    await settle(rig.durable, rig.session);
+
+    equal(await runCount(rig.meeting), 0,
+      'E3: zero engine executions after a client message arrived and failed unread');
+    equal(toolResult?.ok, false, 'E3: the approval is refused');
+
+    // AND IT STAYS REFUSED. A second attempt at the same plan must not find the
+    // clock wound back to where it was before the failed request.
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer?.token || 'gone' } },
+      { speech: 'Running that now.' }
+    ];
+    await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId: 'e3-approval-0001' }));
+    await settle(rig.durable, rig.session);
+    equal(await runCount(rig.meeting), 0,
+      'E3: and a later attempt cannot inherit authority the failed request removed');
+    pass('E3: a client message that arrived and failed unread can never be taken back');
+  }
+
+  /* -------------- a retry keeps its identity without reviving authority ---- */
+
+  /**
+   * WHAT A RETRY IS AND WHAT IT IS NOT.
+   *
+   * It is not a second utterance: it names a turn the conversation already has,
+   * so it creates no turn, takes no place in the conversation, and moves no
+   * ordinal. But it IS an arrival -- the client's browser really did send it --
+   * and arrivals are irreversible here, because the only alternative is a clock
+   * that can be wound back, which is how an older approval came back to life.
+   *
+   * So a retry spends a sequence and returns the turn it resends -- and moves
+   * nothing. The turn stays where it happened. What the spent sequence costs is
+   * any approval that was in flight when the retry landed, which is the right
+   * price: a resend proves the client did not get an answer, not that they
+   * still want what they wanted.
    */
   {
     const rig = await typedMeetingWithDeliveredOffer('approval-typed-retry');
@@ -1033,26 +1197,238 @@ for (const clientSpeaksAgain of [true, false]) {
       typedRequest({ text: CORRECTION_MESSAGE, clientTurnId })
     )).json();
     await settle(rig.durable, rig.session);
-    const afterFirst = rig.session.clientInputGeneration;
     equal(first.ok, true, 'the first message is accepted');
+    const turnsAfterFirst = rig.session.clientTurnsByItemId.size;
+    const sequenceAfterFirst = rig.session.clientInputSequence;
+    const sentTurn = [...rig.session.clientTurnsByItemId.values()].at(-1);
+    const ordinalAfterFirst = sentTurn.ordinal;
 
     typedRendererSteps = [{ speech: 'Understood.' }];
     const retry = await (await rig.session.fetch(
       typedRequest({ text: CORRECTION_MESSAGE, clientTurnId })
     )).json();
     await settle(rig.durable, rig.session);
-    equal(retry.turnId, first.turnId, 'a retry is the same turn the client already sent');
-    equal(rig.session.clientInputGeneration, afterFirst,
-      'and takes no generation of its own: resending is not speaking again');
 
-    // An empty message is not the client speaking either, and must not leave
-    // the clock advanced behind a request that was refused.
-    const beforeEmpty = rig.session.clientInputGeneration;
-    await rig.session.fetch(typedRequest({ text: '   ' }));
-    equal(rig.session.clientInputGeneration, beforeEmpty,
-      'a refused empty message leaves the clock where it was');
-    pass('a retried typed message is one utterance, and a refused one is none');
+    equal(retry.turnId, first.turnId, 'a retry is the same turn the client already sent');
+    equal(rig.session.clientTurnsByItemId.size, turnsAfterFirst,
+      'and creates no second turn');
+    equal(sentTurn.ordinal, ordinalAfterFirst,
+      'its place in the conversation does not move: a resend is not a later thing said');
+    ok(rig.session.clientInputSequence > sequenceAfterFirst,
+      'but it did arrive, and arriving is never taken back');
+    equal(rig.session.pendingClientInput.size, 0,
+      'and it leaves nothing outstanding, because its content was already known');
+
+    // A REJECTED REQUEST IS STILL A REQUEST THAT ARRIVED. It cannot be read, so
+    // it cannot be proved harmless, and the one thing it must never do is hand
+    // authority back to an approval that was current before it.
+    const beforeEmpty = rig.session.clientInputSequence;
+    const empty = await (await rig.session.fetch(typedRequest({ text: '   ' }))).json();
+    equal(empty.ok, false, 'an empty message is refused');
+    ok(rig.session.clientInputSequence > beforeEmpty,
+      'and still counts as something the client sent, so nothing older regains authority');
+    equal(rig.session.pendingClientInput.size, 0,
+      'while leaving nothing outstanding for the meeting to wait on');
+    pass('a retry keeps its turn and its place, and no arrival is ever taken back');
   }
+
+  /* --------- a retry keeps its identity and reopens no authorization ------- */
+
+  /**
+   * WHAT A RETRY IS ALLOWED TO DO, AND WHAT IT IS NOT.
+   *
+   * It is not a second utterance: it names a turn the conversation already has,
+   * so it creates no turn, takes no place in the conversation, moves no
+   * ordinal, and buys no second planning pass. That is its causal identity, and
+   * it is preserved.
+   *
+   * It is also not a way back in. It really did arrive, so it spends a
+   * sequence, and an approval that was in flight when it landed is refused.
+   * That is the fail-closed direction and it is deliberate: a retry carries no
+   * evidence that the client still wants what they wanted, only that they did
+   * not get an answer. The way back is the client approving again -- which is a
+   * turn of its own, read on its own, and executes on its own.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-retry-of-itself');
+    const clientTurnId = 'inflight-00000001';
+    approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer.token } },
+      { speech: 'Running that now.' }
+    ];
+    let toolResult = null;
+    let turnsWhenRetried = 0;
+    let ordinalWhenRetried = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      toolResult = await dispatch(...args);
+      return toolResult;
+    };
+    const turnsBefore = rig.session.clientTurnsByItemId.size;
+    // Fired after the original has opened its own reply, so the resend is a
+    // second request racing it rather than one that steals its turn binding --
+    // the ordering a browser retry actually produces.
+    rig.interleave.arm(7, async () => {
+      // The browser gives up waiting and resends the same message. Its own
+      // reply goes at the FRONT of the scripted queue: this request is the one
+      // being rendered right now, and the original's tool call is still to come.
+      typedRendererSteps.unshift({ speech: 'Still working on it.' });
+      await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId }));
+      const turn = [...rig.session.clientTurnsByItemId.values()].at(-1);
+      turnsWhenRetried = rig.session.clientTurnsByItemId.size;
+      ordinalWhenRetried = turn.ordinal;
+    });
+    await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.', clientTurnId }));
+    rig.session.dispatchTextToolCall = dispatch;
+    rig.interleave.disarm();
+    await settle(rig.durable, rig.session);
+
+    // IDENTITY RETAINED.
+    equal(turnsWhenRetried, turnsBefore + 1, 'the resend adds no turn of its own');
+    equal(ordinalWhenRetried, rig.session.clientInputSequence - 1,
+      'the turn keeps the place it was born with while the sequence moves past it');
+
+    // AUTHORIZATION NOT REOPENED.
+    equal(toolResult?.ok, false, 'the in-flight approval is refused, not resurrected');
+    equal(await runCount(rig.meeting), 0, 'and nothing runs');
+
+    // AND THE WAY BACK IS A TURN, NOT A RESEND.
+    typedRendererSteps = [
+      { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer.token } },
+      { speech: 'Running that now.' }
+    ];
+    let secondResult = null;
+    const dispatchAgain = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      secondResult = await dispatchAgain(...args);
+      return secondResult;
+    };
+    await rig.session.fetch(typedRequest({ text: 'Yes, go ahead.' }));
+    rig.session.dispatchTextToolCall = dispatchAgain;
+    await settle(rig.durable, rig.session);
+    equal(secondResult?.ok, true,
+      `approving again must work (${JSON.stringify(secondResult?.code)})`);
+    equal(await runCount(rig.meeting), 1, 'exactly once');
+    pass('a retry keeps its turn and its place, opens no old authority, and the client can simply agree again');
+  }
+
+  /* ------------------ currency and order cannot move backwards, ever ------- */
+
+  /**
+   * THE PROPERTY, ASSERTED DIRECTLY RATHER THAN THROUGH A SCHEDULE.
+   *
+   * Every failure Astra has found at this boundary has been an instance of one
+   * thing: something that had arrived stopped counting. So the counter is
+   * driven through every shape a request can take -- delivered, retried, empty,
+   * malformed, dropped mid-body, a reused id, a rejected one -- and asserted to
+   * be non-decreasing throughout, with no path that lowers it.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-monotonic-clock');
+    const seen = [rig.session.clientInputSequence];
+    const record = () => seen.push(rig.session.clientInputSequence);
+
+    typedRendererSteps = [{ speech: 'Understood.' }];
+    await rig.session.fetch(typedRequest({ text: 'One.', clientTurnId: 'mono-000000000001' }));
+    await settle(rig.durable, rig.session); record();
+    typedRendererSteps = [{ speech: 'Understood.' }];
+    await rig.session.fetch(typedRequest({ text: 'One.', clientTurnId: 'mono-000000000001' }));
+    await settle(rig.durable, rig.session); record();
+    await rig.session.fetch(typedRequest({ text: '' })); record();
+    await rig.session.fetch(new Request('http://live-session/message', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: 'not json at all'
+    })); record();
+    {
+      const dropped = suspendedTypedRequest({ text: 'never arrives' });
+      const inFlight = rig.session.fetch(dropped.request).then((r) => r.json()).catch(() => null);
+      dropped.fail();
+      await inFlight; record();
+    }
+    typedRendererSteps = [{ speech: 'Understood.' }];
+    await rig.session.fetch(typedRequest({ text: 'Two.' }));
+    await settle(rig.durable, rig.session); record();
+
+    equal(seen, [...seen].sort((left, right) => left - right),
+      'the client-input sequence never decreases, whatever a request turns out to be');
+    equal(seen.slice(1).every((value, index) => value > seen[index]), true,
+      'and every one of those requests spent a sequence, including the ones that carried nothing');
+    equal(rig.session.pendingClientInput.size, 0,
+      'and every one of those requests settled: nothing is left holding the meeting closed');
+    pass('arrival is monotonic across delivery, retry, rejection, malformation and failure');
+  }
+}
+
+/* ------------- unresolved earlier speech holds a later approval closed ----- */
+
+/**
+ * THE SAME ORDERING, ON THE OTHER TRANSPORT.
+ *
+ * Transcription does not complete in the order speech began. So a client can
+ * start saying something, start saying something else, and have the SECOND
+ * utterance transcribed first -- and if that second one is an approval, it is
+ * genuinely the newest thing they did while the first is still unknown.
+ *
+ * Being newest is not enough. Both halves are asserted: held while the earlier
+ * utterance is unaccounted for, and released once the server establishes that
+ * it carried nothing usable, because then there is nothing left to incorporate.
+ */
+{
+  const { meeting, simulator, token, session, durable } = await meetingWithDeliveredOffer('approval-unresolved-earlier-speech');
+  approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
+
+  // The client starts saying something. Nothing is transcribed yet.
+  await simulator.send({ type: 'input_audio_buffer.speech_started', item_id: 'item_earlier_speech' });
+  await simulator.send({ type: 'input_audio_buffer.speech_stopped', item_id: 'item_earlier_speech' });
+
+  // They then say something else, and ASR lands THAT one first.
+  const approvalItem = 'item_later_approval';
+  await simulator.send({ type: 'input_audio_buffer.speech_stopped', item_id: approvalItem });
+  await simulator.send({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: approvalItem,
+    transcript: 'Yes, go ahead.'
+  });
+  const approvalTurn = session.clientTurnsByItemId.get(approvalItem);
+  equal(approvalTurn.ordinal, session.clientInputSequence,
+    'the approval really is the newest thing the client did');
+  ok([...session.pendingClientInput.keys()].some((sequence) => sequence < approvalTurn.ordinal),
+    'and something they said before it is still unaccounted for');
+
+  const firstResponse = await simulator.startResponse();
+  await simulator.send({
+    type: 'response.function_call_arguments.done',
+    response_id: firstResponse.responseId,
+    call_id: 'call_blocked_by_earlier',
+    name: 'confirm_and_run',
+    arguments: JSON.stringify({ confirmationToken: token })
+  });
+  await settle(durable, session);
+  equal(await runCount(meeting), 0,
+    'zero engine executions while an earlier utterance is still unaccounted for');
+  pass('being the newest thing said does not let an approval step over unread speech');
+
+  // The earlier utterance turns out to be unusable. There is nothing to
+  // incorporate, so there is nothing left to wait for.
+  await simulator.send({
+    type: 'conversation.item.input_audio_transcription.failed',
+    item_id: 'item_earlier_speech'
+  });
+  await settle(durable, session);
+  equal(session.pendingClientInput.size, 0, 'and the meeting is no longer holding anything');
+
+  const secondResponse = await simulator.startResponse();
+  await simulator.send({
+    type: 'response.function_call_arguments.done',
+    response_id: secondResponse.responseId,
+    call_id: 'call_after_earlier_resolved',
+    name: 'confirm_and_run',
+    arguments: JSON.stringify({ confirmationToken: token })
+  });
+  await settle(durable, session);
+  equal(await runCount(meeting), 1,
+    'once that earlier utterance is known to carry nothing, the approval runs');
+  pass('an unresolved earlier utterance holds an approval closed, and releases it when settled');
 }
 
 /* --------------------------------------------- one utterance is one turn --- */
@@ -1068,7 +1444,7 @@ for (const clientSpeaksAgain of [true, false]) {
  */
 {
   const { meeting, simulator, token, session, durable } = await meetingWithDeliveredOffer('approval-one-utterance');
-  const before = session.clientInputGeneration;
+  const before = session.clientInputSequence;
   const itemId = 'item_single_utterance';
   await simulator.send({ type: 'input_audio_buffer.speech_started', item_id: itemId });
   await simulator.send({ type: 'input_audio_buffer.speech_stopped', item_id: itemId });
@@ -1077,7 +1453,7 @@ for (const clientSpeaksAgain of [true, false]) {
     item_id: itemId,
     transcript: 'Yes, go ahead.'
   });
-  equal(session.clientInputGeneration - before, 1,
+  equal(session.clientInputSequence - before, 1,
     'three provider events for one utterance are one arrival, not three');
   equal([...session.clientTurnsByItemId.values()].filter((turn) => turn.itemId === itemId).length, 1,
     'and one client turn, not three');

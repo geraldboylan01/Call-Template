@@ -1907,7 +1907,10 @@ const CONFIRM_AND_RUN_STATE_CODES = Object.freeze({
   // again, or the offer moved, between approval and the engine. It is not a
   // fault: the plan simply is not the client's latest word any more, and the
   // meeting should deal with what they just said and ask again.
-  execution_admission_withdrawn: MODULE_FAILURE_CODES.READINESS_NOT_MET
+  execution_admission_withdrawn: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  // Something the client sent before this approval has not been understood
+  // yet. Also not a fault: the meeting deals with that first and asks again.
+  client_input_unresolved: MODULE_FAILURE_CODES.READINESS_NOT_MET
 });
 
 /**

@@ -492,29 +492,45 @@ export class ConsumerLiveSession {
     // Input transcription is asynchronous with response generation. Provider
     // item/response ids, not "latest" globals, own every association below.
     //
-    // THE CAUSAL CLOCK OF THE MEETING, AND THE ONLY ONE.
+    // THE CAUSAL ORDER OF THE MEETING, AND THE ONLY ONE.
     //
-    // This advances the instant genuine new client input REACHES the system --
-    // the socket listener before anything is queued, the typed request before
-    // anything is awaited -- and not when the system gets round to processing
-    // it. Those are different moments, and the gap between them is where three
-    // stale executions lived: speech that had started but not stopped, speech
-    // that had arrived at the socket but sat behind an awaited approval reader,
-    // and a typed message that landed between the last check and the engine.
+    // Two facts, kept separately, because a single number cannot carry both and
+    // every stale execution found so far has been a place where one was used to
+    // answer the other.
     //
-    // It is deterministic causal state. Nothing here reads a transcript, a
-    // figure, or anything the client meant: the only question it answers is
-    // whether the client has spoken since, which is not a question about
-    // language.
-    this.clientInputGeneration = 0;
-    // One generation per client utterance, not per provider event. A single
-    // utterance produces speech_started, speech_stopped and a transcription,
-    // all naming the same item; they are one arrival.
-    this.clientInputGenerationByItemId = new Map();
-    // A speech_started that has not yet been given an item id has still begun.
-    // It takes a generation immediately and the first event that names the
-    // utterance adopts it, so one utterance never becomes two generations.
-    this.pendingUnkeyedInputGeneration = null;
+    //   `clientInputSequence` -- HOW MUCH THE CLIENT HAS SENT. One number per
+    //   arrival, taken the instant the input reaches this object: the socket
+    //   listener before the event is queued, the typed route before the body is
+    //   read. IT ONLY EVER INCREASES. Nothing retires an arrival, unwinds it, or
+    //   lowers this: a message that arrived and then failed, was empty, was
+    //   malformed or was a retry has still arrived, and authority granted before
+    //   it can never come back. That is the whole of Astra's third failure.
+    //
+    //   `pendingClientInput` -- WHAT THE SERVER STILL DOES NOT KNOW. An arrival
+    //   sits here from the moment it is taken until the server has established
+    //   what it was: a client turn whose obligations are registered, or nothing
+    //   at all. While an arrival is pending its content is UNKNOWN, and unknown
+    //   content may be a correction. That is the whole of Astra's first and
+    //   second failures, where an approval was newer than an unread message and
+    //   a clock alone therefore called it current.
+    //
+    // Together they answer one question, which is the invariant this file
+    // enforces: does the server know everything the client has sent, and is the
+    // most recent thing they sent the turn this approval belongs to?
+    //
+    // All of it is deterministic causal state. Nothing here reads a transcript,
+    // a figure or anything the client meant.
+    this.clientInputSequence = 0;
+    this.pendingClientInput = new Map();
+    // One arrival per client utterance, not per provider event or per request.
+    // A single utterance produces speech_started, speech_stopped and a
+    // transcription naming the same item; a retried typed message names the
+    // turn it is resending. Those are one arrival each, not three and not two.
+    this.clientInputSequenceByItemId = new Map();
+    // A speech_started the provider has not named yet has still begun. It takes
+    // its sequence immediately and the first event that names the utterance
+    // adopts it, so one utterance never becomes two arrivals.
+    this.unnamedClientInputSequence = null;
     this.latestClientTranscriptOrdinal = 0;
     this.clientTurnsByItemId = new Map();
     this.unboundAutoResponseTurnIds = [];
@@ -640,7 +656,10 @@ export class ConsumerLiveSession {
         try {
           return json(await this.handleTextMessage(await readInternalJson(request), arrival));
         } finally {
-          arrival.discard();
+          // Every path out, including a throw and a body that never arrived.
+          // This removes the reason to WAIT for this request; it does not give
+          // back the sequence it took, and cannot restore an older approval.
+          arrival.resolveAsNothing();
         }
       }
       if (path === '/delivery' && request.method === 'POST') {
@@ -876,87 +895,131 @@ export class ConsumerLiveSession {
    *
    * Returns the generation this utterance owns.
    */
+  /**
+   * A CLIENT UTTERANCE HAS ARRIVED. Called at ingress, never from the queue.
+   *
+   * Idempotent per utterance and safe to call from every path that can be the
+   * first to see one: the socket listener runs it ahead of the serialized event
+   * chain, `handleProviderMessage` runs it again for callers that reach the
+   * handler directly, and a typed request runs it before it awaits anything.
+   * Whichever arrives first takes the sequence; the rest read back the same one.
+   *
+   * The arrival is PENDING from here until `resolveClientInputArrival` says what
+   * it turned out to be. Until then the server does not know what the client
+   * said, and an approval that arrived after it may not execute past it.
+   */
   registerClientInputArrival(itemId) {
     const key = String(itemId || '');
-    if (key && this.clientInputGenerationByItemId.has(key)) {
-      return this.clientInputGenerationByItemId.get(key);
+    if (key) {
+      const known = this.clientInputSequenceByItemId.get(key);
+      if (known !== undefined) return known;
     }
     if (!key) {
-      // Speech the provider has not named yet. It has still begun, so the clock
-      // must move now; the id, when it comes, claims this same generation.
-      if (this.pendingUnkeyedInputGeneration === null) {
-        this.pendingUnkeyedInputGeneration = ++this.clientInputGeneration;
+      if (this.unnamedClientInputSequence === null) {
+        this.unnamedClientInputSequence = ++this.clientInputSequence;
+        this.pendingClientInput.set(this.unnamedClientInputSequence, null);
       }
-      return this.pendingUnkeyedInputGeneration;
+      return this.unnamedClientInputSequence;
     }
-    const generation = this.pendingUnkeyedInputGeneration === null
-      ? ++this.clientInputGeneration
-      : this.pendingUnkeyedInputGeneration;
-    this.pendingUnkeyedInputGeneration = null;
-    this.rememberClientInputGeneration(key, generation);
-    return generation;
+    const sequence = this.unnamedClientInputSequence === null
+      ? ++this.clientInputSequence
+      : this.unnamedClientInputSequence;
+    this.unnamedClientInputSequence = null;
+    this.pendingClientInput.set(sequence, key);
+    this.rememberClientInputSequence(key, sequence);
+    return sequence;
   }
 
-  rememberClientInputGeneration(key, generation) {
-    this.clientInputGenerationByItemId.set(key, generation);
-    while (this.clientInputGenerationByItemId.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
-      this.clientInputGenerationByItemId.delete(
-        this.clientInputGenerationByItemId.keys().next().value
-      );
+  rememberClientInputSequence(key, sequence) {
+    this.clientInputSequenceByItemId.set(key, sequence);
+    // Prune only what is settled. An arrival still waiting to be understood is
+    // the reason an approval is being held, and forgetting it would release one.
+    for (const oldest of this.clientInputSequenceByItemId.keys()) {
+      if (this.clientInputSequenceByItemId.size <= MAX_LIVE_TURN_LEDGER_ENTRIES) break;
+      if (this.pendingClientInput.has(this.clientInputSequenceByItemId.get(oldest))) continue;
+      this.clientInputSequenceByItemId.delete(oldest);
     }
-    return generation;
+    return sequence;
+  }
+
+  /**
+   * THE SERVER NOW KNOWS WHAT THAT ARRIVAL WAS.
+   *
+   * Called when a client turn has been recorded AND whatever obligation it owes
+   * has been registered -- not merely when its words were read. The difference
+   * matters: a correction that has been transcribed but whose review has not
+   * been scheduled is still financial context the plan has not incorporated,
+   * and an approval admitted in that window would run against a conversation
+   * the server had heard and not yet understood.
+   *
+   * Resolving never lowers `clientInputSequence`. It only removes the reason to
+   * WAIT; it never restores authority that arriving took away.
+   */
+  resolveClientInputArrival(itemId) {
+    const key = String(itemId || '');
+    if (!key) {
+      if (this.unnamedClientInputSequence !== null) {
+        this.pendingClientInput.delete(this.unnamedClientInputSequence);
+        this.unnamedClientInputSequence = null;
+      }
+      return;
+    }
+    const sequence = this.clientInputSequenceByItemId.get(key);
+    if (sequence !== undefined) this.pendingClientInput.delete(sequence);
   }
 
   /**
    * A TYPED MESSAGE HAS ARRIVED, AND NOBODY HAS READ IT YET.
    *
-   * THE DEFECT THIS FIXES. `/message` could only register a typed arrival after
-   * `await readInternalJson(request)`, because the client's own name for the
-   * message -- the thing that makes a retry the same utterance rather than a
-   * new one -- lives inside the body. A correction whose bytes had ALREADY
-   * arrived at the handler therefore sat in that await, unregistered, while an
-   * older approval walked past the execution admission test seeing a clock that
-   * had not moved. The message had arrived; only the server had not looked.
+   * `/message` cannot know what a request is until it has awaited the body: the
+   * client's own name for the message, which is what makes a retry the same
+   * utterance rather than a new one, is inside it. So the sequence is taken at
+   * the door and the identity is settled afterwards.
    *
-   * So the clock moves at the door and the identity is settled afterwards. The
-   * arrival takes a generation before anything is awaited, and the request
-   * comes back once it knows what it is:
+   *   - `claim(itemId)` for a message nobody has seen: the arrival is bound to
+   *     that id and stays pending until its turn is registered.
+   *   - `claim(itemId)` for an id already known: a RETRY of one utterance, not a
+   *     second one. It brings no new content, so nothing is left pending -- but
+   *     it did arrive, so the sequence is spent, and the turn it resends becomes
+   *     current as of now. That is how a client whose reply was lost can send it
+   *     again without either inventing a turn or reviving a stale one.
+   *   - `resolveAsNothing()` for a request that named nothing: an empty body, a
+   *     rejection, a dropped connection, a throw. The sequence is still spent.
    *
-   *   - `claim(itemId)` for a message nobody has seen before: the generation is
-   *     recorded against that id and stands.
-   *   - `claim(itemId)` for an id already known: this is a RETRY of one
-   *     utterance, not a second one. The ticket is retired and the original
-   *     generation is returned, so resending a message never invents a turn.
-   *   - `discard()` for a request that turned out to carry nothing -- an empty
-   *     body, a rejected message, a failure before it named itself.
-   *
-   * RETIRING ROLLS THE CLOCK BACK ONLY IF NOTHING HAPPENED WHILE THE BODY WAS
-   * BEING READ. If anything else arrived in that window, its generation is
-   * higher and stands; leaving a retired number below it costs nothing but a
-   * gap, while lowering the clock past a genuine arrival would lose it. The
-   * window itself is deliberately conservative: while a ticket is outstanding
-   * the clock HAS moved, so an approval in flight is refused even if the
-   * message turns out to be a retry. That costs the client one more question
-   * and is the direction this barrier is supposed to fail in.
+   * NOTHING HERE CAN GIVE BACK A SEQUENCE. A request that turns out to carry
+   * nothing readable still happened, and an approval that was current before it
+   * is not current after it. A ticket that is never settled stays pending, which
+   * holds execution closed rather than opening it -- the direction a fault in
+   * this path has to fail in.
    */
   beginClientInputArrival() {
-    const generation = ++this.clientInputGeneration;
-    const ticket = { generation, settled: false };
-    ticket.discard = () => {
-      if (ticket.settled) return;
-      ticket.settled = true;
-      if (this.clientInputGeneration === generation) this.clientInputGeneration = generation - 1;
-    };
+    const sequence = ++this.clientInputSequence;
+    this.pendingClientInput.set(sequence, null);
+    const ticket = { sequence, settled: false };
     ticket.claim = (itemId) => {
       const key = String(itemId || '');
-      if (ticket.settled || !key) return this.registerClientInputArrival(key);
-      const known = this.clientInputGenerationByItemId.get(key);
+      if (ticket.settled || !key) return sequence;
+      ticket.settled = true;
+      const known = this.clientInputSequenceByItemId.get(key);
       if (known !== undefined) {
-        ticket.discard();
+        // A RETRY BRINGS NO NEW CONTENT, so there is nothing to wait for and
+        // nothing to add to the conversation. It does NOT move the turn it
+        // resends: a turn's sequence is where it happened, and nothing the
+        // client does later can make an earlier turn more recent than it was.
+        // The sequence this retry spent still stands, so an approval that was
+        // in flight when it arrived is refused -- fail-closed, and recovered by
+        // the client approving again, which is a turn of its own.
+        this.pendingClientInput.delete(sequence);
         return known;
       }
+      this.pendingClientInput.set(sequence, key);
+      this.rememberClientInputSequence(key, sequence);
+      return sequence;
+    };
+    ticket.resolveAsNothing = () => {
+      if (ticket.settled) return;
       ticket.settled = true;
-      return this.rememberClientInputGeneration(key, generation);
+      this.pendingClientInput.delete(sequence);
     };
     return ticket;
   }
@@ -1024,10 +1087,13 @@ export class ConsumerLiveSession {
     if (!turn) {
       turn = {
         itemId,
-        // The generation this utterance was given when it ARRIVED, which is
+        // The sequence this utterance was given when it ARRIVED, which is
         // usually earlier than this line: speech_started reaches the socket
         // before speech_stopped does. Allocating a fresh number here would
         // date the turn from the moment the server noticed it.
+        //
+        // Its place in the conversation, and the only number it ever has.
+        // Nothing moves it: not a retry, not a later request, not a failure.
         ordinal: this.registerClientInputArrival(itemId),
         status: 'pending',
         transcript: '',
@@ -1820,6 +1886,12 @@ export class ConsumerLiveSession {
         this.state.waitUntil(turn.approvalSettled);
       }
     }
+    // THE SERVER NOW KNOWS WHAT THIS ARRIVAL WAS, and has registered whatever
+    // it owes. Not one line earlier: a turn that has been transcribed but whose
+    // review has not been scheduled is financial context the plan has not
+    // incorporated, and releasing the hold there would let a later approval run
+    // against a conversation the server had heard and not yet understood.
+    this.resolveClientInputArrival(itemId);
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);
     // An unclear answer retains the invitation while detached semantic review
@@ -2356,6 +2428,11 @@ export class ConsumerLiveSession {
   async markClientTranscriptionUnavailable(event = {}) {
     const itemId = String(event?.item_id || '');
     const turn = itemId ? this.clientTurnsByItemId.get(itemId) : null;
+    // WHAT THIS UTTERANCE WAS IS NOW SETTLED: nothing usable. The sequence it
+    // took at the door stands -- the client did speak, and approvals older than
+    // that stay dead -- but there is nothing further to wait for, so a later
+    // turn is not held behind a transcription that is never coming.
+    this.resolveClientInputArrival(itemId);
     if (turn && turn.status !== 'completed') {
       turn.status = 'failed';
       turn.transcript = '';
@@ -2744,7 +2821,7 @@ export class ConsumerLiveSession {
    * layer could only ever disagree with the layer that enforces it.
    */
   executionAdmissionFor(turn, decision) {
-    const boundGeneration = Number(turn?.ordinal || 0);
+    const boundOrdinal = Number(turn?.ordinal || 0);
     const boundTurnId = turn?.storedTurnId || null;
     const boundOfferToken = String(decision?.offerToken || '');
     const boundCertificate = String(decision?.certificateSignature || '');
@@ -2752,22 +2829,41 @@ export class ConsumerLiveSession {
     const refusal = (code, message) => ({ ok: false, code, refusal: { ok: false, code, retryable: true, message } });
     return () => {
       // THE READING HAS TO BE ABOUT THIS TURN, not merely about some turn. The
-      // decision records the turn and generation it was taken against; if the
+      // decision records the turn and ordinal it was taken against; if the
       // approval being admitted is not that one, nothing here has established
       // anything about it.
-      if (!boundGeneration || !boundOfferToken
-        || Number(decision?.turnOrdinal || 0) !== boundGeneration
+      if (!boundOrdinal || !boundOfferToken
+        || Number(decision?.turnOrdinal || 0) !== boundOrdinal
         || (decision?.turnId || null) !== boundTurnId) {
         return refusal('confirmation_context_invalid',
           'That confirmation is not attached to anything the client said. Read the current plan '
           + 'back in full and ask again.');
       }
-      // FIRST, BECAUSE IT IS THE ONE THAT CHANGES WHILE THE REST STAY TRUE.
-      if (this.clientInputGeneration > boundGeneration) {
+      // IS THIS TURN THE LAST THING THE CLIENT DID?
+      //
+      // `clientInputSequence` only ever rises and a turn's ordinal never moves,
+      // so an approval that stops being current stays that way -- including
+      // when the thing that overtook it turned out to be unreadable, empty, a
+      // retry, or a request that failed before anyone could read it. There is
+      // no path in this file that lowers one or raises the other.
+      if (this.clientInputSequence > boundOrdinal) {
         return refusal('confirmation_superseded_by_turn',
           'The client has spoken again since they agreed, so that agreement is no longer their '
           + 'latest word. Do not run the plan. Answer what they just said, then read the current '
           + 'plan back and ask again.');
+      }
+      // AND DOES THE SERVER KNOW EVERYTHING THEY SENT BEFORE IT?
+      //
+      // Being the newest thing the client did is not enough. A message that
+      // arrived earlier and has not yet been understood may be a correction,
+      // and an approval that merely came after it would otherwise step over it.
+      // Content that is unknown is treated as content that changes the plan,
+      // because it might be, and finding out costs one more sentence.
+      for (const pending of this.pendingClientInput.keys()) {
+        if (pending >= boundOrdinal) continue;
+        return refusal('client_input_unresolved',
+          'The client sent something before that which has not been read yet. Do not run the '
+          + 'plan. Deal with what they said first, then read the current plan back and ask again.');
       }
       const offer = this.directConfirmationOffer;
       if (!offer || offer.superseded === true

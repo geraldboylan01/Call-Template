@@ -108,6 +108,16 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 > new id keeps it, a known id retires it and reuses the generation that id
 > already had, and a request that names nothing retires it on every path
 > out. Nothing deployed.
+>
+> **Fourth review, 16 September 2026.** Three more reorderings got past a
+> clock that could be wound back and that only asked "is anything newer
+> than me?". The bookkeeping is now two facts kept apart: a strictly
+> monotonic `clientInputSequence`, which nothing lowers, and
+> `pendingClientInput`, which holds an arrival from the moment it is taken
+> until the server has established what it was. An approval executes only
+> when the server knows everything the client sent AND the most recent
+> thing they sent is the turn it belongs to. No arrival is ever taken back
+> and no turn's place ever moves. Nothing deployed.
 
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.

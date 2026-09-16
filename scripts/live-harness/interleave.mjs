@@ -36,22 +36,27 @@ export function interleavingDatabase(database) {
   let fired = false;
 
   const log = [];
-  const beforeStatement = (sql) => {
+  const beforeStatement = async (sql) => {
     if (!armed) return;
     executed += 1;
     log.push(String(sql || ''));
     if (fired || executed !== fireAt || typeof callback !== 'function') return;
     fired = true;
-    callback(sql);
+    // A callback may return a promise, and it is awaited. That is the
+    // difference between "another request has arrived at this instant" and
+    // "another request has arrived and completely finished at this instant",
+    // and both are orderings the invariant has to survive.
+    const settling = callback(sql);
+    if (settling && typeof settling.then === 'function') await settling;
   };
 
   const wrapStatement = (statement, sql) => ({
     sql,
     get values() { return statement.values; },
     bind: (...values) => wrapStatement(statement.bind(...values), sql),
-    first: async () => { beforeStatement(sql); return statement.first(); },
-    all: async () => { beforeStatement(sql); return statement.all(); },
-    run: async () => { beforeStatement(sql); return statement.run(); }
+    first: async () => { await beforeStatement(sql); return statement.first(); },
+    all: async () => { await beforeStatement(sql); return statement.all(); },
+    run: async () => { await beforeStatement(sql); return statement.run(); }
   });
 
   return {
@@ -60,7 +65,7 @@ export function interleavingDatabase(database) {
       // A batch is one atomic step, so it counts once and is forwarded with
       // the underlying statements' own sql and values.
       batch: async (statements) => {
-        beforeStatement('BATCH');
+        await beforeStatement('BATCH');
         return database.batch(statements.map((item) => ({ sql: item.sql, values: item.values })));
       },
       exec: database.exec ? (...args) => database.exec(...args) : undefined
