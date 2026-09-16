@@ -745,6 +745,40 @@ for (const clientSpeaksAgain of [true, false]) {
  */
 {
   const CLARIFYING_LATER_MESSAGE = 'Actually, hold on -- is the mortgage in that?';
+  const CORRECTION_MESSAGE = 'Actually, leave my wife\'s pension out of it.';
+
+  /** One typed message as the route really receives it: a POST to /message. */
+  const typedRequest = (body) => new Request('http://live-session/message', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  /**
+   * A typed message whose BYTES HAVE ARRIVED AND WHICH NOBODY HAS READ.
+   *
+   * This is the shape of Astra's schedule, and it cannot be faked by calling
+   * the handler later: the request must be at the door, with its body pending,
+   * while an older approval is still walking towards the engine. A real Request
+   * over a stream the test controls is exactly that -- `request.text()` inside
+   * the route suspends until `deliver()` is called.
+   */
+  function suspendedTypedRequest(body) {
+    let controller = null;
+    const stream = new ReadableStream({ start(source) { controller = source; } });
+    return {
+      request: new Request('http://live-session/message', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: stream,
+        duplex: 'half'
+      }),
+      deliver() {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));
+        controller.close();
+      }
+    };
+  }
 
   /** One typed meeting, driven to a delivered certified offer. */
   async function typedMeetingWithDeliveredOffer(name) {
@@ -775,7 +809,7 @@ for (const clientSpeaksAgain of [true, false]) {
   }
 
   /** Approve, optionally letting a newer typed message land at statement `at`. */
-  async function approveTyped(rig, { at = 0 } = {}) {
+  async function approveTyped(rig, { at = 0, onFire = null, overHttp = false } = {}) {
     approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
     typedRendererSteps = [
       { tool: 'confirm_and_run', args: { confirmationToken: rig.session.directConfirmationOffer.token } },
@@ -784,17 +818,32 @@ for (const clientSpeaksAgain of [true, false]) {
     let landed = false;
     rig.interleave.arm(at, () => {
       landed = true;
+      if (onFire) return onFire();
       // THE REAL INGRESS, not a poke at the counter. A second typed request is
       // exactly what production would deliver here, and registering its arrival
       // is the first thing that request does.
       typedRendererSteps.push({ speech: 'Let me check that for you.' });
       rig.session.handleTextMessage({ text: CLARIFYING_LATER_MESSAGE }).catch(() => {});
+      return undefined;
     });
-    await rig.session.handleTextMessage({ text: 'Yes, go ahead.' });
+    // The tool result the model is actually handed back, observed after the
+    // real barrier has run. The HTTP reply carries the assistant's next line,
+    // not the reason a plan did or did not run.
+    let toolResult = null;
+    const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+    rig.session.dispatchTextToolCall = async (...args) => {
+      toolResult = await dispatch(...args);
+      return toolResult;
+    };
+    const approval = overHttp
+      ? rig.session.fetch(typedRequest({ text: 'Yes, go ahead.' })).then((response) => response.json())
+      : rig.session.handleTextMessage({ text: 'Yes, go ahead.' });
+    const reply = await approval;
+    rig.session.dispatchTextToolCall = dispatch;
     const statements = rig.interleave.statements();
     rig.interleave.disarm();
     await settle(rig.durable, rig.session);
-    return { landed, statements };
+    return { landed, statements, reply, toolResult };
   }
 
   // A TYPED REQUEST IS NEWER INPUT FROM ITS FIRST INSTRUCTION.
@@ -825,8 +874,28 @@ for (const clientSpeaksAgain of [true, false]) {
   // interleaving points below are derived from what the path actually does
   // rather than from what it did when this test was written.
   const calibration = await typedMeetingWithDeliveredOffer('approval-typed-calibration');
-  const { statements } = await approveTyped(calibration);
+  const extractionsBeforeTyped = extractionCalls;
+  const verificationsBeforeTyped = verificationCalls;
+  const { statements, toolResult: calibratedResult } = await approveTyped(calibration, { overHttp: true });
+  equal(calibratedResult?.ok, true,
+    `an ordinary typed approval over /message must execute (${JSON.stringify(calibratedResult?.code)})`);
   equal(await runCount(calibration.meeting), 1, 'the calibration approval executes exactly once');
+  // THE FAST PATH IS STILL THE FAST PATH. Registering arrivals at the door
+  // must not have turned an ordinary approval into a turn that reopens the plan.
+  equal(extractionCalls - extractionsBeforeTyped, 0,
+    'a typed pure approval runs no planner pass');
+  equal(verificationCalls - verificationsBeforeTyped, 0,
+    'and no verifier pass');
+  // AND A SECOND APPROVAL OF THE SAME OFFER JOINS THE RECEIPT. The door moves
+  // the clock for it, and the approval it carries is still its own latest word.
+  typedRendererSteps = [
+    { tool: 'confirm_and_run', args: { confirmationToken: calibration.session.directConfirmationOffer.token } },
+    { speech: 'It is already running.' }
+  ];
+  approvalScript = { 'Yes, go ahead.': { decision: 'pure_approval' } };
+  await calibration.session.fetch(typedRequest({ text: 'Yes, go ahead.' }));
+  await settle(calibration.durable, calibration.session);
+  equal(await runCount(calibration.meeting), 1, 'a duplicate typed approval cannot execute a second time');
   const engineEntry = statements.findIndex((sql) => /INSERT INTO consumer_analysis_runs/i.test(sql)) + 1;
   ok(engineEntry > 0, 'the approval path reaches the analysis run record');
   // The last read before the tool hands the approval to the execution layer.
@@ -875,6 +944,115 @@ for (const clientSpeaksAgain of [true, false]) {
     }
   }
   pass(`C: a newer typed message arriving at any of the ${engineEntry} awaits before the engine stops the plan`);
+
+  /* --------- D: a correction that has arrived and has not been read yet --- */
+
+  /**
+   * THE LAST GAP, AND THE ONE THAT ONLY THE DOOR CAN CLOSE.
+   *
+   * `/message` could not register a typed arrival until it had read the body,
+   * because the client's own name for the message -- what makes a retry the
+   * same utterance -- is inside it. So a correction whose bytes had ALREADY
+   * arrived sat in that await while an older approval walked past the execution
+   * admission test seeing a clock that had not moved. Nothing was slow and
+   * nothing was out of order: the message was simply at the door, unread.
+   *
+   * This drives the real route with a real Request whose body stream the test
+   * holds shut, and fires it at the last await before the engine -- the point
+   * where the old plan was closest to running. The approval must be refused,
+   * and the refusal must be the clock's, not an accident of some other barrier.
+   */
+  // Astra's own schedule is the second of these -- the correction reaching the
+  // door at the LAST await, where the plan was closest to running. The first is
+  // here because the same unread request must also be seen by the first barrier
+  // that looks, not only by the last one: if the clock moves at the door, every
+  // check downstream of it inherits that, and the two refusals below name two
+  // different barriers reaching the same answer.
+  for (const { at, where, barrier } of [
+    { at: 1, where: 'before the approval has even been read', barrier: 'confirmation_superseded_by_turn' },
+    { at: engineEntry, where: 'at the last await before the engine', barrier: 'execution_admission_withdrawn' }
+  ]) {
+    const rig = await typedMeetingWithDeliveredOffer(`approval-typed-http-arrival-${at}`);
+    const approvalGeneration = rig.session.clientInputGeneration + 1;
+    let correction = null;
+    let correctionInFlight = null;
+    let clockMovedWhileUnread = false;
+
+    const { landed, toolResult } = await approveTyped(rig, {
+      at,
+      overHttp: true,
+      onFire: () => {
+        correction = suspendedTypedRequest({ text: CORRECTION_MESSAGE });
+        // Started, not awaited, and its body cannot be delivered yet. The route
+        // is now suspended inside `readInternalJson`, exactly where a request
+        // whose bytes have arrived but have not been drained would be.
+        correctionInFlight = rig.session.fetch(correction.request).then((r) => r.json());
+        // SYNCHRONOUSLY, while that body is still unread.
+        clockMovedWhileUnread = rig.session.clientInputGeneration > approvalGeneration;
+      }
+    });
+
+    equal(landed, true, `D@${at}: the correction reached the route while the approval was in flight`);
+    equal(clockMovedWhileUnread, true,
+      `D@${at}: a typed message is newer input from the instant it arrives, not from when its body is read`);
+    equal(await runCount(rig.meeting), 0,
+      `D@${at}: zero engine executions from a plan a correction had already superseded`);
+    equal(toolResult?.ok, false, `D@${at}: the approval is refused`);
+    equal(toolResult?.diagnosticCode || toolResult?.code, barrier,
+      `D@${at}: refused by the clock ${where}, not by some other barrier that happened to catch it`);
+    const runs = await analysisRunStatuses(rig.meeting);
+    equal(runs.filter((status) => status === 'complete').length, 0, `D@${at}: nothing completes`);
+
+    // Let the correction finish, so the meeting ends where a real one would.
+    typedRendererSteps.push({ speech: 'Understood -- leaving that out.' });
+    correction.deliver();
+    await correctionInFlight;
+    await settle(rig.durable, rig.session);
+    equal(await runCount(rig.meeting), 0,
+      `D@${at}: and still nothing has run once the correction lands`);
+    pass(`D: a correction at the door with its body unread stops the older approval, ${where}`);
+  }
+
+  /* ---------------------------- a retry is the same message, not a newer one */
+
+  /**
+   * THE COST OF MOVING THE CLOCK BEFORE READING THE BODY, PAID BACK.
+   *
+   * Registering at the door means registering before the server knows whether
+   * this is a new message or the client's browser resending one it never got a
+   * reply to. A retry that counted as a new utterance would supersede an
+   * approval nobody had replaced, and the meeting would ask the same question
+   * forever. So the ticket settles: a known id retires it and returns the
+   * generation that id already had.
+   */
+  {
+    const rig = await typedMeetingWithDeliveredOffer('approval-typed-retry');
+    const clientTurnId = 'retry-0123456789ab';
+    typedRendererSteps = [{ speech: 'Understood.' }];
+    const first = await (await rig.session.fetch(
+      typedRequest({ text: CORRECTION_MESSAGE, clientTurnId })
+    )).json();
+    await settle(rig.durable, rig.session);
+    const afterFirst = rig.session.clientInputGeneration;
+    equal(first.ok, true, 'the first message is accepted');
+
+    typedRendererSteps = [{ speech: 'Understood.' }];
+    const retry = await (await rig.session.fetch(
+      typedRequest({ text: CORRECTION_MESSAGE, clientTurnId })
+    )).json();
+    await settle(rig.durable, rig.session);
+    equal(retry.turnId, first.turnId, 'a retry is the same turn the client already sent');
+    equal(rig.session.clientInputGeneration, afterFirst,
+      'and takes no generation of its own: resending is not speaking again');
+
+    // An empty message is not the client speaking either, and must not leave
+    // the clock advanced behind a request that was refused.
+    const beforeEmpty = rig.session.clientInputGeneration;
+    await rig.session.fetch(typedRequest({ text: '   ' }));
+    equal(rig.session.clientInputGeneration, beforeEmpty,
+      'a refused empty message leaves the clock where it was');
+    pass('a retried typed message is one utterance, and a refused one is none');
+  }
 }
 
 /* --------------------------------------------- one utterance is one turn --- */

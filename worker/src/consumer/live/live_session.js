@@ -630,7 +630,18 @@ export class ConsumerLiveSession {
       }
       if (path === '/message' && request.method === 'POST') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
-        return json(await this.handleTextMessage(await readInternalJson(request)));
+        // THE OUTERMOST INSTRUCTION THIS OBJECT RUNS FOR A TYPED MESSAGE, and
+        // it has to be, because the very next thing is an await on the body.
+        // A message whose bytes have already arrived is newer client input from
+        // this line, not from whenever reading it finishes. `handleTextMessage`
+        // settles what the ticket turns out to name; the finally retires one
+        // that named nothing, including on a throw.
+        const arrival = this.beginClientInputArrival();
+        try {
+          return json(await this.handleTextMessage(await readInternalJson(request), arrival));
+        } finally {
+          arrival.discard();
+        }
       }
       if (path === '/delivery' && request.method === 'POST') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
@@ -882,6 +893,11 @@ export class ConsumerLiveSession {
       ? ++this.clientInputGeneration
       : this.pendingUnkeyedInputGeneration;
     this.pendingUnkeyedInputGeneration = null;
+    this.rememberClientInputGeneration(key, generation);
+    return generation;
+  }
+
+  rememberClientInputGeneration(key, generation) {
     this.clientInputGenerationByItemId.set(key, generation);
     while (this.clientInputGenerationByItemId.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
       this.clientInputGenerationByItemId.delete(
@@ -889,6 +905,60 @@ export class ConsumerLiveSession {
       );
     }
     return generation;
+  }
+
+  /**
+   * A TYPED MESSAGE HAS ARRIVED, AND NOBODY HAS READ IT YET.
+   *
+   * THE DEFECT THIS FIXES. `/message` could only register a typed arrival after
+   * `await readInternalJson(request)`, because the client's own name for the
+   * message -- the thing that makes a retry the same utterance rather than a
+   * new one -- lives inside the body. A correction whose bytes had ALREADY
+   * arrived at the handler therefore sat in that await, unregistered, while an
+   * older approval walked past the execution admission test seeing a clock that
+   * had not moved. The message had arrived; only the server had not looked.
+   *
+   * So the clock moves at the door and the identity is settled afterwards. The
+   * arrival takes a generation before anything is awaited, and the request
+   * comes back once it knows what it is:
+   *
+   *   - `claim(itemId)` for a message nobody has seen before: the generation is
+   *     recorded against that id and stands.
+   *   - `claim(itemId)` for an id already known: this is a RETRY of one
+   *     utterance, not a second one. The ticket is retired and the original
+   *     generation is returned, so resending a message never invents a turn.
+   *   - `discard()` for a request that turned out to carry nothing -- an empty
+   *     body, a rejected message, a failure before it named itself.
+   *
+   * RETIRING ROLLS THE CLOCK BACK ONLY IF NOTHING HAPPENED WHILE THE BODY WAS
+   * BEING READ. If anything else arrived in that window, its generation is
+   * higher and stands; leaving a retired number below it costs nothing but a
+   * gap, while lowering the clock past a genuine arrival would lose it. The
+   * window itself is deliberately conservative: while a ticket is outstanding
+   * the clock HAS moved, so an approval in flight is refused even if the
+   * message turns out to be a retry. That costs the client one more question
+   * and is the direction this barrier is supposed to fail in.
+   */
+  beginClientInputArrival() {
+    const generation = ++this.clientInputGeneration;
+    const ticket = { generation, settled: false };
+    ticket.discard = () => {
+      if (ticket.settled) return;
+      ticket.settled = true;
+      if (this.clientInputGeneration === generation) this.clientInputGeneration = generation - 1;
+    };
+    ticket.claim = (itemId) => {
+      const key = String(itemId || '');
+      if (ticket.settled || !key) return this.registerClientInputArrival(key);
+      const known = this.clientInputGenerationByItemId.get(key);
+      if (known !== undefined) {
+        ticket.discard();
+        return known;
+      }
+      ticket.settled = true;
+      return this.rememberClientInputGeneration(key, generation);
+    };
+    return ticket;
   }
 
   /**
@@ -1889,22 +1959,31 @@ export class ConsumerLiveSession {
       : `msg_${crypto.randomUUID()}`;
   }
 
-  async handleTextMessage(body) {
-    // INGRESS. Before the budget, before the planner, before anything is
-    // awaited -- because a Durable Object serves typed requests concurrently,
-    // and a second message arriving while the first is mid-execution is
-    // exactly the newer input an older approval must not outrun. Registering
-    // it after the first await would mean the clock moved only once the server
-    // was free, which is the defect this closes.
+  async handleTextMessage(body, arrival = null) {
+    // INGRESS, OR THE SETTLEMENT OF ONE. Before the budget, before the planner,
+    // before anything is awaited -- because a Durable Object serves typed
+    // requests concurrently, and a second message arriving while the first is
+    // mid-execution is exactly the newer input an older approval must not
+    // outrun. Registering it after the first await would mean the clock moved
+    // only once the server was free, which is the defect this closes.
+    //
+    // `arrival` is the ticket the HTTP route took before it read the body. Here
+    // is where it finds out what it was: a new utterance, or a retry of one
+    // already counted. Without a ticket -- a direct in-process caller -- this
+    // registers the arrival itself, which is the same thing a beat later.
     //
     // A retry of the same message carries the same clientTurnId and is the same
-    // utterance: `registerClientInputArrival` is keyed on that, so retrying
-    // does not manufacture a newer turn.
+    // utterance, so it never manufactures a newer turn.
     const itemId = ConsumerLiveSession.typedInputItemId(body);
     // An empty request is not something the client said. It is refused a few
     // lines below with a 400, and moving the clock for it would let a dropped
-    // keystroke invalidate an approval the client had genuinely given.
-    if (String(body?.text || '').trim()) this.registerClientInputArrival(itemId);
+    // keystroke invalidate an approval the client had genuinely given. Leaving
+    // the ticket unclaimed is enough: the route retires whatever it took, on
+    // every path out, so an empty or rejected message ends where it started.
+    if (String(body?.text || '').trim()) {
+      if (arrival) arrival.claim(itemId);
+      else this.registerClientInputArrival(itemId);
+    }
     // The budget covers the WHOLE request: the awaited pass, the renderer, and
     // any get_state the renderer makes -- not just the first await.
     const disarmPlanningDeadline = this.armDirectModulePlanningDeadline();

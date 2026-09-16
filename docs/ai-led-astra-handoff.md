@@ -98,6 +98,16 @@ Collapsing the ladder costs a second attempt. When the auditor scopes a proposal
 > deterministic engine. Schedules in
 > [check-live-approval-meaning.mjs](../scripts/check-live-approval-meaning.mjs).
 > Still nothing deployed.
+>
+> **Third review, 16 September 2026.** One P1 left in that clock: `/message`
+> could only register a typed arrival after awaiting the body, because the
+> client's own name for a message -- what makes a retry the same utterance
+> -- is inside it. A correction whose bytes had already arrived sat in that
+> await while an older approval passed execution admission. The route now
+> takes a generation at the door and settles what it names afterwards: a
+> new id keeps it, a known id retires it and reuses the generation that id
+> already had, and a request that names nothing retires it on every path
+> out. Nothing deployed.
 
 
 `execution_approval.js` still decides, by NFKC normalisation, four dictionaries and a whole-clause grammar, whether a client's words authorise execution. It is consumed at four points and governs both Speak and Type.
