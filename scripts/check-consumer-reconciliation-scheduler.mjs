@@ -205,12 +205,24 @@ const liveSource = readFileSync(
   new URL('../worker/src/consumer/live/live_session.js', import.meta.url),
   'utf8'
 );
-assert.match(liveSource, /code:\s*'reconciliation_pending'/,
-  'confirm_and_run must return the recoverable reconciliation_pending result');
+// THE SAME BARRIER, ASKED AT THE SEAL INSTEAD OF AT AN APPROVAL.
+//
+// `plannerReconciliationPreflight` used to stand in front of `confirm_and_run`
+// and answer "not yet" to a spoken yes. There is no spoken yes; the question is
+// identical and the same function asks it, but a "not yet" now refuses to
+// publish a REVIEW. These pin that it is still asked, and still from the seal.
+assert.match(liveSource, /plannerReconciliationPreflight\(\s*\n?\s*config\.plannerReconciliationMode/,
+  'the seal must run the reconciliation preflight');
+assert.match(liveSource, /blockers\.push\(`reconciliation_\$\{preflight\.reason\}`\)/,
+  'and an unready preflight must block the review rather than be logged and ignored');
+assert.match(liveSource, /sealBlockers\(\)[\s\S]{0,800}unreviewedMaterialTurns/,
+  'the seal blockers must include the unreviewed material turns the barrier protects');
+// THE REFUSAL MUST ALSO QUEUE WHAT IT IS WAITING FOR, or the meeting deadlocks
+// on the first blocked seal and can never finish.
 assert.match(liveSource, /reconciliationTrigger\s*=\s*'pre_confirmation'/,
-  'the confirmation barrier must queue a priority pre-confirmation checkpoint');
+  'a blocked seal must queue a priority pre-confirmation checkpoint');
 assert.match(liveSource, /reconciliationPriority\s*=\s*true/,
-  'the confirmation checkpoint must outrank ordinary coalesced triggers');
+  'and that checkpoint must outrank ordinary coalesced triggers');
 assert.match(liveSource, /auditTurnFacts\(transcript, itemId, storedTurn\.id\)/,
   'legacy audit must receive the durable source-turn identity');
 assert.match(liveSource, /toolName:\s*'silent_planner'[\s\S]{0,500}sourceTurnId:\s*storedTurnId/,

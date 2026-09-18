@@ -234,3 +234,49 @@ export function buildTypedCardIndex(brief) {
   });
   return index;
 }
+
+/**
+ * WHAT THE CLIENT IS ACTUALLY ASKED TO INSPECT.
+ *
+ * The Review screen and the Run button are drawn from this one object, and its
+ * digest is stored with the immutable review, so a summary describing a
+ * different plan can never appear beside a button that runs this one.
+ *
+ * `summary` is the certified sentence -- the planner wrote it, an independent
+ * verifier covered it, and the certificate binds its hash. It is reproduced
+ * verbatim here rather than regenerated, because a regenerated description of
+ * a frozen plan is a description nothing has certified.
+ *
+ * Everything else is the same evidence the card already showed: which analyses
+ * will run, the values each one is using, and the standard planning figures it
+ * will assume. Nothing is computed and nothing is interpreted.
+ */
+export function buildReviewPresentation(brief) {
+  if (!brief || brief.schemaVersion !== 'MeetingBriefV3') return null;
+  const snapshot = brief.directModuleSnapshot;
+  const modules = (Array.isArray(snapshot?.modules) ? snapshot.modules : [])
+    .filter((item) => item?.status === 'ready')
+    .slice(0, MAX_MODULES)
+    .map(describeModule)
+    .filter(Boolean)
+    .map((module) => ({
+      id: module.id,
+      title: module.title,
+      origin: module.origin,
+      reason: module.reason,
+      // The inputs this analysis will actually run on, as the client gave them.
+      inputs: module.known,
+      assumptions: module.assumptions
+    }));
+  // THE CERTIFIED SUMMARY IS THE PRESENTATION OF RECORD; THE BREAKDOWN IS NOT.
+  //
+  // Not every module has a display contract yet -- house_purchase does not --
+  // and a missing LABEL must never veto a plan an independent verifier has
+  // already certified. The summary is the sentence the planner wrote and the
+  // verifier approved, its hash is bound into the certificate, and it describes
+  // exactly what will run. A review with only that is thin; a review refused
+  // because a field had no English name would be a bug wearing a safety hat.
+  const summary = String(brief.confirmationPrompt || '').slice(0, 2_400);
+  if (!summary) return null;
+  return { schemaVersion: 'ReviewPresentationV1', summary, modules };
+}

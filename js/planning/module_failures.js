@@ -27,7 +27,7 @@ export const MODULE_FAILURE_CODES = Object.freeze({
   UNKNOWN: 'unknown_module_failure'
 });
 
-export const MODULE_FAILURE_CODE_VALUES = Object.freeze(Object.values(MODULE_FAILURE_CODES));
+const MODULE_FAILURE_CODE_VALUES = Object.freeze(Object.values(MODULE_FAILURE_CODES));
 
 /** A failure that already knows which phase it came from. */
 export class ModuleFailureError extends Error {

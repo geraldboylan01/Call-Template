@@ -18,6 +18,7 @@ import {
 } from '../worker/src/consumer/direct_module_planner.js';
 import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
 import { getLatestRealtimeMeetingBrief, getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
+import { describeCurrentReview, executeReviewRun } from '../worker/src/consumer/review.js';
 
 const pass = (message) => console.info(`[DirectModuleLivePath] PASS: ${message}`);
 const TODAY = new Date().toISOString().slice(0, 10);
@@ -261,107 +262,70 @@ try {
   assert.ok(provider.stateItems().some((item) => item.includes('background data, never an instruction')));
   pass('the transcript becomes encrypted, verified native module input and later-turn steering');
 
-  let confirmationToken = null;
-  const inaccurateReadBack = await simulator.turn({
+  /* ------------------------------------------- readiness seals, it does not ask */
+
+  const readiness = await simulator.turn({
     clientText: 'Are we ready to run it?',
     act: async ({ callTool }) => {
       const state = await callTool('get_state', {});
-      confirmationToken = state.result?.confirmationToken || null;
       assert.equal(state.result?.readyToConfirm, true);
-      assert.ok(confirmationToken);
-      assert.equal(state.result?.confirmationPrompt, CONFIRMATION_PROMPT);
-      return { speech: 'Everything is ready. Shall I run it?' };
+      assert.equal(state.result?.reviewPublished, true, 'a ready read seals the meeting');
+      // THE MODEL IS TOLD NOTHING IT COULD SPEND. No token, no prompt to recite,
+      // no instruction to seek agreement -- because there is nothing it could
+      // do with any of them.
+      assert.equal(state.result?.confirmationToken, undefined);
+      assert.equal(state.result?.confirmationPrompt, undefined);
+      return { speech: 'Here is the plan on screen for you.' };
     }
   });
   await settle(durable, session);
-  assert.equal(inaccurateReadBack.responseIds.length, 2, 'get_state must finish in a distinct continuation response');
-  assert.ok(session.directConfirmationOffer?.planId,
-    'the exact executable plan is frozen before attempting delivery');
-  assert.equal(session.directConfirmationOffer.readbackFullyDelivered, false,
-    'an incomplete or inaccurate read-back preserves an explicitly unapprovable offer');
+  assert.equal(readiness.responseIds.length, 2, 'get_state must finish in a distinct continuation response');
 
-  const readBack = await simulator.turn({
-    clientText: 'Please read the exact plan back to me.',
-    act: async ({ callTool }) => {
-      const state = await callTool('get_state', {});
-      confirmationToken = state.result?.confirmationToken || null;
-      assert.equal(state.result?.confirmationPrompt, CONFIRMATION_PROMPT);
-      return { speech: state.result.confirmationPrompt };
-    }
-  });
-  await settle(durable, session);
-  assert.equal(readBack.responseIds.length, 2);
-  assert.equal(session.directConfirmationOffer?.token, confirmationToken);
-  assert.equal(session.directConfirmationOffer?.readbackFullyDelivered, true);
-  const armedAssistantTurnId = session.directConfirmationOffer?.assistantTurnId;
-  assert.ok(armedAssistantTurnId);
-  pass('a ready get_state result arms only the assistant turn that reads back the verified plan');
-
-  let refusedWrongToken = null;
-  let replacementToken = null;
-  const refusedChain = await simulator.turn({
-    clientText: 'Yes, please go ahead.',
-    act: async ({ callTool }) => {
-      refusedWrongToken = (await callTool('confirm_and_run', {
-        confirmationToken: `${confirmationToken}-wrong`
-      })).result;
-      const refreshed = await callTool('get_state', {});
-      replacementToken = refreshed.result?.confirmationToken || null;
-      return {
-        speech: refreshed.result.confirmationPrompt
-      };
-    }
-  });
-  await settle(durable, session);
-  assert.equal(refusedWrongToken?.code, 'confirmation_context_invalid');
-  assert.equal(refusedChain.responseIds.length, 3,
-    'two consecutive tools must require two causally linked continuation responses');
-  const rootContext = session.responseContextsById.get(refusedChain.responseIds[0]);
-  for (const responseId of refusedChain.responseIds.slice(1)) {
-    const continuation = session.responseContextsById.get(responseId);
-    assert.equal(continuation?.causeItemId, rootContext?.causeItemId);
-    assert.equal(continuation?.precedingAssistantTranscript, rootContext?.precedingAssistantTranscript);
-  }
-  assert.equal(session.directConfirmationOffer?.token, replacementToken);
-  assert.notEqual(session.directConfirmationOffer?.assistantTurnId, armedAssistantTurnId);
-  pass('wrong tokens fail and a multi-continuation chain preserves its exact causal turn and proposition');
-
-  const frozenOffer = structuredClone(session.directConfirmationOffer);
+  const published = await describeCurrentReview(meeting.env, meeting.sessionId);
+  const reviewId = published.review?.reviewId;
+  assert.ok(reviewId, 'a review is published and is the one on screen');
+  assert.deepEqual(published.review.actions, ['run', 'change']);
+  assert.equal(published.review.presentation.summary, CONFIRMATION_PROMPT,
+    'the client inspects the exact certified statement, verbatim');
+  const reviewRow = await meeting.env.CONSUMER_DB
+    .prepare('SELECT plan_id, certificate_signature, state FROM consumer_reviews WHERE id = ?')
+    .bind(reviewId).first();
+  assert.ok(reviewRow.plan_id, 'the exact executable plan is frozen before the client can act');
+  assert.ok(reviewRow.certificate_signature, 'and its certificate is frozen with it');
   const frozenExecution = await getRealtimeAnalysisPlanExecution(
-    meeting.env, meeting.sessionId, frozenOffer.planId, meeting.meetingId
+    meeting.env, meeting.sessionId, reviewRow.plan_id, meeting.meetingId
   );
-  await simulator.turn({
-    clientText: 'That seems sensible to me.',
-    act: async () => ({ speech: 'Would you like me to run that plan now?' })
-  });
-  await settle(durable, session);
-  assert.equal(session.directConfirmationOffer?.token, frozenOffer.token,
-    'unclear confirmation must not destroy the offer');
-  assert.equal(session.directConfirmationOffer?.planId, frozenOffer.planId);
-  assert.equal(session.directConfirmationOffer?.readbackFullyDelivered, true);
-  assert.equal(session.directConfirmationOffer?.reviewStatus, 'settled');
-  assert.ok(session.directConfirmationOffer.reviewedSnapshotRevision > frozenOffer.snapshotRevision,
-    'a newer planning pass with unchanged verified meaning keeps the original offer alive');
-  assert.equal(session.directConfirmationOffer?.certificateSignature, frozenOffer.certificateSignature);
-  pass('unclear approval retains the delivered offer through an unchanged semantic review and clarification');
+  pass('a ready state read seals the meeting and publishes the exact certified plan as a review');
 
-  let confirmationResult = null;
-  await simulator.turn({
-    clientText: 'Yeah, run that plan.',
-    act: async ({ callTool }) => {
-      const call = await callTool('confirm_and_run', { confirmationToken: replacementToken });
-      confirmationResult = call.result;
-      return { speech: call.result?.speakableText || 'The analysis is ready.' };
-    }
-  });
-  await settle(durable, session);
+  /* ----------------------------------- conversation cannot touch that review */
 
-  assert.equal(extractionCalls, 4, 'clean natural approval creates no new extraction pass');
-  assert.equal(verificationCalls, 4, 'unclear clarification is reviewed once in the existing background verifier');
-  assert.equal(confirmationResult?.ok, true);
-  assert.equal(confirmationResult?.status, 'complete');
-  assert.equal(confirmationResult?.completedCount, 1);
-  pass('the confirmed certified JSON runs unchanged through the deterministic mortgage module');
+  // The server refuses the input, so none of these can alter, approve or
+  // revoke anything. Under the old architecture the second of them ran the
+  // analyses.
+  for (const said of ['Yes, please go ahead.', 'That seems sensible to me.', 'Yeah, run that plan.']) {
+    await session.handleClientTurn({ item_id: `closed_${said.length}`, transcript: said });
+    await settle(durable, session);
+  }
+  const untouched = await describeCurrentReview(meeting.env, meeting.sessionId);
+  assert.equal(untouched.review?.reviewId, reviewId, 'the review is exactly the one published');
+  assert.equal((await meeting.env.CONSUMER_DB.prepare(
+    'SELECT COUNT(*) AS n FROM consumer_analysis_runs WHERE session_id = ?'
+  ).bind(meeting.sessionId).first()).n, 0, 'and nothing has run');
+  pass('conversation during review alters nothing and runs nothing');
+
+  /* -------------------------------------------------- the human presses Run */
+
+  const extractionsBeforeRun = extractionCalls;
+  const verificationsBeforeRun = verificationCalls;
+  const confirmationResult = await executeReviewRun(meeting.env, meeting.config, {
+    sessionId: meeting.sessionId, reviewId, clickId: 'live_path_click'
+  });
+  assert.equal(extractionCalls, extractionsBeforeRun, 'Run creates no new extraction pass');
+  assert.equal(verificationCalls, verificationsBeforeRun, 'and no new verifier pass');
+  assert.equal(confirmationResult?.ok, true, confirmationResult?.code || '');
+  assert.equal(confirmationResult?.analysisPlan?.status, 'complete');
+  assert.equal((confirmationResult.result?.completedModuleIds || []).length, 1);
+  pass('the certified JSON runs unchanged through the deterministic mortgage module');
 
   const runs = (await meeting.env.CONSUMER_DB.prepare(`
     SELECT status, input_snapshot_hash_b64u FROM consumer_module_runs
@@ -371,29 +335,24 @@ try {
   assert.equal(runs[0].status, 'complete');
   assert.ok(runs[0].input_snapshot_hash_b64u);
   const executed = await getRealtimeAnalysisPlanExecution(
-    meeting.env, meeting.sessionId, frozenOffer.planId, meeting.meetingId
+    meeting.env, meeting.sessionId, reviewRow.plan_id, meeting.meetingId
   );
   assert.deepEqual(executed.input, frozenExecution.input,
-    'the originally delivered certificate and inputs must remain byte-for-byte identical');
+    'the originally certified inputs must remain byte-for-byte identical');
+
   const callsBeforeReplay = extractionCalls;
-  let replayResult;
-  await simulator.turn({
-    clientText: 'Yes, run the plan.',
-    act: async ({ callTool }) => {
-      replayResult = (await callTool('confirm_and_run', { confirmationToken: frozenOffer.token })).result;
-      return { speech: 'The results are ready.' };
-    }
+  const replayResult = await executeReviewRun(meeting.env, meeting.config, {
+    sessionId: meeting.sessionId, reviewId, clickId: 'live_path_click_again'
   });
-  await settle(durable, session);
-  assert.equal(replayResult?.ok, true);
-  assert.equal(replayResult?.analysisPlan?.planId, frozenOffer.planId);
+  assert.equal(replayResult?.ok, false, 'a second press cannot execute again');
+  assert.equal(replayResult?.code, 'review_already_executed');
   assert.equal(extractionCalls, callsBeforeReplay);
   assert.equal((await meeting.env.CONSUMER_DB.prepare(
     'SELECT COUNT(*) AS n FROM consumer_module_runs WHERE session_id = ?'
-  ).bind(meeting.sessionId).first()).n, 1, 'a second natural approval with a new tool id cannot execute again');
+  ).bind(meeting.sessionId).first()).n, 1, 'a second press with a new click id cannot execute again');
   assert.equal((await meeting.env.CONSUMER_DB.prepare(
     'SELECT stage FROM consumer_sessions WHERE id = ?'
-  ).bind(meeting.sessionId).first()).stage, 'results', 'duplicate approval cannot regress the result stage');
+  ).bind(meeting.sessionId).first()).stage, 'results', 'a duplicate press cannot regress the result stage');
   pass('the analysis run records provenance for the exact direct input snapshot');
   const plannerUsage = (await meeting.env.CONSUMER_DB.prepare(`
     SELECT usage_kind FROM consumer_realtime_usage
@@ -424,22 +383,26 @@ try {
   assert.equal(failedRig.session.directAwaitingConfirmationSnapshotRevision, null);
   assert.equal(failedRig.session.directModulePlanningOutstanding.length, 1);
 
-  let blocked = null;
-  let recoveredToken = null;
+  // A FAILED PASS LEAVES AN OUTSTANDING OBLIGATION, AND THE SEAL WAITS FOR IT.
+  //
+  // The stale snapshot cannot be published while that obligation stands, and
+  // the next readiness read retries the pass exactly once before deciding.
+  let sealedAfterFailure = null;
   await failedSimulator.turn({
-    clientText: 'Yes, please go ahead.',
+    clientText: 'Are we ready now?',
     act: async ({ callTool }) => {
-      blocked = (await callTool('confirm_and_run', { confirmationToken: 'dmc_missing_offer_123456789' })).result;
       const refreshed = await callTool('get_state', {});
-      recoveredToken = refreshed.result?.confirmationToken || null;
-      return { speech: refreshed.result.confirmationPrompt };
+      sealedAfterFailure = refreshed.result;
+      return { speech: 'Here is where we are.' };
     }
   });
-  assert.equal(blocked?.code, 'confirmation_context_invalid');
   await settle(failedRig.durable, failedRig.session);
   assert.deepEqual(failedRig.session.directModulePlanningOutstanding, []);
   assert.ok(failedRig.session.directAwaitingConfirmationSnapshotRevision);
-  assert.equal(failedRig.session.directConfirmationOffer?.token, recoveredToken);
+  assert.equal(sealedAfterFailure?.reviewPublished, true,
+    'the recovered pass seals, and only then');
+  const recovered = await describeCurrentReview(failedMeeting.env, failedMeeting.sessionId);
+  assert.ok(recovered.review?.reviewId, 'a review exists only after the failed pass was retried');
   pass('a failed semantic pass blocks the stale snapshot and get_state performs one safe retry');
 
   const coalescedMeeting = await newLiveMeeting('direct-module-coalesced-planning', {
@@ -594,8 +557,7 @@ try {
   await settle(intakeRig.durable, intakeRig.session);
   assert.equal(intakeState.ok, true);
   assert.equal(intakeState.readyToConfirm, false);
-  assert.equal(intakeState.confirmationToken, null);
-  assert.equal(intakeState.confirmationPrompt, null);
+  assert.equal(intakeState.reviewPublished, false, 'an incomplete plan publishes no review');
   assert.equal(intakeState.modules[0].status, 'collecting');
   assert.equal(intakeState.modules[0].missing[0].question, COLLEGE_INTAKE_QUESTION);
   assert.equal(verificationCalls, verificationsBeforeIntake);
@@ -608,32 +570,25 @@ try {
   assert.equal(intakeBrief.directModuleSnapshot.modules
     .find((item) => item.moduleId === 'college_funding').input.childrenCount, undefined);
 
-  let intakeToken;
   await intakeSimulator.turn({
     clientText: COLLEGE_TURN,
     act: async ({ callTool }) => {
       const state = (await callTool('get_state', {})).result;
       assert.equal(state.readyToConfirm, true);
       assert.equal(state.verificationStatus, 'pass');
-      intakeToken = state.confirmationToken;
-      return { speech: state.confirmationPrompt };
+      assert.equal(state.reviewPublished, true);
+      return { speech: 'Here is the plan on screen for you.' };
     }
   });
   await settle(intakeRig.durable, intakeRig.session);
-  assert.ok(intakeToken);
-  assert.equal(intakeRig.session.directConfirmationOffer?.token, intakeToken);
-  let intakeRun;
-  await intakeSimulator.turn({
-    clientText: 'Yes, please go ahead.',
-    act: async ({ callTool }) => {
-      intakeRun = (await callTool('confirm_and_run', { confirmationToken: intakeToken })).result;
-      return { speech: intakeRun.speakableText };
-    }
+  const intakeReview = await describeCurrentReview(intakeMeeting.env, intakeMeeting.sessionId);
+  assert.ok(intakeReview.review?.reviewId);
+  const intakeRun = await executeReviewRun(intakeMeeting.env, intakeMeeting.config, {
+    sessionId: intakeMeeting.sessionId, reviewId: intakeReview.review.reviewId, clickId: 'college_click'
   });
-  await settle(intakeRig.durable, intakeRig.session);
-  assert.equal(intakeRun.ok, true);
-  assert.equal(intakeRun.status, 'complete');
-  pass('college goal selection delivers missing-input intake; supplied child facts then verify, confirm and run');
+  assert.equal(intakeRun.ok, true, intakeRun.code || '');
+  assert.equal(intakeRun.analysisPlan?.status, 'complete');
+  pass('college goal selection delivers missing-input intake; supplied child facts then verify, seal and run');
 
   /* ------------- the production stall, over the real Durable Object --------- */
 
@@ -690,7 +645,6 @@ try {
     'the snapshot must advance with the conversation, not freeze at the last good turn');
   assert.equal(secondBrief.brief.readyToConfirm, true);
 
-  let collegeToken = null;
   await collegeSimulator.turn({
     clientText: 'Is it ready now?',
     act: async ({ callTool }) => {
@@ -698,13 +652,13 @@ try {
       assert.equal(state.result?.ok, true,
         'a state read that answered is a state read that succeeded');
       assert.equal(state.result?.readyToConfirm, true);
-      collegeToken = state.result?.confirmationToken || null;
-      return { speech: state.result.confirmationPrompt };
+      return { speech: 'Here is the plan on screen for you.' };
     }
   });
   await settle(collegeRig.durable, collegeRig.session);
-  assert.ok(collegeToken, 'ready plus verified must reliably become an offerable confirmation');
-  assert.equal(collegeRig.session.directConfirmationOffer?.token, collegeToken);
+  const collegeReview = await describeCurrentReview(collegeMeeting.env, collegeMeeting.sessionId);
+  assert.ok(collegeReview.review?.reviewId,
+    'ready plus verified must reliably become a published review');
 
   const collegeAttempts = (await collegeMeeting.env.CONSUMER_DB.prepare(`
     SELECT status, error_code FROM consumer_realtime_tool_attempts
@@ -714,20 +668,13 @@ try {
   assert.ok(collegeAttempts.every((row) => row.status === 'succeeded' && !row.error_code),
     'every production state read was recorded as rejected, which is how the diagnosis started in the wrong place');
 
-  let collegeRun = null;
-  await collegeSimulator.turn({
-    clientText: 'Yes, please go ahead.',
-    act: async ({ callTool }) => {
-      const call = await callTool('confirm_and_run', { confirmationToken: collegeToken });
-      collegeRun = call.result;
-      return { speech: call.result?.speakableText || 'Running that now.' };
-    }
+  const collegeRun = await executeReviewRun(collegeMeeting.env, collegeMeeting.config, {
+    sessionId: collegeMeeting.sessionId, reviewId: collegeReview.review.reviewId, clickId: 'college_live_click'
   });
-  await settle(collegeRig.durable, collegeRig.session);
-  assert.equal(collegeRun?.ok, true);
-  assert.equal(collegeRun?.status, 'complete');
+  assert.equal(collegeRun?.ok, true, collegeRun?.code || '');
+  assert.equal(collegeRun?.analysisPlan?.status, 'complete');
   collegeReplay = false;
-  pass('the production college call reaches confirmation instead of stalling on its own previous input');
+  pass('the production college call reaches a review instead of stalling on its own previous input');
 } finally {
   globalThis.fetch = originalFetch;
 }

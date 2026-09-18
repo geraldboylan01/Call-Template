@@ -32,12 +32,13 @@
  */
 
 import {
-  acknowledgeRealtimePlayback,
+  changeReview,
   createRealtimeVoiceCall,
   deleteRealtimeVoiceCall,
   getRealtimeVoiceCall,
   getRealtimeVoiceMeetingTranscript,
-  getSession
+  getSession,
+  runReview
 } from './api.js';
 import {
   bindConsentForm,
@@ -48,7 +49,6 @@ import {
 import { RealtimeOrb } from './realtime_orb.js';
 import { describePlanningCompletion } from './completion.js';
 import { getSessionId, state as journeyState } from './store.js';
-import { createPlaybackDeliveryLedger } from './playback_delivery.js';
 
 const MAX_CAPTION_LENGTH = 3_000;
 const MAX_TRANSCRIPT_ITEMS = 500;
@@ -223,20 +223,20 @@ export class LiveVoiceController {
     this.completionPayload = null;
     this.expectedExecution = null;
     this.executionWatching = false;
-    this.deliveries = createPlaybackDeliveryLedger({
-      limit: MAX_TRANSCRIPT_ITEMS,
-      newEventId: () => newPrivateId('playback'),
-      canSend: () => Boolean(this.leaseId && this.controlCapability),
-      audible: () => this.remotePlaybackReady
-        && (!this.remoteAudio
-          || (!this.remoteAudio.paused && !this.remoteAudio.muted && this.remoteAudio.volume !== 0)),
-      send: (evidence) => acknowledgeRealtimePlayback(
-        this.sessionId, this.leaseId, evidence, { controlCapability: this.controlCapability }
-      )
-    });
+    // NO PLAYBACK ACKNOWLEDGEMENT LEDGER.
+    //
+    // It existed to prove the client had HEARD a plan read out before their
+    // spoken "yes" could run it. There is no spoken approval, so there is
+    // nothing for audio delivery to authorise. Playback is now only what it
+    // looks like: whether Planeir is currently speaking.
     this.currentResponseId = '';
     this.playbackResponseId = '';
     this.completionTimings = {};
+    // The review on screen, if any. While it is set the microphone is released
+    // and this controller sends nothing conversational at all.
+    this.reviewId = '';
+    this.reviewNode = null;
+    this.deciding = false;
 
     this.bindElements();
   }
@@ -484,7 +484,6 @@ export class LiveVoiceController {
     this.completionPayload = null;
     this.expectedExecution = null;
     this.executionWatching = false;
-    this.deliveries.clear();
     this.currentResponseId = '';
     this.playbackResponseId = '';
     this.completionTimings = {};
@@ -683,7 +682,6 @@ export class LiveVoiceController {
     this.remotePlaybackReady = false;
     this.remoteAudio.play?.().then(() => {
       this.remotePlaybackReady = true;
-      this.deliveries.acknowledgeAll();
     }).catch(() => {
       this.onToast('Tap anywhere to let Planéir speak.', { tone: 'info' });
     });
@@ -775,7 +773,6 @@ export class LiveVoiceController {
 
     if (type === 'input_audio_buffer.speech_started') {
       if (this.assistantPlaybackActive || this.responseInProgress) {
-        this.deliveries.interrupt(this.playbackResponseId || this.currentResponseId, event.event_id);
       }
       // The client answering is itself a resolution: the Worker will abandon
       // any pending continuation rather than talk over them.
@@ -798,7 +795,6 @@ export class LiveVoiceController {
     }
     if (type === 'response.created') {
       this.currentResponseId = String(event.response?.id || '');
-      this.deliveries.for(this.currentResponseId);
       this.assistantCaption = '';
       this.responseInProgress = true;
       this.responseNeedsContinuation = false;
@@ -810,7 +806,6 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'response.function_call_arguments.done') {
-      if (event.name === 'confirm_and_run') this.watchExecution();
       // A function call ends this provider response. The Worker will deliver
       // its result and explicitly request the continuation response; until
       // then the client is still waiting for Planéir, not listening for a
@@ -823,21 +818,11 @@ export class LiveVoiceController {
     }
     if (type === 'output_audio_buffer.started') {
       this.playbackResponseId = String(event.response_id || this.currentResponseId || '');
-      const delivery = this.deliveries.for(this.playbackResponseId);
-      if (delivery) delivery.started = true;
       this.assistantPlaybackActive = true;
       this.setPhase('assistant_speaking', 'Planéir is speaking.');
       return;
     }
     if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {
-      const responseId = String(event.response_id || this.playbackResponseId || '');
-      const delivery = this.deliveries.for(responseId);
-      if (type === 'output_audio_buffer.cleared') this.deliveries.interrupt(responseId, event.event_id);
-      else if (delivery) {
-        delivery.stopped = true;
-        delivery.eventId = String(event.event_id || delivery.eventId || newPrivateId('playback'));
-        this.deliveries.acknowledge(delivery);
-      }
       this.playbackResponseId = '';
       this.assistantPlaybackActive = false;
       if (this.responseInProgress) {
@@ -865,15 +850,8 @@ export class LiveVoiceController {
       return;
     }
     if (type === 'response.done') {
-      const delivery = this.deliveries.for(String(event.response?.id || ''));
-      if (delivery) {
-        delivery.responseCompleted = event.response?.status === 'completed';
-        if (!delivery.responseCompleted) this.deliveries.interrupt(delivery.responseId, event.event_id);
-        else this.deliveries.acknowledge(delivery);
-      }
       this.responseInProgress = false;
       const output = Array.isArray(event?.response?.output) ? event.response.output : [];
-      if (output.some((item) => item?.type === 'function_call' && item.name === 'confirm_and_run')) this.watchExecution();
       this.responseNeedsContinuation = this.responseNeedsContinuation
         || output.some((item) => item?.type === 'function_call');
       // `response.done` is generation completion, not audible completion.
@@ -896,7 +874,7 @@ export class LiveVoiceController {
 
   watchExecution() {
     this.executionWatching = true;
-    this.recordCompletionTiming('approvalToolObservedAt');
+    this.recordCompletionTiming('runActionObservedAt');
     this.scheduleStateRefresh();
   }
 
@@ -933,6 +911,161 @@ export class LiveVoiceController {
     this.scheduleStateRefresh();
   }
 
+  /* ---------------------------------------------------------------- review */
+
+  /**
+   * Show, update or clear the Review screen.
+   *
+   * The server is the authority in both directions. A review appears because
+   * the server published one, and disappears because the server no longer has
+   * one -- never because this browser decided either way. A DIFFERENT review id
+   * is a different object: the panel is rebuilt so its buttons can never carry
+   * the previous id.
+   */
+  applyReviewState(mode, review) {
+    const reviewId = String(review?.reviewId || '');
+    if (!reviewId || !review?.actions?.length) {
+      if (this.reviewId) this.clearReview();
+      return;
+    }
+    if (reviewId === this.reviewId) return;
+    this.reviewId = reviewId;
+    // THE MICROPHONE GOES QUIET AND NOTHING IS SAID ABOUT IT. The review
+    // appearing is the message; a spoken "I have stopped listening" would be
+    // narrating the obvious back at someone who can see it.
+    this.muteMicrophone(true);
+    this.setPhase('reviewing', 'Review your analysis.');
+    this.renderReview(reviewId, review.presentation || null);
+  }
+
+  clearReview() {
+    this.reviewId = '';
+    this.reviewNode?.remove();
+    this.reviewNode = null;
+    this.muteMicrophone(false);
+    this.setPhase('listening', 'Planéir is listening.');
+  }
+
+  /**
+   * Release or restore the microphone track.
+   *
+   * Disabling the track is the browser half of the boundary and is what the
+   * client can see in their own tab indicator. It is NOT the boundary itself:
+   * the server has already stopped admitting input, so a tampered client, a
+   * second tab or a reconnect gains nothing by leaving this on.
+   */
+  muteMicrophone(muted) {
+    for (const track of this.localStream?.getAudioTracks?.() || []) {
+      try { track.enabled = !muted; } catch (_error) { /* track already ended */ }
+    }
+  }
+
+  renderReview(reviewId, presentation) {
+    const host = this.shellElement || this.root;
+    if (!host) return;
+    const panel = document.createElement('section');
+    panel.className = 'realtime-review';
+    panel.setAttribute('aria-label', 'Review your analysis');
+    panel.setAttribute('role', 'group');
+
+    const title = document.createElement('h2');
+    title.className = 'realtime-review-title';
+    title.textContent = 'Review your analysis';
+    panel.append(title);
+
+    if (presentation?.summary) {
+      const summary = document.createElement('p');
+      summary.className = 'realtime-review-summary';
+      summary.textContent = presentation.summary;
+      panel.append(summary);
+    }
+    for (const module of (presentation?.modules || []).slice(0, 3)) {
+      const block = document.createElement('section');
+      block.className = 'realtime-review-module';
+      const moduleTitle = document.createElement('h3');
+      moduleTitle.textContent = module.title;
+      block.append(moduleTitle);
+      if (module.inputs?.length) {
+        const list = document.createElement('ul');
+        list.className = 'realtime-review-inputs';
+        for (const item of module.inputs.slice(0, 12)) {
+          const row = document.createElement('li');
+          row.textContent = `${item.label}: ${item.value}`;
+          list.append(row);
+        }
+        block.append(list);
+      }
+      if (module.assumptions?.length) {
+        const assumptions = document.createElement('p');
+        assumptions.className = 'realtime-review-assumptions';
+        assumptions.textContent = `Planéir will use its standard planning figures for ${module.assumptions.join(', ')}.`;
+        block.append(assumptions);
+      }
+      panel.append(block);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'realtime-review-actions';
+    const run = document.createElement('button');
+    run.type = 'button';
+    run.className = 'primary-button realtime-review-run';
+    run.textContent = 'Run analysis';
+    run.addEventListener('click', () => void this.decideReview('run', reviewId));
+    const change = document.createElement('button');
+    change.type = 'button';
+    change.className = 'secondary-button realtime-review-change';
+    change.textContent = 'Make a change';
+    change.addEventListener('click', () => void this.decideReview('change', reviewId));
+    actions.append(run, change);
+    panel.append(actions);
+
+    this.reviewNode?.remove();
+    this.reviewNode = panel;
+    host.append(panel);
+    run.focus();
+  }
+
+  /**
+   * One decision, against the review whose buttons were pressed.
+   *
+   * `reviewId` is bound at render time. A poll landing between the press and
+   * the request cannot retarget it, and the server refuses a stale id anyway
+   * rather than substituting whatever is current.
+   */
+  async decideReview(action, reviewId) {
+    if (this.deciding || !reviewId) return;
+    this.deciding = true;
+    for (const button of this.reviewNode?.querySelectorAll('button') || []) button.disabled = true;
+    try {
+      if (action === 'change') {
+        await changeReview(this.sessionId, reviewId, {
+          clickId: newPrivateId('click'), controlCapability: this.controlCapability
+        });
+        // Revocation is durable before this resolves, so the microphone is
+        // restored against a conversation the server has genuinely reopened.
+        this.clearReview();
+        return;
+      }
+      await runReview(this.sessionId, reviewId, {
+        clickId: newPrivateId('click'), controlCapability: this.controlCapability
+      });
+      // The human pressed Run. That is the only event that ever starts an
+      // execution watch now; a tool call never did and never could.
+      this.watchExecution();
+      this.setPhase('thinking', 'Running your analysis…');
+    } catch (error) {
+      // The review is unchanged and the client may press again. A duplicate
+      // Run cannot produce a duplicate execution; the server owns that.
+      for (const button of this.reviewNode?.querySelectorAll('button') || []) button.disabled = false;
+      this.onToast(
+        error?.message || 'That did not go through. Your review is unchanged — please try again.',
+        { tone: 'error' }
+      );
+    } finally {
+      this.deciding = false;
+    }
+  }
+
   /* --------------------------------------------------------- on-screen state */
 
   // Keep the existing cadence. Request, lease and budget limits remain the
@@ -942,7 +1075,8 @@ export class LiveVoiceController {
     this.refreshTimer = setTimeout(() => {
       this.refreshTimer = null;
       this.refreshState().catch(() => {}).finally(() => {
-        if ((this.active && this.executionWatching) || (this.completionPayload && !this.navigated)) {
+        if ((this.active && (this.executionWatching || this.reviewId))
+          || (this.completionPayload && !this.navigated)) {
           this.scheduleStateRefresh();
         }
       });
@@ -959,10 +1093,13 @@ export class LiveVoiceController {
       }
       let call = null;
       if (this.leaseId && this.controlCapability) {
-        this.deliveries.acknowledgeAll();
         call = unwrap(await getRealtimeVoiceCall(this.sessionId, this.leaseId, {
           controlCapability: this.controlCapability
         }));
+        // THE SERVER SAYS WHETHER A REVIEW IS OPEN, AND WHICH ONE.
+        // This browser never decides that, and never keeps showing a review
+        // the server has moved on from.
+        this.applyReviewState(call.reviewMode, call.review);
         const execution = call.realtimeExecution;
         if (execution?.planId) {
           if (!this.expectedExecution || this.expectedExecution.planId === execution.planId) {

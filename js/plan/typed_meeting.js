@@ -14,9 +14,11 @@
  */
 
 import {
+  changeReview,
   createTypedMeeting,
   endTypedMeeting,
   getSession,
+  runReview,
   sendTypedMessage
 } from './api.js';
 import { composeCardTurn } from '../planning/module_input_display.js';
@@ -70,6 +72,13 @@ export class TypedMeetingController {
     this.cardNode = null;
     this.cardEntries = new Map();
     this.carriedCardValues = new Map();
+    // The review currently on screen. Its id is the only thing the buttons
+    // send, and while it is set this controller admits no conversation at all.
+    this.reviewId = '';
+    this.reviewNode = null;
+    this.deciding = false;
+    this.shellNode = null;
+    this.composerForm = null;
   }
 
   /* ------------------------------------------------------------- lifecycle */
@@ -175,7 +184,9 @@ export class TypedMeetingController {
    */
   async send(text, { inputMode = 'text', unknownFieldId = '' } = {}) {
     const message = String(text || '').trim().slice(0, MAX_MESSAGE_CHARACTERS);
-    if (!message || !this.active || this.sending) return;
+    // The composer is removed during review, but a stale keypress, an
+    // autofilled form or a second tab must not slip a turn through either.
+    if (!message || !this.active || this.sending || this.reviewId) return;
     this.sending = true;
     this.pushTurn('user', message);
     this.setComposerValue('');
@@ -196,12 +207,16 @@ export class TypedMeetingController {
       // Everything below writes to a screen they are no longer on, and
       // `checkCompletion` would navigate them into a session they closed.
       if (this.abandoned) return;
-      if (result.assistantText) this.pushTurn('assistant', result.assistantText, { readback: result.readback });
-      // A read-back is the ONLY moment a plan can start running, so it is the
-      // only moment worth watching for results. Polling the session after every
-      // turn would be a request per sentence for an event that happens once.
-      if (result.readback === true) this.awaitingExecution = true;
-      else if (this.awaitingExecution) await this.checkCompletion();
+      if (result.assistantText) this.pushTurn('assistant', result.assistantText);
+      // THE TURN THAT SEALED THE MEETING SAYS SO, AND THE SCREEN CHANGES.
+      //
+      // Nothing is spoken or written about having stopped listening: the
+      // composer disappears and the review takes its place, which is the whole
+      // message. The conversation is over until the client chooses.
+      if (result.review?.reviewId) {
+        this.renderReview(result.review.reviewId, result.review.presentation || null);
+        return;
+      }
       this.renderCard(result.card);
     } catch (error) {
       // The turn is already durable on the server whatever happened here, so
@@ -268,6 +283,22 @@ export class TypedMeetingController {
     this.threadNode.setAttribute('aria-label', 'Conversation');
     this.threadNode.setAttribute('aria-live', 'polite');
 
+    this.shellNode = shell;
+    shell.append(this.statusNode, this.threadNode);
+    root.append(shell);
+    this.renderComposer();
+  }
+
+  /**
+   * The composer exists only while conversation is open.
+   *
+   * It is REMOVED during review rather than disabled, because a disabled box is
+   * still a box: it invites the client to type an answer to a question that is
+   * no longer being asked. Its absence, and the review in its place, is how the
+   * change of state is communicated -- nothing is said about it.
+   */
+  renderComposer() {
+    if (!this.shellNode || this.composerForm) return;
     const form = element('form', 'typed-composer');
     this.composerNode = element('textarea', 'typed-input');
     this.composerNode.id = 'typedMessageInput';
@@ -292,9 +323,8 @@ export class TypedMeetingController {
         void this.send(this.composerNode.value);
       }
     });
-
-    shell.append(this.statusNode, this.threadNode, form);
-    root.append(shell);
+    this.composerForm = form;
+    this.shellNode.append(form);
   }
 
   pushTurn(role, text, { readback = false } = {}) {
@@ -309,6 +339,132 @@ export class TypedMeetingController {
     row.append(element('p', 'typed-bubble', value));
     this.threadNode.append(row);
     row.scrollIntoView({ block: 'nearest' });
+  }
+
+  /* ---------------------------------------------------------------- review */
+
+  /**
+   * The Review screen.
+   *
+   * The summary and both buttons are drawn from the SAME object in the SAME
+   * pass, so the id the client's click carries is always the id of the review
+   * they were looking at. A later response cannot retarget these handlers: a
+   * new review is a new render.
+   *
+   * There is no third option and no text box. Conversation resumes only by
+   * choosing Make a change, and only after the server has durably revoked this
+   * review's authority.
+   */
+  renderReview(reviewId, presentation) {
+    this.reviewId = String(reviewId || '');
+    if (!this.reviewId) return;
+    this.cardNode?.remove();
+    this.cardNode = null;
+    this.composerForm?.remove();
+    this.composerForm = null;
+    this.composerNode = null;
+    this.setStatus('');
+
+    const panel = element('section', 'typed-review');
+    panel.setAttribute('aria-label', 'Review your analysis');
+    panel.setAttribute('role', 'group');
+    panel.append(element('h2', 'typed-review-title', 'Review your analysis'));
+    if (presentation?.summary) {
+      panel.append(element('p', 'typed-review-summary', presentation.summary));
+    }
+    for (const module of (presentation?.modules || []).slice(0, 3)) {
+      const block = element('section', 'typed-review-module');
+      block.append(element('h3', 'typed-review-module-title', module.title));
+      if (module.reason) {
+        block.append(element('p', 'typed-review-module-reason',
+          module.origin === 'client_requested' ? module.reason : `I think this would help: ${module.reason}`));
+      }
+      if (module.inputs?.length) {
+        const list = element('ul', 'typed-review-inputs');
+        for (const item of module.inputs.slice(0, 12)) {
+          const row = element('li', 'typed-review-input');
+          row.append(element('span', 'typed-review-input-label', item.label));
+          row.append(element('span', 'typed-review-input-value', item.value));
+          list.append(row);
+        }
+        block.append(list);
+      }
+      if (module.assumptions?.length) {
+        block.append(element('p', 'typed-review-assumptions',
+          `Planéir will use its standard planning figures for ${module.assumptions.join(', ')}.`));
+      }
+      panel.append(block);
+    }
+
+    const actions = element('div', 'typed-review-actions');
+    const run = element('button', 'primary-button typed-review-run', 'Run analysis');
+    run.type = 'button';
+    run.addEventListener('click', () => void this.decide('run', this.reviewId));
+    const change = element('button', 'secondary-button typed-review-change', 'Make a change');
+    change.type = 'button';
+    change.addEventListener('click', () => void this.decide('change', this.reviewId));
+    actions.append(run, change);
+    panel.append(actions);
+
+    this.reviewNode?.remove();
+    this.reviewNode = panel;
+    this.threadNode?.append(panel);
+    panel.scrollIntoView({ block: 'nearest' });
+    run.focus();
+  }
+
+  /**
+   * One decision, against one review.
+   *
+   * `reviewId` is captured from the render, not read from `this` at click time,
+   * so a re-render between press and send cannot move the target. Disabling the
+   * buttons is courtesy; the server decides the outcome and is the only thing
+   * that can.
+   */
+  async decide(action, reviewId) {
+    if (this.deciding || !reviewId) return;
+    this.deciding = true;
+    this.setReviewBusy(true, action === 'run' ? 'Running your analysis…' : 'Reopening the conversation…');
+    const clickId = newPrivateId('click');
+    try {
+      if (action === 'change') {
+        await changeReview(getSessionId(), reviewId, {
+          clickId, controlCapability: this.controlCapability
+        });
+        // The server committed the revocation before answering, so the
+        // conversation is genuinely open again by the time this line runs.
+        this.reviewId = '';
+        this.reviewNode?.remove();
+        this.reviewNode = null;
+        this.renderComposer();
+        this.pushTurn('assistant', 'What would you like to change?');
+        this.focusComposer();
+        return;
+      }
+      await runReview(getSessionId(), reviewId, {
+        clickId, controlCapability: this.controlCapability
+      });
+      this.awaitingExecution = true;
+      await this.checkCompletion();
+    } catch (error) {
+      // A LOST ACTION IS NOT A DECISION. The review stays exactly as it was and
+      // the client can press again; the server refuses a second execution on
+      // its own, so retrying here can never run the analysis twice.
+      this.setReviewBusy(false, '');
+      this.onToast(
+        error?.message || 'That did not go through. Your review is unchanged — please try again.',
+        { tone: 'error' }
+      );
+    } finally {
+      this.deciding = false;
+    }
+  }
+
+  setReviewBusy(busy, message) {
+    this.setStatus(message || '');
+    for (const button of this.reviewNode?.querySelectorAll('button') || []) {
+      button.disabled = Boolean(busy);
+    }
   }
 
   /* ------------------------------------------------------------------ card */

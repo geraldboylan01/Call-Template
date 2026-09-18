@@ -9,7 +9,40 @@ export async function checkLiveCompletionFrontend() {
     location: { hostname: 'localhost', href: 'http://localhost/plan/' },
     sessionStorage: { getItem: (key) => storage.get(key) || '', setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) }
   };
-  globalThis.document = { querySelector: () => null, getElementById: () => null, addEventListener: () => {}, body: {} };
+  // A node just real enough for the review panel: children, text and clicks.
+  // The controller builds the panel with document.createElement, so a stub that
+  // could not create one would be testing nothing.
+  const makeNode = (tag) => ({
+    tagName: String(tag).toUpperCase(),
+    children: [],
+    listeners: new Map(),
+    className: '',
+    type: '',
+    disabled: false,
+    set textContent(value) { this._text = String(value); this.children = []; },
+    get textContent() { return (this._text || '') + this.children.map((child) => child.textContent).join(' '); },
+    append(...nodes) { for (const node of nodes) { node.parent = this; this.children.push(node); } },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this); },
+    setAttribute() {},
+    focus() {},
+    addEventListener(name, handler) { this.listeners.set(name, handler); },
+    querySelectorAll(selector) {
+      const all = [];
+      const walk = (node) => {
+        if (selector === 'button' && node.tagName === 'BUTTON') all.push(node);
+        node.children.forEach(walk);
+      };
+      walk(this);
+      return all;
+    }
+  });
+  globalThis.document = {
+    querySelector: () => null,
+    getElementById: () => null,
+    addEventListener: () => {},
+    createElement: makeNode,
+    body: {}
+  };
   const controllers = [];
   const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
@@ -51,33 +84,81 @@ export async function checkLiveCompletionFrontend() {
       return c;
     }
     const events = (c, ...items) => items.forEach((event) => c.handleProviderEvent(JSON.stringify(event)));
-    const acknowledgements = [];
-    globalThis.fetch = async (_url, options) => { acknowledgements.push(JSON.parse(options.body)); return response({ ok: true }); };
+
+    // THE PLAYBACK-ACKNOWLEDGEMENT LEDGER IS GONE, AND SO IS ITS REASON.
+    //
+    // It existed to prove the client had HEARD a plan read out before a spoken
+    // "yes" could run it. Speech no longer authorises anything, so audio
+    // delivery is only what it looks like: whether Planeir is currently
+    // talking. What replaces it is the Review screen, tested below.
     const audio = controller();
+    assert.equal(typeof audio.deliveries, 'undefined', 'no delivery ledger survives in the browser');
     events(audio,
-      { type: 'response.created', response: { id: 'readback_complete' } },
-      { type: 'output_audio_buffer.started', response_id: 'readback_complete' },
-      { type: 'output_audio_buffer.stopped', response_id: 'readback_complete', event_id: 'normal_drain' }
+      { type: 'response.created', response: { id: 'r1' } },
+      { type: 'output_audio_buffer.started', response_id: 'r1' },
+      { type: 'output_audio_buffer.stopped', response_id: 'r1', event_id: 'drain' },
+      { type: 'response.done', response: { id: 'r1', status: 'completed' } }
     );
-    assert.equal(acknowledgements.length, 0, 'Drain before response.done is not sufficient delivery.');
-    events(audio, { type: 'response.done', response: { id: 'readback_complete', status: 'completed' } });
-    await audio.deliveries.for('readback_complete').pending;
-    assert.deepEqual(acknowledgements[0], { responseId: 'readback_complete', eventId: 'normal_drain', playback: 'completed' });
-    for (const interruption of ['output_audio_buffer.cleared', 'input_audio_buffer.speech_started', 'cancelled']) {
-      const id = `readback_${interruption}`;
-      events(audio, { type: 'response.created', response: { id } }, { type: 'output_audio_buffer.started', response_id: id });
-      events(audio, interruption === 'cancelled'
-        ? { type: 'response.done', event_id: id, response: { id, status: 'cancelled' } }
-        : { type: interruption, response_id: id, event_id: id });
-      events(audio,
-        { type: 'output_audio_buffer.stopped', response_id: id, event_id: 'late_stop' },
-        { type: 'response.done', response: { id, status: 'completed' } }
-      );
-      await audio.deliveries.for(id).pending;
-      assert.equal(acknowledgements.filter((ack) => ack.responseId === id).every((ack) => ack.playback === 'interrupted'), true, 'Late completion cannot reactivate interrupted delivery.');
-    }
+    assert.equal(audio.assistantPlaybackActive, false, 'playback still tracks whether Planeir is speaking');
+
+    /* ------------------------------------------------------- the review screen */
+
+    // THE SUMMARY AND BOTH BUTTONS COME FROM ONE OBJECT, IN ONE PASS.
+    //
+    // That is the whole anti-substitution property in the browser: a click can
+    // only ever carry the id of the review whose summary is on screen, because
+    // the handlers were bound while that object was being rendered.
+    const review = {
+      reviewId: 'rv_frontend_test_review_identity',
+      actions: ['run', 'change'],
+      presentation: {
+        schemaVersion: 'ReviewPresentationV1',
+        summary: 'I will run the mortgage analysis using the figures we discussed.',
+        modules: [{ id: 'm0', title: 'Mortgage review', origin: 'client_requested', reason: 'you asked', inputs: [{ id: 'k0', label: 'Amount left', value: '€240,000' }], assumptions: [] }]
+      }
+    };
+    const screen = controller();
+    const host = {
+      children: [],
+      append(...nodes) { this.children.push(...nodes); },
+      querySelector: () => null,
+      setAttribute() {},
+      removeAttribute() {}
+    };
+    screen.shellElement = host;
+    let muted = 0;
+    screen.localStream = { getAudioTracks: () => [{ set enabled(value) { if (!value) muted += 1; } }] };
+    screen.applyReviewState('review', review);
+    assert.equal(screen.reviewId, review.reviewId, 'the controller holds the review the server published');
+    assert.ok(muted > 0, 'the microphone is released while the review stands');
+    const panel = host.children.at(-1);
+    const rendered = panel.textContent;
+    assert.ok(rendered.includes('Run analysis'), 'the Run action is drawn');
+    assert.ok(rendered.includes('Make a change'), 'the change action is drawn');
+    assert.ok(rendered.includes(review.presentation.summary), 'beside the certified summary it authorises');
+    // NOTHING TELLS THE CLIENT PLANEIR HAS STOPPED LISTENING. The screen is the
+    // message; narrating it would be telling someone what they can already see.
+    assert.equal(/stopped listening|no longer listening|not listening/i.test(rendered), false,
+      'the review says nothing about the microphone');
+
+    // The click names that exact review, and carries no financial value.
+    const sent = [];
+    globalThis.fetch = async (url, options = {}) => {
+      sent.push({ url: String(url), body: options.body ? JSON.parse(options.body) : null });
+      return response({ ok: true, mode: 'conversation', inputEpoch: 1 });
+    };
+    await screen.decideReview('change', screen.reviewId);
+    assert.ok(sent[0].url.includes(`/reviews/${review.reviewId}/change`),
+      'the action names the exact review in its path');
+    assert.deepEqual(Object.keys(sent[0].body || {}), ['clickId'],
+      'and carries only a retry identity — no inputs and no claim of approval');
+    assert.equal(screen.reviewId, '', 'the review clears only after the server answered');
+    screen.active = false;
     audio.teardown();
     audio.active = false;
+
+    globalThis.fetch = async () => response({ ok: true });
+    const acknowledgements = [];
 
     // Delayed persistence needs repeated observations; only one authenticated
     // request chain may be in flight, regardless of provider speech events.
@@ -112,7 +193,10 @@ export async function checkLiveCompletionFrontend() {
       sessionReads += 1;
       return response(sessionReads < 3 ? { ...completed, analysis: null } : completed);
     };
-    events(c, { type: 'response.function_call_arguments.done', name: 'confirm_and_run' });
+    // A HUMAN PRESSING RUN IS THE ONLY THING THAT STARTS AN EXECUTION WATCH.
+    // A provider tool call used to. There is no such tool, so there is no such
+    // event, and the watch has exactly one cause.
+    c.watchExecution();
     assert.equal(c.executionWatching, true);
     clearTimeout(c.refreshTimer); c.refreshTimer = null;
     const first = c.refreshState();

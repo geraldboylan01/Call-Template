@@ -5,10 +5,10 @@ import assert from 'node:assert/strict';
 import { attachTypedSession, attachLiveSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { getRealtimeLease, listRealtimeFinalTurns, touchRealtimeLease } from '../worker/src/consumer/realtime_repository.js';
 import { terminateRealtimeLease } from '../worker/src/consumer/realtime_lifecycle.js';
+import { reachReviewByTyping, scriptPlanner } from './live-harness/review.mjs';
 
 const failures = [];
 let passed = 0;
-const PROMPT = 'I will run the mortgage analysis using a balance of 240,000 and a rate of 4.1%. Would you like me to run this plan?';
 async function check(name, run) {
   try { await run(); passed += 1; console.log(`PASS ${name}`); }
   catch (error) { failures.push(name); console.error(`FAIL ${name}: ${error.message}`); }
@@ -26,20 +26,6 @@ async function rig(label, channel = 'typed') {
   await attached.durable.state.storage.put('lease', attached.session.meta);
   return { ...attached, meeting };
 }
-function offer(session) {
-  session.directConfirmationOffer = {
-    token: 'dmc_recovery', planId: 'plan_recovery', profileRevision: 1,
-    certificateSignature: 'synthetic-certificate', reviewStatus: 'settled',
-    confirmationPrompt: PROMPT, readbackFullyDelivered: false,
-    assistantTurnId: null, confirmationTurnIds: []
-  };
-}
-function candidate(response) {
-  response.continuationChain.directConfirmationCandidate = {
-    token: 'dmc_recovery', sourceResponseId: response.responseId, confirmationPrompt: PROMPT
-  };
-}
-
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async (_url, request) => {
   const body = JSON.parse(request?.body || '{}');
@@ -48,32 +34,45 @@ globalThis.fetch = async (_url, request) => {
     : [], usage: {} }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 };
 try {
-  await check('composed typed readback persists once and next approval binds to it', async () => {
-    const { session, meeting, durable } = await rig('composed-readback');
-    offer(session);
-    // Model state/certification are synthetic here; the composed ingest ->
-    // renderer -> delivery -> finalization and all persistence remain real.
-    session.dispatchTextToolCall = async (_call, response) => { candidate(response); return { ok: true }; };
-    const result = await session.handleTextMessage({ text: 'Please read the plan back.' });
-    await settle(durable, session);
-    assert.equal(result.readback, true);
-    const turns = await listRealtimeFinalTurns(meeting.env, meeting.sessionId, meeting.meetingId);
-    const assistant = turns.filter((turn) => turn.role === 'assistant');
-    assert.equal(assistant.length, 1, 'one visible reply must have one persisted assistant identity');
-    session.registerStoppedClientTurn({ item_id: 'approval_after_readback' });
-    assert.equal(session.turnAnswersDirectOffer(session.clientTurnsByItemId.get('approval_after_readback')), true);
+  // WHAT THESE TWO CHECKS USED TO BE.
+  //
+  // A composed typed read-back persisting exactly once, and its reply binding
+  // surviving eviction so a later "yes" still attached to the right plan. Both
+  // existed to make a SPOKEN OR TYPED APPROVAL safe. There is no approval, so
+  // the properties are gone -- replaced by the one that matters now: a review
+  // survives eviction as the same immutable object, and the reconstructed
+  // meeting is still shut.
+
+  await check('a published review survives Durable Object eviction unchanged', async () => {
+    const heal = scriptPlanner();
+    try {
+      const { meeting, rig: live, result } = await reachReviewByTyping('first20-review-recovery');
+      assert.ok(result.review?.reviewId, 'the typed meeting published a review');
+      const recovered = await attachTypedSession(meeting, { initial: Object.fromEntries(live.durable.values) });
+      const state = await recovered.session.publicState();
+      assert.equal(state.review?.reviewId, result.review.reviewId,
+        'the reconstructed meeting shows the SAME review, not a new one');
+      assert.equal(state.mode, 'review', 'with the conversation still closed');
+      assert.deepEqual(state.review.presentation, result.review.presentation,
+        'and the identical certified presentation');
+    } finally { heal(); }
   });
 
-  await check('typed approval reply binding survives Durable Object eviction', async () => {
-    const { session, meeting, durable } = await rig('readback-recovery');
-    offer(session);
-    const response = session.createResponseContext({ responseId: 'txt_recovery', rootResponseId: 'txt_recovery', causeItemId: null });
-    candidate(response);
-    await session.deliverCertifiedReadback(response, '');
-    await settle(durable, session);
-    const recovered = await attachTypedSession(meeting, { initial: Object.fromEntries(durable.values) });
-    recovered.session.registerStoppedClientTurn({ item_id: 'approval_after_eviction' });
-    assert.equal(recovered.session.turnAnswersDirectOffer(recovered.session.clientTurnsByItemId.get('approval_after_eviction')), true);
+  await check('a reconstructed meeting still refuses conversation', async () => {
+    const heal = scriptPlanner();
+    try {
+      const { meeting, rig: live } = await reachReviewByTyping('first20-review-closed');
+      const recovered = await attachTypedSession(meeting, { initial: Object.fromEntries(live.durable.values) });
+      await assert.rejects(
+        () => recovered.session.handleTextMessage({ text: 'Yes, run it.' }),
+        (error) => error.code === 'review_input_closed',
+        'a reconstructed meeting does not reopen input just because it restarted'
+      );
+      const runs = await meeting.env.CONSUMER_DB
+        .prepare('SELECT COUNT(*) AS n FROM consumer_analysis_runs WHERE session_id = ?')
+        .bind(meeting.sessionId).first();
+      assert.equal(Number(runs.n), 0, 'and nothing executed');
+    } finally { heal(); }
   });
 
   await check('typing preserves the hard-expiry-only idle policy', async () => {

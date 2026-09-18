@@ -57,7 +57,14 @@ pass('direct mode is off by default and invalid deployment values fail closed');
 const directProviderConfig = buildLiveSessionConfig(getConsumerConfig({
   CONSUMER_MODULE_PLANNER_MODE: 'apply'
 }));
-assert.deepEqual(directProviderConfig.tools.map((tool) => tool.name), ['get_state', 'confirm_and_run']);
+// ONE TOOL IN APPLY MODE, AND IT ONLY READS.
+//
+// The model is offered `get_state` and nothing else: it cannot write facts
+// (the background planner owns that) and it cannot run an analysis (the client
+// does, from the review screen). A model that is never offered an execution
+// tool cannot hallucinate a successful call to one.
+assert.deepEqual(directProviderConfig.tools.map((tool) => tool.name), ['get_state']);
+assert.doesNotMatch(directProviderConfig.instructions, /\bconfirm_and_run\b/);
 assert.doesNotMatch(directProviderConfig.instructions, /\bsave_facts\b/);
 assert.doesNotMatch(directProviderConfig.instructions, /save primary_goal_focus/i);
 assert.doesNotMatch(directProviderConfig.instructions, /^Needs:/m);
@@ -75,10 +82,9 @@ for (const module of directPromptModules) {
     assert.match(directProviderConfig.instructions, new RegExp(`\\b${goal.type}\\b`));
   }
 }
-assert.deepEqual(
-  directProviderConfig.tools.find((tool) => tool.name === 'confirm_and_run')?.parameters?.required,
-  ['confirmationToken']
-);
+// AND NO TOOL TAKES A TOKEN, BECAUSE THERE IS NOTHING TO SPEND ONE ON.
+assert.equal(directProviderConfig.tools.find((tool) => tool.name === 'confirm_and_run'), undefined);
+assert.equal(JSON.stringify(directProviderConfig.tools).includes('confirmationToken'), false);
 assert.match(
   publicConsumerConfig({
     ...getConsumerConfig({ CONSUMER_MODULE_PLANNER_MODE: 'apply' }),

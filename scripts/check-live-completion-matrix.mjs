@@ -18,12 +18,18 @@ import { buildDirectModulePolicyEnvelope, directModulePolicyEntries } from '../j
 import { readJsonPointer, sha256Json } from '../js/planning/utils.js';
 import { decryptJson, sha256Base64Url, stableStringify } from '../worker/src/consumer/crypto.js';
 import { getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
-import { confirmAndRunRealtimeAnalysisPlan } from '../worker/src/consumer/realtime_analysis.js';
+import { describeCurrentReview, executeReviewRun } from '../worker/src/consumer/review.js';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const INPUTS = directModuleTestInputs(TODAY);
 const POLICY = buildDirectModulePolicyEnvelope({ calculationDateIso: TODAY, baseCurrency: 'EUR' });
-const APPROVALS = ['Yes', 'Yes, run the plan', 'Grand, go ahead', 'Work away', 'Fire away', 'Please do', 'Sure, go for it', 'Perfect'];
+// EIGHT CLICKS, NOT EIGHT PHRASES.
+//
+// This matrix used to run each scenario through eight different ways of saying
+// yes, because eight different sentences had to be recognised as authorisation.
+// Nothing is recognised any more: the client presses Run, and the only thing
+// that varies between presses is the retry identity attached to the click.
+const CLICKS = ['click_a', 'click_b', 'click_c', 'click_d', 'click_e', 'click_f', 'click_g', 'click_h'];
 const DETAILS = {
   personal_balance_sheet: 'My home is worth €450,000, my cash savings are €50,000 and my pension is €180,000. My mortgage is €240,000 and I spend €2,500 monthly. Those are all my assets and debts.',
   pension_projection: 'John is 42, earns €85,000 and has €180,000 in his pension, paying 8% with a 6% employer contribution and retiring at 67. Mary is 40, earns €70,000 and has €120,000 in her pension, paying 7% with a 5% employer contribution and retiring at 66. We want €70,000 yearly from retirement through age 95 and have no other income sources. Use the standard State Pension and growth assumptions.',
@@ -115,8 +121,8 @@ globalThis.fetch = async (_url, request) => {
 
 try {
   for (scenario of SCENARIOS) {
-    for (const approval of APPROVALS) {
-      const label = `${scenario.id}/${approval}`;
+    for (const clickId of CLICKS) {
+      const label = `${scenario.id}/${clickId}`;
       const meeting = await newLiveMeeting(`completion-${rows.length}`, {
         CONSUMER_MODULE_PLANNER_MODE: 'apply', OPENAI_API_KEY: 'synthetic-test-key'
       });
@@ -131,37 +137,47 @@ try {
         await simulator.turn({ clientText: 'Actually the balance is €240,000, not €230,000.', act: async () => ({ speech: 'I have the corrected balance.' }) });
         await settle(rig.durable, rig.session);
       }
-      let token;
+      let state;
       await simulator.turn({
-        clientText: 'Please read the plan back.',
+        clientText: 'Is that everything you need?',
         act: async ({ callTool }) => {
-          const state = (await callTool('get_state', {})).result;
-          assert.equal(state.readyToConfirm, true, `${label}: ready snapshot ${JSON.stringify(state)}`);
-          token = state.confirmationToken;
-          return { speech: state.confirmationPrompt };
+          state = (await callTool('get_state', {})).result;
+          return { speech: 'Here is what I have.' };
         }
       });
       await settle(rig.durable, rig.session);
-      assert.equal(rig.session.directConfirmationOffer?.token, token, label);
-      assert.equal(rig.session.directConfirmationOffer?.readbackFullyDelivered, true, label);
-      const offer = structuredClone(rig.session.directConfirmationOffer);
-      const frozen = await getRealtimeAnalysisPlanExecution(meeting.env, meeting.sessionId, offer.planId, meeting.meetingId);
-      const modelCallsBeforeApproval = extractionCount + verificationCount;
+      assert.equal(state.reviewPublished, true, `${label}: the meeting sealed ${JSON.stringify(state)}`);
+
+      const shown = await describeCurrentReview(meeting.env, meeting.sessionId);
+      assert.ok(shown.review?.reviewId, `${label}: a review is on screen`);
+      assert.deepEqual(shown.review.actions, ['run', 'change'], `${label}: with exactly two actions`);
+      const planRow = await meeting.env.CONSUMER_DB
+        .prepare('SELECT id FROM consumer_realtime_analysis_plans WHERE session_id = ?')
+        .bind(meeting.sessionId).first();
+      const frozen = await getRealtimeAnalysisPlanExecution(meeting.env, meeting.sessionId, planRow.id, meeting.meetingId);
+      const modelCallsBeforeRun = extractionCount + verificationCount;
       const approvalStarted = performance.now();
-      let result;
-      await simulator.turn({
-        clientText: approval,
-        act: async ({ callTool }) => {
-          result = (await callTool('confirm_and_run', { confirmationToken: token })).result;
-          return {};
-        }
+      const executed = await executeReviewRun(meeting.env, meeting.config, {
+        sessionId: meeting.sessionId, reviewId: shown.review.reviewId, clickId
       });
+      const result = {
+        ok: executed.ok,
+        status: executed.analysisPlan?.status,
+        completedCount: (executed.result?.completedModuleIds || []).length
+      };
       const observedAt = performance.now();
       await settle(rig.durable, rig.session);
       assert.equal(result?.ok, true, `${label}: ${JSON.stringify(result)}`);
       assert.equal(result?.status, 'complete', label);
       assert.equal(result?.completedCount, scenario.moduleIds.length, label);
-      assert.equal(extractionCount + verificationCount, modelCallsBeforeApproval, `${label}: approval must not re-plan`);
+      // THE PROPERTY THIS FILE HAS ALWAYS PROTECTED, NOW STATED HONESTLY.
+      //
+      // Under the old architecture zero model calls on approval was partly an
+      // artefact of the regex shortcut, and Astra's review said so. It is now a
+      // structural fact: Run reads a frozen snapshot and verifies a signature.
+      // There is no planner, verifier or reader on the path to call.
+      assert.equal(extractionCount + verificationCount, modelCallsBeforeRun,
+        `${label}: Run must not re-plan, re-verify or read anything`);
       const plans = (await meeting.env.CONSUMER_DB.prepare('SELECT * FROM consumer_realtime_analysis_plans WHERE session_id = ?').bind(meeting.sessionId).all()).results;
       assert.equal(plans.length, 1, `${label}: one frozen offer`);
       assert.equal(plans[0].id, frozen.row.id);
@@ -180,27 +196,27 @@ try {
         assert.equal(storedResults.results.find((item) => item.moduleId === moduleId)?.inputSnapshotHash, executedHash, `${label}: ${moduleId} exact native hash`);
         assert.equal(moduleRuns.find((item) => item.module_id === moduleId)?.input_snapshot_hash_b64u, executedHash);
       }
-      // A new provider tool-call id against the same offer joins its receipt.
-      await simulator.turn({ clientText: approval, act: async ({ callTool }) => {
-        const duplicate = (await callTool('confirm_and_run', { confirmationToken: token })).result;
-        assert.equal(duplicate?.status, 'complete', `${label}: duplicate approval receipt ${JSON.stringify(duplicate)}`);
-        return {};
-      } });
+      // A SECOND CLICK, WITH A DIFFERENT CLICK ID, BUYS NOTHING.
+      const duplicate = await executeReviewRun(meeting.env, meeting.config, {
+        sessionId: meeting.sessionId, reviewId: shown.review.reviewId, clickId: `${clickId}_again`
+      });
+      assert.equal(duplicate.ok, false, `${label}: a second click does not execute`);
+      assert.equal(duplicate.code, 'review_already_executed', `${label}: ${duplicate.code}`);
       // Reconstruct the Durable Object from persisted state; a retry through
       // the execution service still uses the saved plan nonce and same run.
       const restarted = await attachLiveSession(meeting, { initial: Object.fromEntries(rig.durable.values) });
-      assert.equal(restarted.session.directConfirmationOffer?.planId, offer.planId);
-      const replay = await confirmAndRunRealtimeAnalysisPlan({
-        env: meeting.env, config: meeting.config, sessionId: meeting.sessionId,
-        planId: frozen.row.id, planNonce: frozen.planNonce, expectedRevision: Number(frozen.row.profile_revision)
+      const restartedState = await restarted.session.publicState();
+      assert.equal(restartedState.review?.reviewId, shown.review.reviewId,
+        `${label}: reconstruction shows the same review`);
+      const replay = await executeReviewRun(meeting.env, meeting.config, {
+        sessionId: meeting.sessionId, reviewId: shown.review.reviewId, clickId: 'after_reconstruction'
       });
-      assert.equal(replay.idempotentReplay, true);
-      assert.equal(replay.analysisPlan.analysisRunId, runs[0].id);
+      assert.equal(replay.ok, false, `${label}: a reconstructed meeting cannot run it again`);
       const count = await meeting.env.CONSUMER_DB.prepare('SELECT COUNT(*) AS n FROM consumer_analysis_runs WHERE session_id = ?').bind(meeting.sessionId).first();
       assert.equal(Number(count.n), 1, `${label}: retries never rerun modules`);
-      rows.push({ scenario: scenario.id, approval, approvalToPersistedObservationMs: Number((observedAt - approvalStarted).toFixed(2)) });
+      rows.push({ scenario: scenario.id, clickId, approvalToPersistedObservationMs: Number((observedAt - approvalStarted).toFixed(2)) });
     }
-    console.info(`[LiveCompletionMatrix] ${scenario.id}: 8/8 one-approval completions; zero duplicate executions or hash mismatches.`);
+    console.info(`[LiveCompletionMatrix] ${scenario.id}: 8/8 one-click completions; zero duplicate executions or hash mismatches.`);
   }
 } finally {
   globalThis.fetch = originalFetch;
@@ -210,7 +226,7 @@ const sorted = rows.map((row) => row.approvalToPersistedObservationMs).sort((a, 
 const percentile = (fraction) => sorted[Math.ceil(sorted.length * fraction) - 1];
 console.info(JSON.stringify({
   lane: 'local-scripted-provider-real-durable-object-and-database',
-  representativeCalls: rows.length, oneApprovalCompletions: rows.length,
+  representativeCalls: rows.length, oneClickCompletions: rows.length,
   doubleExecutions: 0, approvedExecutedInputMismatches: 0,
   approvalToPersistedObservationMs: { p50: percentile(0.5), p95: percentile(0.95), min: sorted[0], max: sorted.at(-1) },
   productionTimeoutEvidence: false,

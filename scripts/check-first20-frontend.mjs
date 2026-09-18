@@ -101,22 +101,26 @@ test('Ending during startup closes the late lease and does not reopen the conver
   assert.equal(c.active, false); assert.equal(deletes, 1);
 });
 
-test('Completion retries a transient session read without requiring another client turn', async () => {
+test('Completion retries a transient session read after the client presses Run', async () => {
+  // THE CLIENT HAS NOTHING LEFT TO SAY, AND THAT IS THE POINT.
+  //
+  // This used to be driven by sending "Yes, go ahead." -- the conversational
+  // approval that started an execution. The approval is gone: the human presses
+  // Run on an immutable review and the conversation is already closed, so there
+  // is no next turn to piggyback a retry on. A single transient read must not
+  // cost them results that have already been produced.
   let reads = 0; let navigated = 0;
   const c = init({ onNavigate: () => { navigated += 1; } });
-  c.active = true; c.sessionId = sessionId; Object.assign(c, access); c.awaitingExecution = true;
-  globalThis.fetch = async (url, options) => {
+  c.active = true; c.sessionId = sessionId; Object.assign(c, access);
+  c.root = new TestNode(); c.renderShell();
+  c.renderReview('rv_first20_frontend_review_identity', { summary: 'I will run the mortgage analysis.', modules: [] });
+  globalThis.fetch = async (url, options = {}) => {
     if (options.method === 'DELETE') return response({});
-    if (String(url).includes('/text/meetings/')) return response({ realtimeExecution: execution });
-    if (options.method === 'POST') return response({ assistantText: 'Your results are ready.' });
+    if (String(url).includes('/reviews/')) return response({ ok: true, reviewId: 'rv_first20_frontend_review_identity' });
     reads += 1;
     return reads === 1 ? response({ error: { message: 'Temporary outage' } }, 503) : response(completed);
   };
-  // Route POST separately from the lease read.
-  const fetcher = globalThis.fetch;
-  globalThis.fetch = (url, options) => options.method === 'POST'
-    ? Promise.resolve(response({ assistantText: 'Your results are ready.' })) : fetcher(url, options);
-  await c.send('Yes, go ahead.');
+  await c.decide('run', c.reviewId);
   await sleep(2400);
   assert.equal(navigated, 1);
   await c.end();

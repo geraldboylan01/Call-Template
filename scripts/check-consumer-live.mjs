@@ -221,8 +221,16 @@ for (const event of [
 
 /* ------------------------------------------------------------ tool shapes */
 
-ok(LIVE_TOOL_NAMES.length === 3, 'The live lane has exactly three tools.');
-assert.deepEqual([...LIVE_TOOL_NAMES].sort(), ['confirm_and_run', 'get_state', 'save_facts']);
+// TWO TOOLS, AND NEITHER OF THEM RUNS ANYTHING.
+//
+// The third used to be `confirm_and_run`. Execution is authorised by a human
+// pressing Run on one immutable review, so the model has no tool that could
+// reach the engine and no token it could spend on one.
+ok(LIVE_TOOL_NAMES.length === 2, 'The live lane has exactly two tools.');
+assert.deepEqual([...LIVE_TOOL_NAMES].sort(), ['get_state', 'save_facts']);
+checks += 1;
+const isRemovedTool = (error) => error?.code === 'live_tool_unknown';
+assert.throws(() => assertLiveToolName('confirm_and_run'), isRemovedTool);
 checks += 1;
 
 for (const tool of LIVE_TOOL_DEFINITIONS) {
@@ -337,24 +345,25 @@ checks += 2;
   ok(projection.goalsAgreed === false, 'A fresh profile has no agreed goals.');
 }
 
-/* --------------------------------------------------- the confirmation gate */
+/* ------------------------------------------------ the affirmation classifier */
 
-// The model does not get to assert that the client agreed. The server reads
-// the client's actual words, and only a clear affirmation may run anything.
+// WHAT THIS CLASSIFIER IS, AND WHAT IT IS NOT.
+//
+// It binds a FACT to a read-back the client answered -- "your PRSA is about
+// €28,000, is that right?" -- which is evidence handling, not authorisation.
+// It once also decided whether a sentence ran the analyses. It does not, and
+// cannot: there is no execution route for it to feed. Its behaviour is pinned
+// here because a figure bound on a hedge would still be a wrong figure.
 for (const affirmed of ['yes', 'yes please', 'go ahead', 'that sounds good', 'okay go ahead']) {
   ok(classifySpokenPlanConfirmation(affirmed) === 'affirmed', `"${affirmed}" should read as agreement.`);
 }
 for (const notAffirmed of ['no', 'hang on', 'can you change one thing', 'what does that mean', '']) {
-  ok(classifySpokenPlanConfirmation(notAffirmed) !== 'affirmed', `"${notAffirmed}" must NOT run the analyses.`);
+  ok(classifySpokenPlanConfirmation(notAffirmed) !== 'affirmed', `"${notAffirmed}" must NOT bind a figure.`);
 }
 
-// Preserve the archived classifier's behavior for the separate Realtime lane
-// and evidence affirmation. Its former execution rationale claimed a false
-// negative costs one extra exchange. The direct-module DO reproduction disproved
-// that premise: ambiguity destroyed the offer and advanced its snapshot pass.
-// Phase 1 restores offer continuity and separates execution approval into
-// execution_approval.js; its natural-approval coverage lives in
-// check-live-execution-approval.mjs. Do not broaden this shared helper in place.
+// It fails closed on a paraphrase, and there is no longer any pressure to
+// broaden it: the cost of a false negative used to be a refused execution, and
+// is now nothing at all -- the client presses a button either way.
 for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away']) {
   ok(classifySpokenPlanConfirmation(paraphrase) !== 'affirmed',
     `"${paraphrase}" must fail closed rather than be guessed at.`);
@@ -1334,11 +1343,11 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     type: 'response.function_call_arguments.done',
     response_id: 'resp_current_no',
     call_id: 'call_current_confirmation',
-    name: 'confirm_and_run',
+    name: 'save_facts',
     arguments: '{}'
   }));
   ok(confirmationExecutions.length === 0,
-    'confirm_and_run must not consume an affirmative transcript from the previous turn.');
+    'a transcript-bound tool must not consume an affirmative transcript from the previous turn.');
   await staleConfirmation.handleProviderMessage(JSON.stringify({
     type: 'conversation.item.input_audio_transcription.completed',
     item_id: 'item_current_no',
@@ -1347,7 +1356,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(
     confirmationExecutions.length === 1
       && confirmationExecutions[0].clientTranscript === "No, don't run it.",
-    'confirm_and_run must receive only its response-bound confirmation evidence.'
+    'a transcript-bound tool must receive only its response-bound evidence.'
   );
 
   const failedEvidence = await ledgerSession();
@@ -1367,7 +1376,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     type: 'response.function_call_arguments.done',
     response_id: 'resp_failed_evidence',
     call_id: 'call_failed_evidence',
-    name: 'confirm_and_run',
+    name: 'save_facts',
     arguments: '{}'
   }));
   await failedEvidence.handleProviderMessage(JSON.stringify({
@@ -1411,7 +1420,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   );
 
   const unknown = executeReplayTool(newReplaySession(), 'invented_tool', {}, 'yes');
-  ok(unknown.code === 'live_tool_unknown', 'An unknown replay tool cannot fall through to confirm_and_run.');
+  ok(unknown.code === 'live_tool_unknown', 'An unknown replay tool cannot fall through to anything.');
 
   const unknownSession = newReplaySession();
   const unknownSave = executeReplayTool(unknownSession, 'save_facts', {
@@ -2314,13 +2323,20 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   // code trips it and has to be justified, which is the whole point. Raise it
   // only with a recorded reason, the way this line was raised.
   //
-  // WHY PHASE 1 GREW AT ALL. The lane now tracks provider generation and WebRTC
+  // WHY PHASE 1 GREW AT ALL. The lane tracks provider generation and WebRTC
   // output-buffer playback as separate protocol lifecycles, and observes an
   // approved execution to completion. That is required to avoid claiming speech
   // before audio starts, or claiming a call ended before the provider confirms
   // hang-up. It is not a return of the Worker-owned turn coordinator, and the
   // specific baggage guards above remain the stronger architectural boundary.
-  const LIVE_CLIENT_CHARACTER_BUDGET = 48_000;
+  //
+  // RAISED FOR THE REVIEW SCREEN, WITH ITS REASON RECORDED. The controller now
+  // draws the immutable review and binds its two actions, and no longer carries
+  // the playback-acknowledgement ledger that existed to prove a spoken plan had
+  // been heard before a spoken "yes" could run it. The net is roughly +2k: the
+  // screen is larger than the ledger it replaced. It is a screen, not a second
+  // coordinator -- it renders one server-owned object and sends back its id.
+  const LIVE_CLIENT_CHARACTER_BUDGET = 52_000;
   ok(client.length <= LIVE_CLIENT_CHARACTER_BUDGET,
     `The live client must stay within its recorded budget (${client.length} of ${LIVE_CLIENT_CHARACTER_BUDGET} characters).`);
   // The original property still holds and is worth keeping visible: this
@@ -2719,8 +2735,10 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
   const item = liveVolatileStateItem({ ...state, goalsAgreed: true });
   ok(/not ready for confirmation/i.test(item),
     'The state note must say plainly that the plan is not ready.');
+  // AND THERE IS NOTHING TO OFFER WITH. The tool that used to run the analyses
+  // on a spoken "yes" is not merely refused here -- it does not exist.
   const refused = executeReplayTool(pensionSession(), 'confirm_and_run', {}, 'Yes, go ahead.');
-  ok(refused.ok === false, 'confirm_and_run must refuse while inputs are outstanding.');
+  ok(refused.code === 'live_tool_unknown', 'there is no execution tool to refuse with.');
 }
 
 // 9. A TANGENT MUST NOT COST THE STATE. The projection is derived from the

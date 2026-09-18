@@ -132,7 +132,8 @@ const migrations = [
   '0016_add_planning_reconciliation',
   '0017_widen_reconciliation_trigger',
   '0018_add_turn_proposition_link',
-  '0019_add_direct_module_meeting_briefs'
+  '0019_add_direct_module_meeting_briefs',
+  '0020_add_review_state'
 ].map((name) => readFileSync(`${root}/worker/consumer-migrations/${name}.sql`, 'utf8')).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrations}` });
 
@@ -638,7 +639,7 @@ async function atCapacitySession(label) {
     leaseId: meetingId,
     providerToolCallId: 'live-anaphoric-rate-call',
     toolName: 'save_facts',
-    toolVersion: 'planeir-live-tools-v1',
+    toolVersion: 'planeir-live-tools-v2',
     expectedProfileRevision: Number(before.sessionRow.current_profile_revision),
     arguments: { factCount: 1 },
     maxToolCalls: config.realtimeMaxToolCalls

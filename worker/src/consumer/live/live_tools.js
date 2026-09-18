@@ -22,23 +22,12 @@
  */
 
 import { ConsumerError } from '../errors.js';
-import { applyPlannerCandidates, confirmPlanSelection } from '../planning_turn.js';
+import { applyPlannerCandidates } from '../planning_turn.js';
 import { buildPlanningContext } from '../planning_context.js';
-import {
-  confirmAndRunRealtimeAnalysisPlan,
-  prepareRealtimeVoiceAnalysisPlan
-} from '../realtime_analysis.js';
-import { getRealtimeAnalysisPlanExecution } from '../realtime_repository.js';
-import { classifyExecutionApproval } from './execution_approval.js';
 import { classifyEvidenceAffirmation } from './evidence_affirmation.js';
 import { getCurrentProfile, getSessionRow } from '../repository.js';
 import { buildConfirmedRealtimeFactSummary, formattedFactValue } from '../realtime_fact_mapper.js';
 import { MODULE_IDS } from '../../../../js/planning/contracts.js';
-import {
-  MODULE_FAILURE_CODES,
-  MODULE_FAILURE_CODE_VALUES,
-  clientFailureMessage
-} from '../../../../js/planning/module_failures.js';
 import { getSemanticFactDefinition, resolveSemanticFact } from '../../../../js/planning/semantic_facts.js';
 import { classifyGoalPriorityHint } from '../../../../js/planning/goal_catalogue.js';
 import { extractValueEvidence } from '../../../../js/planning/value_evidence.js';
@@ -53,7 +42,7 @@ const MAX_FACTS_PER_CALL = 10;
  * that recorded a live meeting under `consumer-realtime-tools-v7` would be
  * describing a surface this lane has never had.
  */
-export const LIVE_TOOLSET_VERSION = 'planeir-live-tools-v1';
+export const LIVE_TOOLSET_VERSION = 'planeir-live-tools-v2';
 
 export const LIVE_TOOL_DEFINITIONS = Object.freeze([
   {
@@ -109,16 +98,6 @@ export const LIVE_TOOL_DEFINITIONS = Object.freeze([
       + 'Use it whenever you are deciding what to ask next, or to check you are not about to '
       + 'repeat yourself. It is cheap — use it freely. It returns plain descriptions only; there '
       + 'are no internal names to read out.',
-    parameters: { type: 'object', additionalProperties: false, required: [], properties: {} }
-  },
-  {
-    type: 'function',
-    name: 'confirm_and_run',
-    description:
-      'Run the analyses. Call this ONLY after you have said out loud what you are going to run '
-      + 'and the client has clearly agreed in their own words. The server checks their actual '
-      + 'last words and refuses if they did not clearly say yes. Never call it on an assumption, '
-      + 'a maybe, or to move things along.',
     parameters: { type: 'object', additionalProperties: false, required: [], properties: {} }
   }
 ]);
@@ -1585,206 +1564,22 @@ function assertNoUnknownRequirementContradiction(blockedInstanceIds, analyses) {
   }
 }
 
-/* -------------------------------------------------------- confirm_and_run */
+/* ---------------------------------------------- NO CONVERSATIONAL EXECUTION */
 
 /**
- * THE ONE HARD GATE IN THE LANE.
+ * THERE IS NO EXECUTION TOOL, AND THERE IS NO EXECUTION ROUTE FROM HERE.
  *
- * Everything else here is permissive by design; this is not. The model is an
- * untrusted caller: it does not get to assert that the client agreed. The
- * server reads the client's actual last words with the execution-only gate.
- * Direct execution loads the certified plan frozen before its read-back; the
- * approving turn may never prepare or derive a replacement plan.
- */
-async function executeConfirmAndRun(_args, deps) {
-  const transcript = String(deps.latestClientTranscript || '');
-  if (classifyExecutionApproval(transcript) !== 'affirmed') {
-    return {
-      ok: false,
-      code: 'confirmation_required',
-      message: 'The client has not clearly agreed yet. Ask a plain yes/no question and wait for their answer.'
-    };
-  }
-
-  const context = await deps.loadContext();
-  const config = livePlanningConfig(deps.config, context.profile);
-  const direct = config.modulePlannerMode === 'apply';
-  let expectedRevision = Number(context.sessionRow.current_profile_revision);
-  let prepared;
-  if (direct) {
-    // These are coordinator-owned fields, never tool arguments. Missing audio
-    // delivery/review evidence keeps the offer alive but cannot authorise it.
-    const offer = deps.directConfirmationOffer;
-    if (!offer?.token || !offer.planId || offer.superseded === true) {
-      return { ok: false, code: 'confirmation_context_invalid', message: 'Read back the current plan before asking for confirmation.' };
-    }
-    if (offer.readbackFullyDelivered !== true) {
-      return { ok: false, code: 'confirmation_readback_incomplete', message: 'The complete plan read-back has not finished. Read it back in full before confirmation.' };
-    }
-    if (offer.reviewStatus !== 'settled' || offer.reviewPending === true || offer.reviewFailed === true) {
-      return { ok: false, code: 'module_planning_pending', message: 'The latest answer is still being reviewed. Keep this offer while that review completes.' };
-    }
-    prepared = await getRealtimeAnalysisPlanExecution(
-      deps.env, context.sessionRow.id, offer.planId, deps.leaseId || null
-    );
-    expectedRevision = Number(offer.profileRevision);
-    if (prepared.input?.inputSource !== 'verified_direct_module_input'
-      || prepared.input.confirmationOfferToken !== offer.token
-      || !offer.certificateSignature
-      || prepared.input.verificationCertificate?.signature !== offer.certificateSignature
-      || Number(prepared.row.profile_revision) !== expectedRevision) {
-      return { ok: false, code: 'confirmation_context_invalid', message: 'The confirmation does not match the offered plan. Read back the current plan before confirmation.' };
-    }
-    prepared.moduleIds = prepared.input.moduleIds;
-    if (prepared.row.status === 'prepared'
-      && Number(context.sessionRow.current_profile_revision) !== expectedRevision) {
-      return { ok: false, code: 'profile_revision_conflict', message: 'The plan changed before confirmation. Read back the current plan before confirmation.' };
-    }
-  } else {
-    // The archived comparison lane keeps its existing preparation behavior.
-    // It does not participate in direct-module offer execution.
-    prepared = await prepareRealtimeVoiceAnalysisPlan({
-      env: deps.env,
-      config,
-      sessionRow: context.sessionRow,
-      profile: context.profile,
-      leaseId: deps.leaseId || null,
-      idempotencyKey: `live-confirm-${context.sessionRow.id}-${expectedRevision}`
-    });
-  }
-
-  // THE SET THAT MAY BE SELECTED MUST BE THE SET THAT MAY BE EXECUTED.
-  //
-  // `livePlanningConfig` narrows `allowedModules` so the LEGACY shared planner
-  // cannot pin a balance-sheet review onto a focused request, and so the intake
-  // facts offered to Realtime stay narrow. `runDirectModulePlanning` is handed
-  // the DEPLOYMENT allowlist instead, and owns that judgement itself ("do not
-  // add a wider review of someone's whole position unless they asked to
-  // understand their whole position").
-  //
-  // So the planner may certify a module that the narrowed list then refuses,
-  // twice over: `confirmPlanSelection` rejects the set outright, and
-  // `runConsumerAnalysisWithInputs` silently drops the module and reports a
-  // short result set as a module failure. Either way the client hears the plan
-  // read back, agrees, and is told the analysis did not complete.
-  //
-  // Execution therefore validates against the set the planner was allowed to
-  // choose from. The conversational narrowing above is untouched: widening what
-  // Realtime is invited to ASK about is a separate change.
-  const executionConfig = direct
-    ? { ...config, allowedModules: deps.config.allowedModules }
-    : config;
-
-  // A duplicate approval joins the existing execution receipt. Confirming the
-  // profile again after completion would regress the persisted results stage.
-  if (prepared.row.status === 'prepared') {
-    await confirmPlanSelection({
-      env: deps.env,
-      config: executionConfig,
-      sessionRow: context.sessionRow,
-      profile: context.profile,
-      channel: 'live',
-      confirmedModuleIds: direct ? prepared.moduleIds : null,
-      preparedPlanId: direct ? prepared.row.id : null
-    });
-  }
-
-  const executed = await confirmAndRunRealtimeAnalysisPlan({
-    env: deps.env,
-    config: executionConfig,
-    sessionId: context.sessionRow.id,
-    planId: prepared.row.id,
-    planNonce: prepared.planNonce,
-    expectedRevision
-  });
-
-  const status = executed.analysisPlan?.status || 'unknown';
-  if (['confirmed', 'running'].includes(status)) {
-    return {
-      ok: true,
-      status,
-      pending: true,
-      idempotentReplay: true,
-      analysisPlan: executed.analysisPlan,
-      completedCount: 0
-    };
-  }
-  if (status !== 'complete') {
-    // A run that did not complete used to come back as a bare `ok:false` with
-    // no reason at all, so the meeting had nothing to say and nothing to act
-    // on. It now names the reason and carries a sentence the client can hear.
-    const code = status === 'needs_information'
-      ? MODULE_FAILURE_CODES.READINESS_NOT_MET
-      : (executed.failureCode || MODULE_FAILURE_CODES.UNKNOWN);
-    return {
-      ok: false,
-      code,
-      status,
-      analysisPlan: executed.analysisPlan || null,
-      idempotentReplay: executed.idempotentReplay === true,
-      failedModuleId: executed.failedModuleId || null,
-      retryable: code === MODULE_FAILURE_CODES.READINESS_NOT_MET,
-      speakableText: executed.result?.speakableText || clientFailureMessage(code),
-      message: clientFailureMessage(code),
-      completedCount: (executed.result?.completedModuleIds || []).length
-    };
-  }
-  return {
-    ok: true,
-    status,
-    analysisPlan: executed.analysisPlan,
-    idempotentReplay: executed.idempotentReplay === true,
-    // Deterministic, server-owned copy. The model must speak it as given and
-    // must never recompute or embellish anything in it.
-    speakableText: executed.result?.speakableText || '',
-    completedCount: (executed.result?.completedModuleIds || []).length,
-    navigationTarget: '/plan/#results',
-    result: executed.result || null
-  };
-}
-
-/**
- * Codes that describe why the analysis could not run and are worth telling the
- * client about. Anything else is an infrastructure fault, which the client
- * hears as a generic failure rather than as a fact they need to supply.
- */
-const CONFIRM_AND_RUN_STATE_CODES = Object.freeze({
-  analysis_plan_empty: MODULE_FAILURE_CODES.UNSUPPORTED_STATE,
-  decision_topic_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  goal_priority_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  analysis_missing_information: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  analysis_module_failed: MODULE_FAILURE_CODES.EXECUTION_FAILED,
-  analysis_not_ready: MODULE_FAILURE_CODES.EXECUTION_FAILED,
-  profile_confirmation_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  profile_revision_conflict: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  analysis_plan_not_confirmed: MODULE_FAILURE_CODES.READINESS_NOT_MET
-});
-
-/**
- * Turn a thrown analysis failure into an ordinary structured tool result.
+ * `confirm_and_run` used to live at this point in the file: the model called
+ * it, and the server re-read the client's last words through an approval
+ * grammar to decide whether they had agreed. Both halves are gone. Execution
+ * is authorised by a human clicking Run on one immutable review object, and
+ * that path (worker/src/consumer/review.js) is not reachable from any tool.
  *
- * Without this the throw reached the session's catch-all, which answers every
- * broken tool with "That did not save. Do not mention it and do not ask again"
- * -- correct for a fact write nobody is waiting on, and exactly wrong for the
- * one call the client just agreed to and is waiting to hear the answer from.
- *
- * `diagnosticCode` is the server's own code and is recorded, not spoken.
+ * The dispatcher below refuses an unknown name outright, so a hallucinated,
+ * stale or replayed `confirm_and_run` call cannot execute anything -- not
+ * because the prompt no longer mentions it, but because the route it needed
+ * does not exist.
  */
-function confirmAndRunFailure(error) {
-  const consumerCode = error instanceof ConsumerError ? error.code : null;
-  const code = (error instanceof ConsumerError && MODULE_FAILURE_CODE_VALUES.includes(error.details?.failureCode))
-    ? error.details.failureCode
-    : (CONFIRM_AND_RUN_STATE_CODES[consumerCode] || MODULE_FAILURE_CODES.UNKNOWN);
-  return {
-    ok: false,
-    code,
-    diagnosticCode: consumerCode || 'live_tool_failed',
-    failedModuleId: error instanceof ConsumerError ? (error.details?.failedModuleId || null) : null,
-    retryable: code === MODULE_FAILURE_CODES.READINESS_NOT_MET,
-    speakableText: clientFailureMessage(code),
-    message: clientFailureMessage(code)
-  };
-}
 
 /* ------------------------------------------------------------- dispatcher */
 
@@ -1806,11 +1601,10 @@ export async function executeLiveTool(name, args, deps) {
   assertLiveToolName(name);
   if (name === 'save_facts') return executeSaveFacts(args, deps);
   if (name === 'get_state') return liveStateProjection(await deps.loadContext());
-  try {
-    return await executeConfirmAndRun(args, deps);
-  } catch (error) {
-    return confirmAndRunFailure(error);
-  }
+  // Every advertised name is handled above. Reaching here means the toolset and
+  // this dispatcher disagree, which is a deployment fault, never a reason to
+  // guess what the model wanted.
+  throw new ConsumerError(400, 'live_tool_unknown', 'That tool is not available in this meeting.');
 }
 
-export { confirmAndRunFailure, liveStateProjection };
+export { liveStateProjection };

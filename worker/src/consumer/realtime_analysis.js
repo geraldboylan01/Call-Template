@@ -152,7 +152,7 @@ export function buildGatedModuleDisclosure(moduleSlots, { allGated = false } = {
   return { moduleIds: modules.map((item) => item.moduleId), speakableText };
 }
 
-function boundedSpeakableResult(analysis, config, moduleSlots = []) {
+export function boundedSpeakableResult(analysis, config, moduleSlots = []) {
   const deterministicSummary = typeof analysis?.summary?.speakableText === 'string'
     ? analysis.summary.speakableText
     : '';

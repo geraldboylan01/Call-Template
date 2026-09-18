@@ -27,6 +27,7 @@ import assert from 'node:assert/strict';
 import { attachLiveSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { LiveProviderSimulator } from './live-harness/provider.mjs';
 import { scriptedPlanner } from './live-harness/scripted-planner.mjs';
+import { describeCurrentReview, executeReviewRun } from '../worker/src/consumer/review.js';
 
 const pass = (message) => console.info(`[ConsumerLiveConfirmation] PASS: ${message}`);
 
@@ -139,23 +140,47 @@ function readTurnHonestly({ clientTurn }) {
   return figures;
 }
 
-/** One confirmation attempt, returning what the gate decided. */
-async function confirm(rig, { clientText = 'Yes, go ahead and run it.', facts = null } = {}) {
-  let result = null;
+/**
+ * One attempt to reach a review, returning what the barrier decided.
+ *
+ * WHAT CHANGED, AND WHAT DID NOT. This used to call `confirm_and_run` and read
+ * its refusal code. There is no such tool: the readiness read is what seals,
+ * and the SAME `plannerReconciliationPreflight` decides whether the seal may
+ * publish. So the barrier under test, the code that implements it and every
+ * sequencing hazard this file exists to pin are unchanged -- only the thing
+ * being refused moved, from a sentence to a screen.
+ */
+async function attemptSeal(rig, { clientText = 'Is that everything you need?', facts = null } = {}) {
+  let state = null;
   await rig.simulator.turn({
     clientText,
     act: async ({ callTool }) => {
       if (facts) await callTool('save_facts', { facts });
-      const call = await callTool('confirm_and_run', {});
-      result = call.result;
+      const call = await callTool('get_state', {});
+      state = call.result;
       return { speech: 'One moment.' };
     }
   });
   await settle(rig.durable, rig.session);
-  return result;
+  const review = await describeCurrentReview(rig.meeting.env, rig.meeting.sessionId);
+  return {
+    state,
+    reviewId: review.review?.reviewId || null,
+    ok: Boolean(review.review?.reviewId),
+    seal: rig.session.lastSealOutcome
+  };
 }
 
-const blockedByBarrier = (result) => result?.code === 'reconciliation_pending';
+/** Run the review a seal produced, exactly as the client's button would. */
+async function runReviewAction(rig, reviewId) {
+  return executeReviewRun(rig.meeting.env, rig.meeting.config, {
+    sessionId: rig.meeting.sessionId, reviewId, clickId: `barrier_${reviewId}`
+  });
+}
+
+const blockedByBarrier = (attempt) => Boolean(
+  !attempt.ok && (attempt.seal?.blockers || []).some((blocker) => blocker.startsWith('reconciliation_'))
+);
 
 /* ============================================ 1 + 5: pure confirmation, both */
 
@@ -164,20 +189,22 @@ for (const mode of ['shadow', 'apply']) {
   assert.deepEqual(rig.session.unreviewedMaterialTurns, [],
     `${mode}: every material turn must have been reviewed before the confirmation`);
 
-  const result = await confirm(rig);
-  assert.equal(blockedByBarrier(result), false,
-    `${mode}: a confirmation carrying no new facts must not be blocked by the barrier`);
+  const attempt = await attemptSeal(rig);
+  assert.equal(blockedByBarrier(attempt), false,
+    `${mode}: a seal carrying no new facts must not be blocked by the barrier`);
+  const result = attempt.ok ? await runReviewAction(rig, attempt.reviewId) : { ok: false };
   if (mode === 'shadow') {
     // Shadow reviews without writing the profile, so passing the barrier here
     // means the deterministic module genuinely runs. `apply` asserts only the
     // barrier: its profile write currently mis-shapes `targetIncomeToday`, a
     // SEPARATE defect from the one this file pins, and conflating the two would
     // make this regression fail for the wrong reason.
-    assert.equal(result?.ok, true, 'shadow: the analyses must actually run');
-    assert.equal(result?.status, 'complete', 'shadow: and complete');
+    assert.equal(attempt.ok, true, 'shadow: the meeting must reach a review');
+    assert.equal(result?.ok, true, 'shadow: and the analyses must actually run from it');
+    assert.equal(result?.analysisPlan?.status, 'complete', 'shadow: and complete');
   }
   rig.planner.restore();
-  pass(`${mode} — a pure confirmation runs once every material turn is reviewed`);
+  pass(`${mode} — a seal publishes once every material turn is reviewed`);
 }
 
 /* ================================ 2: an earlier material turn is unreviewed */
@@ -193,9 +220,8 @@ for (const mode of ['shadow', 'apply']) {
   assert.ok(rig.session.unreviewedMaterialTurns.length > 0,
     `${mode}: the fixture must genuinely leave a material turn unreviewed`);
 
-  const result = await confirm(rig);
-  assert.equal(blockedByBarrier(result), true,
-    `${mode}: an unreviewed material turn must block the run`);
+  assert.equal(blockedByBarrier(await attemptSeal(rig)), true,
+    `${mode}: an unreviewed material turn must block the review`);
   rig.planner.restore();
   pass(`${mode} — a failed review leaves its material turn blocking, not released`);
 }
@@ -221,39 +247,48 @@ for (const mode of ['shadow', 'apply']) {
     'the meeting must start this case fully reviewed, or it proves nothing');
 
   // 3a — clean affirmation, unresolved note activity on the same turn.
-  const withRejectedSave = await confirm(rig, {
-    clientText: 'Yes, go ahead and run it.',
+  const withRejectedSave = await attemptSeal(rig, {
+    clientText: 'Is that everything you need?',
     facts: [{ factId: 'target_retirement_income', value: { amount: 51000, currency: 'EUR' }, certainty: 'exact' }]
   });
   assert.equal(blockedByBarrier(withRejectedSave), true,
-    'unresolved note activity on the confirming turn must block the run');
+    'unresolved note activity on the sealing turn must block the review');
 
   // The barrier must also SCHEDULE the review it is waiting for, or a refusal
   // becomes a deadlock — which is the failure mode this whole file exists for.
   assert.deepEqual(rig.session.unreviewedMaterialTurns, [],
     'the refusal must leave the outstanding turn reviewed, not outstanding forever');
 
-  const after = await confirm(rig, { clientText: 'Yes, please go ahead.' });
+  const after = await attemptSeal(rig, { clientText: 'Are we ready now?' });
   assert.equal(blockedByBarrier(after), false,
-    'once that turn is reviewed the confirmation must proceed');
+    'once that turn is reviewed the seal must proceed');
   rig.planner.restore();
-  pass('apply — unresolved note activity blocks the confirming turn, then clears');
+  pass('apply — unresolved note activity blocks the sealing turn, then clears');
 }
 
-/* 3b — a spoken correction never reaches the barrier, and is refused anyway. */
+/* 3b — a correction voiced while agreeing still cannot run the analyses. */
 
 {
+  // THE GATE THAT USED TO CATCH THIS IS GONE, AND THE PROPERTY IS STRONGER.
+  //
+  // A spoken-approval classifier used to read "actually I want to retire at 63"
+  // and refuse, which only worked because it recognised the word "actually".
+  // Nothing reads the sentence now. The correction becomes an ordinary turn, an
+  // ordinary planning obligation, and the seal waits for it -- so the analyses
+  // cannot run over it for a reason that has nothing to do with vocabulary.
   const rig = await meetingReadyToConfirm('confirm-spoken-correction', 'apply', () => null);
-  const corrected = await confirm(rig, {
+  const corrected = await attemptSeal(rig, {
     clientText: 'Yes, go ahead — though actually I want to retire at 63, not 62.',
     facts: [{ factId: 'intended_retirement_age', value: 63, certainty: 'exact' }]
   });
-  assert.equal(corrected?.ok, false,
-    'a turn that corrects something while agreeing must not run the analyses');
-  assert.equal(corrected?.code, 'confirmation_required',
-    'and the spoken-confirmation gate is what refuses it, before the barrier');
+  assert.equal(blockedByBarrier(corrected), true,
+    'a turn that corrects something while agreeing must not produce a runnable review');
+  const runs = await rig.meeting.env.CONSUMER_DB
+    .prepare('SELECT COUNT(*) AS n FROM consumer_analysis_runs WHERE session_id = ?')
+    .bind(rig.meeting.sessionId).first();
+  assert.equal(Number(runs.n), 0, 'and nothing ran');
   rig.planner.restore();
-  pass('apply — a correction voiced while confirming is refused by the spoken gate');
+  pass('apply — a correction voiced while agreeing is held by the barrier, not by a word list');
 }
 
 /* ============================================== 4: legacy is left untouched */
@@ -264,10 +299,12 @@ for (const mode of ['shadow', 'apply']) {
     plannerCalls += 1;
     return null;
   });
-  const result = await confirm(rig);
-  assert.equal(blockedByBarrier(result), false,
+  const attempt = await attemptSeal(rig);
+  assert.equal(blockedByBarrier(attempt), false,
     'legacy must not consult the barrier at all');
-  assert.equal(result?.ok, true, 'and the analyses must actually run');
+  assert.equal(attempt.ok, true, 'legacy must still reach a review');
+  const result = await runReviewAction(rig, attempt.reviewId);
+  assert.equal(result?.ok, true, 'and the analyses must actually run from it');
   assert.deepEqual(rig.session.unreviewedMaterialTurns, [],
     'legacy must not accumulate material turns it will never review');
   const rows = (await rig.meeting.env.CONSUMER_DB.prepare(
@@ -323,12 +360,12 @@ async function meetingWithSpendingRead(label, digits) {
   // lane wrote. Which of them is right is not this gate's business; that they
   // disagree is, and a disputed figure must not reach a calculation.
   const rig = await meetingWithSpendingRead('confirm-reading-disagrees', 3_200);
-  assert.equal(blockedByBarrier(await confirm(rig)), true,
+  assert.equal(blockedByBarrier(await attemptSeal(rig)), true,
     'a figure the independent reading contradicts must not reach a calculation, '
     + 'however clean the plan that ignored it');
   // Twice, because the first refusal also SCHEDULES the review it is waiting
   // for — a barrier that merely lagged a turn would open on the retry.
-  assert.equal(blockedByBarrier(await confirm(rig, { clientText: 'Yes, please go ahead.' })), true,
+  assert.equal(blockedByBarrier(await attemptSeal(rig, { clientText: 'Are we ready now?' })), true,
     'and it must still not, after the review it scheduled has run');
   assert.ok(rig.planner.readings().some((entry) => entry.figures.length > 0),
     'the independent reader must actually have run — a test where it returned '
@@ -345,11 +382,13 @@ async function meetingWithSpendingRead(label, digits) {
   // correct EUR 95,000 income. A reviewer that has not got round to a note has
   // found nothing wrong with it.
   const rig = await meetingWithSpendingRead('confirm-reading-agrees', 2_500);
-  await confirm(rig);
-  const result = await confirm(rig, { clientText: 'Yes, please go ahead.' });
-  assert.equal(blockedByBarrier(result), false,
+  await attemptSeal(rig);
+  const attempt = await attemptSeal(rig, { clientText: 'Are we ready now?' });
+  assert.equal(blockedByBarrier(attempt), false,
     'a figure the reading agrees with must not be held back by a silent reviewer');
-  assert.equal(result?.ok, true, 'and the analyses must actually run');
+  assert.equal(attempt.ok, true, 'and a review must be published');
+  const result = await runReviewAction(rig, attempt.reviewId);
+  assert.equal(result?.ok, true, 'and the analyses must actually run from it');
   rig.planner.restore();
   pass('apply — an unmentioned proposal the reading agrees with does not block');
 }
@@ -363,7 +402,7 @@ async function meetingWithSpendingRead(label, digits) {
   const rig = await meetingWithSpendingRead('confirm-escalates', 3_200);
   let opened = false;
   for (let attempt = 0; attempt < 8 && !opened; attempt += 1) {
-    opened = !blockedByBarrier(await confirm(rig, { clientText: 'Yes, please go ahead.' }));
+    opened = !blockedByBarrier(await attemptSeal(rig, { clientText: 'Are we ready now?' }));
   }
   assert.equal(opened, true,
     'a disputed figure must end in a question to the client, not a dead end');
@@ -373,4 +412,4 @@ async function meetingWithSpendingRead(label, digits) {
   pass('apply — a disputed figure is escalated to the client, never left blocking forever');
 }
 
-console.info('\n[ConsumerLiveConfirmation] PASS: the confirmation barrier admits reviewed work and only reviewed work');
+console.info('\n[ConsumerLiveConfirmation] PASS: the seal admits reviewed work and only reviewed work');

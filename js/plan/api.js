@@ -469,17 +469,6 @@ export function deleteRealtimeVoiceCall(sessionId, leaseId, { signal, controlCap
   });
 }
 
-export function acknowledgeRealtimePlayback(sessionId, leaseId, delivery, { signal, controlCapability } = {}) {
-  return request(`${realtimeCallPath(sessionId, leaseId)}/delivery`, {
-    method: 'POST',
-    authenticated: true,
-    requestHeaders: realtimeControlHeaders(controlCapability),
-    body: { responseId: delivery.responseId, eventId: delivery.eventId, playback: delivery.playback },
-    signal,
-    timeoutMs: 20_000
-  });
-}
-
 export function speakRealtimeAuthorized(sessionId, leaseId, authorization, {
   signal,
   controlCapability
@@ -575,6 +564,43 @@ export function endTypedMeeting(sessionId, leaseId, { controlCapability } = {}) 
     method: 'DELETE',
     authenticated: true,
     requestHeaders: realtimeControlHeaders(controlCapability)
+  });
+}
+
+/**
+ * THE ONLY WAY AN ANALYSIS EVER RUNS.
+ *
+ * The request names the exact review the client is looking at and, optionally,
+ * a retry identity. IT CARRIES NO FINANCIAL VALUE AND NO CLAIM THAT ANYBODY
+ * APPROVED ANYTHING -- the server resolves every input from the immutable
+ * review that id names. The browser is not authoritative for any of it; it is
+ * only trusted to report which review's button the human pressed.
+ */
+export function runReview(sessionId, reviewId, { clickId, controlCapability, signal } = {}) {
+  return request(`${pathForSession(sessionId)}/reviews/${encodeURIComponent(reviewId)}/run`, {
+    method: 'POST',
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
+    ...(clickId ? { body: { clickId: String(clickId) } } : {}),
+    signal,
+    // The deterministic engines run inside this request.
+    timeoutMs: 60_000
+  });
+}
+
+/**
+ * Revoke this review's execution authority and reopen the conversation.
+ *
+ * It does not say WHY. Whatever the client wants changed, they explain in
+ * their own words afterwards and the AI interprets it as it always has.
+ */
+export function changeReview(sessionId, reviewId, { clickId, controlCapability, signal } = {}) {
+  return request(`${pathForSession(sessionId)}/reviews/${encodeURIComponent(reviewId)}/change`, {
+    method: 'POST',
+    authenticated: true,
+    requestHeaders: realtimeControlHeaders(controlCapability),
+    ...(clickId ? { body: { clickId: String(clickId) } } : {}),
+    signal
   });
 }
 

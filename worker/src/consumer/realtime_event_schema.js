@@ -100,6 +100,21 @@ export const REALTIME_EVENT_SCHEMA = Object.freeze({
     planId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
     recordedAtMs: NON_CONTENT_FIELD_TYPES.INTEGER
   }),
+  // THE SEAL, AND WHY IT DID OR DID NOT PUBLISH A REVIEW.
+  //
+  // `blockers` is a space-separated list of control-vocabulary names --
+  // `input_pending`, `transcription_failed`, `planning_outstanding`. No
+  // transcript, no figure and nothing the client said: a blocker is a fact
+  // about work, which is the only kind of fact this decision is made from.
+  'live.review.seal': event({
+    outcome: NON_CONTENT_FIELD_TYPES.STRING,
+    blockers: NON_CONTENT_FIELD_TYPES.STRING
+  }),
+  // An input this meeting was not allowed to accept. The reason is the mode or
+  // epoch that refused it, never the content that was refused.
+  'live.input.rejected': event({
+    reason: NON_CONTENT_FIELD_TYPES.STRING
+  }),
   'live.response.continuation_requested': event({
     rootItemId: NON_CONTENT_FIELD_TYPES.NULLABLE_STRING,
     continuationIndex: NON_CONTENT_FIELD_TYPES.INTEGER,

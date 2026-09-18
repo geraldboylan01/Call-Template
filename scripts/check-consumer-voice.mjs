@@ -140,7 +140,8 @@ const migrationSql = [
   'worker/consumer-migrations/0016_add_planning_reconciliation.sql',
   'worker/consumer-migrations/0017_widen_reconciliation_trigger.sql',
   'worker/consumer-migrations/0018_add_turn_proposition_link.sql',
-  'worker/consumer-migrations/0019_add_direct_module_meeting_briefs.sql'
+  'worker/consumer-migrations/0019_add_direct_module_meeting_briefs.sql',
+  'worker/consumer-migrations/0020_add_review_state.sql'
 ].map((migration) => readFileSync(`${root}/${migration}`, 'utf8')).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 

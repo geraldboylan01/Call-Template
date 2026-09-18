@@ -36,7 +36,6 @@ import {
   resolveCapacityDecision,
   resolveModuleOffer
 } from './planning_turn.js';
-import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { describeConversationState } from './conversation.js';
 import { ConsumerError } from './errors.js';
 import { valueEvidenceCoverage } from '../../../js/planning/value_evidence.js';
@@ -2237,14 +2236,20 @@ export class ConsumerRealtimeSession {
       });
       this.currentPhase = 'generating_modules';
       await this.state.storage.put('phase', this.currentPhase);
-      const executed = await confirmAndRunRealtimeAnalysisPlan({
-        env: this.env,
-        config: context.config,
-        sessionId: this.meta.sessionId,
-        planId,
-        planNonce: execution.planNonce,
-        expectedRevision
-      });
+      // THIS LANE CANNOT EXECUTE, AND IT NO LONGER PRETENDS TO.
+      //
+      // The archived Realtime lane reached the financial engine from a spoken
+      // confirmation. Nothing conversational authorises execution any more, so
+      // the route is gone rather than hidden: this Durable Object is not bound
+      // by `conversationLaneStub` and, even if it were reached, there is no
+      // call from here into the engine to make.
+      throw new ConsumerError(
+        410,
+        'conversational_execution_removed',
+        'Analyses run from the Review screen, not from the conversation.'
+      );
+      // eslint-disable-next-line no-unreachable
+      const executed = { analysisPlan: { status: 'unavailable' }, requiredQuestions: [], result: null };
       if (executed.analysisPlan.status !== 'complete') {
         const requiredQuestion = executed.requiredQuestions?.[0] || null;
         const requiredPrompt = String(
@@ -3115,32 +3120,14 @@ export class ConsumerRealtimeSession {
       };
     }
     if (toolName === 'confirm_and_run_plan') {
-      this.requireExpectedRevision(args, context);
-      if (!args.planId || !args.planNonce) {
-        throw new ConsumerError(403, 'analysis_plan_confirmation_required', 'The authenticated analysis plan confirmation is required.');
-      }
-      // Verification is intentionally performed here even though the normal UI
-      // path runs through PUT /analysis-plan. An unguessable server nonce and
-      // exact confirmed revision are required; model assertion alone cannot run.
-      const executed = await confirmAndRunRealtimeAnalysisPlan({
-        env: this.env,
-        config: context.config,
-        sessionId: this.meta.sessionId,
-        planId: args.planId,
-        planNonce: args.planNonce,
-        expectedRevision: args.expectedRevision
-      });
-      await this.setAnalysisPhase({
-        planId: args.planId,
-        status: executed.analysisPlan.status,
-        profileRevision: args.expectedRevision
-      });
-      return {
-        ok: true,
-        planId: args.planId,
-        status: executed.analysisPlan.status,
-        speakableText: executed.result?.speakableText || ''
-      };
+      // A MODEL TOOL CALL IS INCAPABLE OF EXECUTION, NOT MERELY DISCOURAGED.
+      // A hallucinated, stale or replayed call lands here and finds no engine
+      // behind it. Removing the name from a prompt would not have been enough.
+      throw new ConsumerError(
+        410,
+        'conversational_execution_removed',
+        'Analyses run from the Review screen, not from the conversation.'
+      );
     }
     if (toolName === 'get_result_summary') {
       this.requireExpectedRevision(args, context);

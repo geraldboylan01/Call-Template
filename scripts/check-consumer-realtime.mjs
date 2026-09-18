@@ -419,7 +419,8 @@ const migrationSql = [
   'worker/consumer-migrations/0016_add_planning_reconciliation.sql',
   'worker/consumer-migrations/0017_widen_reconciliation_trigger.sql',
   'worker/consumer-migrations/0018_add_turn_proposition_link.sql',
-  'worker/consumer-migrations/0019_add_direct_module_meeting_briefs.sql'
+  'worker/consumer-migrations/0019_add_direct_module_meeting_briefs.sql',
+  'worker/consumer-migrations/0020_add_review_state.sql'
 ].map(source).join('\n');
 sqliteCommand(databasePath, 'script', { sql: `PRAGMA foreign_keys = ON;\n${migrationSql}` });
 
@@ -457,8 +458,8 @@ const env = {
   CONSUMER_REALTIME_VOICE: 'marin',
   CONSUMER_REALTIME_REASONING_EFFORT: 'low',
   CONSUMER_REALTIME_TRANSCRIPTION_MODEL: 'gpt-4o-mini-transcribe',
-  CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v13',
-  CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v1',
+  CONSUMER_REALTIME_PROMPT_VERSION: 'planeir-live-conversation-v14',
+  CONSUMER_REALTIME_TOOLSET_VERSION: 'planeir-live-tools-v2',
   CONSUMER_REALTIME_PRICING_VERSION: 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1',
   CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: '1000',
   CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: '750',

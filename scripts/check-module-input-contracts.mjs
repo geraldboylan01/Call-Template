@@ -61,7 +61,8 @@ import {
   runPlanningModule
 } from '../js/planning/module_registry.js';
 import { runConsumerAnalysis } from '../js/planning/orchestrator.js';
-import { confirmAndRunFailure, executeLiveTool } from '../worker/src/consumer/live/live_tools.js';
+import { executeLiveTool } from '../worker/src/consumer/live/live_tools.js';
+import { reviewActionMessage } from '../worker/src/consumer/router.js';
 import { ConsumerError } from '../worker/src/consumer/errors.js';
 
 const pass = (message) => console.info(`[ModuleContracts] PASS: ${message}`);
@@ -452,73 +453,51 @@ function assertValidCashPartition(input, expectedTotal) {
   pass('no failure code produces client wording carrying internal detail');
 }
 
-/* ------------------------------------------------- confirm_and_run results */
+/* ----------------------------------------------- Run analysis failure wording */
 
+/**
+ * AN INTERNAL FAULT MUST NEVER BECOME CLIENT WORDING.
+ *
+ * This block used to exercise `confirmAndRunFailure`, which turned a thrown
+ * execution error into a tool result the model would read aloud. There is no
+ * execution tool and no model in that path any more: a Run failure travels back
+ * to the browser as an error code, and `reviewActionMessage` is the one place
+ * that turns a code into a sentence a client sees. The property is identical
+ * and is asserted against that function instead.
+ */
 {
-  const cases = [
-    ['analysis_module_failed', MODULE_FAILURE_CODES.EXECUTION_FAILED, false],
-    ['analysis_missing_information', MODULE_FAILURE_CODES.READINESS_NOT_MET, true],
-    ['analysis_plan_empty', MODULE_FAILURE_CODES.UNSUPPORTED_STATE, false],
-    ['profile_revision_conflict', MODULE_FAILURE_CODES.READINESS_NOT_MET, true]
+  const codes = [
+    'review_not_found', 'review_revoked', 'review_superseded', 'review_not_open',
+    'review_already_running', 'review_already_executed', 'review_execution_pending',
+    'review_certificate_invalid', 'review_input_conflict'
   ];
-  for (const [consumerCode, expectedCode, retryable] of cases) {
-    const result = confirmAndRunFailure(new ConsumerError(409, consumerCode, 'internal wording'));
-    assert.equal(result.ok, false);
-    assert.equal(result.code, expectedCode, `${consumerCode} maps to ${expectedCode}`);
-    assert.equal(result.retryable, retryable);
-    assert.equal(result.diagnosticCode, consumerCode, 'the server code is kept for diagnosis');
-    assert.equal(result.message, clientFailureMessage(expectedCode));
-    assert.ok(!result.message.includes('internal wording'), 'internal wording never becomes client wording');
+  const messages = codes.map((code) => reviewActionMessage(code));
+  for (const [index, message] of messages.entries()) {
+    assert.ok(message.length > 0, `${codes[index]} must produce client wording`);
+    assert.equal(/review_|certificate|snapshot|plan_id|nonce|hash|sql|d1/i.test(message), false,
+      `${codes[index]} must not leak internal vocabulary: ${message}`);
   }
-  const carried = confirmAndRunFailure(new ConsumerError(422, 'analysis_module_failed', 'x', {
-    failureCode: MODULE_FAILURE_CODES.INPUT_INVALID,
-    failedModuleId: 'house_purchase'
-  }));
-  assert.equal(carried.code, MODULE_FAILURE_CODES.INPUT_INVALID, 'a specific module failure code wins over the generic mapping');
-  assert.equal(carried.failedModuleId, 'house_purchase');
-  pass('confirm_and_run failures carry a machine-readable code and safe wording');
+  assert.ok(new Set(messages).size >= 5, 'the outcomes do not collapse into one message');
+
+  // An unrecognised code must still be safe, not a passthrough.
+  const unknown = reviewActionMessage('ECONNRESET reading from d1 at internal.js:88');
+  assert.equal(unknown, 'That analysis could not be run. Please try again.');
+  assert.ok(!unknown.includes('ECONNRESET'));
+  assert.ok(!unknown.includes('internal.js'));
+  pass('a Run failure names a safe outcome and never carries internal detail');
 }
 
 {
-  const plain = confirmAndRunFailure(new Error('ECONNRESET reading from d1 at internal.js:88'));
-  assert.equal(plain.ok, false);
-  assert.equal(plain.code, MODULE_FAILURE_CODES.UNKNOWN);
-  assert.equal(plain.diagnosticCode, 'live_tool_failed');
-  assert.ok(!plain.message.includes('ECONNRESET'));
-  assert.ok(!plain.message.includes('internal.js'));
-  assert.ok(!JSON.stringify(plain).includes('ECONNRESET'), 'nothing in the tool result carries the raw error');
-  pass('an infrastructure fault never leaks its message through confirm_and_run');
-}
-
-{
-  // The real dispatch path: a throw inside confirm_and_run must come back as a
-  // structured result, not as the generic "do not mention it" fallback the
-  // session applies to a broken fact write.
-  const thrown = new ConsumerError(422, 'analysis_module_failed', 'engine contract breach', {
-    failureCode: MODULE_FAILURE_CODES.INPUT_INVALID,
-    failedModuleId: 'house_purchase'
-  });
-  const result = await executeLiveTool('confirm_and_run', {}, {
-    latestClientTranscript: 'yes go ahead',
-    loadContext: () => { throw thrown; }
-  });
-  assert.equal(result.ok, false);
-  assert.equal(result.code, MODULE_FAILURE_CODES.INPUT_INVALID);
-  assert.equal(result.failedModuleId, 'house_purchase');
-  assert.ok(result.speakableText.length > 0, 'the meeting has something to say');
-  assert.ok(!JSON.stringify(result).includes('engine contract breach'));
-  pass('executeLiveTool returns a structured confirm_and_run failure instead of throwing');
-}
-
-{
-  // The confirmation gate itself is unchanged and still comes first.
-  const result = await executeLiveTool('confirm_and_run', {}, {
-    latestClientTranscript: 'hold on, not yet',
-    loadContext: () => { throw new Error('must not be reached'); }
-  });
-  assert.equal(result.ok, false);
-  assert.equal(result.code, 'confirmation_required');
-  pass('the spoken confirmation gate still precedes any analysis work');
+  // AND THE TOOL SURFACE CANNOT BE ASKED TO RUN ANYTHING AT ALL.
+  await assert.rejects(
+    () => executeLiveTool('confirm_and_run', {}, {
+      latestClientTranscript: 'yes go ahead',
+      loadContext: () => { throw new Error('must not be reached'); }
+    }),
+    (error) => error.code === 'live_tool_unknown',
+    'the dispatcher refuses the removed execution tool before any analysis work'
+  );
+  pass('no analysis work is reachable through the live tool dispatcher');
 }
 
 console.info('[ModuleContracts] All module input-contract and failure-diagnostic checks passed.');

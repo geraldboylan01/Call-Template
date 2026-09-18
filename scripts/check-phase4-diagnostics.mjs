@@ -45,9 +45,13 @@ try {
   const events = readFileSync(join(runDir, 'events.jsonl'), 'utf8')
     .trim().split('\n').map((line) => JSON.parse(line));
   const seen = new Set(events.map((event) => event.type));
+  // `confirmation` used to record each spoken approval attempt. The call now
+  // ends at a seal and a human pressing Run, so the record carries those two
+  // instead -- the same question ("did this call reach a module, and how?")
+  // asked of the events that now decide it.
   for (const type of [
     'client', 'assistant', 'tool', 'canonical', 'readiness',
-    'barrier', 'reconciliation', 'confirmation', 'module_input', 'module_output'
+    'barrier', 'reconciliation', 'seal', 'run', 'module_input', 'module_output'
   ]) {
     assert.ok(seen.has(type), `the record must contain ${type} events`);
   }

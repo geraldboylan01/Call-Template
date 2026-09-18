@@ -243,39 +243,23 @@ export function executeTool(session, name, callArgs, lastClientTurn, { assistant
   }
 
   if (name === 'get_state') {
-    return liveStateProjection(contextFor(session));
+    const projection = liveStateProjection(contextFor(session));
+    // WHERE THE MODEL'S JOB NOW ENDS.
+    //
+    // There is no execution tool to call and no spoken approval to wait for.
+    // Reaching a certified, ready plan IS the outcome this replay measures: in
+    // production the server seals at this point and the client is shown a
+    // review with a Run button. `confirmed` therefore means "got the meeting to
+    // the review", which is the whole of what a conversation can now achieve.
+    if (projection.readyToConfirm && projection.goalsAgreed) session.confirmed = true;
+    return projection;
   }
 
-  if (name !== 'confirm_and_run') {
-    return { ok: false, code: 'live_tool_unknown', message: 'That tool is not available.' };
-  }
-
-  // confirm_and_run — a production-derived in-memory approximation of the
-  // hard gate. Spoken affirmation and deterministic readiness both fail closed.
-  if (classifySpokenPlanConfirmation(lastClientTurn) !== 'affirmed') {
-    return {
-      ok: false,
-      code: 'confirmation_required',
-      message: 'The client has not clearly agreed yet. Ask a plain yes/no question and wait for their answer.'
-    };
-  }
-  const projection = liveStateProjection(contextFor(session));
-  if (!projection.goalsAgreed || !projection.readyToConfirm) {
-    return {
-      ok: false,
-      code: projection.analyses.length ? 'needs_information' : 'analysis_plan_empty',
-      message: projection.goalsAgreed
-        ? 'The plan still needs information before it can run.'
-        : 'The client still needs to agree which goal comes first.'
-    };
-  }
-  session.confirmed = true;
-  return {
-    ok: true,
-    status: 'complete',
-    speakableText: 'Your analyses are ready and are on screen now.',
-    completedCount: projection.analyses.length
-  };
+  // EVERY OTHER NAME, INCLUDING THE REMOVED EXECUTION TOOL.
+  //
+  // Production's dispatcher refuses an unadvertised name outright, so a replay
+  // that answered one would be measuring a lane that does not exist.
+  return { ok: false, code: 'live_tool_unknown', message: 'That tool is not available.' };
 }
 
 /* --------------------------------------------------------- the two players */

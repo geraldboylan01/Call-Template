@@ -43,6 +43,7 @@ import { loadLiveContext, liveStateProjection } from '../worker/src/consumer/liv
 import { LIVE_PROMPT_VERSION } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { LIVE_TOOLSET_VERSION } from '../worker/src/consumer/live/live_tools.js';
 import { getCurrentProfile, getLatestAnalysis, getSessionRow } from '../worker/src/consumer/repository.js';
+import { describeCurrentReview, executeReviewRun } from '../worker/src/consumer/review.js';
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { euroCostFor } from './agent-harness/cost.mjs';
 import { createDiagnostics, newRunId } from './live-harness/diagnostics.mjs';
@@ -485,47 +486,58 @@ if (beforeConfirm.readyToConfirm !== true) {
     pensions: blocked.pensions
   }, null, 2).slice(0, 4_000));
 } else {
-  // THE TWO-STEP HANDSHAKE IS REAL, NOT A HARNESS QUIRK. With the reconciler
-  // active, confirm_and_run refuses until the confirming turn has itself been
-  // reviewed. The model is told to wait and ask again, so that is what happens
-  // here — and a run that needed no second attempt would mean the preflight
+  // THE TWO-STEP HANDSHAKE IS REAL, NOT A HARNESS QUIRK.
+  //
+  // It used to be `confirm_and_run` refusing a spoken yes until the confirming
+  // turn had itself been reviewed. The same barrier now refuses to PUBLISH a
+  // REVIEW until that work has settled, so the readiness read is what gets
+  // retried. A run that sealed on the first attempt would mean the preflight
   // never engaged.
-  for (let attempt = 1; attempt <= MAX_CONFIRM_ATTEMPTS && !confirmResult?.ok; attempt += 1) {
+  let reviewId = '';
+  for (let attempt = 1; attempt <= MAX_CONFIRM_ATTEMPTS && !reviewId; attempt += 1) {
     const turn = await simulator.turn({
-      clientText: attempt === 1
-        ? 'Yes, go ahead and run it.'
-        : 'Yes, please go ahead.',
+      clientText: attempt === 1 ? 'Is that everything you need?' : 'Are we ready now?',
       act: async ({ callTool }) => {
-        const call = await callTool('confirm_and_run', {});
+        const call = await callTool('get_state', {});
         confirmResult = call.result;
         return {
-          speech: call.result?.ok
-            ? String(call.result.speakableText || '')
+          speech: call.result?.reviewPublished
+            ? 'Here is the plan on screen for you to look over.'
             : 'Just finishing one last check on my notes — bear with me a moment.'
         };
       }
     });
     await settle(durable, session);
+    reviewId = (await describeCurrentReview(meeting.env, meeting.sessionId)).review?.reviewId || '';
     const lease = await meeting.env.CONSUMER_DB.prepare(`
       SELECT planner_reconciliation_status, planner_reconciled_through_turn_id,
              planner_pending_through_turn_id, latest_profile_revision,
              planner_reconciliation_revision
       FROM consumer_realtime_sessions WHERE id = ? AND session_id = ?
     `).bind(meeting.meetingId, meeting.sessionId).first();
-    diagnostics.record('confirmation', {
-      attempt, ok: confirmResult?.ok === true, code: confirmResult?.code || null,
-      status: confirmResult?.status || null
+    diagnostics.record('seal', {
+      attempt, published: Boolean(reviewId), reviewId: reviewId || null
     });
-    line(`confirm attempt ${attempt}   : ok=${confirmResult?.ok} code=${confirmResult?.code || '-'}`
-      + ` status=${confirmResult?.status || '-'} (reply ${turn.replyLatencyMs}ms)`);
+    line(`seal attempt ${attempt}      : published=${Boolean(reviewId)} review=${reviewId || '-'}`
+      + ` (reply ${turn.replyLatencyMs}ms)`);
     line(`  causal turn        : ${turn.itemId}`);
     line(`  lease reconciled   : status=${lease?.planner_reconciliation_status || '-'}`
       + ` through=${lease?.planner_reconciled_through_turn_id || '-'}`
       + ` pending=${lease?.planner_pending_through_turn_id || '-'}`
       + ` latestRev=${lease?.latest_profile_revision} reconRev=${lease?.planner_reconciliation_revision}`);
   }
-  if (!confirmResult?.ok) {
-    fail(`confirm_and_run never succeeded: ${confirmResult?.code || 'unknown'}`);
+  if (!reviewId) {
+    fail('the meeting never sealed, so no review was published');
+  } else {
+    // THE HUMAN ACTION. Nothing in the transcript above authorised this; the
+    // client looked at the review and pressed Run.
+    const executed = await executeReviewRun(meeting.env, meeting.config, {
+      sessionId: meeting.sessionId, reviewId, clickId: 'diagnostic_run_click'
+    });
+    confirmResult = { ok: executed.ok, code: executed.code || null, status: executed.analysisPlan?.status || null };
+    diagnostics.record('run', { reviewId, ok: executed.ok, code: executed.code || null });
+    line(`run analysis        : ok=${executed.ok} code=${executed.code || '-'} status=${confirmResult.status || '-'}`);
+    if (!executed.ok) fail(`Run analysis failed: ${executed.code || 'unknown'}`);
   }
 }
 

@@ -17,6 +17,7 @@ import { ConsumerError, notFound, unavailable } from './errors.js';
 import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
 import { publishConsumerAnalysis } from './publish.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
+import { currentInputMode, describeCurrentReview, executeReviewRun, revokeReview } from './review.js';
 import { confirmPlanSelection } from './planning_turn.js';
 import { createConsumerInvite, verifyConsumerInvite } from './invite.js';
 import {
@@ -333,10 +334,6 @@ function routeMatch(pathname) {
       methods: ['POST']
     };
   }
-  const deliveryMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})\/delivery$/.exec(pathname);
-  if (deliveryMatch) {
-    return { kind: 'realtime_delivery', sessionId: deliveryMatch[1], leaseId: deliveryMatch[2], methods: ['POST'] };
-  }
   const realtimeLeaseMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/voice\/realtime\/calls\/(rt_[A-Za-z0-9_-]{20,80})$/.exec(pathname);
   if (realtimeLeaseMatch) {
     return {
@@ -354,6 +351,18 @@ function routeMatch(pathname) {
       methods: realtimeMatch[2] === 'consent' ? ['PATCH'] : ['POST']
     };
   }
+  // THE ACTION ALWAYS NAMES THE EXACT REVIEW. There is deliberately no route
+  // meaning "run the current plan": a stale tab that asks to run an old review
+  // is rejected, and can never be quietly upgraded to the newer one.
+  const reviewActionMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/reviews\/(rv_[A-Za-z0-9_-]{20,80})\/(run|change)$/.exec(pathname);
+  if (reviewActionMatch) {
+    return {
+      kind: `review_${reviewActionMatch[3]}`,
+      sessionId: reviewActionMatch[1],
+      reviewId: reviewActionMatch[2],
+      methods: ['POST']
+    };
+  }
   const analysisPlanMatch = /^\/api\/consumer\/sessions\/(cs_[A-Za-z0-9_-]{20,80})\/analysis-plan$/.exec(pathname);
   if (analysisPlanMatch) {
     return { kind: 'analysis_plan', sessionId: analysisPlanMatch[1], methods: ['PUT'] };
@@ -364,6 +373,39 @@ function routeMatch(pathname) {
   if (!child) return { kind: 'session', sessionId, methods: ['GET', 'DELETE'] };
   const methods = { turns: ['POST'], profile: ['PATCH'], confirm: ['POST'], analyses: ['POST'], publish: ['POST'], handoffs: ['POST', 'DELETE'], consent: ['PATCH'] };
   return { kind: child, sessionId, methods: methods[child] };
+}
+
+/**
+ * The routes that can alter what an open review would execute.
+ *
+ * `turns`, `profile` and `confirm` write the profile the frozen certificate is
+ * bound to. `analyses` and `analysis_plan` are the older direct execution and
+ * plan-preparation routes. `typed_messages` is ordinary conversation. None of
+ * them may run while a review is open or executing.
+ */
+const REVIEW_FENCED_ROUTES = new Set([
+  'turns', 'profile', 'confirm', 'analyses', 'analysis_plan', 'typed_messages'
+]);
+
+/**
+ * What the client is told when an action loses.
+ *
+ * Plain, short and never speculative: a refused action says what is true of
+ * the review now, and nothing about what anyone said.
+ */
+export function reviewActionMessage(code) {
+  const messages = {
+    review_not_found: 'That review is no longer available.',
+    review_revoked: 'That review was changed. Use the current one.',
+    review_superseded: 'That review is out of date. Use the current one.',
+    review_not_open: 'That review is no longer open.',
+    review_already_running: 'That analysis has already started.',
+    review_already_executed: 'That analysis has already run.',
+    review_execution_pending: 'That analysis is already running. Please wait.',
+    review_certificate_invalid: 'That review could not be verified. Make a change and try again.',
+    review_input_conflict: 'That review could not be verified. Make a change and try again.'
+  };
+  return messages[code] || 'That analysis could not be run. Please try again.';
 }
 
 function assertFeatureAvailability(config) {
@@ -954,27 +996,6 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       return respond({ ok: true, status: lease.status, ...state }, 200, methods);
     }
 
-    if (route.kind === 'realtime_delivery') {
-      await requireRealtimeControlCapability(request, env, sessionRow.id, route.leaseId);
-      const body = await readJson(request);
-      if (typeof body.responseId !== 'string' || !body.responseId || body.responseId.length > 200
-        || typeof body.eventId !== 'string' || body.eventId.length > 200
-        || !['completed', 'interrupted'].includes(body.playback)
-        || Object.keys(body).some((key) => !['responseId', 'eventId', 'playback'].includes(key))) {
-        throw new ConsumerError(400, 'readback_delivery_invalid', 'The playback acknowledgement is invalid.');
-      }
-      const stub = conversationLaneStub(env, route.leaseId);
-      if (!stub) throw unavailable('The live meeting controls are unavailable.', 'live_sideband_unavailable');
-      const response = await stub.fetch(new Request('https://consumer-live/delivery', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      }));
-      const result = await response.json();
-      if (!response.ok || result.ok !== true) {
-        throw new ConsumerError(response.status || 503, result.code || 'readback_delivery_failed', 'The playback acknowledgement could not be saved.');
-      }
-      return respond(result, 200, methods);
-    }
-
     if (route.kind === 'realtime_lease') {
       let realtimeLease = await requireRealtimeControlCapability(
         request,
@@ -1031,6 +1052,12 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           ? getLatestRealtimeMeetingBrief(env, sessionRow.id, route.leaseId)
           : null
       ]);
+      // THE REVIEW TRAVELS WITH THE MEETING STATE THE BROWSER ALREADY POLLS.
+      // It comes from the database, so every tab polling this route sees the
+      // same review and the same id, and a tab that reconnects sees the one
+      // that is current rather than the one it remembers.
+      const reviewState = await describeCurrentReview(env, sessionRow.id)
+        .catch(() => ({ mode: 'unavailable', review: null }));
       const planningState = describeConversationState(currentProfile, config);
       const pendingFacts = proposedFacts.map((proposal) => ({
         ...proposal,
@@ -1079,6 +1106,8 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           && ['confirmed', 'running', 'complete', 'failed', 'rejected', 'expired'].includes(analysisPlan.status)
           ? await getPublicRealtimeAnalysisPlan(env, analysisPlan) : null,
         conversationGuide: toConversationGuide(latestMeetingBrief?.brief),
+        reviewMode: reviewState.mode,
+        review: reviewState.review,
         realtimeTurns,
         ...(realtimeControl ? { realtimeControl } : {})
       }, 200, methods);
@@ -1401,6 +1430,60 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
       }, 200, methods);
     }
 
+
+    // EVERY WRITER OBEYS THE SAME STATE AUTHORITY, NOT JUST THE BUTTONS.
+    //
+    // A frozen review executes the inputs it froze, so the execution path no
+    // longer re-checks whether the profile has moved. That is only safe because
+    // the profile cannot move: while a review is open or running, the endpoints
+    // that would change it are refused here. Leaving one of them open would
+    // mean the hard boundary existed on the conversation and nowhere else.
+    if (REVIEW_FENCED_ROUTES.has(route.kind)) {
+      const control = await currentInputMode(env, sessionRow.id);
+      if (control.mode !== 'conversation') {
+        throw new ConsumerError(409, 'review_input_closed', control.mode === 'running'
+          ? 'Your analysis is running.'
+          : 'Choose Run analysis or Make a change to continue.');
+      }
+    }
+
+    if (route.kind === 'review_run' || route.kind === 'review_change') {
+      // The caller proves it holds this meeting's control capability, exactly
+      // as every other live action does. Reaching here proves the click came
+      // from this authenticated planning session and nowhere else.
+      const body = await readJson(request, { optional: true }) || {};
+      if (Object.keys(body).some((key) => !['clickId'].includes(key))
+        || !['string', 'undefined'].includes(typeof body.clickId)
+        || String(body.clickId || '').length > 120) {
+        // A REVIEW ACTION CARRIES NO FINANCIAL INPUT AND NO CLAIM OF APPROVAL.
+        // The only thing it may carry besides the review id is a retry
+        // identity. Anything else is refused rather than ignored.
+        throw new ConsumerError(400, 'review_action_invalid', 'That action could not be sent.');
+      }
+      await rateLimit(env, 'consumer-review-action', sessionRow.id, 60 * 1000, 30);
+      if (route.kind === 'review_change') {
+        const revoked = await revokeReview(env, { sessionId: sessionRow.id, reviewId: route.reviewId });
+        if (!revoked.ok) throw new ConsumerError(revoked.status, revoked.code, reviewActionMessage(revoked.code));
+        // Input reopens only because the durable transition already committed.
+        return respond({ ok: true, mode: 'conversation', inputEpoch: revoked.inputEpoch }, 200, methods);
+      }
+      const executed = await executeReviewRun(env, config, {
+        sessionId: sessionRow.id,
+        reviewId: route.reviewId,
+        clickId: String(body.clickId || '')
+      });
+      if (!executed.ok) {
+        throw new ConsumerError(executed.status || 409, executed.code, reviewActionMessage(executed.code));
+      }
+      return respond({
+        ok: true,
+        reviewId: executed.reviewId,
+        executionId: executed.executionId,
+        analysisPlan: executed.analysisPlan,
+        result: executed.result,
+        navigationTarget: '/plan/#results'
+      }, 200, methods);
+    }
 
     if (route.kind === 'turns') {
       await rateLimit(env, 'consumer-turn-session', sessionRow.id, 60 * 1000, 15);

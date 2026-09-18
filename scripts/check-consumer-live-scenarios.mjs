@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 
 import { attachLiveSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { LiveProviderSimulator } from './live-harness/provider.mjs';
+import { describeCurrentReview, executeReviewRun } from '../worker/src/consumer/review.js';
 import { scriptedPlanner } from './live-harness/scripted-planner.mjs';
 import { loadLiveContext, liveStateProjection } from './live-harness/../../worker/src/consumer/live/live_tools.js';
 import { getCurrentProfile, getLatestAnalysis, getSessionRow } from '../worker/src/consumer/repository.js';
@@ -67,19 +68,38 @@ async function rig(label, { mode = 'apply', planFor = () => null, plannerLatency
     return turn;
   };
 
+  /**
+   * Reach a review, then press Run.
+   *
+   * THE CLIENT SAYS NOTHING THAT MATTERS TO THIS. The sentences below are
+   * ordinary conversation -- they prompt a readiness read and nothing more.
+   * What runs the analyses is the last line: an action naming the exact review
+   * the server published, which no sentence could have produced.
+   */
   const confirmAndRun = async () => {
-    let result = null;
-    for (let attempt = 1; attempt <= 3 && !result?.ok; attempt += 1) {
+    let reviewId = null;
+    for (let attempt = 1; attempt <= 3 && !reviewId; attempt += 1) {
       await simulator.turn({
-        clientText: attempt === 1 ? 'Yes, go ahead and run it.' : 'Yes, please go ahead.',
+        clientText: attempt === 1 ? 'Is that everything you need?' : 'Are we ready now?',
         act: async ({ callTool }) => {
-          result = (await callTool('confirm_and_run', {})).result;
+          await callTool('get_state', {});
           return { speech: 'One moment.' };
         }
       });
       await settle(durable, session);
+      reviewId = (await describeCurrentReview(meeting.env, meeting.sessionId)).review?.reviewId || null;
     }
-    return result;
+    if (!reviewId) return { ok: false, code: 'never_sealed' };
+    const executed = await executeReviewRun(meeting.env, meeting.config, {
+      sessionId: meeting.sessionId, reviewId, clickId: `scenario_${reviewId}`
+    });
+    return {
+      ok: executed.ok,
+      code: executed.code || null,
+      status: executed.analysisPlan?.status || null,
+      speakableText: executed.result?.speakableText || '',
+      reviewId
+    };
   };
 
   const profile = async () => getCurrentProfile(

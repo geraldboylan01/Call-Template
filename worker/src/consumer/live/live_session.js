@@ -49,15 +49,22 @@ import {
   settleConsumerProviderCostUnknown
 } from '../repository.js';
 import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
-import { applyPlannerCandidates } from '../planning_turn.js';
+import { applyPlannerCandidates, confirmPlanSelection } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
 import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
 import { renderLiveAssistantText } from './live_text_channel.js';
-import { buildTypedCardIndex, buildTypedCardState } from './typed_projection.js';
+import { buildReviewPresentation, buildTypedCardIndex, buildTypedCardState } from './typed_projection.js';
 import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
+import {
+  abandonSealing,
+  beginSealing,
+  currentInputMode,
+  describeCurrentReview,
+  ensureReviewControl,
+  publishReview
+} from '../review.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
-import { classifyExecutionApproval } from './execution_approval.js';
 import {
   classifyRealtimeProviderError,
   realtimeTranscriptionUsageFromEvent,
@@ -183,13 +190,6 @@ function json(value, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' }
   });
-}
-
-// This is equality, not language interpretation. The semantic planner writes
-// the statement and the independent verifier approves it; the live lane merely
-// proves the client heard that exact certified statement before accepting yes.
-function confirmationReadbackKey(value) {
-  return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -391,12 +391,26 @@ export class ConsumerLiveSession {
     this.directModulePlanningOutstanding = [];
     this.directModulePlanningSequence = 0;
     this.directAwaitingConfirmationSnapshotRevision = null;
-    // A final analysis confirmation is valid only when the client is answering
-    // the exact assistant turn that presented a verified direct-module plan.
-    // The opaque token is protocol state, never financial meaning: get_state
-    // issues it, the post-tool continuation presents the plan, and that spoken
-    // assistant turn arms it durably for one subsequent client answer.
-    this.directConfirmationOffer = null;
+    // WHAT THE SEAL HAS TO ACCOUNT FOR, DURABLY.
+    //
+    // `admittedInput` is every input this meeting has accepted and the terminal
+    // disposition it reached. It is durable for the one reason that matters: a
+    // process that dies between accepting speech and transcribing it would
+    // otherwise come back with an empty in-memory queue, and an empty queue is
+    // indistinguishable from a settled one. It is not indistinguishable here.
+    //
+    // `speechCaptureOpen` covers the narrower window before any item id exists
+    // at all. One durable write per utterance, never one per audio frame.
+    this.admittedInput = new Map();
+    this.speechCaptureOpen = false;
+    // Set when rehydration could not establish the ledger. Nothing seals and
+    // nothing executes from a meeting that cannot say what it accepted.
+    this.reconstructionUncertain = false;
+    // The review this meeting most recently published, for the turn that
+    // sealed it to return. Authority lives in the database, never here.
+    this.publishedReview = null;
+    this.lastSealOutcome = null;
+    this.lastAdmittedEpoch = 0;
     this.lastInjectedDirectSnapshotRevision = 0;
     this.reconciliationPersistenceChain = Promise.resolve();
     this.reconciliationDrainScheduled = false;
@@ -515,13 +529,28 @@ export class ConsumerLiveSession {
         && awaitingDirectRevision > 0
         ? awaitingDirectRevision
         : null;
-      const storedDirectOffer = await this.state.storage.get('directConfirmationOffer') || null;
-      this.directConfirmationOffer = storedDirectOffer?.token
-        && storedDirectOffer?.planId
-        ? storedDirectOffer
-        : null;
-      this.directPlaybackEvidence = new Map();
-      this.pendingDirectApprovals = new Map();
+      // A FAILED READ IS NOT AN EMPTY LEDGER.
+      //
+      // Reconstruction is exactly the moment the old architecture was weakest:
+      // it recovered whatever it could and carried on. If storage cannot tell
+      // us what this meeting accepted, the meeting is marked uncertain, which
+      // blocks sealing outright rather than inventing readiness.
+      try {
+        const storedAdmitted = await this.state.storage.get('admittedInput');
+        this.admittedInput = new Map(
+          (Array.isArray(storedAdmitted) ? storedAdmitted : [])
+            .filter((item) => item?.itemId)
+            .map((item) => [String(item.itemId), {
+              status: ['pending', 'completed', 'failed', 'rejected'].includes(item.status)
+                ? item.status
+                : 'pending',
+              epoch: Number(item.epoch) || 0
+            }])
+        );
+        this.speechCaptureOpen = await this.state.storage.get('speechCaptureOpen') === true;
+      } catch (_error) {
+        this.reconstructionUncertain = true;
+      }
       const storedReconciliationQueue = await this.state.storage.get('pendingReconciliationTurn') || null;
       if (storedReconciliationQueue?.schemaVersion === 1) {
         this.pendingReconciliationTurn = storedReconciliationQueue.current || null;
@@ -557,10 +586,6 @@ export class ConsumerLiveSession {
       if (path === '/message' && request.method === 'POST') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
         return json(await this.handleTextMessage(await readInternalJson(request)));
-      }
-      if (path === '/delivery' && request.method === 'POST') {
-        if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
-        return json(await this.acknowledgeReadbackPlayback(await readInternalJson(request)));
       }
       if (path === '/close' && request.method === 'POST') {
         const body = await readInternalJson(request);
@@ -1267,6 +1292,7 @@ export class ConsumerLiveSession {
     if (type === 'error') return this.handleProviderError(event);
 
     if (type === 'input_audio_buffer.speech_stopped') {
+      await this.admitSpeech(String(event?.item_id || ''));
       // The clock for the thesis measurement starts the moment the client
       // stops speaking, not when transcription lands.
       this.turnFinalAt = Date.now();
@@ -1278,35 +1304,31 @@ export class ConsumerLiveSession {
     }
 
     if (type === 'input_audio_buffer.speech_started') {
-      const attempt = this.directConfirmationOffer?.deliveryAttempt;
-      if (attempt?.playbackStarted && !attempt.playbackCompleted) {
-        await this.interruptDirectReadback(attempt.responseId);
-      }
+      // AUDIO HAS BEEN ACCEPTED AND ITS MEANING IS NOT YET KNOWN.
+      //
+      // The guard is durable and is set before anything else happens to the
+      // audio, so a process that dies here cannot come back with an empty
+      // in-memory queue and seal as though nobody had spoken.
+      await this.admitSpeech(String(event.item_id || ''));
       this.invalidatePendingContinuations();
       return;
     }
 
-    if (type === 'output_audio_buffer.started') {
-      const attempt = this.directConfirmationOffer?.deliveryAttempt;
-      if (attempt?.responseId === String(event.response_id || '')) {
-        attempt.playbackStarted = true;
-        await this.persistDirectConfirmationOffer();
-      }
-      return;
-    }
-    if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {
-      return this.acknowledgeReadbackPlayback({
-        responseId: event.response_id,
-        eventId: event.event_id,
-        playback: type === 'output_audio_buffer.stopped' ? 'completed' : 'interrupted'
-      });
-    }
+    // Output playback is the assistant's own audio. It carried approval
+    // evidence under the old architecture; it carries none now, so the lane
+    // no longer tracks it.
+    if (type === 'output_audio_buffer.started'
+      || type === 'output_audio_buffer.stopped'
+      || type === 'output_audio_buffer.cleared') return;
 
     if (type === 'conversation.item.input_audio_transcription.completed') {
       return this.handleClientTurn(event);
     }
 
     if (type === 'conversation.item.input_audio_transcription.failed') {
+      // The audio was accepted; its meaning never arrived. The ledger keeps
+      // that as a failure, and the seal will not publish over it.
+      await this.settleInput(event?.item_id, 'failed');
       return this.markClientTranscriptionUnavailable(event);
     }
 
@@ -1339,7 +1361,6 @@ export class ConsumerLiveSession {
         event.response?.metadata || {}
       );
       if (!context) return;
-      await this.beginDirectReadbackAttempt(context);
       this.currentResponseAwaitingClientTranscription = context.pendingSourceItemIds.size > 0;
       this.currentResponseNumericContainmentUnavailable = context.numericUnavailable;
       this.pendingClientTranscriptionUnavailable = false;
@@ -1378,16 +1399,12 @@ export class ConsumerLiveSession {
       if (context) {
         context.done = true;
         context.status = String(event.response?.status || 'completed');
-        if (context.status !== 'completed') {
-          context.continuationChain.invalidated = true;
-          await this.interruptDirectReadback(context.responseId);
-        }
+        if (context.status !== 'completed') context.continuationChain.invalidated = true;
         if (context.toolCallIds.size === 0) context.continuationChain.settled = true;
       }
       this.inResponse = [...this.responseContextsById.values()].some((response) => !response.done);
       if (context) this.foldResponseIntoChain(context);
       if (context) this.maybeRequestToolContinuation(context);
-      if (context) await this.maybeArmDirectConfirmation(context);
       if (context && getConsumerConfig(this.env).plannerReconciliationMode !== 'legacy') {
         this.maybeScheduleReconciliation(context);
       }
@@ -1425,6 +1442,39 @@ export class ConsumerLiveSession {
       await this.markClientTranscriptionUnavailable(event);
       return;
     }
+
+    // INPUT ADMITTED BEFORE THE BOUNDARY STILL COUNTS; INPUT AFTER IT DOES NOT.
+    //
+    // A transcript whose audio was accepted while the conversation was open is
+    // processed normally even though it landed later -- that is the obligation
+    // the seal waits for, and relabelling it as rejected because ASR was slow
+    // is exactly what would let a pre-close correction disappear.
+    //
+    // Everything else is refused: speech into a closed microphone, a second
+    // tab, a reconnecting socket. And an old epoch's transcript can never
+    // become a turn in a conversation that has since reopened.
+    const admitted = this.admittedInput.get(itemId);
+    if (admitted?.status === 'rejected') {
+      // Refused when it arrived, and a reopened conversation does not change
+      // that. The client said it to a microphone that was not listening.
+      return this.rejectClosedInput(itemId, 'previously_rejected');
+    }
+    if (!admitted) {
+      const control = await this.inputControl();
+      if (control.mode !== 'conversation') return this.rejectClosedInput(itemId, control.mode);
+      this.lastAdmittedEpoch = control.inputEpoch;
+      await this.admitInput(itemId, control.inputEpoch);
+    } else {
+      const control = await this.inputControl();
+      if (admitted.epoch !== control.inputEpoch) return this.rejectClosedInput(itemId, 'stale_epoch');
+    }
+    // A TRANSCRIPT EXISTS, SO THE INPUT OBLIGATION IS DISCHARGED HERE.
+    //
+    // This is the one place every transport reaches with the client's actual
+    // words in hand: spoken audio after ASR, a typed message, and a card
+    // submission. What remains outstanding after this line is PLANNING work,
+    // which the seal accounts for separately.
+    await this.settleInput(itemId, 'completed');
 
     let turn = this.clientTurnsByItemId.get(itemId);
     if (!turn) {
@@ -1523,10 +1573,13 @@ export class ConsumerLiveSession {
 
     if (event.typed !== true) await this.meterTranscription(event);
     await this.touch();
-    const answersDirectOffer = this.turnAnswersDirectOffer(turn);
-    if (answersDirectOffer) turn.confirmationOfferToken = this.directConfirmationOffer.token;
-    const confirmsPublishedDirectSnapshot = answersDirectOffer
-      && classifyExecutionApproval(transcript) === 'affirmed';
+    // EVERY FINALIZED TURN IS A REVIEW OBLIGATION, WITHOUT EXCEPTION.
+    //
+    // A recognised approval used to skip this entirely -- the grammar asserted
+    // that "yes" added no financial information, so the planner never saw the
+    // turn. Nothing deterministic is entitled to that judgement, and nothing
+    // needs to be: the seal waits for the obligation either way.
+    //
     // THE OBLIGATION IS REGISTERED BEFORE THE DRAIN, NOT AFTER IT.
     // A deferred get_state resumes inside drainDeferredEvidenceTools below and
     // waits on the planning chain. If this turn were queued after that drain,
@@ -1535,8 +1588,7 @@ export class ConsumerLiveSession {
     // first turn. Scheduling here is what makes "wait for planning" mean "wait
     // for planning that has seen this turn". Nothing is awaited: the pass still
     // runs detached, and Realtime is already speaking.
-    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off'
-      && !confirmsPublishedDirectSnapshot) {
+    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
       this.scheduleDirectModulePlanning(storedTurn.id);
     }
     await this.drainDeferredEvidenceTools(itemId, transcript);
@@ -1583,7 +1635,10 @@ export class ConsumerLiveSession {
    *      field they just filled, or a question they just answered. This is the
    *      single line that makes "Planéir does not re-ask" structural rather
    *      than best-effort.
-   *   2. THE READ-BACK IS WRITTEN BY THE SERVER. See deliverCertifiedReadback.
+   *   2. THE SEAL IS ESTABLISHED INLINE. A typed turn already awaits its own
+   *      planner pass, so by the time this method returns, the meeting either
+   *      has a published review or is still in conversation. Voice reaches the
+   *      same seal through the same predicate, asynchronously.
    *
    * Everything else -- ingest, persistence, evidence, the tool barrier, the
    * confirmation gate -- is the same code voice runs.
@@ -1595,12 +1650,32 @@ export class ConsumerLiveSession {
     const config = getConsumerConfig(this.env);
     if (this.closing) throw new ConsumerError(409, 'live_meeting_closing', 'This meeting is closing.');
 
+    // ADMISSION, BEFORE ANYTHING IS ACCEPTED.
+    //
+    // A message arriving after conversation closed is REJECTED, explicitly. It
+    // is never accepted-and-then-quietly-omitted, which is the failure this
+    // whole boundary exists to make impossible: the client would believe their
+    // correction had landed and the review would not contain it.
+    //
+    // No deterministic code looks at what the message says. Whether it is a
+    // correction, a question or the word "yes" makes no difference to this
+    // decision and is not consulted.
+    const control = await this.inputControl();
+    if (control.mode !== 'conversation') {
+      throw new ConsumerError(409, 'review_input_closed', control.mode === 'running'
+        ? 'Your analysis is running.'
+        : 'Choose Run analysis or Make a change to continue.');
+    }
+    this.publishedReview = null;
+    this.lastAdmittedEpoch = control.inputEpoch;
+
     // A "Not sure" click is recorded BEFORE the planner runs, so the very next
     // pass already knows not to ask again. Recording it afterwards would let
     // one more question through, which is the whole complaint.
     await this.recordAcknowledgedUnknown(body?.unknownFieldId);
 
     const itemId = `msg_${crypto.randomUUID()}`;
+    await this.admitInput(itemId, control.inputEpoch);
     this.registerStoppedClientTurn({ item_id: itemId });
     await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode });
 
@@ -1625,21 +1700,15 @@ export class ConsumerLiveSession {
     response.done = true;
     response.status = 'completed';
 
-    // THE CERTIFIED PLAN IS DELIVERED BY THE SERVER, AS EXACTLY ONE TURN.
+    // NOTHING IS READ BACK, AND NOTHING IS ASKED FOR.
     //
-    // `deliverCertifiedReadback` persists the certified prompt on its own
-    // continuation response and binds the offer to THAT turn id. Finalizing the
-    // root response as well wrote the same text a second time -- and the second
-    // write moved `lastCompletedAssistantTurnId`, which is what the client's
-    // next turn records in `answersTurnId`. So the offer pointed at turn A, the
-    // approval pointed at turn B, `turnAnswersDirectOffer` was false, and
-    // `confirm_and_run` refused every approval with
-    // `confirmation_context_invalid` -- permanently, because a delivered offer
-    // is never re-presented. The barrier was right; there were simply two turns
-    // where the client had seen one plan.
-    const delivered = await this.deliverCertifiedReadback(response, text);
-    const assistantText = delivered || rendered.text;
-    if (!delivered) await this.finalizeTypedAssistantTurn(response, assistantText);
+    // The certified plan used to be spoken as a question the client answered in
+    // words. It is now a screen: if this turn's tool work sealed the meeting,
+    // `publishedReview` names the immutable review the client is about to see,
+    // and the assistant's own text is just the last thing it said before the
+    // conversation closed. It is never an invitation to approve.
+    const assistantText = rendered.text;
+    await this.finalizeTypedAssistantTurn(response, assistantText);
 
     // THE WHOLE REPLY IS BUILT BEFORE THE MEETING CAN BE STOPPED.
     //
@@ -1655,8 +1724,11 @@ export class ConsumerLiveSession {
       ok: true,
       turnId: itemId,
       assistantText,
-      readback: Boolean(delivered),
-      fallback: rendered.fallback === true && !delivered,
+      // The review this turn sealed, if it sealed one. The browser draws the
+      // Review screen from it and sends its id back on the button; it never
+      // names a review the server did not just publish.
+      review: this.publishedReview,
+      fallback: rendered.fallback === true,
       // The meeting has reached its allowance. The client keeps this reply and
       // their whole transcript; there is simply no next turn.
       ...(stopped ? { closed: 'budget_exhausted' } : {}),
@@ -1759,61 +1831,6 @@ export class ConsumerLiveSession {
   }
 
   /**
-   * Write the certified confirmation prompt, verbatim, as the assistant turn.
-   *
-   * THIS IS THE TYPED LANE'S ANSWER TO `readbackFullyDelivered`, and it is
-   * stronger than the spoken one rather than weaker.
-   *
-   * Voice must let the model say the prompt and then prove, afterwards, that
-   * what it said matched the certified string byte for byte, that the audio
-   * actually played, and that nobody talked over it. Three of those checks
-   * exist because the model held the pen.
-   *
-   * Here the server holds the pen. The exact certified string is persisted as
-   * the assistant turn and returned in the same response, so it cannot be
-   * paraphrased, truncated or reordered, and it does not evaporate the way
-   * speech does -- it stays on screen, scrollable, until the client answers it.
-   * What replaces the playback acknowledgement is REPLY BINDING: the approving
-   * turn's `answersTurnId` must be this turn's id (`turnAnswersDirectOffer`),
-   * so an approval can only ever attach to the plan the client was actually
-   * looking at. A superseded offer changes the token and the turn id, and the
-   * old binding stops matching.
-   *
-   * Returns the delivered text, or '' when no plan is certified yet.
-   */
-  async deliverCertifiedReadback(response, clientTranscript) {
-    const candidate = response?.continuationChain?.directConfirmationCandidate;
-    const offer = this.directConfirmationOffer;
-    if (!candidate?.confirmationPrompt || !offer || candidate.token !== offer.token) return '';
-    if (offer.readbackFullyDelivered) return '';
-
-    // A CONTINUATION, exactly as voice does it: the response that called
-    // get_state is not the response that presents the plan. Keeping that
-    // boundary is what lets `maybeArmDirectConfirmation` refuse to arm on a
-    // response that also made a tool call.
-    const readbackResponse = this.createResponseContext({
-      responseId: `txt_${crypto.randomUUID()}`,
-      responseKind: 'tool_continuation',
-      continuation: true,
-      rootResponseId: response.rootResponseId,
-      parentResponseId: response.responseId,
-      parent: response,
-      chain: response.continuationChain,
-      causeItemId: response.causeItemId,
-      continuationIndex: 1
-    });
-    await this.beginDirectReadbackAttempt(readbackResponse);
-    readbackResponse.done = true;
-    readbackResponse.status = 'completed';
-    await this.finalizeTypedAssistantTurn(
-      readbackResponse,
-      String(candidate.confirmationPrompt),
-      { readback: true }
-    );
-    return String(candidate.confirmationPrompt);
-  }
-
-  /**
    * Persist one typed assistant turn and settle its response.
    *
    * The spoken equivalent is `handleSpeechDone`. The differences are all
@@ -1844,7 +1861,6 @@ export class ConsumerLiveSession {
       await this.state.storage.put('lastCompletedAssistantTurnId', stored.id).catch(() => {});
       response.storedAssistantTurnId = stored.id;
     }
-    if (readback) await this.maybeArmDirectConfirmation(response);
     const cause = response.causeItemId ? this.clientTurnsByItemId.get(response.causeItemId) : null;
     if (!cause || cause.status !== 'pending') {
       this.scheduleResponseReview(response, cause?.status === 'completed' ? cause.transcript : '');
@@ -2041,7 +2057,6 @@ export class ConsumerLiveSession {
     // arrive in either order. Whichever arrives second arms the offer, but only
     // after the final post-get_state response has both completed and produced a
     // durable assistant proposition for the client's next turn to answer.
-    await this.maybeArmDirectConfirmation(response);
 
     // Deterministic, synchronous, no model call: did that turn ask for a figure
     // the state already holds? The response has finished, so nothing is
@@ -2084,21 +2099,468 @@ export class ConsumerLiveSession {
     if (actionable) await this.correctNextTurn(verdict.actId).catch(() => {});
   }
 
-  async clearDirectConfirmationOffer() {
-    if (this.directConfirmationOffer) {
-      this.directConfirmationOffer.superseded = true;
-      await this.state.storage.put('supersededDirectConfirmationOffer', this.directConfirmationOffer);
+  /**
+   * An input this meeting is not allowed to process.
+   *
+   * It is settled in the ledger so it cannot block a later seal forever, and
+   * recorded so a rejection is visible rather than silent. It is NOT turned
+   * into a turn, is not shown to the planner, and cannot alter a review.
+   */
+  async rejectClosedInput(itemId, reason) {
+    // THE REFUSAL IS REMEMBERED, OR IT IS NOT A REFUSAL.
+    //
+    // Audio spoken into a closed microphone is refused here -- but its
+    // transcript arrives later, and if nothing recorded the refusal that
+    // transcript looks exactly like fresh speech. After Make a change reopens
+    // the conversation it would be admitted as a new turn, which is the one
+    // thing "explicitly rejected" has to rule out. The record is durable for
+    // the same reason the admissions are.
+    const id = String(itemId || '');
+    if (id) {
+      this.admittedInput.set(id, { status: 'rejected', epoch: this.lastAdmittedEpoch || 0 });
+      await this.persistAdmittedInput().catch(() => { this.reconstructionUncertain = true; });
     }
-    this.directConfirmationOffer = null;
-    await this.state.storage.delete('directConfirmationOffer').catch(() => {});
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.input.rejected',
+      payload: { reason: String(reason || 'closed') }
+    }).catch(() => {});
   }
 
-  persistDirectConfirmationOffer() {
-    return this.directConfirmationOffer
-      ? this.state.storage.put('directConfirmationOffer', structuredClone(this.directConfirmationOffer))
-      : Promise.resolve();
+  /* ------------------------------------------------------------- sealing */
+
+  /**
+   * The mode every admission checks, read from the authority.
+   *
+   * The Durable Object owns the conversation. It does NOT own execution
+   * authority, and it deliberately does not cache this: Run and Make a change
+   * are committed by the Worker against the database, so a cached mode here
+   * would be wrong in both directions -- admitting input after a review opened,
+   * and refusing it after a revocation reopened the conversation.
+   */
+  async inputControl() {
+    try {
+      return await currentInputMode(this.env, this.meta.sessionId);
+    } catch (_error) {
+      // STORAGE COULD NOT TELL US, WHICH IS NOT THE SAME AS "CONVERSATION".
+      //
+      // Two things follow, and they point in opposite directions on purpose.
+      // The meeting becomes uncertain, which blocks sealing outright -- and
+      // publishing a review was impossible anyway, since that needs the same
+      // storage. But the client's words are still accepted and persisted,
+      // because discarding input we merely cannot CLASSIFY would lose meaning
+      // to protect an invariant that is already safe. Failing closed means no
+      // review, not a lost correction.
+      this.reconstructionUncertain = true;
+      return { mode: 'conversation', stateVersion: 0, inputEpoch: this.lastAdmittedEpoch || 0, currentReviewId: null, unavailable: true };
+    }
   }
 
+  /** Persist the admitted-input ledger. */
+  persistAdmittedInput() {
+    return this.state.storage.put(
+      'admittedInput',
+      [...this.admittedInput.entries()].map(([itemId, entry]) => ({ itemId, ...entry }))
+    );
+  }
+
+  /**
+   * Audio has arrived. Admit it, or refuse it.
+   *
+   * THE EPOCH COMES FROM THE AUTHORITY, NOT FROM MEMORY. A cached epoch is
+   * wrong precisely when it matters: the first utterance after Make a change
+   * reopens the conversation would carry the epoch of the review that was just
+   * revoked, and be discarded as stale -- silently losing the correction the
+   * client stopped to make. One read per utterance buys the right answer.
+   *
+   * The durable guard is written BEFORE the audio counts as accepted, so the
+   * window it covers is the one a crash actually falls into: between the
+   * provider hearing speech and this meeting holding a transcript for it.
+   */
+  async admitSpeech(itemId) {
+    const id = String(itemId || '');
+    if (id && this.admittedInput.has(id)) return;
+    const control = await this.inputControl();
+    if (control.mode !== 'conversation') {
+      if (id) await this.rejectClosedInput(id, control.mode);
+      return;
+    }
+    this.lastAdmittedEpoch = control.inputEpoch;
+    this.speechCaptureOpen = true;
+    await this.state.storage.put('speechCaptureOpen', true).catch(() => {
+      // An unrecorded guard is worse than a recorded one, so the meeting
+      // becomes uncertain rather than silently losing the obligation.
+      this.reconstructionUncertain = true;
+    });
+    if (id) await this.admitInput(id, control.inputEpoch);
+  }
+
+  /** Record one accepted input item against the epoch that admitted it. */
+  async admitInput(itemId, epoch) {
+    const id = String(itemId || '');
+    if (!id || this.admittedInput.has(id)) return;
+    this.admittedInput.set(id, { status: 'pending', epoch: Number(epoch) || 0 });
+    while (this.admittedInput.size > MAX_LIVE_TURN_LEDGER_ENTRIES * 2) {
+      const oldest = this.admittedInput.keys().next().value;
+      if (this.admittedInput.get(oldest)?.status === 'pending') break;
+      this.admittedInput.delete(oldest);
+    }
+    await this.persistAdmittedInput().catch(() => { this.reconstructionUncertain = true; });
+  }
+
+  /**
+   * One accepted input reached a terminal disposition.
+   *
+   * `failed` stays in the ledger. A transcription that did not arrive is
+   * unknown meaning, and unknown meaning blocks the seal; it is never folded
+   * into "nothing was said".
+   */
+  async settleInput(itemId, status) {
+    const id = String(itemId || '');
+    const entry = this.admittedInput.get(id);
+    if (!entry || entry.status !== 'pending') return;
+    // Only a pending obligation settles; a rejection is already terminal.
+    entry.status = status === 'completed' ? 'completed' : 'failed';
+    this.speechCaptureOpen = [...this.admittedInput.values()].some((item) => item.status === 'pending');
+    await Promise.all([
+      this.persistAdmittedInput(),
+      this.state.storage.put('speechCaptureOpen', this.speechCaptureOpen)
+    ]).catch(() => { this.reconstructionUncertain = true; });
+  }
+
+  /**
+   * Why this meeting may not publish a review yet, or [] when it may.
+   *
+   * THIS IS WORK ACCOUNTING, NOT LANGUAGE INTERPRETATION. Nothing here reads a
+   * transcript or decides whether an utterance mattered. Every blocker is an
+   * objective fact about input that was accepted and work that was started.
+   */
+  sealBlockers() {
+    const blockers = [];
+    if (this.reconstructionUncertain) blockers.push('state_uncertain');
+    if (this.speechCaptureOpen) blockers.push('audio_capture_open');
+    for (const entry of this.admittedInput.values()) {
+      if (entry.status === 'pending' && !blockers.includes('input_pending')) blockers.push('input_pending');
+      // A FAILED TRANSCRIPTION IS NOT AN EMPTY ONE. Its meaning is unknown, and
+      // a review built over it would be a review of a conversation nobody can
+      // reconstruct. There is no deterministic test that could decide the lost
+      // speech was unimportant, and this code is not permitted to guess.
+      if (entry.status === 'failed' && !blockers.includes('transcription_failed')) blockers.push('transcription_failed');
+    }
+    if (this.directModulePlanningPending > 0 || this.directModulePlanningOutstanding.length > 0) {
+      blockers.push('planning_outstanding');
+    }
+    if (this.deferredEvidenceToolsByItemId.size > 0) blockers.push('deferred_tool_work');
+    if (this.unreviewedMaterialTurns.length > 0) blockers.push('unreviewed_material_turns');
+    if (this.unresolvedIdentities.length > 0) blockers.push('unresolved_identities');
+    if (this.undispositionedNotes.length > 0) blockers.push('undispositioned_notes');
+    return blockers;
+  }
+
+  /**
+   * CONVERSATION -> SEALING -> REVIEW, or nothing at all.
+   *
+   * The five conditions are established TOGETHER, after admission has closed.
+   * Closing admission first is what makes the accounting finite: a turn that
+   * arrives afterwards is rejected rather than silently omitted, and the ones
+   * accepted before it are drained here.
+   *
+   * Every exit that is not a published review leaves the meeting in
+   * conversation or blocked. None of them invents readiness.
+   */
+  async sealAndPublishReview(brief, context, responseContext = null) {
+    const config = getConsumerConfig(this.env);
+    const control = await ensureReviewControl(this.env, this.meta.sessionId);
+    if (control.mode !== 'conversation') return null;
+
+    // A. INPUT ADMISSION CLOSES FIRST.
+    const sealing = await beginSealing(this.env, this.meta.sessionId, control.stateVersion);
+    if (!sealing) return null;
+    this.stopCapturingSpeech();
+    try {
+      // B + C. Drain what was already accepted, then re-read the blockers. The
+      // drain can itself register new obligations, which is why the predicate
+      // is evaluated after it rather than before.
+      await this.directModulePlanningChain.catch(() => {});
+      if (this.directModulePlanningOutstanding.length > 0) {
+        this.scheduleDirectModulePlanning(this.directModulePlanningOutstanding.at(-1)?.turnId);
+        await this.directModulePlanningChain.catch(() => {});
+      }
+      // THE RECONCILIATION BARRIER MOVES HERE, IT DOES NOT DISAPPEAR.
+      //
+      // It used to sit in front of `confirm_and_run` and answer "not yet" to a
+      // spoken approval. The question it asks is unchanged -- is there an
+      // unreviewed material turn, an unresolved identity, an undispositioned
+      // note? -- and it is the same function asking it. Only the consequence
+      // changed: instead of refusing a sentence, it refuses to publish a
+      // REVIEW, which is where a "not yet" belongs.
+      const blockers = this.sealBlockers();
+      const lease = await getRealtimeLease(this.env, this.meta.sessionId, this.meta.leaseId).catch(() => null);
+      const preflight = plannerReconciliationPreflight(
+        config.plannerReconciliationMode,
+        lease,
+        this.unreviewedMaterialTurns,
+        this.unresolvedIdentities,
+        this.undispositionedNotes
+      );
+      if (!preflight.ready) {
+        blockers.push(`reconciliation_${preflight.reason}`);
+        // A BARRIER THAT DOES NOT SCHEDULE WHAT IT WAITS FOR IS A DEAD END.
+        //
+        // This was the refusal's other half under the old architecture, and it
+        // is still load-bearing: the review it is waiting for is queued from
+        // `response.done`, so without this the next attempt finds exactly the
+        // same outstanding work and the meeting can never finish. The marker is
+        // synchronous -- no reconciler or model call enters the seal.
+        if (responseContext) {
+          responseContext.reconciliationTrigger = 'pre_confirmation';
+          responseContext.reconciliationPriority = true;
+        }
+      }
+      if (blockers.length > 0) {
+        await this.recordSealOutcome('blocked', blockers);
+        // `state_uncertain` is the one blocker that must not reopen input: the
+        // meeting cannot say what it accepted, so it cannot safely accept more.
+        if (!blockers.includes('state_uncertain')) {
+          // Only after the control record is genuinely back in conversation.
+          // Losing that write means some other transition got there first, and
+          // resuming capture against it would reopen a microphone the
+          // authoritative state has already shut.
+          if (await abandonSealing(this.env, this.meta.sessionId, sealing.stateVersion)) {
+            this.resumeCapturingSpeech();
+          }
+        }
+        return null;
+      }
+
+      // THE DETERMINISTIC LANE SEALS THE SAME WAY, WITH LESS TO FREEZE.
+      //
+      // Its plan is chosen by the goal planner from the confirmed profile, so
+      // there is no AI proposal and no certificate -- but there is still a
+      // frozen plan, a frozen module set and a settled input boundary, and the
+      // client still decides with a button rather than a sentence. Everything
+      // after this point is the same code for both lanes.
+      if (config.modulePlannerMode !== 'apply') {
+        return this.publishDeterministicReview(config, context, sealing);
+      }
+
+      // D. THE CERTIFICATE MUST COVER THE CLOSED INPUT STATE.
+      const settled = await getLatestRealtimeMeetingBrief(this.env, this.meta.sessionId, this.meta.leaseId);
+      const sealedBrief = settled?.brief?.schemaVersion === 'MeetingBriefV3' ? settled.brief : null;
+      const certificate = sealedBrief?.verificationCertificate || null;
+      if (!sealedBrief || sealedBrief.readyToConfirm !== true || !certificate?.signature
+        || !sealedBrief.confirmationPrompt
+        || directModulePlanMeaningKey(sealedBrief.directModuleSnapshot, certificate)
+          !== directModulePlanMeaningKey(brief?.directModuleSnapshot, brief?.verificationCertificate)) {
+        // The drain moved the plan on. That is an ordinary conversational
+        // outcome, not a reason to publish the earlier one.
+        await this.recordSealOutcome('superseded', ['plan_moved']);
+        if (await abandonSealing(this.env, this.meta.sessionId, sealing.stateVersion)) {
+          this.resumeCapturingSpeech();
+        }
+        return null;
+      }
+
+      // E. FREEZE THE EXECUTION INPUTS AND THE PRESENTATION, DURABLY.
+      const prepared = await prepareRealtimeVoiceAnalysisPlan({
+        env: this.env,
+        config,
+        sessionRow: context.sessionRow,
+        profile: context.profile,
+        leaseId: this.meta.leaseId,
+        idempotencyKey: `review-seal:${this.meta.leaseId}:${sealedBrief.snapshotRevision}`,
+        confirmationOfferToken: `seal_${sealedBrief.snapshotRevision}`
+      });
+      // The confirmed set is frozen with the plan. Running the analyses later
+      // must not depend on re-deriving which analyses were agreed.
+      await confirmPlanSelection({
+        env: this.env,
+        config: { ...config, allowedModules: config.allowedModules },
+        sessionRow: context.sessionRow,
+        profile: context.profile,
+        channel: this.textChannel ? 'text' : 'live',
+        confirmedModuleIds: prepared.input.moduleIds,
+        preparedPlanId: prepared.row.id
+      });
+      const presentation = buildReviewPresentation(sealedBrief);
+      if (!presentation) {
+        // Nothing the client could meaningfully inspect. A review with no
+        // readable content is not a review, and is never published.
+        await this.recordSealOutcome('blocked', ['no_presentation']);
+        if (await abandonSealing(this.env, this.meta.sessionId, sealing.stateVersion)) {
+          this.resumeCapturingSpeech();
+        }
+        return null;
+      }
+      const published = await publishReview(this.env, {
+        sessionId: this.meta.sessionId,
+        leaseId: this.meta.leaseId,
+        planId: prepared.row.id,
+        planNonce: prepared.planNonce,
+        inputSnapshotHash: String(prepared.row.input_snapshot_hash_b64u),
+        certificateSignature: String(certificate.signature),
+        certificateProfileRevision: Number(certificate.profileRevision),
+        snapshotRevision: Number(sealedBrief.snapshotRevision),
+        confirmationPromptHash: String(certificate.confirmationPromptHash),
+        presentation,
+        sealedInputEpoch: sealing.inputEpoch,
+        sealedThroughTurnId: sealedBrief.directModuleSnapshot?.throughTurnId || null,
+        playbookVersion: String(certificate.playbookVersion),
+        extractorPromptVersion: String(certificate.extractorPromptVersion),
+        verifierPromptVersion: String(certificate.verifierPromptVersion),
+        policyVersion: String(certificate.policyVersion),
+        expectedVersion: sealing.stateVersion
+      });
+      if (!published) {
+        // The control record moved while the review was being written. The
+        // orphan record is unreachable and the meeting stays shut.
+        await this.recordSealOutcome('lost_claim', ['control_moved']);
+        return null;
+      }
+      this.publishedReview = { reviewId: published.reviewId, presentation };
+      await this.recordSealOutcome('published', []);
+      await this.recordCompletionMilestone('review_published');
+      return this.publishedReview;
+    } catch (error) {
+      // A THROW DURING SEALING NEVER PUBLISHES AND NEVER GUESSES.
+      // Conversation reopens only if the control record can be moved back; if
+      // that write fails too, the meeting stays sealed and blocked.
+      await this.recordSealOutcome('failed', [String(error?.code || 'seal_failed')]);
+      await abandonSealing(this.env, this.meta.sessionId, sealing.stateVersion)
+        .then((reopened) => { if (reopened) this.resumeCapturingSpeech(); })
+        .catch(() => {});
+      return null;
+    }
+  }
+
+  /**
+   * Freeze and publish a review for the deterministic lane.
+   *
+   * Everything that makes the boundary hard is shared with the certified lane:
+   * the same control record, the same immutable review, the same atomic claim,
+   * the same two actions. What differs is only what there is to freeze.
+   */
+  async publishDeterministicReview(config, context, sealing) {
+    const projection = liveStateProjection(context);
+    if (projection.readyToConfirm !== true) {
+      await this.recordSealOutcome('blocked', ['not_ready']);
+      await abandonSealing(this.env, this.meta.sessionId, sealing.stateVersion);
+      this.resumeCapturingSpeech();
+      return null;
+    }
+    const prepared = await prepareRealtimeVoiceAnalysisPlan({
+      env: this.env,
+      config,
+      sessionRow: context.sessionRow,
+      profile: context.profile,
+      leaseId: this.meta.leaseId,
+      idempotencyKey: `review-seal:${this.meta.leaseId}:${context.sessionRow.current_profile_revision}:${sealing.stateVersion}`
+    });
+    await confirmPlanSelection({
+      env: this.env,
+      config,
+      sessionRow: context.sessionRow,
+      profile: context.profile,
+      channel: this.textChannel ? 'text' : 'live',
+      preparedPlanId: prepared.row.id
+    });
+    const presentation = {
+      schemaVersion: 'ReviewPresentationV1',
+      summary: projection.analyses.map((analysis) => analysis.description).filter(Boolean).join(' '),
+      modules: projection.analyses
+        .filter((analysis) => analysis.description)
+        .slice(0, 3)
+        .map((analysis, index) => ({
+          id: `m${index}`,
+          title: analysis.description,
+          origin: 'planeir_suggested',
+          reason: '',
+          inputs: [],
+          assumptions: []
+        }))
+    };
+    if (!presentation.summary) {
+      await this.recordSealOutcome('blocked', ['no_presentation']);
+      await abandonSealing(this.env, this.meta.sessionId, sealing.stateVersion);
+      this.resumeCapturingSpeech();
+      return null;
+    }
+    const published = await publishReview(this.env, {
+      sessionId: this.meta.sessionId,
+      leaseId: this.meta.leaseId,
+      planId: prepared.row.id,
+      planNonce: prepared.planNonce,
+      inputSnapshotHash: String(prepared.row.input_snapshot_hash_b64u),
+      // No certificate: this lane has no semantic proposal to certify, and a
+      // placeholder signature would be a lie the execution check would believe.
+      certificateSignature: null,
+      certificateProfileRevision: Number(prepared.row.profile_revision),
+      snapshotRevision: 0,
+      confirmationPromptHash: null,
+      presentation,
+      sealedInputEpoch: sealing.inputEpoch,
+      sealedThroughTurnId: null,
+      playbookVersion: config.realtimePromptVersion,
+      extractorPromptVersion: config.realtimePromptVersion,
+      verifierPromptVersion: config.realtimeToolsetVersion,
+      policyVersion: String(projection.selectionPolicyVersion || 'deterministic'),
+      expectedVersion: sealing.stateVersion
+    });
+    if (!published) {
+      await this.recordSealOutcome('lost_claim', ['control_moved']);
+      return null;
+    }
+    this.publishedReview = { reviewId: published.reviewId, presentation };
+    await this.recordSealOutcome('published', []);
+    await this.recordCompletionMilestone('review_published');
+    return this.publishedReview;
+  }
+
+  async recordSealOutcome(outcome, blockers) {
+    // Kept in memory as well as in the event log so a diagnostic run, and the
+    // regressions, can say WHY a meeting did not seal without decrypting an
+    // event. It is a record of a decision already made, never an input to one.
+    this.lastSealOutcome = { outcome, blockers: [...blockers] };
+    await appendRealtimeEvent(this.env, {
+      sessionId: this.meta?.sessionId,
+      leaseId: this.meta?.leaseId,
+      direction: 'server',
+      eventType: 'live.review.seal',
+      // Blocker names are control vocabulary. No transcript and no figure.
+      payload: { outcome, blockers: blockers.join(' ') }
+    }).catch(() => {});
+  }
+
+  /**
+   * Stop the provider listening.
+   *
+   * The browser also releases the microphone, but a browser is not a boundary:
+   * a second tab, a reconnect or a tampered client would still be able to send
+   * audio. Turning off server-side turn detection is the half of that boundary
+   * this side owns. NOTHING IS SPOKEN ABOUT IT -- the Review screen appearing
+   * is how the client learns the conversation has closed.
+   */
+  stopCapturingSpeech() {
+    if (this.textChannel) return;
+    try {
+      this.sendProvider({ type: 'session.update', session: { turn_detection: null } });
+    } catch (_error) { /* provider terminalization owns socket loss */ }
+  }
+
+  resumeCapturingSpeech() {
+    if (this.textChannel) return;
+    try {
+      this.sendProvider({ type: 'session.update', session: { turn_detection: { type: 'server_vad' } } });
+    } catch (_error) { /* provider terminalization owns socket loss */ }
+  }
+
+  /**
+   * A milestone in the meeting's own timeline. Never a financial fact and never
+   * an authorisation: it records that something observable happened, so a live
+   * meeting can be reconstructed from its event log.
+   */
   async recordCompletionMilestone(milestone) {
     if (!this.meta) return;
     await appendRealtimeEvent(this.env, {
@@ -2106,142 +2568,8 @@ export class ConsumerLiveSession {
       leaseId: this.meta.leaseId,
       direction: 'server',
       eventType: 'live.completion.milestone',
-      payload: { milestone, planId: this.directConfirmationOffer?.planId || null, recordedAtMs: Date.now() }
+      payload: { milestone, recordedAtMs: Date.now() }
     }).catch(() => {});
-  }
-
-  turnAnswersDirectOffer(turn) {
-    const offer = this.directConfirmationOffer;
-    return Boolean(offer && !offer.superseded && turn?.answersTurnId
-      && [offer.assistantTurnId, ...(offer.confirmationTurnIds || [])].includes(turn.answersTurnId));
-  }
-
-  async beginDirectReadbackAttempt(response) {
-    const candidate = response?.continuationChain?.directConfirmationCandidate;
-    const offer = this.directConfirmationOffer;
-    if (!candidate || candidate.token !== offer?.token
-      || response.responseId === candidate.sourceResponseId) return;
-    offer.readbackFullyDelivered = false;
-    offer.deliveryAttempt = {
-      responseId: response.responseId,
-      responseCompleted: false,
-      transcriptMatched: false,
-      playbackStarted: false,
-      playbackCompleted: false,
-      interrupted: response.continuationChain.invalidated === true
-    };
-    const early = this.directPlaybackEvidence.get(response.responseId);
-    if (early) {
-      offer.deliveryAttempt.interrupted ||= early.playback === 'interrupted';
-      offer.deliveryAttempt.playbackCompleted = early.playback === 'completed';
-    }
-    await this.persistDirectConfirmationOffer();
-  }
-
-  async interruptDirectReadback(responseId) {
-    const offer = this.directConfirmationOffer;
-    const attempt = offer?.deliveryAttempt;
-    if (!attempt || attempt.responseId !== responseId) return false;
-    attempt.interrupted = true;
-    offer.readbackFullyDelivered = false;
-    await this.persistDirectConfirmationOffer();
-    await this.drainDirectApprovalDelivery();
-    return true;
-  }
-
-  // Only the authenticated browser route or provider sideband can call this.
-  // The model's tool schema has no delivery field. This ack proves playback;
-  // the independent transcript/response checks below still prove WHAT played.
-  async acknowledgeReadbackPlayback(body) {
-    const responseId = String(body?.responseId || '').slice(0, 200);
-    const playback = body?.playback;
-    if (!responseId || !['completed', 'interrupted'].includes(playback)) {
-      throw new ConsumerError(400, 'readback_delivery_invalid', 'The playback acknowledgement is invalid.');
-    }
-    const previous = this.directPlaybackEvidence.get(responseId);
-    const evidence = {
-      playback: previous?.playback === 'interrupted' ? 'interrupted' : playback,
-      eventId: String(body?.eventId || '').slice(0, 200)
-    };
-    this.directPlaybackEvidence.set(responseId, evidence);
-    while (this.directPlaybackEvidence.size > MAX_LIVE_TURN_LEDGER_ENTRIES) {
-      this.directPlaybackEvidence.delete(this.directPlaybackEvidence.keys().next().value);
-    }
-    const offer = this.directConfirmationOffer;
-    const attempt = offer?.deliveryAttempt;
-    if (attempt?.responseId === responseId) {
-      attempt.interrupted ||= evidence.playback === 'interrupted';
-      attempt.playbackCompleted ||= evidence.playback === 'completed';
-      offer.readbackFullyDelivered = !attempt.interrupted && attempt.playbackCompleted
-        && attempt.responseCompleted && attempt.transcriptMatched;
-      if (offer.readbackFullyDelivered) offer.deliveredAt ||= Date.now();
-      await this.persistDirectConfirmationOffer();
-      await this.drainDirectApprovalDelivery();
-    }
-    return { ok: true, responseId, readbackFullyDelivered: offer?.readbackFullyDelivered === true };
-  }
-
-  async drainDirectApprovalDelivery() {
-    const offer = this.directConfirmationOffer;
-    if (!offer?.readbackFullyDelivered && !offer?.deliveryAttempt?.interrupted) return;
-    const pending = [...this.pendingDirectApprovals.values()];
-    this.pendingDirectApprovals.clear();
-    // Resume the SAME tool attempt after delivery evidence settles, without
-    // creating a planner pass or requiring another spoken approval.
-    for (const item of pending) {
-      this.state.waitUntil(this.executeToolCallWithTranscript(item.event, item.clientTranscript));
-    }
-  }
-
-  async maybeArmDirectConfirmation(response) {
-    const candidate = response?.continuationChain?.directConfirmationCandidate;
-    const offer = this.directConfirmationOffer;
-    if (!offer) return false;
-    const cause = this.clientTurnsByItemId.get(response?.causeItemId);
-    // Clarification remains causally attached to the original certified offer.
-    // It does not replace its read-back or manufacture fresh delivery evidence.
-    if (!candidate && cause?.confirmationOfferToken === offer.token
-      && response?.done && response.status === 'completed' && response.assistantDone
-      && !response.complianceTripped && response.storedAssistantTurnId) {
-      offer.confirmationTurnIds = [...new Set([
-        ...(offer.confirmationTurnIds || []), response.storedAssistantTurnId
-      ])].slice(-MAX_LIVE_TURN_LEDGER_ENTRIES);
-      await this.persistDirectConfirmationOffer();
-    }
-    if (!candidate
-      || candidate.token !== offer.token
-      || offer.deliveryAttempt?.responseId !== response.responseId
-      || response?.responseId === candidate.sourceResponseId
-      || response?.done !== true
-      || response?.status !== 'completed'
-      || response?.assistantDone !== true
-      || !response?.storedAssistantTurnId
-      || response?.toolCallIds?.size !== 0
-      || response?.continuationChain?.invalidated === true
-      || response?.complianceTripped === true
-      || !candidate.confirmationPrompt
-      || confirmationReadbackKey(response.assistantTranscript)
-        !== confirmationReadbackKey(candidate.confirmationPrompt)
-    ) return false;
-    offer.assistantTurnId = String(response.storedAssistantTurnId);
-    offer.deliveryAttempt.responseCompleted = true;
-    offer.deliveryAttempt.transcriptMatched = true;
-    // DELIVERY MEANS SOMETHING DIFFERENT ON EACH TRANSPORT, AND ONLY THIS LINE
-    // KNOWS IT. Speech has to be heard: it plays once, it can be talked over,
-    // and the only proof it reached the client is an acknowledgement that the
-    // audio buffer finished. Text has already arrived -- the exact certified
-    // string is a persisted assistant turn, returned in the same response and
-    // still on screen. What stops an approval attaching to a plan the client
-    // never saw is not playback but REPLY BINDING: `turnAnswersDirectOffer`
-    // requires their next turn to answer this exact assistant turn id, and a
-    // superseded offer changes both the token and the turn.
-    offer.readbackFullyDelivered = this.textChannel
-      ? true
-      : offer.deliveryAttempt.playbackCompleted && !offer.deliveryAttempt.interrupted;
-    if (offer.readbackFullyDelivered) offer.deliveredAt ||= Date.now();
-    await this.persistDirectConfirmationOffer();
-    await this.drainDirectApprovalDelivery();
-    return offer.readbackFullyDelivered;
   }
 
   /* Structural pointers only: a path is safe to record, a value is not. */
@@ -2278,17 +2606,14 @@ export class ConsumerLiveSession {
       sequence: ++this.directModulePlanningSequence
     };
     if (!existing) this.directModulePlanningOutstanding.push(job);
-    // Register review synchronously, but preserve the offer provisionally.
-    // A planner pass number is not a semantic change and cannot retire consent.
-    if (this.directConfirmationOffer) this.directConfirmationOffer.reviewStatus = 'pending';
-    else {
-      this.directAwaitingConfirmationSnapshotRevision = null;
-      this.state.waitUntil(this.state.storage.delete('directAwaitingConfirmationSnapshotRevision'));
-    }
-    this.state.waitUntil(Promise.all([
-      this.persistDirectConfirmationOffer(),
-      this.persistDirectModulePlanningOutstanding()
-    ]).catch(() => {}));
+    // A NEW OBLIGATION RETIRES THE PUBLISHED READINESS WATERMARK.
+    //
+    // Readiness is only ever established against a settled snapshot, so a turn
+    // arriving now makes the previous one stale. The seal predicate reads this
+    // watermark, which is why the retirement is synchronous with the push.
+    this.directAwaitingConfirmationSnapshotRevision = null;
+    this.state.waitUntil(this.state.storage.delete('directAwaitingConfirmationSnapshotRevision'));
+    this.state.waitUntil(this.persistDirectModulePlanningOutstanding().catch(() => {}));
     if (this.directModulePlanningPending > 0) return this.directModulePlanningChain;
 
     this.directModulePlanningPending = 1;
@@ -2308,7 +2633,6 @@ export class ConsumerLiveSession {
             context,
             leaseId: this.meta.leaseId,
             throughTurnId: nextJob.turnId,
-            frozenPlanId: this.directConfirmationOffer?.planId || null,
             acknowledgedUnknown: this.acknowledgedUnknown
           });
           // This full transcript snapshot settles every obligation at or before
@@ -2319,27 +2643,6 @@ export class ConsumerLiveSession {
           await this.persistDirectModulePlanningOutstanding();
           if (config.modulePlannerMode === 'apply'
             && this.directModulePlanningOutstanding.length === 0) {
-            const offer = this.directConfirmationOffer;
-            if (offer) {
-              const unchanged = planned?.brief?.readyToConfirm === true
-                && Boolean(planned.brief.verificationCertificate?.signature)
-                && directModulePlanMeaningKey(planned.snapshot, planned.brief.verificationCertificate)
-                  === offer.semanticIdentity;
-              if (unchanged && planned.brief.verificationCertificate.confirmationPromptHash
-                === offer.confirmationPromptHash) {
-                offer.reviewStatus = 'settled';
-                offer.reviewedThroughTurnId = nextJob.turnId;
-                offer.reviewedSnapshotRevision = Number(planned.snapshot.snapshotRevision);
-                await this.persistDirectConfirmationOffer();
-              } else if (unchanged) {
-                // Review of regenerated prose does not establish that the
-                // delivered proposition remains true. Keep it, blocked.
-                offer.reviewStatus = 'failed';
-                await this.persistDirectConfirmationOffer();
-              } else {
-                await this.clearDirectConfirmationOffer();
-              }
-            }
             const published = await this.injectVolatileState();
             this.directAwaitingConfirmationSnapshotRevision = published === true
               && planned?.brief?.readyToConfirm === true
@@ -2355,10 +2658,6 @@ export class ConsumerLiveSession {
             }
           }
         } catch (error) {
-          if (this.directConfirmationOffer) {
-            this.directConfirmationOffer.reviewStatus = 'failed';
-            await this.persistDirectConfirmationOffer();
-          }
           await appendRealtimeEvent(this.env, {
             sessionId: this.meta?.sessionId,
             leaseId: this.meta?.leaseId,
@@ -3232,7 +3531,6 @@ export class ConsumerLiveSession {
     // if the same detector sees that response again.
     if (targetResponse?.complianceTripped) return;
     if (targetResponse) targetResponse.complianceTripped = true;
-    await this.interruptDirectReadback(targetResponseId);
     const targetIsActive = targetResponse?.done === false;
     const targetIsCurrent = targetIsActive && targetResponseId === this.currentResponseId;
     this.violationCount += 1;
@@ -3310,7 +3608,7 @@ export class ConsumerLiveSession {
     // causal turn is the boundary; the answer is owed to the turn that asked.
     const directStateRead = name === 'get_state'
       && getConsumerConfig(this.env).modulePlannerMode === 'apply';
-    if (name === 'save_facts' || name === 'confirm_and_run' || directStateRead) {
+    if (name === 'save_facts' || directStateRead) {
       const responseId = String(event.response_id || '');
       const response = responseId ? this.responseContextsById.get(responseId) : null;
       const turn = response?.causeItemId
@@ -3360,19 +3658,10 @@ export class ConsumerLiveSession {
   async executeToolCallWithTranscript(event, clientTranscript) {
     const name = String(event.name || '');
     const callId = String(event.call_id || '');
-    const approvalOffer = this.directConfirmationOffer;
-    const approvalResponse = this.responseContextsById.get(String(event.response_id || ''));
-    const approvalTurn = this.clientTurnsByItemId.get(approvalResponse?.causeItemId);
-    let proposedToken = '';
-    try { proposedToken = JSON.parse(event.arguments || '{}')?.confirmationToken || ''; } catch (_error) { /* invalid tool */ }
-    if (name === 'confirm_and_run' && getConsumerConfig(this.env).modulePlannerMode === 'apply'
-      && classifyExecutionApproval(clientTranscript) === 'affirmed'
-      && this.turnAnswersDirectOffer(approvalTurn) && proposedToken === approvalOffer?.token
-      && !approvalOffer.readbackFullyDelivered && !approvalOffer.deliveryAttempt?.interrupted
-      && approvalOffer.deliveryAttempt?.transcriptMatched && approvalOffer.deliveryAttempt?.responseCompleted) {
-      this.pendingDirectApprovals.set(callId, { event, clientTranscript });
-      return;
-    }
+    // NO TOOL CALL IS PARKED WAITING FOR DELIVERY EVIDENCE ANY MORE.
+    // The queue that used to live here held an approval until a read-back
+    // finished playing, then resumed it as an execution. There is no approval
+    // and no execution tool, so there is nothing to hold.
     const startedAt = Date.now();
     this.activeToolCalls += 1;
 
@@ -3410,69 +3699,20 @@ export class ConsumerLiveSession {
       if (attempt.replayed) {
         result = attempt.result;
       } else {
-        const affirmedConfirmation = name === 'confirm_and_run'
-          && classifyExecutionApproval(clientTranscript) === 'affirmed';
-        const directOfferMatches = Boolean(
-          affirmedConfirmation
-          && this.directConfirmationOffer
-          && this.turnAnswersDirectOffer(causalTurn)
-          && String(args?.confirmationToken || '') === this.directConfirmationOffer.token
-        );
-        const directPlanningUnsettled = this.directModulePlanningPending > 0
-          || this.directModulePlanningOutstanding.length > 0
-          || this.directConfirmationOffer?.reviewStatus !== 'settled';
-        if (affirmedConfirmation && config.modulePlannerMode === 'apply'
-          && !directOfferMatches) {
-          result = {
-            ok: false,
-            code: 'confirmation_context_invalid',
-            retryable: true,
-            message: 'The verified plan must be read back again before it can run. Call get_state, summarize that current plan, and ask for confirmation.'
-          };
-        } else if (directOfferMatches && directPlanningUnsettled) {
-          result = {
-            ok: false,
-            code: 'module_planning_pending',
-            retryable: true,
-            message: 'The same offer is waiting for its background review. Clarify whether the client wants this plan to run; do not replace the offer or invent new inputs.'
-          };
-        }
-        if (affirmedConfirmation
-          && config.modulePlannerMode !== 'apply'
-          && config.plannerReconciliationMode !== 'legacy') {
-          const lease = await getRealtimeLease(
-            this.env,
-            this.meta.sessionId,
-            this.meta.leaseId
-          ).catch(() => null);
-          const preflight = plannerReconciliationPreflight(
-            config.plannerReconciliationMode,
-            lease,
-            this.unreviewedMaterialTurns,
-            this.unresolvedIdentities,
-            this.undispositionedNotes
-          );
-          if (!preflight.ready) {
-            if (causalTurn?.storedTurnId && responseContext) {
-              // The response.done handler launches this after the confirming
-              // tool response has settled. The marker itself is synchronous,
-              // so no reconciler/model call enters the tool response path.
-              responseContext.reconciliationTrigger = 'pre_confirmation';
-              responseContext.reconciliationPriority = true;
-            }
-            result = {
-              ok: false,
-              code: 'reconciliation_pending',
-              retryable: true,
-              message: 'I am completing one final notes check before running the analyses. Please wait for that check and then ask for confirmation again.'
-            };
-          }
-        }
+        // WHAT IS DELIBERATELY ABSENT HERE.
+        //
+        // This block used to read the client's last words through an approval
+        // grammar, match them against the delivered offer's token, and let a
+        // recognised "yes" run the analyses. Conversational language no longer
+        // authorises anything: execution belongs to the Run action on an
+        // immutable review, and the reconciliation preflight that gated it has
+        // moved to the seal, where it decides whether REVIEW may be published
+        // at all rather than whether a sentence was permission.
         if (!result && name === 'get_state' && config.modulePlannerMode === 'apply') {
           // A get_state call deliberately crosses the background boundary. It
           // never delays native turn-taking before the model starts replying;
-          // it may, however, wait here at the explicit pre-confirmation tool
-          // boundary so the following read-back reflects every finalized turn.
+          // it may, however, wait here, at the one tool boundary that can seal
+          // the meeting, so readiness is judged against every finalized turn.
           if (this.directModulePlanningPending === 0
             && this.directModulePlanningOutstanding.length > 0) {
             this.scheduleDirectModulePlanning(
@@ -3489,56 +3729,19 @@ export class ConsumerLiveSession {
             ? direct.brief
             : null;
           const snapshotRevision = Number(brief?.snapshotRevision || 0);
-          const readyForOffer = brief?.readyToConfirm === true
+          const readyToSeal = brief?.readyToConfirm === true
             && snapshotRevision > 0
             && snapshotRevision === Number(this.directAwaitingConfirmationSnapshotRevision)
-            && this.directModulePlanningPending === 0
-            && this.directModulePlanningOutstanding.length === 0
             && Boolean(brief?.verificationCertificate?.signature)
-            && Boolean(brief?.confirmationPrompt)
-            && Boolean(responseContext?.continuationChain);
-          let confirmationToken = null;
-          if (readyForOffer) {
-            let offer = this.directConfirmationOffer;
-            if (!offer) {
-              confirmationToken = `dmc_${crypto.randomUUID()}`;
-              const prepared = await prepareRealtimeVoiceAnalysisPlan({
-                env: this.env,
-                config,
-                sessionRow: context.sessionRow,
-                profile: context.profile,
-                leaseId: this.meta.leaseId,
-                idempotencyKey: `live-offer:${confirmationToken}`,
-                confirmationOfferToken: confirmationToken
-              });
-              offer = {
-                token: confirmationToken,
-                planId: prepared.row.id,
-                profileRevision: Number(prepared.row.profile_revision),
-                snapshotRevision,
-                certificateSignature: String(brief.verificationCertificate.signature),
-                confirmationPromptHash: brief.verificationCertificate.confirmationPromptHash,
-                semanticIdentity: prepared.semanticIdentity,
-                confirmationPrompt: String(brief.confirmationPrompt),
-                readbackFullyDelivered: false,
-                deliveryAttempt: null,
-                reviewStatus: 'settled',
-                reviewedThroughTurnId: brief.directModuleSnapshot?.throughTurnId || null,
-                superseded: false,
-                createdAt: Date.now()
-              };
-              this.directConfirmationOffer = offer;
-              await this.persistDirectConfirmationOffer();
-            }
-            confirmationToken = offer.token;
-            responseContext.continuationChain.directConfirmationCandidate = {
-              token: confirmationToken,
-              snapshotRevision: offer.snapshotRevision,
-              certificateSignature: offer.certificateSignature,
-              confirmationPrompt: offer.confirmationPrompt,
-              sourceResponseId: responseContext.responseId
-            };
-          }
+            && Boolean(brief?.confirmationPrompt);
+          // READINESS STARTS THE HANDOFF; IT DOES NOT AUTHORISE ANYTHING.
+          //
+          // An AI readiness decision is what begins sealing, and that is all it
+          // is: `sealAndPublishReview` re-establishes every objective condition
+          // itself, and publishes REVIEW only when they all hold together. If
+          // they do not, the meeting stays in conversation and this read simply
+          // reports that the plan is not ready.
+          const sealed = readyToSeal ? await this.sealAndPublishReview(brief, context, responseContext) : null;
           result = {
             // A STATE READ THAT ANSWERED IS A STATE READ THAT SUCCEEDED.
             // Every tool outcome is recorded by `result.ok === true`, and this
@@ -3550,9 +3753,11 @@ export class ConsumerLiveSession {
             ok: true,
             schemaVersion: 'DirectModuleToolStateV1',
             snapshotRevision,
-            readyToConfirm: readyForOffer,
-            confirmationToken,
-            confirmationPrompt: readyForOffer ? this.directConfirmationOffer.confirmationPrompt : null,
+            // The model is told the meeting has moved to review so it stops
+            // gathering. It is never told a token, and there is no tool it
+            // could spend one on.
+            readyToConfirm: Boolean(sealed),
+            reviewPublished: Boolean(sealed),
             verificationStatus: brief?.verification?.verdict || 'pending',
             modules: (brief?.directModuleSnapshot?.modules || [])
               .filter((item) => item?.status !== 'not_relevant')
@@ -3571,20 +3776,26 @@ export class ConsumerLiveSession {
             generalAmbiguities: brief?.ambiguities || brief?.directModuleSnapshot?.generalAmbiguities || []
           };
         }
-        if (!result) {
-          if (name === 'confirm_and_run' && directOfferMatches
-            && this.directConfirmationOffer?.readbackFullyDelivered) {
-            this.directConfirmationOffer.approvedAt ||= Date.now();
-            await this.persistDirectConfirmationOffer();
-            await this.recordCompletionMilestone('approved');
+        // THE DETERMINISTIC LANE'S READINESS READ SEALS TOO.
+        //
+        // In apply mode the branch above owns this. Here the projection's own
+        // readiness is the AI-independent equivalent: when the goal planner says
+        // the confirmed profile can run, the meeting closes and the client is
+        // shown what it will run. Same boundary, same two actions, no sentence
+        // anywhere in the path.
+        if (!result && name === 'get_state' && config.modulePlannerMode !== 'apply') {
+          const projection = liveStateProjection(context);
+          if (projection.readyToConfirm === true) {
+            const sealed = await this.sealAndPublishReview(null, context, responseContext);
+            result = { ...projection, reviewPublished: Boolean(sealed) };
           }
+        }
+        if (!result) {
           result = await executeLiveTool(name, args, {
             env: this.env,
             config,
             leaseId: this.meta.leaseId,
             toolAttemptId: attempt.row.id,
-            directConfirmationOffer: config.modulePlannerMode === 'apply'
-              ? this.directConfirmationOffer : null,
             // The proposal audit row keeps the provider item identity. Exact
             // quote offsets remain a T2 responsibility against the stored turn.
             evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
@@ -3698,12 +3909,6 @@ export class ConsumerLiveSession {
         this.maybeScheduleReconciliation(responseContext);
       }
     }
-    if (name === 'confirm_and_run'
-      && responseContext?.done
-      && responseContext.reconciliationTrigger === 'pre_confirmation') {
-      this.maybeScheduleReconciliation(responseContext);
-    }
-
     const {
       context: _context,
       sourcedValues: _values,
@@ -3742,23 +3947,6 @@ export class ConsumerLiveSession {
       }
     }).catch(() => {});
 
-    if (name === 'confirm_and_run' && result?.ok) {
-      if (this.directConfirmationOffer) {
-        this.directConfirmationOffer.approvedAt ||= startedAt;
-        this.directConfirmationOffer.executionStatus = String(result.status || 'pending');
-        this.directConfirmationOffer.analysisRunId = result.analysisPlan?.analysisRunId || null;
-        if (result.status === 'complete') this.directConfirmationOffer.completedAt ||= Date.now();
-        await this.persistDirectConfirmationOffer();
-      }
-      if (result.status === 'complete') await this.recordCompletionMilestone('results_persisted');
-      await appendRealtimeEvent(this.env, {
-        sessionId: this.meta.sessionId,
-        leaseId: this.meta.leaseId,
-        direction: 'server',
-        eventType: 'live.analysis.completed',
-        payload: { completedCount: Number(result.completedCount || 0), status: String(result.status || 'unknown') }
-      }).catch(() => {});
-    }
     await this.touch();
   }
 
@@ -3901,7 +4089,11 @@ export class ConsumerLiveSession {
       config: getConsumerConfig(this.env),
       sessionId: this.meta.sessionId
     }));
-    return { state: projection, violationCount: this.violationCount };
+    // The review comes from the database, not from this object's memory, so a
+    // reconstructed meeting and a second tab see the same one.
+    const review = await describeCurrentReview(this.env, this.meta.sessionId)
+      .catch(() => ({ mode: 'unavailable', review: null }));
+    return { state: projection, violationCount: this.violationCount, ...review };
   }
 
   /* --------------------------------------------------------------- metering */

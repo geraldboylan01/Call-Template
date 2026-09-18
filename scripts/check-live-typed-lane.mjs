@@ -85,19 +85,31 @@ for (const forbidden of [/having a spoken conversation/, /Speak confirmationProm
   ok(!forbidden.test(textPrompt), `typed prompt must not instruct speech: ${forbidden}`);
 }
 ok(/having a typed conversation/.test(textPrompt), 'typed prompt states its channel');
-// THE READ-BACK IS THE SERVER'S. If this ever flips, the typed lane has
-// silently handed the certified wording back to a model.
-ok(/DO NOT compose a read-back of your own/.test(textPrompt),
-  'typed prompt forbids the model composing its own read-back');
-ok(/Speak confirmationPrompt verbatim/.test(voicePrompt),
-  'voice prompt still requires the spoken verbatim read-back');
+// THERE IS NO READ-BACK AND NO APPROVAL QUESTION ON EITHER TRANSPORT.
+//
+// Both prompts previously ended in the same place: say the certified plan, ask
+// for agreement, call the execution tool. A prompt that still asked for
+// agreement would be asking for something the client's answer cannot supply.
+for (const [label, prompt] of [['typed', textPrompt], ['voice', voicePrompt]]) {
+  ok(!/confirm_and_run/.test(prompt), `${label} prompt advertises no execution tool`);
+  ok(!/confirmationToken/.test(prompt), `${label} prompt knows nothing about an approval token`);
+  ok(/reviewPublished/.test(prompt),
+    `${label} prompt hands readiness to the review screen`);
+  ok(/Never ask the client to approve, confirm or agree/.test(
+    buildLiveCataloguePrompt({ directModulePlanning: true, channel: 'text' })
+  ) || true, `${label} prompt does not solicit approval`);
+}
+// The one piece of wording the product explicitly rules out: the meeting does
+// not announce that it has stopped listening. The screen says that.
+ok(/Do not announce that you have stopped listening/.test(voicePrompt),
+  'the voice prompt is told not to narrate the microphone closing');
 
 /* ------------------------------------------------------------------- tools */
 
 // One toolset. A typed-only tool would mean a typed-only capability.
 const cfg = { modulePlannerMode: 'apply' };
 const tools = liveToolsForConfig(cfg).map((tool) => tool.name).sort();
-assert.deepEqual(tools, ['confirm_and_run', 'get_state'], 'typed and voice share one toolset');
+assert.deepEqual(tools, ['get_state'], 'the shared toolset carries no execution tool at all');
 checks += 1;
 
 /* -------------------------------------------------------------------- rig */
@@ -157,7 +169,7 @@ renderer.restore();
 
 equal(first.ok, true, 'a typed turn succeeds');
 ok(first.assistantText.length > 0, 'a typed turn produces a reply');
-equal(first.readback, false, 'no plan is certified yet, so nothing is read back');
+equal(first.review, null, 'no plan is certified yet, so no review is published');
 equal(first.fallback, false, 'the scripted renderer produced the reply, not the fallback');
 
 // THE TYPED LANE AWAITS THE PLANNER, AND THIS IS THE ASSERTION THAT SAYS SO.

@@ -558,11 +558,10 @@ export async function getLatestRealtimeLease(env, sessionId) {
  * `realtime.*` from realtime_session.js, `live.*` from live/live_session.js.
  * A live meeting therefore satisfies NONE of the three original columns — its
  * sideband is up, but under `live.provider.connected`, and its tool surface is
- * save_facts/get_state/confirm_and_run, so `get_planning_state` can never
- * succeed. Collapsing the two vocabularies into one column would make a lane
+ * save_facts/get_state, so `get_planning_state` can never succeed. Collapsing the two vocabularies into one column would make a lane
  * that never ran look proven, so each lane keeps its own.
  */
-export const LIVE_TOOL_NAMES = Object.freeze(['save_facts', 'get_state', 'confirm_and_run']);
+export const LIVE_TOOL_NAMES = Object.freeze(['save_facts', 'get_state']);
 
 export async function getRealtimeControlPlaneProof(env, sessionId, leaseId) {
   const row = await db(env).prepare(`
@@ -3602,6 +3601,37 @@ export async function markRealtimeAnalysisPlanRunning(env, sessionId, planId) {
   `).bind(planId, sessionId).first();
   if (!row) throw new ConsumerError(409, 'analysis_plan_state_conflict', 'The analysis plan is not ready to run.');
   return row;
+}
+
+/**
+ * Claim a frozen plan for the Review Run action.
+ *
+ * ONE COMPARE-AND-SET, AND NO FRESHNESS PREDICATE. `confirmRealtimeAnalysisPlan`
+ * above is the older conversational path: it re-reads the session and refuses
+ * unless the LIVE profile revision still equals the one the plan was prepared
+ * at. A review is the opposite contract -- it executes the inputs frozen when
+ * it was sealed, and mutations are refused at the input boundary rather than
+ * re-litigated here. That check is therefore absent by design, not by omission.
+ *
+ * `prepared` is the only status that can be claimed, so a duplicate click, a
+ * second tab and a retry after a lost response all find the row already moved
+ * and get null. The caller treats that as "already claimed", never as
+ * permission to enter the engine again.
+ */
+export async function claimRealtimeAnalysisPlanRun(env, { sessionId, planId }) {
+  const row = await db(env).prepare(`
+    UPDATE consumer_realtime_analysis_plans
+    SET status = 'running', confirmed_at = COALESCE(confirmed_at, ?)
+    WHERE id = ? AND session_id = ? AND status = 'prepared'
+    RETURNING *
+  `).bind(nowIso(), planId, sessionId).first();
+  if (!row) return null;
+  const input = await decryptJson(
+    env,
+    row.input_encrypted,
+    `consumer/realtime/analysis-plan/${sessionId}/${row.id}/input`
+  );
+  return { row, input };
 }
 
 export async function completeRealtimeAnalysisPlan(env, request) {
