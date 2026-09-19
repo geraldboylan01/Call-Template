@@ -14,6 +14,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { normalizeCollegeFundingInputs } from '../js/college_funding_math.js';
+import {
+  computeMortgageComparison,
+  normalizeMortgageInputs
+} from '../js/mortgage_math.js';
 import { normalizeNetRetirementInputs } from '../js/net_retirement_math.js';
 import {
   validateOutputsBucketedPayload,
@@ -342,6 +346,69 @@ checkThrows('a fifth college case is rejected',
 checkThrows('the shorthand and an explicit scenarios array cannot be sent together',
   () => normalizeCollegeFundingInputs({ ...collegeShorthand, scenarios: collegeCases(2) }),
   /must not combine the at-home\/away cost shorthand with an explicit scenarios array/);
+
+const MORTGAGE_LOAN = {
+  currentBalance: 320_000,
+  annualInterestRate: 0.0425,
+  startDateIso: '2026-01-01',
+  endDateIso: '2052-12-01',
+  repaymentType: 'repayment',
+  loanKind: 'mortgage',
+  baseScenarioId: 'mortgage-case-1'
+};
+const mortgageCases = (count) => casesOf(count, (index) => ({
+  id: `mortgage-case-${index + 1}`, title: `Mortgage case ${index + 1}`, annualOverpayment: index * 1_000
+}));
+check('four mortgage cases normalise',
+  normalizeMortgageInputs({ ...MORTGAGE_LOAN, scenarios: mortgageCases(MAX_MODULE_SCENARIO_CASES) })
+    .scenarios.length === MAX_MODULE_SCENARIO_CASES);
+checkThrows('a fifth mortgage case is rejected',
+  () => normalizeMortgageInputs({ ...MORTGAGE_LOAN, scenarios: mortgageCases(5) }),
+  /generated\.mortgageInputs\.scenarios supports at most 4 cases; received 5\./);
+
+// THE ONE FAILURE MODE HERE THAT IS SILENT.
+//
+// The engine returns a case's changes nested under `overrides`, and the app
+// stores what the engine returned. If the session importer's own whitelist
+// does not carry those keys they are dropped on load with no error anywhere --
+// the buttons still appear, and every one of them shows the same answer.
+{
+  const stored = normalizeMortgageInputs({ ...MORTGAGE_LOAN, scenarios: mortgageCases(MAX_MODULE_SCENARIO_CASES) });
+  const savings = (inputs) => computeMortgageComparison(inputs).cases.map((item) => Math.round(item.interestSaved));
+  const before = savings(stored);
+  check('the mortgage cases save different amounts to begin with', new Set(before).size > 1);
+
+  const reopened = importPublishedSession({
+    ...session,
+    modules: [{ ...session.modules[0], id: 'module-mortgage-cases', generated: { mortgageInputs: stored } }]
+  });
+  drainSessionImportWarnings();
+  const reloaded = reopened.modules[0].generated.mortgageInputs;
+  check('a reopened session still carries every mortgage case',
+    reloaded.scenarios.length === MAX_MODULE_SCENARIO_CASES);
+  check('and the case that each one is measured against',
+    reloaded.baseScenarioId === 'mortgage-case-1');
+  check('and each case still describes the same saving it did before publishing',
+    JSON.stringify(savings(reloaded)) === JSON.stringify(before));
+}
+
+// Over the cap on the way back out is tolerated, not thrown: a session that was
+// published when the rules were looser still has to open.
+{
+  const overCap = {
+    ...normalizeMortgageInputs({ ...MORTGAGE_LOAN, scenarios: mortgageCases(MAX_MODULE_SCENARIO_CASES) })
+  };
+  overCap.scenarios = [...overCap.scenarios, { id: 'mortgage-case-5', title: 'Fifth', description: '', overrides: {} }];
+  const reopened = importPublishedSession({
+    ...session,
+    modules: [{ ...session.modules[0], id: 'module-mortgage-over-cap', generated: { mortgageInputs: overCap } }]
+  });
+  const warnings = drainSessionImportWarnings();
+  check('an over-cap mortgage session opens, capped rather than refused',
+    reopened.modules[0].generated.mortgageInputs.scenarios.length === MAX_MODULE_SCENARIO_CASES);
+  check('and says so',
+    warnings.some((warning) => /mortgageInputs\.scenarios carried 5 cases/.test(warning)));
+}
 
 /* ------------------------------- the importer: tolerate, do not throw */
 

@@ -56,6 +56,10 @@ Use `12_mortgage_playbook.md` when Gerry says things like:
 - mortgage module
 - mortgage projection
 - mortgage overpayment scenario
+- compare overpayments
+- lump sum versus annual overpayment
+- what would overpaying save
+- what if we cleared some off the mortgage
 
 ### Loan Playbook
 Use `13_loan_playbook.md` when Gerry says things like:

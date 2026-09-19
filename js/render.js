@@ -1,4 +1,10 @@
 import { computeGridPosition, applyOverviewLayout } from './layout.js';
+import {
+  animateScenarioNumericValues,
+  collectScenarioValueMap,
+  isReducedMotionPreferred,
+  setScenarioValueDataset
+} from './scenario_motion.js';
 import { renderSvgDiagram, serializeSvg } from './education_svg.js';
 import { getReportChartBlocks, isReportModule } from './report.js';
 import { HFCS_NET_WORTH_DATA } from './data/hfcs2023.js';
@@ -14,6 +20,14 @@ import {
   getNetRetirementScenarioCases
 } from './net_retirement_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
+import {
+  computeMortgageComparison,
+  computeMortgageProjection,
+  formatMonthsDuration,
+  formatMonthYear,
+  getDefaultMortgageScenarioId,
+  getMortgageScenarioCases
+} from './mortgage_math.js';
 import {
   computeLiquidityReserve,
   resolveLiquidityReservePolicy
@@ -2908,9 +2922,120 @@ function getNetRetirementDisplayModule(module) {
   }
 }
 
+function getMortgageDefaultLoanKind(module) {
+  return module?.generated?.loanInputs ? 'loan' : 'mortgage';
+}
+
+function getMortgageScenarioCasesForModule(module) {
+  const inputs = getLoanEngineInputs(module);
+  if (!inputs) {
+    return [];
+  }
+
+  try {
+    return getMortgageScenarioCases(inputs, { defaultLoanKind: getMortgageDefaultLoanKind(module) });
+  } catch (_error) {
+    // A payload the engine refuses has no cases to offer. The apply path has
+    // already said why; a switcher is not the place to repeat it.
+    return [];
+  }
+}
+
+function getMortgageScenarioForModule(module) {
+  const cases = getMortgageScenarioCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const selectedId = typeof window.__getMortgageScenarioForModule === 'function'
+    ? window.__getMortgageScenarioForModule(module.id)
+    : '';
+
+  if (cases.some((item) => item.id === selectedId)) {
+    return selectedId;
+  }
+
+  return getDefaultMortgageScenarioForModule(module) || cases[0].id;
+}
+
+function getDefaultMortgageScenarioForModule(module) {
+  const inputs = getLoanEngineInputs(module);
+  if (!inputs) {
+    return '';
+  }
+
+  try {
+    // The base case, not the first one. A household that already overpays can
+    // nominate their current position as the base, and the module must open on
+    // the case everything else is measured against.
+    return getDefaultMortgageScenarioId(inputs, { defaultLoanKind: getMortgageDefaultLoanKind(module) });
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getMortgageComparisonForModule(module) {
+  const inputs = getLoanEngineInputs(module);
+  if (!inputs) {
+    return null;
+  }
+
+  try {
+    return computeMortgageComparison(inputs, { defaultLoanKind: getMortgageDefaultLoanKind(module) });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * The module as the selected case sees it.
+ *
+ * Recomputing here rather than storing every case keeps the session small and
+ * means the assumptions table, the outputs table and the charts all follow the
+ * chosen case without any of them knowing that cases exist.
+ */
+function getMortgageDisplayModule(module) {
+  if (!isMortgageModule(module)) {
+    return module;
+  }
+
+  const scenarioId = getMortgageScenarioForModule(module);
+  if (!scenarioId) {
+    return module;
+  }
+
+  try {
+    const projection = computeMortgageProjection(getLoanEngineInputs(module), {
+      defaultLoanKind: getMortgageDefaultLoanKind(module),
+      scenarioId
+    });
+    const existingCharts = Array.isArray(module.generated?.charts) ? module.generated.charts : [];
+
+    return {
+      ...module,
+      generated: {
+        ...(module.generated || {}),
+        summaryHtml: projection.summaryHtml,
+        assumptions: projection.assumptionsTable,
+        outputs: projection.outputsTable,
+        charts: projection.charts.map((chart, index) => ({
+          ...chart,
+          id: chart.id || existingCharts[index]?.id || ''
+        }))
+      }
+    };
+  } catch (_error) {
+    return module;
+  }
+}
+
 function getCalculatedDisplayModule(module) {
   if (isNetRetirementModule(module)) {
     return getNetRetirementDisplayModule(module);
+  }
+
+  if (isMortgageModule(module)) {
+    return getMortgageDisplayModule(module);
   }
 
   return getPensionDisplayModule(module);
@@ -3340,6 +3465,16 @@ export function getChartHydrationModule(module) {
         charts: getReportChartBlocks(module).map((entry) => entry.chart)
       }
     };
+  }
+
+  // Charts follow the selected case, and the case is not stored on the module.
+  // Hydrating from the raw payload would draw the case that happened to be
+  // selected when the module was last applied: the card is rebuilt with the
+  // right number of canvases, and the two comparison charts then get no data
+  // at all, because the stored payload only ever describes one case.
+  if (isMortgageModule(module)) {
+    const displayModule = getMortgageDisplayModule(module);
+    return displayModule === module ? module : displayModule;
   }
 
   if (isCollegeFundingModule(module)) {
@@ -5588,21 +5723,8 @@ function getPbsBalanceMetrics(outputsBucketed) {
   };
 }
 
-function setPbsValueDataset(element, {
-  key,
-  value,
-  format = 'currency',
-  currencySymbol = '€'
-} = {}) {
-  const normalizedValue = getOptionalFiniteNumber(value);
-  if (!key || normalizedValue === null) {
-    return;
-  }
-
-  element.dataset.pbsValueKey = key;
-  element.dataset.pbsValue = String(normalizedValue);
-  element.dataset.pbsValueFormat = format;
-  element.dataset.pbsCurrency = currencySymbol;
+function setPbsValueDataset(element, options = {}) {
+  setScenarioValueDataset(element, { ...options, prefix: 'pbs' });
 }
 
 function getPbsSectionAnchorKey(sectionKey) {
@@ -6556,24 +6678,11 @@ function buildOutputsBucketedMatrixContent(outputsBucketed, sectionEnhancements 
 }
 
 function isPbsReducedMotionPreferred() {
-  return typeof window !== 'undefined'
-    && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return isReducedMotionPreferred();
 }
 
 function collectPbsValueMap(root) {
-  const values = new Map();
-  if (!root) {
-    return values;
-  }
-
-  root.querySelectorAll('[data-pbs-value-key][data-pbs-value]').forEach((element) => {
-    const value = getOptionalFiniteNumber(element.dataset.pbsValue);
-    if (element.dataset.pbsValueKey && value !== null) {
-      values.set(element.dataset.pbsValueKey, value);
-    }
-  });
-  return values;
+  return collectScenarioValueMap(root, { prefix: 'pbs' });
 }
 
 function formatPbsValueForElement(element, value) {
@@ -6585,47 +6694,10 @@ function formatPbsValueForElement(element, value) {
 }
 
 function animatePbsNumericValues(root, previousValues) {
-  if (!root || isPbsReducedMotionPreferred()) {
-    return;
-  }
-
-  const animatedElements = Array.from(root.querySelectorAll('[data-pbs-value-key][data-pbs-value]'))
-    .map((element) => {
-      const key = element.dataset.pbsValueKey;
-      const start = previousValues.get(key);
-      const end = getOptionalFiniteNumber(element.dataset.pbsValue);
-      if (start === undefined || end === null || start === end) {
-        return null;
-      }
-
-      return { element, start, end };
-    })
-    .filter(Boolean);
-
-  if (animatedElements.length === 0) {
-    return;
-  }
-
-  const duration = 460;
-  const startTime = performance.now();
-  const tick = (now) => {
-    const elapsed = Math.min(1, (now - startTime) / duration);
-    const eased = 1 - Math.pow(1 - elapsed, 3);
-    animatedElements.forEach(({ element, start, end }) => {
-      element.textContent = formatPbsValueForElement(element, start + ((end - start) * eased));
-    });
-
-    if (elapsed < 1) {
-      requestAnimationFrame(tick);
-      return;
-    }
-
-    animatedElements.forEach(({ element, end }) => {
-      element.textContent = formatPbsValueForElement(element, end);
-    });
-  };
-
-  requestAnimationFrame(tick);
+  animateScenarioNumericValues(root, previousValues, {
+    prefix: 'pbs',
+    formatValue: formatPbsValueForElement
+  });
 }
 
 function capturePbsAnchorRects(root) {
@@ -7828,6 +7900,318 @@ function buildNetRetirementScenarioOptions(module, cases, selectedId) {
   });
 
   return options;
+}
+
+/* --------------------------------------------- the mortgage case comparison */
+
+/** Money mid-tween must be rendered by the same formatter as money at rest. */
+function formatMortgageValueForElement(element, value) {
+  const format = element?.dataset?.mortgageValueFormat;
+  if (format === 'ratio') {
+    return `€${Number(value).toFixed(2)}`;
+  }
+  if (format === 'months') {
+    return formatMonthsDuration(value);
+  }
+
+  return formatRetirementCurrency(value);
+}
+
+function setMortgageValue(element, key, value, format = 'currency') {
+  setScenarioValueDataset(element, { prefix: 'mortgage', key, value, format });
+}
+
+function buildMortgagePositionChips(comparison, selectedCase) {
+  const chips = document.createElement('div');
+  chips.className = 'retirement-position-chips';
+
+  const items = [
+    {
+      key: 'payment',
+      label: 'Monthly payment',
+      value: selectedCase.monthlyPaymentUsed,
+      format: 'currency',
+      tone: selectedCase.paymentDelta > 0.005 ? 'risk' : 'neutral'
+    }
+  ];
+
+  if (!selectedCase.isBase && selectedCase.monthsSaved > 0) {
+    items.push({
+      key: 'months-saved',
+      label: 'Cleared earlier by',
+      value: selectedCase.monthsSaved,
+      format: 'months',
+      tone: 'positive'
+    });
+  }
+
+  // Below half a cent is float residue, not money the client paid in.
+  if (selectedCase.totalOverpaid >= 0.005) {
+    items.push({
+      key: 'overpaid',
+      label: 'Total paid in',
+      value: selectedCase.totalOverpaid,
+      format: 'currency',
+      tone: 'neutral'
+    });
+  }
+
+  // The line that decides the conversation: what a euro of the client's own
+  // money buys. Only shown when a euro was actually paid in -- a rate switch
+  // saves interest without one, and claiming a return there would dress a
+  // different decision up as one.
+  if (selectedCase.savedPerEuroOverpaid !== null) {
+    items.push({
+      key: 'per-euro',
+      label: 'Saved per €1 paid in',
+      value: selectedCase.savedPerEuroOverpaid,
+      format: 'ratio',
+      tone: selectedCase.savedPerEuroOverpaid >= 1 ? 'positive' : 'neutral'
+    });
+  }
+
+  items.forEach((item) => {
+    const chip = document.createElement('span');
+    chip.className = 'retirement-position-chip';
+    if (item.tone && item.tone !== 'neutral') {
+      chip.dataset.tone = item.tone;
+    }
+
+    const label = document.createElement('span');
+    label.className = 'retirement-position-chip-label';
+    label.textContent = item.label;
+    chip.appendChild(label);
+
+    const value = document.createElement('strong');
+    value.className = 'retirement-position-chip-value';
+    value.textContent = formatMortgageValueForElement(
+      { dataset: { mortgageValueFormat: item.format } },
+      item.value
+    );
+    setMortgageValue(value, `chip:${item.key}`, item.value, item.format);
+    chip.appendChild(value);
+
+    chips.appendChild(chip);
+  });
+
+  return chips;
+}
+
+function buildMortgageScenarioOptions(module, comparison, selectedId, onSelect) {
+  const options = document.createElement('div');
+  options.className = 'retirement-scenario-options';
+  options.setAttribute('role', 'radiogroup');
+  options.setAttribute('aria-label', 'Choose repayment case');
+
+  const cases = getMortgageScenarioCasesForModule(module);
+  const detailById = new Map(cases.map((item) => [item.id, item.detail]));
+
+  comparison.cases.forEach((item) => {
+    const isActive = item.id === selectedId;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'retirement-scenario-card mortgage-scenario-card';
+    button.dataset.mortgageScenarioId = item.id;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('role', 'radio');
+    button.setAttribute('aria-checked', isActive ? 'true' : 'false');
+
+    const title = document.createElement('span');
+    title.className = 'retirement-scenario-title';
+    title.textContent = item.title;
+    button.appendChild(title);
+
+    const detail = document.createElement('span');
+    detail.className = 'retirement-scenario-detail';
+    // Each button states its own outcome, so the comparison can be read before
+    // anything is clicked rather than only by clicking through every case.
+    detail.textContent = detailById.get(item.id) || item.description || '';
+    button.appendChild(detail);
+
+    button.addEventListener('click', () => onSelect(item.id));
+    options.appendChild(button);
+  });
+
+  return options;
+}
+
+function buildMortgageDecisionPanel(module, comparison, selectedId, onSelect) {
+  const selectedCase = comparison.cases.find((item) => item.id === selectedId) || comparison.baseCase;
+  const wording = module?.generated?.loanInputs ? 'loan' : 'mortgage';
+
+  const panel = document.createElement('section');
+  panel.className = 'generated-card retirement-decision-panel mortgage-decision-panel';
+  panel.dataset.generatedCard = 'mortgage-decision';
+
+  const hero = document.createElement('div');
+  hero.className = 'retirement-required-pot-card';
+
+  const eyebrow = document.createElement('p');
+  eyebrow.className = 'retirement-required-eyebrow';
+  const value = document.createElement('div');
+  value.className = 'retirement-required-value';
+  const detail = document.createElement('p');
+  detail.className = 'retirement-required-detail';
+
+  if (selectedCase.isBase) {
+    // The base has no saving to show, so it shows the cost of changing
+    // nothing -- which is the number the alternatives are measured against.
+    eyebrow.textContent = 'Interest on this path';
+    value.textContent = formatRetirementCurrency(selectedCase.totalInterestLifetime);
+    setMortgageValue(value, 'hero', selectedCase.totalInterestLifetime, 'currency');
+    detail.textContent = selectedCase.payoffDateIso
+      ? `What this ${wording} costs in interest if nothing changes, clearing in ${formatMonthYear(selectedCase.payoffDateIso)}.`
+      : `What this ${wording} costs in interest over the modelled term.`;
+  } else {
+    eyebrow.textContent = 'Interest saved';
+    value.textContent = formatRetirementCurrency(selectedCase.interestSaved);
+    setMortgageValue(value, 'hero', selectedCase.interestSaved, 'currency');
+    const clearing = selectedCase.payoffDateIso
+      ? ` — ${wording === 'loan' ? 'loan' : 'mortgage'}-free in ${formatMonthYear(selectedCase.payoffDateIso)}`
+      : '';
+    detail.textContent = `Compared with ${comparison.baseCase.title}${clearing}.`;
+  }
+
+  hero.appendChild(eyebrow);
+  hero.appendChild(value);
+  hero.appendChild(detail);
+  hero.appendChild(buildMortgagePositionChips(comparison, selectedCase));
+  panel.appendChild(hero);
+
+  const scenarioArea = document.createElement('div');
+  scenarioArea.className = 'retirement-scenario-area';
+
+  const scenarioLabel = document.createElement('p');
+  scenarioLabel.className = 'retirement-scenario-label';
+  scenarioLabel.textContent = 'Repayment case';
+  scenarioArea.appendChild(scenarioLabel);
+  scenarioArea.appendChild(buildMortgageScenarioOptions(module, comparison, selectedId, onSelect));
+  panel.appendChild(scenarioArea);
+
+  return panel;
+}
+
+function buildMortgageComparisonCard(module, comparison, selectedId) {
+  const table = comparison.comparisonTable;
+  if (!table) {
+    return null;
+  }
+
+  const card = document.createElement('section');
+  card.className = 'generated-card generated-table-card mortgage-comparison-card';
+  card.dataset.generatedCard = 'mortgage-comparison';
+
+  const { header } = buildGeneratedCardHeader('Every case side by side');
+  card.appendChild(header);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'generated-table-wrap';
+
+  const tableEl = document.createElement('table');
+  tableEl.className = 'generated-table mortgage-comparison-table';
+
+  const selectedColumn = comparison.cases.findIndex((item) => item.id === selectedId) + 1;
+
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  table.columns.forEach((column, index) => {
+    const th = document.createElement('th');
+    th.textContent = column;
+    if (index === selectedColumn) {
+      th.dataset.activeCase = 'true';
+    }
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  tableEl.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  table.rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    row.forEach((cell, index) => {
+      const td = document.createElement('td');
+      td.textContent = cell;
+      if (index === selectedColumn) {
+        td.dataset.activeCase = 'true';
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  tableEl.appendChild(tbody);
+
+  wrap.appendChild(tableEl);
+  card.appendChild(wrap);
+  return card;
+}
+
+/**
+ * The panel and the table, swapped in place when a case is chosen.
+ *
+ * Swapping just this subtree is what makes a case change feel immediate: the
+ * rest of the module is patched separately and slightly later, but the figure
+ * the client is looking at moves on the very next frame.
+ */
+function buildMortgageScenarioShell(module) {
+  const comparison = getMortgageComparisonForModule(module);
+  if (!comparison || comparison.cases.length === 0) {
+    return null;
+  }
+
+  const host = document.createElement('div');
+  host.className = 'mortgage-scenario-content-host';
+
+  let selectedId = getMortgageScenarioForModule(module);
+
+  const renderCase = (nextId, { animate = false } = {}) => {
+    const previousValues = collectScenarioValueMap(host, { prefix: 'mortgage' });
+    const content = document.createElement('div');
+    content.className = 'mortgage-scenario-content';
+    content.dataset.scenarioId = nextId;
+    content.classList.toggle('is-entering', animate);
+
+    const panel = buildMortgageDecisionPanel(module, comparison, nextId, (caseId) => {
+      if (caseId === selectedId) {
+        return;
+      }
+      renderCase(caseId, { animate: true });
+      // Persisting also patches the assumptions, outputs and charts cards,
+      // which sit outside this host.
+      if (typeof window.__setMortgageScenario === 'function') {
+        window.__setMortgageScenario(module.id, caseId);
+      }
+    });
+    content.appendChild(panel);
+
+    const comparisonCard = buildMortgageComparisonCard(module, comparison, nextId);
+    if (comparisonCard) {
+      content.appendChild(comparisonCard);
+    }
+
+    host.replaceChildren(content);
+    selectedId = nextId;
+
+    if (!animate) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      content.classList.remove('is-entering');
+      const animated = animateScenarioNumericValues(content, previousValues, {
+        prefix: 'mortgage',
+        formatValue: formatMortgageValueForElement
+      });
+      if (!animated) {
+        // Nothing moved, or motion is reduced: say that something changed
+        // rather than leaving the switch looking like it did nothing.
+        content.classList.add('mortgage-scenario-content-highlight');
+        window.setTimeout(() => content.classList.remove('mortgage-scenario-content-highlight'), 700);
+      }
+    });
+  };
+
+  renderCase(selectedId);
+  return host;
 }
 
 function buildNetRetirementDecisionPanel(module) {
@@ -13022,7 +13406,16 @@ function buildGeneratedSection(module, {
     }
   }
 
-  if (isPensionModule(displayModule) || isNetRetirementModule(displayModule)) {
+  // The case buttons sit directly above the charts and tables they change, and
+  // the saving sits above the buttons, so the answer is read before the detail.
+  if (isMortgageModule(displayModule)) {
+    const mortgageShell = buildMortgageScenarioShell(module);
+    if (mortgageShell) {
+      grid.appendChild(mortgageShell);
+    }
+  }
+
+  if (isPensionModule(displayModule) || isNetRetirementModule(displayModule) || isMortgageModule(displayModule)) {
     grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
   }
 
@@ -13071,7 +13464,7 @@ function buildGeneratedSection(module, {
       }));
     });
   }
-  if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule)) {
+  if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13174,7 +13567,12 @@ export function patchFocusedGeneratedCards({
     return;
   }
   const displayModule = getCalculatedDisplayModule(module);
-  const cardModule = isPensionModule(displayModule) ? displayModule : module;
+  // A calculated module's cards must be built from the case that is actually
+  // selected, not from the stored payload, or switching case would update the
+  // hero and leave the assumptions and outputs describing the previous one.
+  const cardModule = isPensionModule(displayModule) || isMortgageModule(displayModule)
+    ? displayModule
+    : module;
 
   if (patchSummary) {
     replaceGeneratedCard({

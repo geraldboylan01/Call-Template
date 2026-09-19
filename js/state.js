@@ -1278,6 +1278,94 @@ function normalizePensionInputs(pensionInputs) {
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
+/** Keys a stored case may restate, in the engine's own normalised shape. */
+const MORTGAGE_SCENARIO_NUMERIC_OVERRIDES = Object.freeze([
+  'oneOffOverpayment',
+  'annualOverpayment',
+  'fixedPaymentAmount',
+  'annualInterestRate',
+  'remainingTermYears'
+]);
+
+/**
+ * Cases as they come back off a saved session.
+ *
+ * The engine rejects a bad payload on the way in; this tolerates one on the way
+ * back out, because a session that was published when the rules were looser
+ * still has to open. Unrecognised keys are dropped rather than refused, which
+ * is this normaliser's whole contract -- and is exactly why every key the
+ * engine accepts has to be listed here too.
+ */
+function normalizeMortgageScenarios(rawScenarios, label) {
+  if (!Array.isArray(rawScenarios)) {
+    return null;
+  }
+
+  const scenarios = rawScenarios
+    .map((rawScenario) => {
+      if (!rawScenario || typeof rawScenario !== 'object' || Array.isArray(rawScenario)) {
+        return null;
+      }
+
+      const id = typeof rawScenario.id === 'string' ? rawScenario.id.trim() : '';
+      if (!id) {
+        return null;
+      }
+
+      const rawOverrides = rawScenario.overrides && typeof rawScenario.overrides === 'object'
+        && !Array.isArray(rawScenario.overrides)
+        ? rawScenario.overrides
+        // A case that was stored flat, before the engine normalised it.
+        : rawScenario;
+      const overrides = {};
+
+      MORTGAGE_SCENARIO_NUMERIC_OVERRIDES.forEach((key) => {
+        if (typeof rawOverrides[key] === 'number' && Number.isFinite(rawOverrides[key])) {
+          overrides[key] = rawOverrides[key];
+        } else if (rawOverrides[key] === null
+          && (key === 'fixedPaymentAmount' || key === 'remainingTermYears')) {
+          overrides[key] = null;
+        }
+      });
+
+      if (typeof rawOverrides.endDateIso === 'string' && rawOverrides.endDateIso.trim()) {
+        overrides.endDateIso = rawOverrides.endDateIso.trim();
+      } else if (rawOverrides.endDateIso === null) {
+        overrides.endDateIso = null;
+      }
+
+      const benefit = typeof rawOverrides.overpaymentBenefit === 'string'
+        ? rawOverrides.overpaymentBenefit.trim()
+        : '';
+      if (benefit === 'shorterTerm' || benefit === 'lowerPayment') {
+        overrides.overpaymentBenefit = benefit;
+      }
+
+      return {
+        id,
+        title: typeof rawScenario.title === 'string' && rawScenario.title.trim()
+          ? rawScenario.title.trim()
+          : id,
+        description: typeof rawScenario.description === 'string' ? rawScenario.description.trim() : '',
+        overrides
+      };
+    })
+    .filter(Boolean);
+
+  const unique = [];
+  const usedIds = new Set();
+  scenarios.forEach((scenario) => {
+    if (usedIds.has(scenario.id)) {
+      return;
+    }
+    usedIds.add(scenario.id);
+    unique.push(scenario);
+  });
+
+  const capped = capImportedScenarioCases(unique, MAX_MODULE_SCENARIO_CASES, label);
+  return capped.length > 0 ? capped : null;
+}
+
 function normalizeMortgageInputs(mortgageInputs, { defaultLoanKind = 'mortgage' } = {}) {
   if (!mortgageInputs || typeof mortgageInputs !== 'object' || Array.isArray(mortgageInputs)) {
     return null;
@@ -1313,6 +1401,13 @@ function normalizeMortgageInputs(mortgageInputs, { defaultLoanKind = 'mortgage' 
     normalized.repaymentType = mortgageInputs.repaymentType.trim();
   }
 
+  const overpaymentBenefit = typeof mortgageInputs.overpaymentBenefit === 'string'
+    ? mortgageInputs.overpaymentBenefit.trim()
+    : '';
+  if (overpaymentBenefit === 'shorterTerm' || overpaymentBenefit === 'lowerPayment') {
+    normalized.overpaymentBenefit = overpaymentBenefit;
+  }
+
   const loanKindRaw = typeof mortgageInputs.loanKind === 'string'
     ? mortgageInputs.loanKind.trim().toLowerCase()
     : '';
@@ -1321,6 +1416,24 @@ function normalizeMortgageInputs(mortgageInputs, { defaultLoanKind = 'mortgage' 
   } else {
     const fallbackLoanKind = String(defaultLoanKind || 'mortgage').trim().toLowerCase();
     normalized.loanKind = fallbackLoanKind === 'loan' ? 'loan' : 'mortgage';
+  }
+
+  const scenarios = normalizeMortgageScenarios(
+    mortgageInputs.scenarios,
+    `${normalized.loanKind === 'loan' ? 'loanInputs' : 'mortgageInputs'}.scenarios`
+  );
+  if (scenarios) {
+    normalized.scenarios = scenarios;
+
+    // A base that no longer names a surviving case would leave the comparison
+    // measured against nothing, so it is dropped and the engine falls back to
+    // the first case rather than the module failing to open.
+    const baseScenarioId = typeof mortgageInputs.baseScenarioId === 'string'
+      ? mortgageInputs.baseScenarioId.trim()
+      : '';
+    if (baseScenarioId && scenarios.some((scenario) => scenario.id === baseScenarioId)) {
+      normalized.baseScenarioId = baseScenarioId;
+    }
   }
 
   return Object.keys(normalized).length > 0 ? normalized : null;
@@ -1604,6 +1717,9 @@ function normalizeModuleUi(ui) {
     cardOrder,
     pbsScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.pbsScenarioId === 'string'
       ? ui.pbsScenarioId.trim()
+      : '',
+    mortgageScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.mortgageScenarioId === 'string'
+      ? ui.mortgageScenarioId.trim()
       : '',
     housePurchaseEditor: normalizedHousePurchaseEditor
   };

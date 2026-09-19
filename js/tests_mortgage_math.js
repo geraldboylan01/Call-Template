@@ -1,7 +1,10 @@
 import {
   computeMonthlyPayment,
   computeAmortizationMonthlySchedule,
-  computeMortgageProjection
+  computeMortgageComparison,
+  computeMortgageProjection,
+  getMortgageScenarioCases,
+  normalizeMortgageInputs
 } from './mortgage_math.js';
 
 function assert(condition, message) {
@@ -146,6 +149,154 @@ export function runMortgageMathTests() {
       1e-6,
       'Total paid should match between mortgage and loan'
     );
+  }));
+
+  const FOUR_CASES = {
+    currentBalance: 320000,
+    annualInterestRate: 0.0425,
+    startDateIso: '2026-01-01',
+    endDateIso: '2052-12-01',
+    repaymentType: 'repayment',
+    loanKind: 'mortgage',
+    baseScenarioId: 'current',
+    scenarios: [
+      { id: 'current', title: 'No overpayment', oneOffOverpayment: 0, annualOverpayment: 0 },
+      { id: 'annual-3k', title: '3,000 a year', annualOverpayment: 3000 },
+      { id: 'lump-25k', title: '25,000 lump sum', oneOffOverpayment: 25000 },
+      { id: 'both', title: 'Lump sum and 3,000 a year', oneOffOverpayment: 25000, annualOverpayment: 3000 }
+    ]
+  };
+
+  cases.push(runCase('A lump sum holds the payment and shortens the term', () => {
+    const shared = {
+      currentBalance: 320000,
+      annualInterestRate: 0.0425,
+      startDateIso: '2026-01-01',
+      endDateIso: '2052-12-01',
+      repaymentType: 'repayment'
+    };
+    const plain = computeAmortizationMonthlySchedule(shared);
+    const lump = computeAmortizationMonthlySchedule({ ...shared, oneOffOverpayment: 25000 });
+
+    assertApprox(lump.monthlyPaymentUsed, plain.monthlyPaymentUsed, 1e-9, 'Payment should be unchanged by a lump sum');
+    assert(lump.monthsSimulated < plain.monthsSimulated, 'A lump sum should clear the mortgage earlier');
+    assert(lump.totalInterestLifetime < plain.totalInterestLifetime, 'A lump sum should reduce total interest');
+  }));
+
+  cases.push(runCase('overpaymentBenefit lowerPayment keeps the term instead', () => {
+    const shared = {
+      currentBalance: 320000,
+      annualInterestRate: 0.0425,
+      startDateIso: '2026-01-01',
+      endDateIso: '2052-12-01',
+      repaymentType: 'repayment',
+      oneOffOverpayment: 25000
+    };
+    const shorter = computeAmortizationMonthlySchedule(shared);
+    const lower = computeAmortizationMonthlySchedule({ ...shared, overpaymentBenefit: 'lowerPayment' });
+
+    assert(lower.monthlyPaymentUsed < shorter.monthlyPaymentUsed, 'Lower-payment should reduce the repayment');
+    assert(lower.monthsSimulated > shorter.monthsSimulated, 'Lower-payment should keep the loan running longer');
+    assert(
+      lower.totalInterestLifetime > shorter.totalInterestLifetime,
+      'Taking the benefit as cash flow should save less interest'
+    );
+  }));
+
+  cases.push(runCase('Every case is measured at the same contractual payment', () => {
+    const comparison = computeMortgageComparison(FOUR_CASES);
+    const base = comparison.cases[0];
+    assert(comparison.cases.length === 4, 'Expected four cases');
+    comparison.cases.forEach((item) => {
+      assertApprox(item.monthlyPaymentUsed, base.monthlyPaymentUsed, 1e-9, `${item.id} should share the contractual payment`);
+      assertApprox(
+        item.interestSaved + item.totalInterestLifetime,
+        base.totalInterestLifetime,
+        0.01,
+        `${item.id}: interest saved plus interest paid should reconstruct the base`
+      );
+    });
+    assert(base.totalOverpaid === 0, 'The base overpays exactly nothing, not nearly nothing');
+    assert(base.savedPerEuroOverpaid === null, 'The base has no return per euro to report');
+  }));
+
+  cases.push(runCase('Total overpaid comes from the schedule, not the inputs', () => {
+    const comparison = computeMortgageComparison(FOUR_CASES);
+    const annual = comparison.cases.find((item) => item.id === 'annual-3k');
+    const naive = 3000 * Math.ceil(annual.monthsSimulated / 12);
+    assert(annual.totalOverpaid > 0, 'A regular overpayment should register as money paid in');
+    assert(
+      annual.totalOverpaid < naive,
+      'The final year is clipped to the balance, so the total must be below years times amount'
+    );
+  }));
+
+  cases.push(runCase('A case inherits every fact it does not restate', () => {
+    const comparison = computeMortgageComparison({
+      ...FOUR_CASES,
+      annualInterestRate: 0.06,
+      scenarios: [
+        { id: 'current', title: 'No overpayment' },
+        { id: 'switch', title: 'Switch rate', annualInterestRate: 0.032 }
+      ]
+    });
+    const [base, switched] = comparison.cases;
+    assert(switched.monthlyPaymentUsed < base.monthlyPaymentUsed, 'The overriding case uses its own rate');
+    assert(switched.interestSaved > 0, 'Switching to a lower rate should save interest');
+    assert(switched.savedPerEuroOverpaid === null, 'A saving with no overpayment reports no return per euro');
+  }));
+
+  cases.push(runCase('Normalising twice describes the same cases as normalising once', () => {
+    const authored = computeMortgageComparison(FOUR_CASES).cases.map((item) => Math.round(item.interestSaved));
+    let stored = normalizeMortgageInputs(FOUR_CASES);
+    for (let round = 0; round < 3; round += 1) {
+      stored = normalizeMortgageInputs(stored);
+      const again = computeMortgageComparison(stored).cases.map((item) => Math.round(item.interestSaved));
+      assert(
+        JSON.stringify(again) === JSON.stringify(authored),
+        'Re-normalising must not quietly drop every case override'
+      );
+    }
+  }));
+
+  cases.push(runCase('Case buttons preview their own outcome', () => {
+    const list = getMortgageScenarioCases(FOUR_CASES);
+    assert(list.length === 4, 'Expected four case buttons');
+    assert(/interest$/.test(list[0].detail), 'The base states what it costs');
+    list.slice(1).forEach((item) => {
+      assert(item.detail.startsWith('Saves '), `${item.id} should state what it saves`);
+    });
+  }));
+
+  cases.push(runCase('Refused: over the cap, duplicate ids, and an unknown benefit', () => {
+    const refusals = [
+      [{ ...FOUR_CASES, scenarios: [1, 2, 3, 4, 5].map((n) => ({ id: `c${n}`, title: `C${n}` })) }, 'at most 4 cases'],
+      [{ ...FOUR_CASES, scenarios: [{ id: 'a', title: 'A' }, { id: 'a', title: 'A again' }] }, 'must be unique'],
+      [{ ...FOUR_CASES, overpaymentBenefit: 'whicheverIsBigger' }, 'shorterTerm'],
+      [{ ...FOUR_CASES, baseScenarioId: 'not-a-case' }, 'must match a scenario id']
+    ];
+
+    refusals.forEach(([payload, fragment]) => {
+      let message = '';
+      try {
+        computeMortgageProjection(payload);
+      } catch (error) {
+        message = String(error?.message || '');
+      }
+      assert(message.includes(fragment), `Expected a refusal mentioning "${fragment}", got "${message}"`);
+    });
+  }));
+
+  cases.push(runCase('A single-case payload behaves as it did before cases existed', () => {
+    const projection = computeMortgageProjection({
+      currentBalance: 200000,
+      annualInterestRate: 0.04,
+      startDateIso: '2026-01-01',
+      remainingTermYears: 25,
+      repaymentType: 'repayment'
+    });
+    assert(projection.comparisonTable === null, 'A single case has nothing to compare');
+    assert(projection.charts.length === 1, 'And draws only its own chart');
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;

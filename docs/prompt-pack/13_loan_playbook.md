@@ -53,6 +53,9 @@ Do not use the older workaround that forced non-housing loans through `generated
 - `fixedPaymentAmount` - optional number or `null`
 - `oneOffOverpayment` - optional number, default 0
 - `annualOverpayment` - optional number, default 0
+- `overpaymentBenefit` - optional, `shorterTerm` (default) or `lowerPayment`
+- `baseScenarioId` - optional, required to match a case id when `scenarios` is present
+- `scenarios` - optional array of cases, maximum 4
 - `loanKind` - prefer `loan`
 
 ## Parsing Rules
@@ -64,6 +67,49 @@ Do not use the older workaround that forced non-housing loans through `generated
 - If Gerry does not give overpayments, set them to 0
 - Always set `repaymentType` to `repayment`
 - Set `loanKind` to `loan`
+
+## Cases
+Use `scenarios` when Gerry wants to compare clearing the loan faster against carrying on as-is. Phrases that mean cases:
+- compare paying it off faster
+- what if we cleared it early
+- what would clearing the car loan save
+
+Rules are the same as the Mortgage playbook:
+- Maximum 4 cases, including the do-nothing case. A fifth case is rejected.
+- Each case needs a unique `id` and a short, client-facing `title`.
+- A case restates only what it changes; everything else is inherited from the loan.
+- A case may override `oneOffOverpayment`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and the term as either `endDateIso` or `remainingTermYears`, never both.
+- Set `baseScenarioId` to the case the others are measured against, normally the do-nothing case.
+- Always include the do-nothing case explicitly, or there is no interest saved to show.
+- `overpaymentBenefit` defaults to `shorterTerm`, which holds the repayment and clears the loan earlier. Use `lowerPayment` only when Gerry says the client wants the repayment reduced instead.
+
+```json
+{
+  "title": "Loan Projection - Client",
+  "generated": {
+    "summaryHtml": "<p>...</p>",
+    "loanInputs": {
+      "currentBalance": 18000,
+      "annualInterestRate": 0.085,
+      "startDateIso": "2026-02-01",
+      "endDateIso": null,
+      "remainingTermYears": 4,
+      "repaymentType": "repayment",
+      "fixedPaymentAmount": null,
+      "loanKind": "loan",
+      "overpaymentBenefit": "shorterTerm",
+      "baseScenarioId": "current",
+      "scenarios": [
+        { "id": "current", "title": "No overpayment", "oneOffOverpayment": 0, "annualOverpayment": 0 },
+        { "id": "annual-500", "title": "500 a year", "annualOverpayment": 500 },
+        { "id": "lump-3k", "title": "3,000 lump sum", "oneOffOverpayment": 3000 }
+      ]
+    }
+  }
+}
+```
+
+Keep case titles in loan wording, never mortgage wording.
 
 ## Best-Guess Defaults
 Use placeholders only when needed to keep an exploratory module moving:

@@ -32,7 +32,11 @@ import assert from 'node:assert/strict';
 import {
   computeAmortizationMonthlySchedule,
   computeMonthlyPayment,
-  computeMortgageProjection
+  computeMortgageComparison,
+  computeMortgageProjection,
+  getDefaultMortgageScenarioId,
+  getMortgageScenarioCases,
+  normalizeMortgageInputs
 } from '../js/mortgage_math.js';
 import { createHouseholdProfile, normalizeHouseholdProfile } from '../js/planning/profile.js';
 import {
@@ -94,6 +98,25 @@ const close = (actual, expected, tolerance, note) => assert.ok(
 
 const BASE = { repaymentType: 'repayment', startDateIso: '2026-01-01' };
 const schedule = (over) => computeAmortizationMonthlySchedule({ ...BASE, ...over });
+
+/**
+ * The comparison this module exists for: do nothing, overpay regularly, pay a
+ * lump sum, or do both. Shared by the case checks and the refusal matrix.
+ */
+const FOUR_CASE_LOAN = {
+  ...BASE,
+  currentBalance: 320_000,
+  annualInterestRate: 0.0425,
+  endDateIso: '2052-12-01',
+  loanKind: 'mortgage',
+  baseScenarioId: 'current',
+  scenarios: [
+    { id: 'current', title: 'No overpayment', oneOffOverpayment: 0, annualOverpayment: 0 },
+    { id: 'annual-3k', title: '3,000 a year', annualOverpayment: 3_000 },
+    { id: 'lump-25k', title: '25,000 lump sum', oneOffOverpayment: 25_000 },
+    { id: 'both', title: 'Lump sum and 3,000 a year', oneOffOverpayment: 25_000, annualOverpayment: 3_000 }
+  ]
+};
 
 /* ------------------------------------------------------- hand-checkable */
 
@@ -263,14 +286,51 @@ const schedule = (over) => computeAmortizationMonthlySchedule({ ...BASE, ...over
 }
 
 {
-  // A one-off overpayment reduces the balance the maths starts from.
+  // A one-off overpayment reduces the balance the maths starts from, and the
+  // CONTRACTUAL payment is held, so the term shortens.
+  //
+  // This is the same principle the annual-overpayment case below asserts, and
+  // it used to be contradicted here: the payment was derived from the reduced
+  // balance, which silently took the benefit as cash-flow relief instead. A
+  // lump sum then showed no time saved at all, on the same screen as a regular
+  // overpayment that did shorten the term -- two overpayments of the same loan,
+  // measured on different bases and impossible to compare.
   const result = schedule({
     currentBalance: 100_000, annualInterestRate: 0, remainingTermYears: 10, oneOffOverpayment: 20_000
   });
   assert.equal(result.openingBalance, 80_000);
-  close(result.monthlyPaymentUsed, 80_000 / 120, 1e-9, 'the payment is derived from the reduced balance');
+  close(result.monthlyPaymentUsed, 100_000 / 120, 1e-9, 'the contractual payment is held');
   close(result.totalPaidLifetime, 80_000, CENT, 'and only the reduced balance is repaid');
-  pass('a one-off overpayment reduces the opening balance before the payment is derived');
+  assert.equal(result.monthsSimulated, 96, 'at 833.33 a month, 80,000 clears in 96 months, not 120');
+  close(result.lumpSumApplied, 20_000, CENT, 'the lump sum is counted as money paid in');
+  close(result.totalOverpaid, 20_000, CENT, 'and it is the whole of what was overpaid');
+  pass('a one-off overpayment holds the contractual payment and shortens the term');
+}
+
+{
+  // The other half of the lender's question: keep the term, cut the payment.
+  // Taking the benefit this way is a stated choice, never a silent consequence.
+  const shorter = schedule({
+    currentBalance: 100_000, annualInterestRate: 0, remainingTermYears: 10, oneOffOverpayment: 20_000
+  });
+  const lower = schedule({
+    currentBalance: 100_000,
+    annualInterestRate: 0,
+    remainingTermYears: 10,
+    oneOffOverpayment: 20_000,
+    overpaymentBenefit: 'lowerPayment'
+  });
+  close(lower.monthlyPaymentUsed, 80_000 / 120, 1e-9, 'the payment is re-amortised over the full term');
+  assert.equal(lower.monthsSimulated, 120, 'and the term is unchanged');
+  assert.ok(
+    lower.monthlyPaymentUsed < shorter.monthlyPaymentUsed,
+    'the repayment is lower than holding the contractual payment'
+  );
+  assert.ok(
+    lower.monthsSimulated > shorter.monthsSimulated,
+    'and it runs longer, which is what the interest saving is traded for'
+  );
+  pass('overpaymentBenefit lowerPayment keeps the term and re-amortises the payment down');
 }
 
 {
@@ -306,7 +366,13 @@ const schedule = (over) => computeAmortizationMonthlySchedule({ ...BASE, ...over
     [{ currentBalance: 100_000, annualInterestRate: -0.01, remainingTermYears: 10 }, /annualInterestRate must be greater than or equal to 0/],
     [{ currentBalance: 100_000, annualInterestRate: 0.04, remainingTermYears: 0 }, /remainingTermYears must be greater than 0/],
     [{ currentBalance: 100_000, annualInterestRate: 0.04 }, /must include endDateIso or remainingTermYears/],
-    [{ currentBalance: 100_000, annualInterestRate: 0.04, remainingTermYears: 10, repaymentType: 'interestOnly' }, /Interest-only/]
+    [{ currentBalance: 100_000, annualInterestRate: 0.04, remainingTermYears: 10, repaymentType: 'interestOnly' }, /Interest-only/],
+    [{ ...FOUR_CASE_LOAN, overpaymentBenefit: 'whicheverIsBigger' }, /overpaymentBenefit must be "shorterTerm" or "lowerPayment"/],
+    [{ ...FOUR_CASE_LOAN, scenarios: [{ id: 'a', title: 'A' }, { id: 'a', title: 'Also A' }] }, /scenarios\[1\]\.id must be unique/],
+    [{ ...FOUR_CASE_LOAN, scenarios: [1, 2, 3, 4, 5].map((n) => ({ id: `c${n}`, title: `C${n}` })) }, /supports at most 4 cases; received 5/],
+    [{ ...FOUR_CASE_LOAN, baseScenarioId: 'not-a-case' }, /baseScenarioId must match a scenario id/],
+    [{ ...FOUR_CASE_LOAN, scenarios: [{ id: 'a', title: 'A', endDateIso: '2040-01-01', remainingTermYears: 10 }] }, /at most one of endDateIso or remainingTermYears/],
+    [{ ...FOUR_CASE_LOAN, scenarios: [{ id: 'a', title: 'A', annualOverpayment: -1 }] }, /scenarios\[0\]\.annualOverpayment must be greater than or equal to 0/]
   ];
   for (const [patch, pattern] of refusals) {
     assert.throws(() => schedule(patch), pattern, `refused: ${JSON.stringify(patch)}`);
@@ -329,6 +395,226 @@ const schedule = (over) => computeAmortizationMonthlySchedule({ ...BASE, ...over
   // deliberate, visible change rather than a silent drift.
   assert.notEqual(result.monthlyRate, Math.pow(1 + rate, 1 / 12) - 1, 'not an effective-rate conversion');
   pass('the nominal annual/12 rate convention is used consistently by the formula and the schedule');
+}
+
+/* ------------------------------------------- cases, and what each is worth */
+
+/**
+ * The reference schedule again, with a year-end overpayment.
+ *
+ * Written from the same first principles as `referenceSchedule` and kept
+ * separate from it, because the engine's comparison figures are the whole
+ * point of the module and must not be checked against the engine's own
+ * arithmetic. The loan starts in January, so a calendar year-end is every
+ * twelfth period.
+ */
+function referenceScheduleWithAnnual(balance, annualRate, months, payment, annualOverpayment) {
+  const i = annualRate / 12;
+  let remaining = balance;
+  let totalInterest = 0;
+  let overpaid = 0;
+  let periods = 0;
+  while (periods < months && remaining > 0.005) {
+    const interest = remaining * i;
+    const principal = Math.min(payment - interest, remaining);
+    totalInterest += interest;
+    remaining -= principal;
+    periods += 1;
+    if (annualOverpayment > 0 && remaining > 0 && (periods % 12 === 0 || periods === months)) {
+      const applied = Math.min(annualOverpayment, remaining);
+      remaining -= applied;
+      overpaid += applied;
+    }
+  }
+  return {
+    periods,
+    totalInterest,
+    overpaid,
+    remaining: remaining <= 0.005 ? 0 : remaining
+  };
+}
+
+{
+  // Every case is measured on ONE basis: the contractual payment. That is what
+  // makes a lump sum and a regular overpayment readable side by side, which is
+  // the entire reason cases exist.
+  const comparison = computeMortgageComparison(FOUR_CASE_LOAN);
+  const byId = new Map(comparison.cases.map((item) => [item.id, item]));
+  const contractual = referencePayment(320_000, 0.0425, 324);
+
+  assert.equal(comparison.baseScenarioId, 'current');
+  assert.equal(comparison.cases.length, 4);
+  for (const item of comparison.cases) {
+    close(item.monthlyPaymentUsed, contractual, 1e-9, `${item.id} uses the contractual payment`);
+  }
+
+  // The base, independently.
+  const refBase = referenceSchedule(320_000, 0.0425, 324, contractual);
+  close(byId.get('current').totalInterestLifetime, refBase.totalInterest, CENT, 'base interest');
+  assert.equal(byId.get('current').monthsSimulated, refBase.periods, 'base term');
+  assert.equal(byId.get('current').interestSaved, 0, 'the base saves nothing against itself');
+  assert.equal(byId.get('current').savedPerEuroOverpaid, null, 'and has no return to report');
+  // Not `close(..., CENT)`: a client who overpaid nothing must report exactly
+  // nothing. Subtracting the contractual payment from itself three hundred
+  // times leaves a residue, and a residue here would print a "total paid in"
+  // for a case that paid in nothing -- and then divide the saving by it.
+  assert.equal(byId.get('current').totalOverpaid, 0, 'and paid in nothing at all, not nearly nothing');
+
+  // A lump sum, independently: the balance drops, the payment does not.
+  const refLump = referenceSchedule(320_000 - 25_000, 0.0425, 324, contractual);
+  const lump = byId.get('lump-25k');
+  close(lump.totalInterestLifetime, refLump.totalInterest, CENT, 'lump-sum interest');
+  assert.equal(lump.monthsSimulated, refLump.periods, 'lump-sum term');
+  assert.ok(lump.monthsSaved > 0, 'a lump sum now finishes the loan earlier');
+  close(lump.totalOverpaid, 25_000, CENT, 'the lump sum is what was paid in');
+  close(lump.savedPerEuroOverpaid, lump.interestSaved / 25_000, 1e-9, 'the return is interest saved per euro');
+
+  // A regular overpayment, independently.
+  const refAnnual = referenceScheduleWithAnnual(320_000, 0.0425, 324, contractual, 3_000);
+  const annual = byId.get('annual-3k');
+  close(annual.totalInterestLifetime, refAnnual.totalInterest, CENT, 'annual-overpayment interest');
+  assert.equal(annual.monthsSimulated, refAnnual.periods, 'annual-overpayment term');
+  // Taken from the schedule, not from the inputs: the final year's overpayment
+  // is clipped to whatever is left, so multiplying the yearly figure by the
+  // number of years would overstate what the client actually paid.
+  close(annual.totalOverpaid, refAnnual.overpaid, CENT, 'only the overpayments actually applied are counted');
+  assert.ok(
+    annual.totalOverpaid < 3_000 * Math.ceil(annual.monthsSimulated / 12),
+    'and that is less than the naive years-times-amount figure'
+  );
+
+  // Both together beat either alone, and the saving is an identity, not a
+  // separately computed number that could drift from the totals on screen.
+  const both = byId.get('both');
+  assert.ok(both.interestSaved > lump.interestSaved && both.interestSaved > annual.interestSaved);
+  for (const item of comparison.cases) {
+    close(
+      item.interestSaved + item.totalInterestLifetime,
+      byId.get('current').totalInterestLifetime,
+      CENT,
+      `${item.id}: interest saved and interest paid reconstruct the base`
+    );
+    assert.equal(
+      item.monthsSaved,
+      byId.get('current').monthsSimulated - item.monthsSimulated,
+      `${item.id}: time saved is the difference in term`
+    );
+  }
+  pass('four cases share one contractual payment, and each is worth what an independent schedule says');
+}
+
+{
+  // A case restates only what it changes. Everything else it inherits, so a
+  // correction to the loan itself reaches every case that did not override it.
+  const comparison = computeMortgageComparison({
+    ...FOUR_CASE_LOAN,
+    annualInterestRate: 0.06,
+    scenarios: [
+      { id: 'current', title: 'No overpayment' },
+      { id: 'switch', title: 'Switch to 3.2%', annualInterestRate: 0.032 }
+    ]
+  });
+  const byId = new Map(comparison.cases.map((item) => [item.id, item]));
+  close(
+    byId.get('current').monthlyPaymentUsed,
+    referencePayment(320_000, 0.06, 324),
+    1e-9,
+    'the inheriting case picks up the corrected rate'
+  );
+  close(
+    byId.get('switch').monthlyPaymentUsed,
+    referencePayment(320_000, 0.032, 324),
+    1e-9,
+    'and the overriding case keeps its own'
+  );
+  assert.ok(byId.get('switch').interestSaved > 0, 'switching saves interest');
+  assert.equal(
+    byId.get('switch').savedPerEuroOverpaid,
+    null,
+    'but no euro was overpaid, so no return per euro is claimed'
+  );
+  pass('a case inherits every fact it does not restate, and a saving with no overpayment reports no return');
+}
+
+{
+  // The base is whichever case the payload nominates. A household that already
+  // overpays should see the next step measured from where they stand.
+  const comparison = computeMortgageComparison({ ...FOUR_CASE_LOAN, baseScenarioId: 'annual-3k' });
+  assert.equal(comparison.baseScenarioId, 'annual-3k');
+  assert.equal(comparison.baseCase.id, 'annual-3k');
+  const byId = new Map(comparison.cases.map((item) => [item.id, item]));
+  assert.equal(
+    getDefaultMortgageScenarioId({ ...FOUR_CASE_LOAN, baseScenarioId: 'annual-3k' }),
+    'annual-3k',
+    'and the module opens on it, rather than on whichever case was authored first'
+  );
+  assert.equal(byId.get('annual-3k').interestSaved, 0, 'the nominated base saves nothing against itself');
+  assert.ok(
+    byId.get('current').interestSaved < 0,
+    'and doing less than the base costs interest rather than saving it'
+  );
+  pass('the nominated base is what every case is measured against, including cases that do worse');
+}
+
+{
+  // A payload with no cases is still one case, so nothing downstream has to
+  // special-case the shape.
+  const projection = computeMortgageProjection({ ...BASE, currentBalance: 200_000, annualInterestRate: 0.04, remainingTermYears: 25 });
+  assert.equal(projection.comparisonTable, null, 'a single case has nothing to compare');
+  assert.deepEqual(projection.charts.map((chart) => chart.id), ['mortgage-mixed-annual'], 'and draws only its own chart');
+  const cases = getMortgageScenarioCases({ ...BASE, currentBalance: 200_000, annualInterestRate: 0.04, remainingTermYears: 25 });
+  assert.equal(cases.length, 1);
+  pass('a payload with no cases behaves exactly as it did before cases existed');
+}
+
+{
+  // The case buttons preview the outcome, so the comparison is readable before
+  // anything is clicked.
+  const cases = getMortgageScenarioCases(FOUR_CASE_LOAN);
+  assert.deepEqual(cases.map((item) => item.id), ['current', 'annual-3k', 'lump-25k', 'both']);
+  assert.match(cases[0].detail, /^Finishes \w{3} \d{4} · €[\d,]+ interest$/, 'the base states what it costs');
+  for (const item of cases.slice(1)) {
+    assert.match(item.detail, /^Saves €[\d,]+ · .+ earlier$/, `${item.id} states what it saves`);
+  }
+  const selected = computeMortgageProjection(FOUR_CASE_LOAN, { scenarioId: 'lump-25k' });
+  assert.equal(selected.scenarioId, 'lump-25k');
+  assert.equal(selected.comparisonTable.columns.length, 5, 'one measure column and one per case');
+  for (const row of selected.comparisonTable.rows) {
+    assert.equal(row.length, selected.comparisonTable.columns.length, `row "${row[0]}" matches the column count`);
+  }
+  assert.deepEqual(
+    selected.charts.map((chart) => chart.id),
+    ['mortgage-mixed-annual', 'mortgage-scenario-balance', 'mortgage-scenario-interest'],
+    'a chosen alternative draws the two comparison charts as well'
+  );
+  // An unknown case id falls back to the base rather than rendering nothing.
+  assert.equal(computeMortgageProjection(FOUR_CASE_LOAN, { scenarioId: 'no-such-case' }).scenarioId, 'current');
+  pass('case buttons preview their own outcome, and an unknown case falls back to the base');
+}
+
+{
+  // NORMALISING IS IDEMPOTENT, and it has to be.
+  //
+  // An authored case states its changes flat; the normaliser returns them
+  // nested under `overrides`; the app stores what the normaliser returned and
+  // normalises it again on every render and every session reload. A normaliser
+  // that read only the flat form would find nothing the second time and return
+  // four cases that all change nothing -- four buttons, four identical answers,
+  // and no error raised anywhere to say so.
+  const authored = computeMortgageComparison(FOUR_CASE_LOAN).cases.map((item) => Math.round(item.interestSaved));
+  assert.ok(authored.some((saved) => saved > 0), 'the fixture saves something to begin with');
+
+  let stored = normalizeMortgageInputs(FOUR_CASE_LOAN);
+  for (let round = 0; round < 3; round += 1) {
+    stored = normalizeMortgageInputs(stored);
+    assert.deepEqual(
+      computeMortgageComparison(stored).cases.map((item) => Math.round(item.interestSaved)),
+      authored,
+      `re-normalising ${round + 1} time(s) still describes the same cases`
+    );
+  }
+  assert.deepEqual(normalizeMortgageInputs(stored), stored, 'and the normalised form is a fixed point');
+  pass('normalising a payload twice describes the same cases as normalising it once');
 }
 
 /* ----------------------------------- module routing over the shared engine */

@@ -288,12 +288,21 @@ Playbooks should only emit the subset they are responsible for.
   - `fixedPaymentAmount`
   - `oneOffOverpayment`
   - `annualOverpayment`
+  - `overpaymentBenefit`
+  - `baseScenarioId`
+  - `scenarios`
   - `loanKind`
 - Current runtime rejects `interestOnly`.
+- `overpaymentBenefit` is exactly `shorterTerm` (default) or `lowerPayment`. It decides whether capital paid off the loan shortens the term at an unchanged repayment, or keeps the term and re-amortises the repayment down.
+- `scenarios[]` supports at most 4 cases including the base case, matching the module-wide case cap. A fifth case is rejected.
+- Each scenario supports `id`, `title`, `description`, and the overrides `oneOffOverpayment`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and exactly one of `endDateIso` or `remainingTermYears`.
+- Scenario ids must be unique. A scenario inherits every field it does not restate.
+- `baseScenarioId` must match a scenario id when `scenarios` is present; the runtime measures every comparison figure against that case.
+- The runtime owns interest saved, time saved, total overpaid, saved per euro, the side-by-side comparison table, and the two comparison charts. Do not supply them.
 
 ## Loan Support
 - Use `generated.loanInputs`
-- Use the same engine field names as mortgage inputs.
+- Use the same engine field names as mortgage inputs, including `overpaymentBenefit`, `baseScenarioId`, and `scenarios`.
 - Preferred `loanKind` is `loan`.
 
 ## Education Support

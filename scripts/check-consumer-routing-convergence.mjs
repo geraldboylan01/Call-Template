@@ -273,7 +273,11 @@ check('scenario handling is carried by scenario-aware modules instead', () => {
   const aware = MODULE_MANIFEST
     .filter((entry) => entry.implementation.scenarioAware)
     .map((entry) => entry.moduleId).sort();
-  assert.deepEqual(aware, ['house_purchase', 'net_retirement_cashflow', 'pension_projection']);
+  // Mortgage and loan analysis became scenario-aware when they gained
+  // repayment cases; both run over the same amortisation engine.
+  assert.deepEqual(aware, [
+    'house_purchase', 'loan_analysis', 'mortgage_analysis', 'net_retirement_cashflow', 'pension_projection'
+  ]);
   for (const moduleId of aware) {
     assert.equal(typeof getPlanningModuleDefinition(moduleId).run, 'function',
       `${moduleId} must be runnable to carry scenario overrides`);
