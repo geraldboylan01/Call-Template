@@ -499,7 +499,7 @@ export const MODULE_MANIFEST = Object.freeze([
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
-      "scenarioAware": false,
+      "scenarioAware": true,
       "playbook": "13_loan_playbook.md",
       "outputKey": "generated.loanInputs",
       "hasRunnableEngine": true
@@ -570,7 +570,7 @@ export const MODULE_MANIFEST = Object.freeze([
     "implementation": {
       "status": "engine",
       "intakeContract": "approved",
-      "scenarioAware": false,
+      "scenarioAware": true,
       "playbook": "12_mortgage_playbook.md",
       "outputKey": "generated.mortgageInputs",
       "hasRunnableEngine": true

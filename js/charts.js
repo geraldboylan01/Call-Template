@@ -1632,6 +1632,61 @@ function buildMortgageMixedDataset(dataset, index) {
   return buildDatasetStyle(dataset, index, 'bar');
 }
 
+/**
+ * A case against its base, as two lines with the gap between them shaded.
+ *
+ * The shaded area IS the number in the headline: debt cleared earlier on the
+ * balance chart, interest not paid on the interest chart. Drawing the base
+ * muted and dashed keeps it legible as the thing being improved on rather than
+ * as a second option of equal weight.
+ */
+function isMortgageScenarioChart(chartData) {
+  const chartId = normalizeLabel(chartData?.id).toLowerCase();
+  return chartId.startsWith('mortgage-scenario')
+    || chartData?.meta?.kind === 'mortgageScenario';
+}
+
+function buildMortgageScenarioDataset(dataset, index) {
+  const line = buildDatasetStyle(dataset, index, 'line');
+
+  // The base is always emitted first, so index 0 is the path being compared
+  // against and index 1 is the case the client chose.
+  if (index === 0) {
+    const color = '#8fa8bd';
+    return {
+      ...line,
+      type: 'line',
+      order: 1,
+      borderColor: color,
+      borderDash: [5, 4],
+      borderWidth: 1.8,
+      pointRadius: 0,
+      pointHoverRadius: 3,
+      pointBackgroundColor: color,
+      pointBorderColor: color,
+      backgroundColor: 'transparent',
+      fill: false
+    };
+  }
+
+  const color = '#2ea3ff';
+  return {
+    ...line,
+    type: 'line',
+    order: 0,
+    borderColor: color,
+    borderWidth: 2.6,
+    pointRadius: 0,
+    pointHoverRadius: 3,
+    pointBackgroundColor: color,
+    pointBorderColor: color,
+    backgroundColor: hexToRgba(color, 0.18),
+    // Fill to the base rather than to the axis: the shaded band is the
+    // difference the case makes, not the size of the balance.
+    fill: { target: 0, above: hexToRgba(color, 0.18), below: hexToRgba(color, 0.18) }
+  };
+}
+
 function getAnnotationColor(tone) {
   const normalized = normalizeTone(tone);
   if (normalized === 'positive' || normalized === 'success') {
@@ -1747,6 +1802,7 @@ const CHART_ANNOTATION_GUIDE_PLUGIN = {
 
 function buildChartConfig(chartData, { module } = {}) {
   const isMortgageMixed = isMortgageMixedChart(chartData);
+  const isMortgageScenario = isMortgageScenarioChart(chartData);
   const chartType = isMortgageMixed
     ? 'bar'
     : (chartData.type === 'bar' ? 'bar' : 'line');
@@ -1765,6 +1821,10 @@ function buildChartConfig(chartData, { module } = {}) {
     ? chartData.datasets.map((dataset, index) => {
       if (isMortgageMixed) {
         return buildMortgageMixedDataset(dataset, index);
+      }
+
+      if (isMortgageScenario) {
+        return buildMortgageScenarioDataset(dataset, index);
       }
 
       if (isAccumulation) {
@@ -2071,6 +2131,19 @@ function buildChartConfig(chartData, { module } = {}) {
         };
       }
     }
+  }
+
+  if (isMortgageScenario) {
+    config.options.spanGaps = false;
+    config.options.plugins.tooltip.callbacks = {
+      label: (context) => {
+        const label = context?.dataset?.label || 'Series';
+        const value = typeof context?.parsed?.y === 'number'
+          ? context.parsed.y
+          : context?.raw;
+        return `${label}: ${formatEuro(value)}`;
+      }
+    };
   }
 
   if (isMortgageMixed) {

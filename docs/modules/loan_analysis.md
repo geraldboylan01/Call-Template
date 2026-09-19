@@ -18,7 +18,7 @@
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
-    "scenarioAware": false,
+    "scenarioAware": true,
     "playbook": "13_loan_playbook.md",
     "outputKey": "generated.loanInputs",
     "hasRunnableEngine": true

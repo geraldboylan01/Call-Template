@@ -432,6 +432,37 @@ Liquidity examples must stay cash-only. They should use `generated.liquidityPlan
 
 These examples model an existing borrowing balance and repayment path. Use the separate House Purchase contract below for a future target home, deposit path, purchase timing, household affordability, or Irish purchase-support screen.
 
+Use `scenarios` when the call is about comparing options rather than modelling one path. Up to 4 cases including the do-nothing case; each case restates only what it changes, and `baseScenarioId` names the case every comparison figure is measured against. The runtime owns interest saved, time saved, total paid in, and the return per euro.
+
+```json
+{
+  "title": "Mortgage Projection - Client",
+  "generated": {
+    "summaryHtml": "<p>This module compares four ways of handling the same mortgage: carrying on as you are, paying a set amount extra each year, putting a lump sum against the balance, and doing both. The headline figure is the interest saved by the case selected, the buttons switch between the options, and the table underneath lays every case out side by side. Each case holds the same monthly repayment, so what changes is when the mortgage clears and what it costs in interest.</p>",
+    "mortgageInputs": {
+      "currentBalance": 320000,
+      "annualInterestRate": 0.0425,
+      "startDateIso": "2026-01-01",
+      "endDateIso": "2052-12-01",
+      "remainingTermYears": null,
+      "repaymentType": "repayment",
+      "fixedPaymentAmount": null,
+      "loanKind": "mortgage",
+      "overpaymentBenefit": "shorterTerm",
+      "baseScenarioId": "current",
+      "scenarios": [
+        { "id": "current", "title": "No overpayment", "oneOffOverpayment": 0, "annualOverpayment": 0 },
+        { "id": "annual-3k", "title": "3,000 a year", "annualOverpayment": 3000 },
+        { "id": "lump-25k", "title": "25,000 lump sum", "oneOffOverpayment": 25000 },
+        { "id": "both", "title": "Lump sum and 3,000 a year", "oneOffOverpayment": 25000, "annualOverpayment": 3000 }
+      ]
+    }
+  }
+}
+```
+
+A single path, when only one is being modelled:
+
 ```json
 {
   "title": "Mortgage Projection - Client",

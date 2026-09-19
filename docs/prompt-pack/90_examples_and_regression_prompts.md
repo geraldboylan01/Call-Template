@@ -253,6 +253,48 @@ Checks:
 - flags placeholders in NOTES
 - still emits valid JSON
 
+### MORT-4
+Prompt:
+`Use the mortgage playbook. Balance 320000. Rate 4.25 percent. Start January 2026. End December 2052. Compare doing nothing, 3000 a year, a 25000 lump sum, and both.`
+
+Checks:
+- emits `scenarios` with exactly four cases and unique ids
+- includes an explicit do-nothing case, and `baseScenarioId` points at it
+- each case restates only what it changes; none repeats the balance, rate or term
+- case titles read as client options, not `Scenario 1` or `Base case`
+- `overpaymentBenefit` is omitted or `shorterTerm`
+- does not state the interest saved, payoff dates or return per euro as numbers; those are runtime-owned
+- summary tells the client the headline is the interest saved and the buttons switch cases
+
+### MORT-5
+Prompt:
+`Use the mortgage playbook. Balance 250000. Rate 3.9 percent. 22 years left. They already overpay 200 a month. What would another 5000 a year do, and what about clearing 40000 off it?`
+
+Checks:
+- the client's current position is a case of its own, expressed as a higher repayment rather than as an overpayment
+- `baseScenarioId` names that current-position case, so the saving shown is the saving from where they actually stand
+- three cases total: current position, extra 5000 a year, and the 40000 lump sum
+- NOTES says the comparison is measured from their current overpayment, not from a standard repayment
+
+### MORT-6
+Prompt:
+`Use the mortgage playbook. Balance 400000. Rate 4.5 percent. 28 years left. Show me five cases: do nothing, 2000 a year, 5000 a year, a 30000 lump sum, and switching to 3.2 percent.`
+
+Checks:
+- emits at most four cases
+- NOTES names which case was left out and why
+- does not merge two distinct decisions into one case to fit the limit
+- still returns valid JSON that pastes cleanly
+
+### MORT-7
+Prompt:
+`Use the mortgage playbook. Balance 320000. Rate 4.25 percent. 26 years left. They are on a fixed rate. Compare doing nothing with a 50000 lump sum, and they want the repayment reduced rather than the term shortened.`
+
+Checks:
+- the lump-sum case sets `overpaymentBenefit` to `lowerPayment`
+- a client-facing caveat notes that a fixed rate usually limits penalty-free overpayments, commonly around 10 percent of the balance a year, and that the lender should be checked first
+- does not silently model the lump sum as shortening the term
+
 ## House Purchase Regression Prompts
 
 ### HOUSE-1

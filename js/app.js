@@ -65,7 +65,12 @@ import {
   getDefaultNetRetirementScenarioId,
   getNetRetirementScenarioCases
 } from './net_retirement_math.js';
-import { normalizeMortgageInputs, computeMortgageProjection } from './mortgage_math.js';
+import {
+  computeMortgageProjection,
+  getDefaultMortgageScenarioId,
+  getMortgageScenarioCases,
+  normalizeMortgageInputs
+} from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
 import { runCollegeFundingMathTests } from './tests_college_funding_math.js';
@@ -217,6 +222,7 @@ const appState = {
   netRetirementScenarioByModuleId: new Map(),
   housePurchaseScenarioByModuleId: new Map(),
   pbsScenarioByModuleId: new Map(),
+  mortgageScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -3608,7 +3614,10 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
   const defaultLoanKind = getDefaultLoanKindForSource(source, loanEngineInputs);
   const normalizedInputs = normalizeMortgageInputs(loanEngineInputs, { defaultLoanKind });
   const resolvedSource = setLoanEngineInputs(module, normalizedInputs, { source });
-  const projection = computeMortgageProjection(normalizedInputs, { defaultLoanKind });
+  // The inputs are stored before the case is resolved, because resolving a
+  // case reads the module's own case list back out of them.
+  const scenarioId = getMortgageScenarioForModule(module.id);
+  const projection = computeMortgageProjection(normalizedInputs, { defaultLoanKind, scenarioId });
 
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
@@ -3630,7 +3639,9 @@ function applyMortgageProjectionToModule(module, { updateSummary = true } = {}) 
     monthlyPayment: projection.debug?.paymentUsedMonthly,
     payoffYear: projection.debug?.payoffYear,
     totalInterestLifetime: projection.debug?.totalInterestLifetime,
-    totalPaidLifetime: projection.debug?.totalPaidLifetime
+    totalPaidLifetime: projection.debug?.totalPaidLifetime,
+    scenarioId: projection.debug?.scenarioId,
+    interestSaved: projection.debug?.interestSaved
   });
 
   appState.lastValidProjectionByModuleId.set(module.id, {
@@ -6760,6 +6771,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.netRetirementScenarioByModuleId = new Map();
   appState.housePurchaseScenarioByModuleId = new Map();
   appState.pbsScenarioByModuleId = new Map();
+  appState.mortgageScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -8225,6 +8237,113 @@ function setPbsScenarioForModule(moduleId, scenarioId) {
   const uiState = ensureModuleUi(module);
   if (uiState) {
     uiState.pbsScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+function getMortgageScenarioCasesForModule(module) {
+  const inputs = getLoanEngineInputs(module);
+  if (!inputs) {
+    return [];
+  }
+
+  try {
+    return getMortgageScenarioCases(inputs, {
+      defaultLoanKind: getDefaultLoanKindForSource(getLoanEngineSource(module), inputs)
+    });
+  } catch (_error) {
+    // A payload the engine will not accept has no cases to offer. The apply
+    // path already reports why; a switcher is not the place to say it again.
+    return [];
+  }
+}
+
+function getMortgageScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getMortgageScenarioCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.mortgageScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.mortgageScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.mortgageScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  // A remembered case that the payload no longer contains is forgotten rather
+  // than shown, so an edited module opens on its own base instead of a case
+  // that has gone.
+  appState.mortgageScenarioByModuleId.delete(moduleId);
+  return getDefaultMortgageScenarioIdForModule(module) || cases[0].id;
+}
+
+function getDefaultMortgageScenarioIdForModule(module) {
+  const inputs = getLoanEngineInputs(module);
+  if (!inputs) {
+    return '';
+  }
+
+  try {
+    return getDefaultMortgageScenarioId(inputs, {
+      defaultLoanKind: getDefaultLoanKindForSource(getLoanEngineSource(module), inputs)
+    });
+  } catch (_error) {
+    return '';
+  }
+}
+
+function setMortgageScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getMortgageScenarioCasesForModule(module);
+  const nextCase = cases.find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getMortgageScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.mortgageScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // The decision panel and the side-by-side table have already swapped
+  // themselves; this brings the cards outside that host -- summary,
+  // assumptions, outputs and charts -- onto the same case.
+  if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
+    patchFocusedModuleGeneratedContent(moduleId, {
+      patchSummary: true,
+      patchAssumptions: true,
+      patchOutputs: true,
+      updateCharts: true,
+      replaceCharts: true
+    });
+  } else if (appState.mode === 'overview') {
+    refreshOverview({ enableSortable: !runtimeConfig.readOnly });
+  }
+
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.mortgageScenarioId = nextCase.id;
   }
   module.updatedAt = nowIso();
   scheduleSessionSave();
@@ -11161,6 +11280,10 @@ export async function initApp(options = {}) {
       setPbsScenarioForModule(moduleId, scenarioId);
     };
     window.__getPbsScenarioForModule = (moduleId) => getPbsScenarioForModule(moduleId);
+    window.__setMortgageScenario = (moduleId, scenarioId) => {
+      setMortgageScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getMortgageScenarioForModule = (moduleId) => getMortgageScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runCollegeFundingMathTests = () => runCollegeFundingMathTests();

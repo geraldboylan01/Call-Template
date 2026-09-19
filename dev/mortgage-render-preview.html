@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mortgage case comparison - render preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      body { margin: 0; padding: 20px; background: #0b1218; }
+      .preview-note {
+        max-width: 1100px; margin: 0 auto 16px; padding: 10px 12px;
+        border: 1px solid rgba(133, 177, 226, 0.26); border-radius: 10px;
+        background: rgba(5, 14, 27, 0.58); color: #cfe0f2;
+        font: 500 0.8rem/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      }
+      #mount { max-width: 1100px; margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <p class="preview-note">
+      Dev preview of the mortgage case comparison, rendered by the real
+      <code>buildGeneratedSection</code>. Not shipped and not part of any build.
+    </p>
+    <div id="mount"></div>
+    <script src="../js/vendor/chart.umd.min.js"></script>
+    <script type="module">
+      import { buildFocusedPane, getChartHydrationModule, patchFocusedGeneratedCards } from '../js/render.js';
+      import { renderChartsForPane, updateChartsForPane } from '../js/charts.js';
+      import { normalizeMortgageInputs } from '../js/mortgage_math.js';
+
+      const mortgageInputs = normalizeMortgageInputs({
+        currentBalance: 320000,
+        annualInterestRate: 0.0425,
+        startDateIso: '2026-01-01',
+        endDateIso: '2052-12-01',
+        repaymentType: 'repayment',
+        loanKind: 'mortgage',
+        overpaymentBenefit: 'shorterTerm',
+        baseScenarioId: 'current',
+        scenarios: [
+          { id: 'current', title: 'No overpayment', oneOffOverpayment: 0, annualOverpayment: 0 },
+          { id: 'annual-3k', title: '3,000 a year', annualOverpayment: 3000 },
+          { id: 'lump-25k', title: '25,000 lump sum', oneOffOverpayment: 25000 },
+          { id: 'both', title: 'Lump sum and 3,000 a year', oneOffOverpayment: 25000, annualOverpayment: 3000 }
+        ]
+      });
+
+      const module = {
+        id: 'preview-mortgage',
+        title: 'Mortgage Projection - Preview',
+        generated: {
+          summaryHtml: '<p>Placeholder summary; the engine replaces this on apply.</p>',
+          assumptions: { columns: [], rows: [] },
+          outputs: { columns: [], rows: [] },
+          tables: [],
+          charts: [],
+          mortgageInputs
+        },
+        media: [],
+        ui: {}
+      };
+
+      // The bridges app.js normally provides. Selection is kept in memory here
+      // so the switcher behaves exactly as it does in the app.
+      let selectedId = 'current';
+      window.__getMortgageScenarioForModule = () => selectedId;
+      window.__setMortgageScenario = (_moduleId, scenarioId) => {
+        selectedId = scenarioId;
+        // The renderer has already swapped the decision panel and the table in
+        // place. In the app this is where the cards OUTSIDE that host get
+        // patched; here only the charts are refreshed, so the swap and its
+        // count-up stay exactly as the app performs them.
+        // Synchronous, exactly as setMortgageScenarioForModule does it.
+        {
+          patchFocusedGeneratedCards({
+            focusedCard: host.querySelector('.focused-module-card'),
+            module,
+            readOnly: true,
+            patchSummary: true,
+            patchAssumptions: true,
+            patchOutputs: true,
+            patchCharts: true
+          });
+          renderChartsForPane(host, getChartHydrationModule(module), {
+            clientName: 'Preview',
+            moduleTitle: module.title,
+            paneKey: 'preview'
+          });
+        }
+      };
+
+      const host = document.getElementById('mount');
+      function mount({ keepScroll = false } = {}) {
+        const scrollY = keepScroll ? window.scrollY : 0;
+        host.replaceChildren(buildFocusedPane({ module, moduleNumber: 1, moduleCount: 1, readOnly: true }));
+        renderChartsForPane(host, getChartHydrationModule(module), {
+          clientName: 'Preview',
+          moduleTitle: module.title,
+          paneKey: 'preview'
+        });
+        updateChartsForPane(host, getChartHydrationModule(module), { clientName: 'Preview', moduleTitle: module.title, paneKey: 'preview' });
+        if (keepScroll) window.scrollTo(0, scrollY);
+      }
+
+      mount();
+      window.__previewMount = mount;
+    </script>
+  </body>
+</html>

@@ -1423,6 +1423,69 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   min-width: 0;
 }
 
+/* The mortgage case comparison reuses the retirement decision-panel language:
+   one hero figure, tone chips, and a grid of case cards. Only the things that
+   are genuinely different are declared here. */
+
+.mortgage-scenario-content-host {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.mortgage-scenario-content {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  transition: opacity 180ms ease, transform 180ms ease, filter 220ms ease;
+}
+
+.mortgage-scenario-content.is-entering {
+  opacity: 0.62;
+  transform: translateY(4px);
+}
+
+.mortgage-scenario-content-highlight {
+  animation: pbs-content-highlight 680ms ease;
+}
+
+.mortgage-decision-panel {
+  grid-column: auto;
+}
+
+/* Four cases need to stay readable side by side, so they are allowed to be
+   narrower than the retirement pair they inherit from. */
+.mortgage-decision-panel .retirement-scenario-options {
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+}
+
+.mortgage-scenario-card {
+  min-height: 74px;
+}
+
+.mortgage-comparison-card {
+  grid-column: auto;
+  min-height: 0;
+}
+
+.mortgage-comparison-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.mortgage-comparison-table th:not(:first-child),
+.mortgage-comparison-table td:not(:first-child) {
+  text-align: right;
+}
+
+.mortgage-comparison-table th[data-active-case],
+.mortgage-comparison-table td[data-active-case] {
+  background: rgba(56, 189, 248, 0.11);
+}
+
+.mortgage-comparison-table th[data-active-case] {
+  color: #f8fbff;
+  box-shadow: inset 0 -2px 0 rgba(56, 189, 248, 0.64);
+}
+
 .pbs-scenario-switcher {
   display: flex;
   align-items: flex-start;
@@ -3238,6 +3301,15 @@ a.liquidity-evidence-source:focus-visible {
 
   .retirement-scenario-card {
     min-height: 78px;
+  }
+
+  .mortgage-decision-panel .retirement-scenario-options {
+    grid-template-columns: 1fr;
+  }
+
+  .mortgage-comparison-table th,
+  .mortgage-comparison-table td {
+    white-space: nowrap;
   }
 
   .pbs-table-frame {

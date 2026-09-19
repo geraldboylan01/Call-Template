@@ -18,7 +18,7 @@
   "implementation": {
     "status": "engine",
     "intakeContract": "approved",
-    "scenarioAware": false,
+    "scenarioAware": true,
     "playbook": "12_mortgage_playbook.md",
     "outputKey": "generated.mortgageInputs",
     "hasRunnableEngine": true

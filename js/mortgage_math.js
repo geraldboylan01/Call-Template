@@ -1,3 +1,5 @@
+import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
+
 function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -95,6 +97,35 @@ function round2(value) {
  */
 const SETTLEMENT_EPSILON = 0.005;
 
+/**
+ * WHO KEEPS THE BENEFIT OF A CAPITAL REDUCTION.
+ *
+ * An Irish lender asks the borrower which they want, and the two answers are
+ * worth very different amounts of money:
+ *
+ *   shorterTerm  -- the repayment stays at the contractual figure and the loan
+ *                   finishes early. More interest saved.
+ *   lowerPayment -- the term stays and the repayment is re-amortised down.
+ *                   Cash-flow relief now, far less interest saved.
+ *
+ * This is DEFAULTED, NOT INFERRED. The engine used to derive the payment from
+ * the balance after the lump sum, which silently chose `lowerPayment` for every
+ * lump sum ever modelled -- so a lump sum showed no time saved at all and sat
+ * on screen beside a regular overpayment that did shorten the term. The two
+ * were measured on different bases and could not be compared.
+ */
+const OVERPAYMENT_BENEFITS = Object.freeze(['shorterTerm', 'lowerPayment']);
+const DEFAULT_OVERPAYMENT_BENEFIT = 'shorterTerm';
+
+/** Keys a case may restate. Everything else it inherits from the loan itself. */
+const SCENARIO_OVERRIDE_KEYS = Object.freeze([
+  'oneOffOverpayment',
+  'annualOverpayment',
+  'fixedPaymentAmount',
+  'annualInterestRate',
+  'overpaymentBenefit'
+]);
+
 function formatEuro(amount) {
   return new Intl.NumberFormat('en-IE', {
     style: 'currency',
@@ -104,8 +135,62 @@ function formatEuro(amount) {
   }).format(isFiniteNumber(amount) ? amount : 0);
 }
 
+/** Money for a headline, where cents are noise. */
+function formatEuroWhole(amount) {
+  return new Intl.NumberFormat('en-IE', {
+    style: 'currency',
+    currency: 'EUR',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(isFiniteNumber(amount) ? amount : 0);
+}
+
 function formatPercent(decimal) {
   return `${(decimal * 100).toFixed(2)}%`;
+}
+
+const MONTH_NAMES = Object.freeze([
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+]);
+
+/** `2049-05-01` -> `May 2049`. A payoff date is read, not parsed. */
+export function formatMonthYear(isoDate) {
+  if (typeof isoDate !== 'string') {
+    return '';
+  }
+
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(isoDate.trim());
+  if (!match) {
+    return '';
+  }
+
+  const monthIndex = Number(match[2]) - 1;
+  if (monthIndex < 0 || monthIndex > 11) {
+    return '';
+  }
+
+  return `${MONTH_NAMES[monthIndex]} ${match[1]}`;
+}
+
+/** `43` -> `3 yrs 7 mths`. Clients hear years, not months. */
+export function formatMonthsDuration(months) {
+  if (!isFiniteNumber(months) || Math.round(months) <= 0) {
+    return 'None';
+  }
+
+  const total = Math.round(months);
+  const years = Math.floor(total / 12);
+  const remainder = total % 12;
+  const parts = [];
+
+  if (years > 0) {
+    parts.push(`${years} ${years === 1 ? 'yr' : 'yrs'}`);
+  }
+  if (remainder > 0) {
+    parts.push(`${remainder} ${remainder === 1 ? 'mth' : 'mths'}`);
+  }
+
+  return parts.join(' ');
 }
 
 function normalizeLoanKind(rawLoanKind, defaultLoanKind = 'mortgage') {
@@ -132,6 +217,179 @@ function getLoanWording(loanKind) {
     noun: normalized,
     titleCase: normalized === 'loan' ? 'Loan' : 'Mortgage'
   };
+}
+
+function normalizeOverpaymentBenefit(value, fallback, fieldName) {
+  if (typeof value === 'undefined' || value === null || String(value).trim() === '') {
+    return fallback;
+  }
+
+  const normalized = String(value).trim();
+  if (!OVERPAYMENT_BENEFITS.includes(normalized)) {
+    throw new Error(
+      `generated.mortgageInputs.${fieldName} must be "shorterTerm" or "lowerPayment" when provided.`
+    );
+  }
+
+  return normalized;
+}
+
+function normalizeScenarioId(value, fallback, fieldName) {
+  if (typeof value === 'undefined' || value === null || String(value).trim() === '') {
+    if (fallback === null) {
+      throw new Error(`generated.mortgageInputs.${fieldName} must be a non-empty string.`);
+    }
+    return fallback;
+  }
+
+  return String(value).trim();
+}
+
+function has(raw, key) {
+  return Object.prototype.hasOwnProperty.call(raw, key)
+    && typeof raw[key] !== 'undefined';
+}
+
+/**
+ * One comparison case.
+ *
+ * A case carries ONLY what it restates. Everything absent is inherited at
+ * resolution time, so a case that changes nothing but the annual overpayment
+ * says exactly that, and a later change to the loan's rate reaches every case
+ * that did not override it.
+ */
+function normalizeMortgageScenario(rawCase, index) {
+  const label = `scenarios[${index}]`;
+  if (!rawCase || typeof rawCase !== 'object' || Array.isArray(rawCase)) {
+    throw new Error(`generated.mortgageInputs.${label} must be an object.`);
+  }
+
+  const id = normalizeScenarioId(rawCase.id, `case-${index + 1}`, `${label}.id`);
+  const title = typeof rawCase.title === 'string' && rawCase.title.trim()
+    ? rawCase.title.trim()
+    : `Case ${index + 1}`;
+  const description = typeof rawCase.description === 'string' && rawCase.description.trim()
+    ? rawCase.description.trim()
+    : (typeof rawCase.interpretation === 'string' ? rawCase.interpretation.trim() : '');
+
+  // THIS NORMALISER MUST BE IDEMPOTENT.
+  //
+  // An authored case states its changes flat -- `{ id, annualOverpayment }` --
+  // but this function returns them nested under `overrides`, and the app stores
+  // what this function returned. Every later render, and every session reload,
+  // normalises that stored shape again. Reading only the flat keys would find
+  // none the second time round and quietly return a case that changes nothing:
+  // four buttons, four identical answers, and no error anywhere.
+  const rawScenario = rawCase.overrides && typeof rawCase.overrides === 'object'
+    && !Array.isArray(rawCase.overrides)
+    ? rawCase.overrides
+    : rawCase;
+
+  const overrides = {};
+
+  if (has(rawScenario, 'oneOffOverpayment')) {
+    const amount = optionalFiniteNumber(rawScenario.oneOffOverpayment, 0, `${label}.oneOffOverpayment`);
+    if (amount < 0) {
+      throw new Error(`generated.mortgageInputs.${label}.oneOffOverpayment must be greater than or equal to 0.`);
+    }
+    overrides.oneOffOverpayment = amount;
+  }
+
+  if (has(rawScenario, 'annualOverpayment')) {
+    const amount = optionalFiniteNumber(rawScenario.annualOverpayment, 0, `${label}.annualOverpayment`);
+    if (amount < 0) {
+      throw new Error(`generated.mortgageInputs.${label}.annualOverpayment must be greater than or equal to 0.`);
+    }
+    overrides.annualOverpayment = amount;
+  }
+
+  if (has(rawScenario, 'fixedPaymentAmount')) {
+    if (rawScenario.fixedPaymentAmount === null) {
+      overrides.fixedPaymentAmount = null;
+    } else {
+      const amount = requireFiniteNumber(rawScenario.fixedPaymentAmount, `${label}.fixedPaymentAmount`);
+      if (amount <= 0) {
+        throw new Error(`generated.mortgageInputs.${label}.fixedPaymentAmount must be greater than 0 when provided.`);
+      }
+      overrides.fixedPaymentAmount = amount;
+    }
+  }
+
+  if (has(rawScenario, 'annualInterestRate')) {
+    const rate = requireFiniteNumber(rawScenario.annualInterestRate, `${label}.annualInterestRate`);
+    if (rate < 0) {
+      throw new Error(`generated.mortgageInputs.${label}.annualInterestRate must be greater than or equal to 0.`);
+    }
+    overrides.annualInterestRate = rate;
+  }
+
+  if (has(rawScenario, 'overpaymentBenefit')) {
+    overrides.overpaymentBenefit = normalizeOverpaymentBenefit(
+      rawScenario.overpaymentBenefit,
+      DEFAULT_OVERPAYMENT_BENEFIT,
+      `${label}.overpaymentBenefit`
+    );
+  }
+
+  // The term is one fact expressed two ways, so a case restates it as a PAIR.
+  // Overriding only `endDateIso` while the loan carries `remainingTermYears`
+  // would leave both set, and the engine would silently prefer the end date.
+  const hasEndDate = has(rawScenario, 'endDateIso') && rawScenario.endDateIso !== null;
+  const hasRemainingTerm = has(rawScenario, 'remainingTermYears') && rawScenario.remainingTermYears !== null;
+
+  if (hasEndDate && hasRemainingTerm) {
+    throw new Error(
+      `generated.mortgageInputs.${label} must provide at most one of endDateIso or remainingTermYears.`
+    );
+  }
+
+  if (hasEndDate) {
+    const endMonthDate = toMonthStartUtc(parseIsoDateStrict(rawScenario.endDateIso, `${label}.endDateIso`));
+    overrides.endDateIso = formatIsoDateUtc(endMonthDate);
+    overrides.remainingTermYears = null;
+  }
+
+  if (hasRemainingTerm) {
+    const years = requireFiniteNumber(rawScenario.remainingTermYears, `${label}.remainingTermYears`);
+    if (years <= 0) {
+      throw new Error(`generated.mortgageInputs.${label}.remainingTermYears must be greater than 0.`);
+    }
+    overrides.remainingTermYears = years;
+    overrides.endDateIso = null;
+  }
+
+  return { id, title, description, overrides };
+}
+
+function normalizeMortgageScenarios(rawScenarios) {
+  if (typeof rawScenarios === 'undefined' || rawScenarios === null) {
+    return null;
+  }
+
+  if (!Array.isArray(rawScenarios)) {
+    throw new Error('generated.mortgageInputs.scenarios must be an array when provided.');
+  }
+
+  if (rawScenarios.length === 0) {
+    return null;
+  }
+
+  if (rawScenarios.length > MAX_MODULE_SCENARIO_CASES) {
+    throw new Error(
+      `generated.mortgageInputs.scenarios supports at most ${MAX_MODULE_SCENARIO_CASES} cases; `
+      + `received ${rawScenarios.length}.`
+    );
+  }
+
+  const usedIds = new Set();
+  return rawScenarios.map((rawScenario, index) => {
+    const scenario = normalizeMortgageScenario(rawScenario, index);
+    if (usedIds.has(scenario.id)) {
+      throw new Error(`generated.mortgageInputs.scenarios[${index}].id must be unique.`);
+    }
+    usedIds.add(scenario.id);
+    return scenario;
+  });
 }
 
 export function normalizeMortgageInputs(raw, { defaultLoanKind = 'mortgage' } = {}) {
@@ -203,7 +461,23 @@ export function normalizeMortgageInputs(raw, { defaultLoanKind = 'mortgage' } = 
     throw new Error('generated.mortgageInputs.annualOverpayment must be greater than or equal to 0.');
   }
 
+  const overpaymentBenefit = normalizeOverpaymentBenefit(
+    raw.overpaymentBenefit,
+    DEFAULT_OVERPAYMENT_BENEFIT,
+    'overpaymentBenefit'
+  );
+
   const loanKind = normalizeLoanKind(raw.loanKind, defaultLoanKind);
+  const scenarios = normalizeMortgageScenarios(raw.scenarios);
+
+  let baseScenarioId = null;
+  if (scenarios) {
+    const requested = typeof raw.baseScenarioId === 'string' ? raw.baseScenarioId.trim() : '';
+    if (requested && !scenarios.some((scenario) => scenario.id === requested)) {
+      throw new Error('generated.mortgageInputs.baseScenarioId must match a scenario id.');
+    }
+    baseScenarioId = requested || scenarios[0].id;
+  }
 
   return {
     loanKind,
@@ -215,8 +489,59 @@ export function normalizeMortgageInputs(raw, { defaultLoanKind = 'mortgage' } = 
     repaymentType,
     fixedPaymentAmount,
     oneOffOverpayment,
-    annualOverpayment
+    annualOverpayment,
+    overpaymentBenefit,
+    baseScenarioId,
+    scenarios
   };
+}
+
+/** The loan as one case sees it: inherited facts, with that case's changes applied. */
+function resolveScenarioInputs(inputs, scenario) {
+  const resolved = {
+    loanKind: inputs.loanKind,
+    currentBalance: inputs.currentBalance,
+    annualInterestRate: inputs.annualInterestRate,
+    startDateIso: inputs.startDateIso,
+    endDateIso: inputs.endDateIso,
+    remainingTermYears: inputs.remainingTermYears,
+    repaymentType: inputs.repaymentType,
+    fixedPaymentAmount: inputs.fixedPaymentAmount,
+    oneOffOverpayment: inputs.oneOffOverpayment,
+    annualOverpayment: inputs.annualOverpayment,
+    overpaymentBenefit: inputs.overpaymentBenefit
+  };
+
+  if (scenario) {
+    Object.assign(resolved, scenario.overrides);
+  }
+
+  return resolved;
+}
+
+/** Every case this payload describes, in payload order. A bare loan is one case. */
+function getScenarioList(inputs) {
+  if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
+    return inputs.scenarios;
+  }
+
+  return [{
+    id: 'base',
+    title: getLoanWording(inputs.loanKind).titleCase === 'Loan' ? 'Current loan' : 'Current mortgage',
+    description: '',
+    overrides: {}
+  }];
+}
+
+function resolveBaseScenario(inputs, scenarios) {
+  if (inputs.baseScenarioId) {
+    const match = scenarios.find((scenario) => scenario.id === inputs.baseScenarioId);
+    if (match) {
+      return match;
+    }
+  }
+
+  return scenarios[0];
 }
 
 function resolveTermMonths(inputs) {
@@ -317,17 +642,35 @@ function aggregateAnnualSchedule(monthlySchedule) {
 }
 
 export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
-  const inputs = normalizeMortgageInputs(rawInputs, options);
+  const { scenarioId, ...normalizeOptions } = options;
+  const normalized = normalizeMortgageInputs(rawInputs, normalizeOptions);
+  const scenarios = getScenarioList(normalized);
+  const selected = scenarios.find((scenario) => scenario.id === scenarioId)
+    || resolveBaseScenario(normalized, scenarios);
+  const inputs = resolveScenarioInputs(normalized, selected);
   const term = resolveTermMonths(inputs);
   const monthlyRate = inputs.annualInterestRate / 12;
 
+  const lumpSumApplied = Math.min(inputs.oneOffOverpayment, inputs.currentBalance);
   const openingBalance = Math.max(0, inputs.currentBalance - inputs.oneOffOverpayment);
-  const monthlyPaymentUsed = inputs.fixedPaymentAmount === null
-    ? computeMonthlyPayment(openingBalance, inputs.annualInterestRate, term.monthCount)
+
+  // The contractual payment is the one the loan agreement already sets: it is
+  // derived from the balance BEFORE any overpayment, because a lump sum the
+  // client has not paid yet cannot be what their repayment was calculated on.
+  const contractualPayment = inputs.fixedPaymentAmount === null
+    ? computeMonthlyPayment(inputs.currentBalance, inputs.annualInterestRate, term.monthCount)
     : inputs.fixedPaymentAmount;
+
+  const takesLowerPayment = inputs.fixedPaymentAmount === null
+    && inputs.overpaymentBenefit === 'lowerPayment';
+  const monthlyPaymentUsed = takesLowerPayment
+    ? computeMonthlyPayment(openingBalance, inputs.annualInterestRate, term.monthCount)
+    : contractualPayment;
 
   const monthlySchedule = [];
   let balance = openingBalance;
+  let paymentOverpaymentTotal = 0;
+  let annualOverpaymentTotal = 0;
 
   for (let monthIndex = 0; monthIndex < term.monthCount && balance > SETTLEMENT_EPSILON; monthIndex += 1) {
     const periodDate = addUtcMonths(term.startMonthDate, monthIndex);
@@ -345,6 +688,18 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
     let totalPaid = interestPaid + principalPaid;
     balance = balanceStart - principalPaid;
 
+    // What the client put in above the contractual repayment this month. The
+    // final month is clipped to the balance, so this is measured from what was
+    // actually paid rather than from the headline payment.
+    //
+    // Thresholded for the same reason a balance is: subtracting two floats that
+    // should be equal leaves a residue, and three hundred of those residues
+    // added up is enough to report a client who overpaid nothing as having
+    // "paid in" a sum, and to divide their interest saved by it.
+    const paymentDifference = totalPaid - contractualPayment;
+    const paymentOverpayment = paymentDifference > SETTLEMENT_EPSILON ? paymentDifference : 0;
+    paymentOverpaymentTotal += paymentOverpayment;
+
     const nextDate = monthIndex + 1 < term.monthCount
       ? addUtcMonths(term.startMonthDate, monthIndex + 1)
       : null;
@@ -356,6 +711,7 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
       principalPaid += annualOverpaymentApplied;
       totalPaid += annualOverpaymentApplied;
       balance -= annualOverpaymentApplied;
+      annualOverpaymentTotal += annualOverpaymentApplied;
     }
 
     monthlySchedule.push({
@@ -366,6 +722,7 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
       interestPaid,
       principalPaid,
       totalPaid,
+      paymentOverpayment,
       annualOverpaymentApplied,
       balanceEnd: balance
     });
@@ -385,12 +742,21 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
 
   return {
     inputs,
+    scenarioId: selected.id,
+    scenarioTitle: selected.title,
+    scenarioDescription: selected.description,
     startMonthIso: formatIsoDateUtc(term.startMonthDate),
     endMonthIso: formatIsoDateUtc(term.endMonthDate),
     termMonthsPlanned: term.monthCount,
     monthlyRate,
+    contractualPayment,
     monthlyPaymentUsed,
+    overpaymentBenefit: inputs.overpaymentBenefit,
     openingBalance,
+    lumpSumApplied,
+    annualOverpaymentTotal,
+    paymentOverpaymentTotal,
+    totalOverpaid: lumpSumApplied + annualOverpaymentTotal + paymentOverpaymentTotal,
     balanceRemaining: balance,
     monthsSimulated: monthlySchedule.length,
     payoffDateIso: payoffMonth ? payoffMonth.dateIso : null,
@@ -403,8 +769,292 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
   };
 }
 
+/**
+ * What each case is worth, measured against the base.
+ *
+ * The base is whichever case the payload nominates -- usually "no overpayment",
+ * but a household that already overpays should see the next step measured from
+ * where they actually stand, not from a position they left years ago.
+ */
+export function computeMortgageComparison(rawInputs, options = {}) {
+  const { scenarioId: _ignored, ...normalizeOptions } = options;
+  const normalized = normalizeMortgageInputs(rawInputs, normalizeOptions);
+  const scenarios = getScenarioList(normalized);
+  const baseScenario = resolveBaseScenario(normalized, scenarios);
+
+  const projections = new Map(scenarios.map((scenario) => [
+    scenario.id,
+    computeAmortizationMonthlySchedule(rawInputs, { ...normalizeOptions, scenarioId: scenario.id })
+  ]));
+
+  const baseProjection = projections.get(baseScenario.id);
+
+  const cases = scenarios.map((scenario) => {
+    const projection = projections.get(scenario.id);
+    const isBase = scenario.id === baseScenario.id;
+    const interestSaved = baseProjection.totalInterestLifetime - projection.totalInterestLifetime;
+    const monthsSaved = baseProjection.monthsSimulated - projection.monthsSimulated;
+    const totalOverpaid = projection.totalOverpaid;
+
+    return {
+      id: scenario.id,
+      title: scenario.title,
+      description: scenario.description,
+      isBase,
+      projection,
+      monthlyPaymentUsed: projection.monthlyPaymentUsed,
+      paymentDelta: projection.monthlyPaymentUsed - baseProjection.monthlyPaymentUsed,
+      payoffDateIso: projection.payoffDateIso,
+      payoffYear: projection.payoffYear,
+      monthsSimulated: projection.monthsSimulated,
+      balanceRemaining: projection.balanceRemaining,
+      totalInterestLifetime: projection.totalInterestLifetime,
+      totalPaidLifetime: projection.totalPaidLifetime,
+      totalOverpaid,
+      interestSaved: isBase ? 0 : interestSaved,
+      monthsSaved: isBase ? 0 : monthsSaved,
+      // A case that saves interest without overpaying -- a rate switch, a
+      // re-term -- has no euro to divide by, and inventing one would dress a
+      // different decision up as a return on the client's cash.
+      savedPerEuroOverpaid: !isBase && totalOverpaid > SETTLEMENT_EPSILON
+        ? interestSaved / totalOverpaid
+        : null
+    };
+  });
+
+  const hasScenarios = Array.isArray(normalized.scenarios) && normalized.scenarios.length > 1;
+  const comparison = {
+    baseScenarioId: baseScenario.id,
+    baseCase: cases.find((item) => item.isBase) || cases[0],
+    cases,
+    hasScenarios
+  };
+
+  // Built here rather than by the caller so the side-by-side table and the
+  // per-case figures can never disagree about what a case is worth.
+  comparison.comparisonTable = hasScenarios
+    ? buildComparisonTable(comparison, getLoanWording(normalized.loanKind))
+    : null;
+
+  return comparison;
+}
+
+/** The case list a switcher renders, each with the outcome it leads to. */
+export function getMortgageScenarioCases(rawInputs, options = {}) {
+  const comparison = computeMortgageComparison(rawInputs, options);
+
+  return comparison.cases.map((item) => ({
+    id: item.id,
+    title: item.title,
+    detail: buildScenarioCaseDetail(item)
+  }));
+}
+
+export function getDefaultMortgageScenarioId(rawInputs, options = {}) {
+  const { scenarioId: _ignored, ...normalizeOptions } = options;
+  const normalized = normalizeMortgageInputs(rawInputs, normalizeOptions);
+  return resolveBaseScenario(normalized, getScenarioList(normalized)).id;
+}
+
+/** The one line a case button shows, so the answer is readable before the click. */
+function buildScenarioCaseDetail(item) {
+  if (item.isBase) {
+    const finishes = item.payoffDateIso
+      ? `Finishes ${formatMonthYear(item.payoffDateIso)}`
+      : 'Not repaid within the term';
+    return `${finishes} · ${formatEuroWhole(item.totalInterestLifetime)} interest`;
+  }
+
+  const parts = [`Saves ${formatEuroWhole(item.interestSaved)}`];
+  if (item.monthsSaved > 0) {
+    parts.push(`${formatMonthsDuration(item.monthsSaved)} earlier`);
+  } else if (item.paymentDelta < -0.005) {
+    parts.push(`${formatEuroWhole(Math.abs(item.paymentDelta))} a month lower`);
+  }
+
+  return parts.join(' · ');
+}
+
+function buildComparisonTable(comparison, wording) {
+  const columns = ['Measure', ...comparison.cases.map((item) => item.title)];
+  const cell = (item, fn) => fn(item);
+
+  const rows = [
+    ['Monthly payment', ...comparison.cases.map((item) => cell(item, (c) => formatEuro(c.monthlyPaymentUsed)))],
+    [`${wording.titleCase} cleared`, ...comparison.cases.map((item) => cell(item, (c) => (
+      c.payoffDateIso ? formatMonthYear(c.payoffDateIso) : 'Not within term'
+    )))],
+    ['Time saved', ...comparison.cases.map((item) => cell(item, (c) => (
+      c.isBase ? '—' : formatMonthsDuration(c.monthsSaved)
+    )))],
+    ['Total interest', ...comparison.cases.map((item) => cell(item, (c) => formatEuro(c.totalInterestLifetime)))],
+    ['Interest saved', ...comparison.cases.map((item) => cell(item, (c) => (
+      c.isBase ? '—' : formatEuro(c.interestSaved)
+    )))],
+    ['Total overpaid', ...comparison.cases.map((item) => cell(item, (c) => (
+      c.totalOverpaid > SETTLEMENT_EPSILON ? formatEuro(c.totalOverpaid) : '—'
+    )))],
+    ['Saved per €1 overpaid', ...comparison.cases.map((item) => cell(item, (c) => (
+      c.savedPerEuroOverpaid === null ? '—' : formatEuro(c.savedPerEuroOverpaid)
+    )))],
+    ['Total paid', ...comparison.cases.map((item) => cell(item, (c) => formatEuro(c.totalPaidLifetime)))]
+  ];
+
+  return { columns, rows };
+}
+
+/** Year labels spanning every case, so two paths of different lengths line up. */
+function buildComparisonLabels(comparison, fallbackYear) {
+  const years = new Set();
+  comparison.cases.forEach((item) => {
+    item.projection.annualSchedule.forEach((row) => years.add(row.year));
+  });
+
+  if (years.size === 0) {
+    return [String(fallbackYear)];
+  }
+
+  return [...years].sort((left, right) => left - right).map((year) => String(year));
+}
+
+function buildBalanceSeries(projection, labels) {
+  const byYear = new Map(projection.annualSchedule.map((row) => [String(row.year), row.balanceEndRaw]));
+  let settled = false;
+  return labels.map((label) => {
+    if (byYear.has(label)) {
+      const value = byYear.get(label);
+      if (value <= SETTLEMENT_EPSILON) settled = true;
+      return value;
+    }
+    // Past its payoff year a case owes nothing; before its first year it has
+    // no path at all. Only the first is a zero -- the second is a gap.
+    return settled ? 0 : null;
+  });
+}
+
+function buildCumulativeInterestSeries(projection, labels) {
+  const byYear = new Map(projection.annualSchedule.map((row) => [String(row.year), row.interestPaidRaw]));
+  let running = 0;
+  let started = false;
+  return labels.map((label) => {
+    if (byYear.has(label)) {
+      running += byYear.get(label);
+      started = true;
+      return running;
+    }
+    // A repaid loan stops adding interest but keeps the total it reached, so
+    // the gap to the base case stays visible for the rest of the chart.
+    return started ? running : null;
+  });
+}
+
+function buildScenarioCharts(comparison, selectedCase, wording) {
+  if (!comparison.hasScenarios || selectedCase.isBase) {
+    return [];
+  }
+
+  const baseCase = comparison.baseCase;
+  const fallbackYear = parseIsoDateStrict(selectedCase.projection.inputs.startDateIso, 'startDateIso').getUTCFullYear();
+  const labels = buildComparisonLabels(comparison, fallbackYear);
+
+  const annotations = [];
+  if (baseCase.payoffYear) {
+    annotations.push({
+      xLabel: String(baseCase.payoffYear),
+      label: `${baseCase.title}: ${formatMonthYear(baseCase.payoffDateIso)}`,
+      tone: 'neutral'
+    });
+  }
+  if (selectedCase.payoffYear && selectedCase.payoffYear !== baseCase.payoffYear) {
+    annotations.push({
+      xLabel: String(selectedCase.payoffYear),
+      label: `Cleared ${formatMonthYear(selectedCase.payoffDateIso)}`,
+      tone: 'positive'
+    });
+  }
+
+  return [
+    {
+      id: 'mortgage-scenario-balance',
+      title: `What You Still Owe: ${selectedCase.title} vs ${baseCase.title}`,
+      subtitle: 'The shaded gap is debt cleared earlier',
+      type: 'line',
+      labels,
+      datasets: [
+        {
+          label: `Balance — ${baseCase.title}`,
+          data: buildBalanceSeries(baseCase.projection, labels)
+        },
+        {
+          label: `Balance — ${selectedCase.title}`,
+          data: buildBalanceSeries(selectedCase.projection, labels)
+        }
+      ],
+      display: { valueFormat: 'currency' },
+      annotations,
+      insights: [
+        {
+          label: 'Interest saved',
+          detail: `${formatEuroWhole(selectedCase.interestSaved)} less interest over the life of the ${wording.noun}.`
+        }
+      ]
+    },
+    {
+      id: 'mortgage-scenario-interest',
+      title: `Interest Paid So Far: ${selectedCase.title} vs ${baseCase.title}`,
+      subtitle: 'The gap between the lines is the interest saved',
+      type: 'line',
+      labels,
+      datasets: [
+        {
+          label: `Interest paid — ${baseCase.title}`,
+          data: buildCumulativeInterestSeries(baseCase.projection, labels)
+        },
+        {
+          label: `Interest paid — ${selectedCase.title}`,
+          data: buildCumulativeInterestSeries(selectedCase.projection, labels)
+        }
+      ],
+      display: { valueFormat: 'currency' },
+      insights: [
+        {
+          label: 'Where the saving comes from',
+          detail: 'Clearing capital sooner means less balance for interest to be charged on every month after.'
+        }
+      ]
+    }
+  ];
+}
+
+function buildSummarySentences(projection, comparison, selectedCase, wording) {
+  const sentences = [
+    `Monthly repayments are modelled from an opening ${wording.noun} balance of ${formatEuro(projection.openingBalance)} at ${formatPercent(projection.inputs.annualInterestRate)} interest.`,
+    `The payment used is ${formatEuro(projection.monthlyPaymentUsed)} per month, with annual overpayments of ${formatEuro(projection.inputs.annualOverpayment)} applied at each year-end.`,
+    projection.payoffYear
+      ? `On this path the ${wording.noun} is projected to be fully repaid in ${projection.payoffYear}.`
+      : `On this path the ${wording.noun} is not fully repaid by ${projection.endMonthIso}, leaving ${formatEuro(projection.balanceRemaining)} outstanding.`,
+    `Total lifetime interest is ${formatEuro(projection.totalInterestLifetime)} and total paid is ${formatEuro(projection.totalPaidLifetime)}.`
+  ];
+
+  if (comparison.hasScenarios && !selectedCase.isBase) {
+    const parts = [`Against ${comparison.baseCase.title}, this case saves ${formatEuro(selectedCase.interestSaved)} of interest`];
+    if (selectedCase.monthsSaved > 0) {
+      parts.push(`and clears the ${wording.noun} ${formatMonthsDuration(selectedCase.monthsSaved)} earlier`);
+    }
+    if (selectedCase.savedPerEuroOverpaid !== null) {
+      parts.push(`— ${formatEuro(selectedCase.savedPerEuroOverpaid)} saved for every €1 paid in`);
+    }
+    sentences.push(`${parts.join(' ')}.`);
+  }
+
+  return sentences;
+}
+
 export function computeMortgageProjection(rawInputs, options = {}) {
-  const projection = computeAmortizationMonthlySchedule(rawInputs, options);
+  const { scenarioId, ...normalizeOptions } = options;
+  const comparison = computeMortgageComparison(rawInputs, normalizeOptions);
+  const selectedCase = comparison.cases.find((item) => item.id === scenarioId) || comparison.baseCase;
+  const projection = selectedCase.projection;
   const annualSchedule = projection.annualSchedule;
   const wording = getLoanWording(projection.inputs.loanKind);
   const currentBalanceLabel = wording.noun === 'loan' ? 'Current loan balance' : 'Current balance';
@@ -438,6 +1088,7 @@ export function computeMortgageProjection(rawInputs, options = {}) {
       [termLabel, `${projection.termMonthsPlanned} months`, `${projection.startMonthIso} to ${projection.endMonthIso}`],
       ['Repayment type', projection.inputs.repaymentType, 'V1 supports amortising repayment only'],
       ['Annual overpayment', formatEuro(projection.inputs.annualOverpayment), 'Applied at each calendar year-end'],
+      ['Overpayment benefit', projection.overpaymentBenefit === 'lowerPayment' ? 'Lower repayment' : 'Shorter term', projection.overpaymentBenefit === 'lowerPayment' ? 'Repayment recalculated, term unchanged' : 'Repayment held, term shortens'],
       ['Monthly payment source', projection.inputs.fixedPaymentAmount === null ? 'Calculated' : 'Fixed input', 'Payment frequency fixed to monthly']
     ]
   };
@@ -453,6 +1104,17 @@ export function computeMortgageProjection(rawInputs, options = {}) {
       [termEndLabel, formatEuro(projection.balanceRemaining), projection.balanceRemaining > 0 ? 'Outstanding after modelled term' : `${wording.titleCase} fully repaid`]
     ]
   };
+
+  if (comparison.hasScenarios && !selectedCase.isBase) {
+    outputsTable.rows.push(
+      ['Interest saved', formatEuro(selectedCase.interestSaved), `Against ${comparison.baseCase.title}`],
+      ['Time saved', formatMonthsDuration(selectedCase.monthsSaved), `Against ${comparison.baseCase.title}`],
+      ['Total overpaid', formatEuro(selectedCase.totalOverpaid), 'Lump sum, regular overpayments and payment round-up']
+    );
+    if (selectedCase.savedPerEuroOverpaid !== null) {
+      outputsTable.rows.push(['Saved per €1 overpaid', formatEuro(selectedCase.savedPerEuroOverpaid), 'Interest saved divided by the amount paid in']);
+    }
+  }
 
   const charts = [
     {
@@ -474,31 +1136,50 @@ export function computeMortgageProjection(rawInputs, options = {}) {
           data: interestSeries
         }
       ]
-    }
+    },
+    ...buildScenarioCharts(comparison, selectedCase, wording)
   ];
 
-  const summarySentences = [
-    `Monthly repayments are modelled from an opening ${wording.noun} balance of ${formatEuro(projection.openingBalance)} at ${formatPercent(projection.inputs.annualInterestRate)} interest.`,
-    `The payment used is ${formatEuro(projection.monthlyPaymentUsed)} per month, with annual overpayments of ${formatEuro(projection.inputs.annualOverpayment)} applied at each year-end.`,
-    projection.payoffYear
-      ? `On this path the ${wording.noun} is projected to be fully repaid in ${projection.payoffYear}.`
-      : `On this path the ${wording.noun} is not fully repaid by ${projection.endMonthIso}, leaving ${formatEuro(projection.balanceRemaining)} outstanding.`,
-    `Total lifetime interest is ${formatEuro(projection.totalInterestLifetime)} and total paid is ${formatEuro(projection.totalPaidLifetime)}.`
-  ];
+  const summarySentences = buildSummarySentences(projection, comparison, selectedCase, wording);
 
   return {
     assumptionsTable,
     outputsTable,
+    comparisonTable: comparison.comparisonTable,
     charts,
     summaryHtml: `<p>${summarySentences.join(' ')}</p>`,
+    scenarioId: selectedCase.id,
     debug: {
       monthsPlanned: projection.termMonthsPlanned,
       monthsSimulated: projection.monthsSimulated,
       paymentUsedMonthly: projection.monthlyPaymentUsed,
+      contractualPayment: projection.contractualPayment,
+      overpaymentBenefit: projection.overpaymentBenefit,
       openingBalance: projection.openingBalance,
       payoffYear: projection.payoffYear,
+      payoffDateIso: projection.payoffDateIso,
       totalInterestLifetime: projection.totalInterestLifetime,
       totalPaidLifetime: projection.totalPaidLifetime,
+      totalOverpaid: projection.totalOverpaid,
+      scenarioId: selectedCase.id,
+      baseScenarioId: comparison.baseScenarioId,
+      interestSaved: selectedCase.interestSaved,
+      monthsSaved: selectedCase.monthsSaved,
+      savedPerEuroOverpaid: selectedCase.savedPerEuroOverpaid,
+      cases: comparison.cases.map((item) => ({
+        id: item.id,
+        title: item.title,
+        isBase: item.isBase,
+        monthlyPaymentUsed: item.monthlyPaymentUsed,
+        payoffDateIso: item.payoffDateIso,
+        monthsSimulated: item.monthsSimulated,
+        totalInterestLifetime: item.totalInterestLifetime,
+        totalPaidLifetime: item.totalPaidLifetime,
+        totalOverpaid: item.totalOverpaid,
+        interestSaved: item.interestSaved,
+        monthsSaved: item.monthsSaved,
+        savedPerEuroOverpaid: item.savedPerEuroOverpaid
+      })),
       annualSchedule
     }
   };
