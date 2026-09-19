@@ -30,6 +30,7 @@ import {
 } from '../realtime_analysis.js';
 import { getRealtimeAnalysisPlanExecution } from '../realtime_repository.js';
 import { classifyExecutionApproval } from './execution_approval.js';
+import { approvalAuthorisesExecution } from './approval_decision.js';
 import { classifyEvidenceAffirmation } from './evidence_affirmation.js';
 import { getCurrentProfile, getSessionRow } from '../repository.js';
 import { buildConfirmedRealtimeFactSummary, formattedFactValue } from '../realtime_fact_mapper.js';
@@ -124,6 +125,32 @@ export const LIVE_TOOL_DEFINITIONS = Object.freeze([
 ]);
 
 export const LIVE_TOOL_NAMES = Object.freeze(LIVE_TOOL_DEFINITIONS.map((tool) => tool.name));
+
+/**
+ * The tools a planning mode actually HAS, as opposed to the ones this file can
+ * describe.
+ *
+ * ONE LIST, SO THE ADVERTISED SET AND THE DISPATCHABLE SET CANNOT DIVERGE.
+ * Direct apply already stopped advertising `save_facts` -- it is absent from the
+ * provider's tool list and from the system prompt, because the background
+ * planner reads the transcript itself. The dispatcher did not know that. It
+ * validated against every name this file defines, so a model that produced the
+ * name anyway -- a hallucination, a replayed transcript, a future prompt change
+ * -- was routed into the legacy fact writer and its whole deterministic reading
+ * of client language: spoken-number extraction, owner cues, pension identity,
+ * categorical-none presence conflicts and a second approval grammar.
+ *
+ * That was never meant to be reachable under direct planning. Deriving both the
+ * advertisement and the dispatch from this one predicate is what makes
+ * "unadvertised" mean "unavailable" rather than "unmentioned".
+ */
+export function liveToolNamesForConfig(config) {
+  return LIVE_TOOL_NAMES.filter((name) => liveToolIsActive(name, config));
+}
+
+export function liveToolIsActive(name, config) {
+  return !(name === 'save_facts' && config?.modulePlannerMode === 'apply');
+}
 
 /**
  * The config the shared planning core sees.
@@ -1588,17 +1615,113 @@ function assertNoUnknownRequirementContradiction(blockedInstanceIds, analyses) {
 /* -------------------------------------------------------- confirm_and_run */
 
 /**
+ * WHY A REFUSED APPROVAL STILL HAS TO SAY SOMETHING USEFUL.
+ *
+ * The model is about to speak to a client who has just answered a question.
+ * "No" with no reason produces either a repeated question or an invented one,
+ * and the worst outcome here is the meeting re-offering a plan the client has
+ * already changed. Each code therefore carries the next conversational move,
+ * and the change case explicitly forbids re-offering the delivered plan.
+ *
+ * None of these messages quotes the client, and none of them names a figure.
+ */
+export function approvalRefusal(approval) {
+  if (approval?.decision === 'pure_approval') {
+    return {
+      ok: false,
+      code: 'confirmation_answers_other_question',
+      retryable: true,
+      message: 'That agreed with your last question, not with the plan you read back. '
+        + 'Deal with what they actually answered, then read the current plan back in full '
+        + 'and ask plainly whether to run exactly that.'
+    };
+  }
+  if (approval?.decision === 'semantic_change') {
+    return {
+      ok: false,
+      code: 'confirmation_carries_change',
+      retryable: true,
+      message: 'That answer changes the plan rather than approving it. Do not run the plan you '
+        + 'read back and do not offer it again as it stands. Acknowledge the change, let the '
+        + 'review take it in, then read the new plan back and ask again.'
+    };
+  }
+  return {
+    ok: false,
+    code: 'confirmation_required',
+    retryable: true,
+    message: 'The client has not clearly agreed yet. Ask a plain yes/no question about the plan '
+      + 'you read back, and wait for their answer.'
+  };
+}
+
+/**
  * THE ONE HARD GATE IN THE LANE.
  *
  * Everything else here is permissive by design; this is not. The model is an
- * untrusted caller: it does not get to assert that the client agreed. The
- * server reads the client's actual last words with the execution-only gate.
+ * untrusted caller: it does not get to assert that the client agreed.
+ *
+ * WHAT CHANGED, AND WHY. This gate used to read the client's actual last words
+ * itself, with a normaliser and a clause grammar. That put a deterministic
+ * reader of human language in the one place the architecture says AI should
+ * own, and it could not tell which question a "yes" was answering, could not
+ * see a correction written in a script its character class deleted, and could
+ * not weigh a condition at all. Under direct apply the coordinator now hands
+ * this tool a bounded AI decision, already bound to the exact delivered offer
+ * and the exact assistant utterance the client was answering. This gate checks
+ * WHICH DECISION CAME BACK. It never looks at the words, and it cannot promote
+ * anything the reader did not call a pure approval of this offer.
+ *
+ * The archived comparison lane is not the target architecture and is not in
+ * production; it keeps the reader it has always had.
+ *
  * Direct execution loads the certified plan frozen before its read-back; the
  * approving turn may never prepare or derive a replacement plan.
  */
 async function executeConfirmAndRun(_args, deps) {
-  const transcript = String(deps.latestClientTranscript || '');
-  if (classifyExecutionApproval(transcript) !== 'affirmed') {
+  const directApproval = deps.config?.modulePlannerMode === 'apply';
+  if (directApproval) {
+    // CONTROL FACTS FIRST, MEANING SECOND.
+    //
+    // Whether there is a current, delivered, settled offer at all is not a
+    // question about the client's words, and answering it with "you have not
+    // clearly agreed" would be a lie about the client: they may have agreed
+    // perfectly clearly to something that no longer exists, or that was never
+    // read back. The model needs to be told which of those happened, because
+    // the two have different next moves.
+    //
+    // These are coordinator-owned fields, never tool arguments. Missing audio
+    // delivery/review evidence keeps the offer alive but cannot authorise it.
+    const currentOffer = deps.directConfirmationOffer;
+    if (!currentOffer?.token || !currentOffer.planId || currentOffer.superseded === true) {
+      return { ok: false, code: 'confirmation_context_invalid', message: 'Read back the current plan before asking for confirmation.' };
+    }
+    if (currentOffer.readbackFullyDelivered !== true) {
+      return { ok: false, code: 'confirmation_readback_incomplete', message: 'The complete plan read-back has not finished. Read it back in full before confirmation.' };
+    }
+    // WHAT THEY MEANT, BEFORE WHETHER THE PLAN IS STILL SETTLED. A reply that
+    // was not an approval of this offer is very often the REASON a review is
+    // running, so "the latest answer is still being reviewed" would answer a
+    // question the client did not ask and hide the one they did. A genuine
+    // approval still meets the review check immediately below.
+    if (!approvalAuthorisesExecution(deps.executionApproval)) {
+      return approvalRefusal(deps.executionApproval);
+    }
+    // THE DECISION MUST BE ABOUT THE PLAN THAT IS ABOUT TO RUN.
+    //
+    // A reading is taken against one exact offer and one exact certificate. If
+    // either has moved since -- a review settled while the context was loading
+    // and issued a fresh offer -- then what came back is an opinion about a
+    // different proposition, and carrying it across would be the same class of
+    // defect as reusing a stale certificate. Identity, not meaning.
+    if (deps.executionApproval.offerToken !== currentOffer.token
+      || deps.executionApproval.certificateSignature !== String(currentOffer.certificateSignature || '')) {
+      return { ok: false, code: 'confirmation_context_invalid', message: 'The plan changed after the client answered. Read the current plan back in full and ask again.' };
+    }
+    if (currentOffer.reviewStatus !== 'settled' || currentOffer.reviewPending === true || currentOffer.reviewFailed === true) {
+      return { ok: false, code: 'module_planning_pending', message: 'The latest answer is still being reviewed. Keep this offer while that review completes.' };
+    }
+  } else if (classifyExecutionApproval(String(deps.latestClientTranscript || '')) !== 'affirmed') {
     return {
       ok: false,
       code: 'confirmation_required',
@@ -1612,8 +1735,9 @@ async function executeConfirmAndRun(_args, deps) {
   let expectedRevision = Number(context.sessionRow.current_profile_revision);
   let prepared;
   if (direct) {
-    // These are coordinator-owned fields, never tool arguments. Missing audio
-    // delivery/review evidence keeps the offer alive but cannot authorise it.
+    // Re-read after the context load rather than trusting the copy the gate at
+    // the top of this function saw: a review can settle while the context is
+    // loading, and the plan that executes must be the one that is current now.
     const offer = deps.directConfirmationOffer;
     if (!offer?.token || !offer.planId || offer.superseded === true) {
       return { ok: false, code: 'confirmation_context_invalid', message: 'Read back the current plan before asking for confirmation.' };
@@ -1675,6 +1799,24 @@ async function executeConfirmAndRun(_args, deps) {
     ? { ...config, allowedModules: deps.config.allowedModules }
     : config;
 
+  // ASKED AGAIN HERE, AND AGAIN BELOW, AND AGAIN AT THE ENGINE.
+  //
+  // Everything above this line is a read. Everything below it confirms a plan
+  // and runs an engine against the client's money. Between the approval being
+  // decided and this point there are several awaits -- the approval reader
+  // itself, the delivery drain that can resume a parked tool call much later,
+  // the context load, the frozen plan load -- and the client may have spoken
+  // again in any of them. Cancelling the assistant's speech does not help: the
+  // speech is not what would be wrong.
+  //
+  // This call is the cheap one: it stops a superseded approval before anything
+  // is written. It is NOT the barrier. The barrier is the same test asked
+  // synchronously at the last instruction before the engine, and it is passed
+  // down rather than evaluated here precisely so there is one definition of
+  // admission and three places that honour it.
+  const admitted = deps.admitExecution ? deps.admitExecution() : { ok: true };
+  if (!admitted.ok) return admitted.refusal;
+
   // A duplicate approval joins the existing execution receipt. Confirming the
   // profile again after completion would regress the persisted results stage.
   if (prepared.row.status === 'prepared') {
@@ -1692,6 +1834,9 @@ async function executeConfirmAndRun(_args, deps) {
   const executed = await confirmAndRunRealtimeAnalysisPlan({
     env: deps.env,
     config: executionConfig,
+    // The admission test travels with the execution. It is re-asked at the
+    // last synchronous instruction before the deterministic engine begins.
+    admitExecution: direct ? deps.admitExecution : null,
     sessionId: context.sessionRow.id,
     planId: prepared.row.id,
     planNonce: prepared.planNonce,
@@ -1757,7 +1902,15 @@ const CONFIRM_AND_RUN_STATE_CODES = Object.freeze({
   analysis_not_ready: MODULE_FAILURE_CODES.EXECUTION_FAILED,
   profile_confirmation_required: MODULE_FAILURE_CODES.READINESS_NOT_MET,
   profile_revision_conflict: MODULE_FAILURE_CODES.READINESS_NOT_MET,
-  analysis_plan_not_confirmed: MODULE_FAILURE_CODES.READINESS_NOT_MET
+  analysis_plan_not_confirmed: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  // Raised by the execution-time admission test when the client has spoken
+  // again, or the offer moved, between approval and the engine. It is not a
+  // fault: the plan simply is not the client's latest word any more, and the
+  // meeting should deal with what they just said and ask again.
+  execution_admission_withdrawn: MODULE_FAILURE_CODES.READINESS_NOT_MET,
+  // Something the client sent before this approval has not been understood
+  // yet. Also not a fault: the meeting deals with that first and asks again.
+  client_input_unresolved: MODULE_FAILURE_CODES.READINESS_NOT_MET
 });
 
 /**
@@ -1796,6 +1949,21 @@ export function assertLiveToolName(name) {
 }
 
 /**
+ * A known tool name that this planning mode does not offer.
+ *
+ * Separate from `assertLiveToolName` on purpose: "no such tool" and "not in this
+ * mode" are different facts, and an operator reading a rejected tool attempt
+ * should be able to tell them apart. Both refuse before any argument is read,
+ * so an unavailable tool cannot reach an executor at all.
+ */
+export function assertLiveToolActiveInMode(name, config) {
+  if (!liveToolIsActive(name, config)) {
+    throw new ConsumerError(400, 'live_tool_not_in_mode', 'That tool is not available in this meeting.');
+  }
+  return name;
+}
+
+/**
  * Run one tool call.
  *
  * A rejection is a normal outcome, not an error: the conversation carries on
@@ -1804,6 +1972,10 @@ export function assertLiveToolName(name) {
  */
 export async function executeLiveTool(name, args, deps) {
   assertLiveToolName(name);
+  // BEFORE ANY ARGUMENT IS READ. The caller turns this into an ordinary tool
+  // rejection, so an unavailable tool costs the conversation a beat and never
+  // reaches the executor whose parser it was trying to run.
+  assertLiveToolActiveInMode(name, deps?.config);
   if (name === 'save_facts') return executeSaveFacts(args, deps);
   if (name === 'get_state') return liveStateProjection(await deps.loadContext());
   try {

@@ -35,6 +35,7 @@ import {
   completeRealtimeToolAttempt,
   getRealtimeLease,
   getLatestRealtimeMeetingBrief,
+  getRealtimeFinalTurnByProviderItem,
   listRecentRealtimeFinalTurns,
   getRealtimeProviderCallId,
   hasUnsettledRealtimeSpeechUsage,
@@ -52,12 +53,17 @@ import { hangupOpenAiRealtimeCall } from '../realtime_provider.js';
 import { applyPlannerCandidates } from '../planning_turn.js';
 import { extractRealtimePlannerTurn } from '../realtime_planner.js';
 import { runPlannerReconciliation } from '../planner_reconciliation.js';
-import { runDirectModulePlanning, directModulePlanMeaningKey } from '../direct_module_planner.js';
+import { runDirectModulePlanning, directModulePlanMeaningKey, verifyDirectModuleCertificate } from '../direct_module_planner.js';
 import { renderLiveAssistantText } from './live_text_channel.js';
-import { buildTypedCardIndex, buildTypedCardState } from './typed_projection.js';
+import { loadStoredTypedState, projectTypedBrief } from './typed_state.js';
 import { prepareRealtimeVoiceAnalysisPlan } from '../realtime_analysis.js';
 import { valueEvidenceCoverage } from '../../../../js/planning/value_evidence.js';
 import { classifyExecutionApproval } from './execution_approval.js';
+import {
+  approvalAuthorisesExecution,
+  decideExecutionApproval,
+  EXECUTION_APPROVAL_REQUEST_V1
+} from './approval_decision.js';
 import {
   classifyRealtimeProviderError,
   realtimeTranscriptionUsageFromEvent,
@@ -66,6 +72,7 @@ import {
 import { emitSessionSummary } from '../learning_signals.js';
 import { LIVE_PROMPT_VERSION, liveDirectModuleStateItem, liveVolatileStateItem } from './catalogue_prompt.js';
 import {
+  approvalRefusal,
   executeLiveTool,
   LIVE_TOOLSET_VERSION,
   liveStateProjection,
@@ -106,6 +113,33 @@ const MAX_TYPED_MESSAGE_CHARACTERS = 4_000;
  * -- not this window -- is the authority on what is known.
  */
 const MAX_TYPED_CONTEXT_TURNS = 16;
+/**
+ * How far back the approval reader is allowed to look.
+ *
+ * It is answering one narrow question -- what did this reply mean, given what
+ * it was answering -- so it needs the read-back, whatever was said after it,
+ * and the reply itself. That exchange is short by construction: a delivered
+ * offer is either approved, changed, or retired by the next review. A wider
+ * window would only invite the reader to re-read the plan, which is not its
+ * job and not its authority.
+ */
+const MAX_APPROVAL_CONTEXT_TURNS = 12;
+/**
+ * The provider events that mean a client utterance has arrived.
+ *
+ * `speech_started` is the important one and the one that used to be missing:
+ * the clock has to move when the client STARTS speaking, because everything
+ * afterwards -- stopping, transcription, the turn record -- happens later than
+ * the moment an older approval stops being their latest word. The rest are here
+ * so a transport that never emits `speech_started` (or emits it unnamed) still
+ * registers the utterance the first time anything names it.
+ */
+const CLIENT_INPUT_ARRIVAL_EVENTS = new Set([
+  'input_audio_buffer.speech_started',
+  'input_audio_buffer.speech_stopped',
+  'conversation.item.input_audio_transcription.completed',
+  'conversation.item.input_audio_transcription.failed'
+]);
 /**
  * What Planéir opens a typed meeting with if the renderer is unavailable.
  *
@@ -385,6 +419,18 @@ export class ConsumerLiveSession {
     this.directModulePlanningChain = Promise.resolve();
     this.directModulePlanningPersistenceChain = Promise.resolve();
     this.directModulePlanningPending = 0;
+    // The planning operation a caller is blocked on: one deadline, one
+    // cancellation signal and one call allowance covering every stage inside
+    // it. Null when the only work running is background work nobody awaits.
+    this.directModulePlanningOperation = null;
+    // Every operation currently alive, blocking or background, so closing the
+    // meeting can stop all of them.
+    this.directModulePlanningOperations = new Set();
+    // Turn ids a planning pass has already been attempted for and not settled.
+    // One attempt per turn, in BOTH transports: what decides whether a failed
+    // obligation is retried is the client's next turn, never a tool call
+    // inside the current one.
+    this.directModulePlanningAttempts = new Map();
     // Finalized client turns whose direct module snapshot has not yet been
     // successfully rebuilt. This is distinct from an in-memory request count:
     // a failed request remains an obligation, including across hibernation.
@@ -446,7 +492,50 @@ export class ConsumerLiveSession {
     this.currentResponseNumericContainmentUnavailable = false;
     // Input transcription is asynchronous with response generation. Provider
     // item/response ids, not "latest" globals, own every association below.
-    this.clientTurnOrdinal = 0;
+    //
+    // THE CAUSAL ORDER OF THE MEETING, AND THE ONLY ONE.
+    //
+    // Two facts, kept separately, because a single number cannot carry both and
+    // every stale execution found so far has been a place where one was used to
+    // answer the other.
+    //
+    //   `clientInputSequence` -- HOW MUCH THE CLIENT HAS SENT. One number per
+    //   arrival, taken the instant the input reaches this object: the socket
+    //   listener before the event is queued, the typed route before the body is
+    //   read. IT ONLY EVER INCREASES. Nothing retires an arrival, unwinds it, or
+    //   lowers this: a message that arrived and then failed, was empty, was
+    //   malformed or was a retry has still arrived, and authority granted before
+    //   it can never come back. That is the whole of Astra's third failure.
+    //
+    //   `pendingClientInput` -- WHAT THE SERVER STILL DOES NOT KNOW. An arrival
+    //   sits here from the moment it is taken until the server has established
+    //   what it was: a client turn whose obligations are registered, or nothing
+    //   at all. While an arrival is pending its content is UNKNOWN, and unknown
+    //   content may be a correction. That is the whole of Astra's first and
+    //   second failures, where an approval was newer than an unread message and
+    //   a clock alone therefore called it current.
+    //
+    // Together they answer one question, which is the invariant this file
+    // enforces: does the server know everything the client has sent, and is the
+    // most recent thing they sent the turn this approval belongs to?
+    //
+    // All of it is deterministic causal state. Nothing here reads a transcript,
+    // a figure or anything the client meant.
+    this.clientInputSequence = 0;
+    this.pendingClientInput = new Map();
+    // One arrival per client utterance, not per provider event or per request.
+    // A single utterance produces speech_started, speech_stopped and a
+    // transcription naming the same item; a retried typed message names the
+    // turn it is resending. Those are one arrival each, not three and not two.
+    this.clientInputSequenceByItemId = new Map();
+    // A speech_started the provider has not named yet has still begun. It takes
+    // its sequence immediately and the first event that names the utterance
+    // adopts it, so one utterance never becomes two arrivals.
+    this.unnamedClientInputSequence = null;
+    // Holds restored from a previous instance. See the load block.
+    this.inheritedClientInput = new Set();
+    this.clientInputLedgerWrites = Promise.resolve();
+    this.propositionLedgerWrites = Promise.resolve();
     this.latestClientTranscriptOrdinal = 0;
     this.clientTurnsByItemId = new Map();
     this.unboundAutoResponseTurnIds = [];
@@ -468,7 +557,12 @@ export class ConsumerLiveSession {
     // a creation, and retiring everything on any error was equally wrong in
     // the other direction.
     // The assistant turn a new client turn will be answering.
-    this.lastCompletedAssistantTurnId = null;
+    // THE PROPOSITION A CLIENT'S NEXT REPLY IS BOUND TO. Durable; see
+    // `beginPresentation`. It replaces "the last assistant turn that happened to
+    // be stored", which moved backwards when a write failed, sideways when a late
+    // reply finished after an earlier one, and not at all across a rebuild.
+    this.propositionCursor = { rank: [0, 0], state: 'none', assistantTurnId: null, token: null };
+    this.presentationIndex = 0;
     this.pendingServerResponses = new Map();
     this.serverResponseEventSeq = 0;
     this.pendingTerminalization = null;
@@ -479,6 +573,12 @@ export class ConsumerLiveSession {
       // believing it had a provider socket would try to send on one.
       this.textChannel = this.meta?.channel === 'typed';
       this.acknowledgedUnknown = await this.state.storage.get('acknowledgedUnknown') || [];
+      if (this.textChannel && this.meta) {
+        const stored = await getLatestRealtimeMeetingBrief(this.env, this.meta.sessionId, this.meta.leaseId).catch(() => null);
+        this.typedCardIndex = (await projectTypedBrief({
+          sessionId: this.meta.sessionId, leaseId: this.meta.leaseId, brief: stored?.brief || null
+        })).index;
+      }
       // THE PROPOSITION THE NEXT CLIENT TURN ANSWERS, ACROSS AN EVICTION.
       //
       // Reply binding is the typed lane's whole confirmation guarantee: the
@@ -487,7 +587,30 @@ export class ConsumerLiveSession {
       // hibernated -- which is precisely what happens while someone reads a
       // plan and decides -- so `answersTurnId` came back null and the approval
       // no longer bound to the offer it was answering.
-      this.lastCompletedAssistantTurnId = await this.state.storage.get('lastCompletedAssistantTurnId') || null;
+      // Both ledgers come back exactly as they were written. A rebuild must not
+      // restore authority that was withheld before it, and must not forget a
+      // hold that was keeping execution closed.
+      const storedPropositions = await this.state.storage.get('propositionLedger') || null;
+      if (storedPropositions?.cursor) {
+        this.propositionCursor = storedPropositions.cursor;
+        this.presentationIndex = Number(storedPropositions.presentationIndex || 0);
+      }
+      const storedInput = await this.state.storage.get('clientInputLedger') || null;
+      if (storedInput) {
+        this.clientInputSequence = Number(storedInput.sequence || 0);
+        this.pendingClientInput = new Map(
+          (storedInput.pending || []).map((entry) => [Number(entry.sequence), entry.itemId || null])
+        );
+        this.clientInputSequenceByItemId = new Map(
+          (storedInput.byItemId || []).map((entry) => [String(entry.itemId), Number(entry.sequence)])
+        );
+        // An arrival that was outstanding when the object stopped was being
+        // decided by a request that no longer exists. Nothing in this instance
+        // will ever finish deciding it, so it is remembered as inherited: it
+        // blocks until something accountable settles it, and never merely by
+        // being forgotten.
+        this.inheritedClientInput = new Set(this.pendingClientInput.keys());
+      }
       this.violationCount = Number(await this.state.storage.get('violationCount') || 0);
       this.latestClientTranscript = await this.state.storage.get('latestClientTranscript') || '';
       this.pendingTerminalization = await this.state.storage.get('pendingTerminalization') || null;
@@ -556,7 +679,27 @@ export class ConsumerLiveSession {
       }
       if (path === '/message' && request.method === 'POST') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
-        return json(await this.handleTextMessage(await readInternalJson(request)));
+        // THE OUTERMOST INSTRUCTION THIS OBJECT RUNS FOR A TYPED MESSAGE, and
+        // it has to be, because the very next thing is an await on the body.
+        // A message whose bytes have already arrived is newer client input from
+        // this line, not from whenever reading it finishes. `handleTextMessage`
+        // settles what the ticket turns out to name; the finally retires one
+        // that named nothing, including on a throw.
+        const arrival = this.beginClientInputArrival();
+        try {
+          // ON DISK BEFORE ANYTHING ELSE. The clock already moved in memory on the
+          // line above; this makes the hold survive a rebuild before the request
+          // does any work a rebuild could interrupt. A write that fails refuses
+          // the request, and the hold stays -- nothing proceeds on a barrier that
+          // is not written down.
+          await arrival.written;
+          return json(await this.handleTextMessage(await readInternalJson(request), arrival));
+        } finally {
+          // Every path out, including a throw and a body that never arrived.
+          // This removes the reason to WAIT for this request; it does not give
+          // back the sequence it took, and cannot restore an older approval.
+          arrival.resolveAsNothing();
+        }
       }
       if (path === '/delivery' && request.method === 'POST') {
         if (!this.meta) return json({ ok: false, code: 'live_lease_unavailable' }, 404);
@@ -694,10 +837,7 @@ export class ConsumerLiveSession {
     socket.accept();
     this.webSocket = socket;
     socket.addEventListener('message', (event) => {
-      this.eventChain = this.eventChain
-        .then(() => this.handleProviderMessage(event.data))
-        .catch(() => this.terminalize('failed', 'provider_event_failed', 'live_provider_event_failed', false).catch(() => {}));
-      this.state.waitUntil(this.eventChain);
+      this.receiveProviderSocketMessage(event.data);
     });
     socket.addEventListener('close', () => {
       if (!this.closing) this.state.waitUntil(this.terminalize('failed', 'sideband_lost', 'live_sideband_lost', false).catch(() => {}));
@@ -783,6 +923,235 @@ export class ConsumerLiveSession {
     return true;
   }
 
+  /**
+   * A CLIENT UTTERANCE HAS BEGUN. Called at ingress, never from the queue.
+   *
+   * Idempotent per utterance and safe to call from every path that can be the
+   * first to see one: the socket listener runs it ahead of the serialized event
+   * chain, `handleProviderMessage` runs it again for callers that reach the
+   * handler directly, and the typed request runs it before it awaits anything.
+   * Whichever arrives first allocates; the rest read back the same number.
+   *
+   * Returns the generation this utterance owns.
+   */
+  /**
+   * A CLIENT UTTERANCE HAS ARRIVED. Called at ingress, never from the queue.
+   *
+   * Idempotent per utterance and safe to call from every path that can be the
+   * first to see one: the socket listener runs it ahead of the serialized event
+   * chain, `handleProviderMessage` runs it again for callers that reach the
+   * handler directly, and a typed request runs it before it awaits anything.
+   * Whichever arrives first takes the sequence; the rest read back the same one.
+   *
+   * The arrival is PENDING from here until `resolveClientInputArrival` says what
+   * it turned out to be. Until then the server does not know what the client
+   * said, and an approval that arrived after it may not execute past it.
+   */
+  /**
+   * THE UNRESOLVED-INPUT BARRIER, WRITTEN DOWN.
+   *
+   * Everything about which client input is still outstanding used to live in
+   * memory, so a rebuild forgot every hold -- including the ones that existed
+   * precisely because the server could not account for what the client said.
+   * The approval that was refused before the rebuild then ran after it.
+   *
+   * Written on every change, in order. The typed ingress awaits this before it
+   * reads a request body, so a typed hold is on disk before the request can do
+   * anything; speech is registered on a listener that cannot await, and relies
+   * on the socket keeping this object alive while the write lands.
+   */
+  persistClientInputLedger() {
+    const snapshot = {
+      sequence: this.clientInputSequence,
+      pending: [...this.pendingClientInput.entries()]
+        .map(([sequence, itemId]) => ({ sequence, itemId })),
+      byItemId: [...this.clientInputSequenceByItemId.entries()]
+        .map(([itemId, sequence]) => ({ itemId, sequence }))
+    };
+    this.clientInputLedgerWrites = this.clientInputLedgerWrites
+      .catch(() => {})
+      .then(() => this.state.storage.put('clientInputLedger', snapshot));
+    this.state.waitUntil(this.clientInputLedgerWrites.catch(() => {}));
+    return this.clientInputLedgerWrites;
+  }
+
+  registerClientInputArrival(itemId) {
+    const key = String(itemId || '');
+    if (key) {
+      const known = this.clientInputSequenceByItemId.get(key);
+      if (known !== undefined) return known;
+    }
+    if (!key) {
+      if (this.unnamedClientInputSequence === null) {
+        this.unnamedClientInputSequence = ++this.clientInputSequence;
+        this.pendingClientInput.set(this.unnamedClientInputSequence, null);
+        this.persistClientInputLedger();
+      }
+      return this.unnamedClientInputSequence;
+    }
+    const sequence = this.unnamedClientInputSequence === null
+      ? ++this.clientInputSequence
+      : this.unnamedClientInputSequence;
+    this.unnamedClientInputSequence = null;
+    this.pendingClientInput.set(sequence, key);
+    this.rememberClientInputSequence(key, sequence);
+    this.persistClientInputLedger();
+    return sequence;
+  }
+
+  rememberClientInputSequence(key, sequence) {
+    this.clientInputSequenceByItemId.set(key, sequence);
+    // Prune only what is settled. An arrival still waiting to be understood is
+    // the reason an approval is being held, and forgetting it would release one.
+    for (const oldest of this.clientInputSequenceByItemId.keys()) {
+      if (this.clientInputSequenceByItemId.size <= MAX_LIVE_TURN_LEDGER_ENTRIES) break;
+      if (this.pendingClientInput.has(this.clientInputSequenceByItemId.get(oldest))) continue;
+      this.clientInputSequenceByItemId.delete(oldest);
+    }
+    return sequence;
+  }
+
+  /**
+   * THE SERVER NOW KNOWS WHAT THAT ARRIVAL WAS.
+   *
+   * Called when a client turn has been recorded AND whatever obligation it owes
+   * has been registered -- not merely when its words were read. The difference
+   * matters: a correction that has been transcribed but whose review has not
+   * been scheduled is still financial context the plan has not incorporated,
+   * and an approval admitted in that window would run against a conversation
+   * the server had heard and not yet understood.
+   *
+   * Resolving never lowers `clientInputSequence`. It only removes the reason to
+   * WAIT; it never restores authority that arriving took away.
+   */
+  resolveClientInputArrival(itemId) {
+    const key = String(itemId || '');
+    if (!key) {
+      if (this.unnamedClientInputSequence !== null) {
+        this.pendingClientInput.delete(this.unnamedClientInputSequence);
+        this.inheritedClientInput.delete(this.unnamedClientInputSequence);
+        this.unnamedClientInputSequence = null;
+        this.persistClientInputLedger();
+      }
+      return;
+    }
+    const sequence = this.clientInputSequenceByItemId.get(key);
+    if (sequence !== undefined) {
+      this.pendingClientInput.delete(sequence);
+      this.inheritedClientInput.delete(sequence);
+    }
+    this.persistClientInputLedger();
+  }
+
+  /**
+   * A TYPED MESSAGE HAS ARRIVED, AND NOBODY HAS READ IT YET.
+   *
+   * `/message` cannot know what a request is until it has awaited the body: the
+   * client's own name for the message, which is what makes a retry the same
+   * utterance rather than a new one, is inside it. So the sequence is taken at
+   * the door and the identity is settled afterwards.
+   *
+   *   - `claim(itemId)` for a message nobody has seen: the arrival is bound to
+   *     that id and stays pending until its turn is registered.
+   *   - `claim(itemId)` for an id already known: a RETRY of one utterance, not a
+   *     second one. It brings no new content, so nothing is left pending -- but
+   *     it did arrive, so the sequence is spent, and the turn it resends becomes
+   *     current as of now. That is how a client whose reply was lost can send it
+   *     again without either inventing a turn or reviving a stale one.
+   *   - `resolveAsNothing()` for a request that named nothing: an empty body, a
+   *     rejection, a dropped connection, a throw. The sequence is still spent.
+   *
+   * NOTHING HERE CAN GIVE BACK A SEQUENCE. A request that turns out to carry
+   * nothing readable still happened, and an approval that was current before it
+   * is not current after it. A ticket that is never settled stays pending, which
+   * holds execution closed rather than opening it -- the direction a fault in
+   * this path has to fail in.
+   */
+  beginClientInputArrival() {
+    const sequence = ++this.clientInputSequence;
+    this.pendingClientInput.set(sequence, null);
+    const ticket = { sequence, settled: false, written: this.persistClientInputLedger() };
+    ticket.claim = (itemId) => {
+      const key = String(itemId || '');
+      if (ticket.settled || !key) return sequence;
+      ticket.settled = true;
+      const known = this.clientInputSequenceByItemId.get(key);
+      if (known !== undefined) {
+        // A RETRY BRINGS NO NEW CONTENT, so there is nothing to wait for and
+        // nothing to add to the conversation. It does NOT move the turn it
+        // resends: a turn's sequence is where it happened, and nothing the
+        // client does later can make an earlier turn more recent than it was.
+        // The sequence this retry spent still stands, so an approval that was
+        // in flight when it arrived is refused -- fail-closed, and recovered by
+        // the client approving again, which is a turn of its own.
+        this.pendingClientInput.delete(sequence);
+        this.persistClientInputLedger();
+        return known;
+      }
+      this.pendingClientInput.set(sequence, key);
+      this.rememberClientInputSequence(key, sequence);
+      this.persistClientInputLedger();
+      return sequence;
+    };
+    ticket.resolveAsNothing = () => {
+      if (ticket.settled) return;
+      ticket.settled = true;
+      this.pendingClientInput.delete(sequence);
+      this.persistClientInputLedger();
+    };
+    return ticket;
+  }
+
+  /**
+   * The events that mean a client utterance exists, read AHEAD OF THE QUEUE.
+   *
+   * THE DEFECT THIS FIXES. Provider events are processed strictly in order on
+   * one chain, and an approval turn's own handler awaits a model call. Newer
+   * speech that had already arrived at the socket therefore sat behind that
+   * await: by the time anything registered it, the approval it should have
+   * invalidated had already run. Reading the arrival here -- synchronously, in
+   * the listener, before the event is queued -- is what makes "the client has
+   * spoken again" true at the moment it becomes true rather than at the moment
+   * the server is free to notice.
+   *
+   * Only the client's own microphone counts. Assistant audio, tool results,
+   * response lifecycle and playback acknowledgements are not client input.
+   */
+  noteProviderClientInput(data) {
+    if (typeof data !== 'string') return;
+    // A CHEAP REJECT FIRST, BECAUSE THIS RUNS ON EVERY FRAME. A live socket is
+    // mostly audio transcript deltas, and this sits in front of all of them:
+    // parsing and byte-counting each one to discover it is not speech would put
+    // real per-frame work on the listener. Every event below contains one of
+    // these two substrings, so anything without them cannot be client input.
+    if (!data.includes('input_audio_buffer.speech_')
+      && !data.includes('input_audio_transcription.')) return;
+    // The same bound the handler applies. An oversized frame is dropped there,
+    // so registering it here would move the clock for an event nobody processes.
+    if (new TextEncoder().encode(data).byteLength > MAX_PROVIDER_EVENT_BYTES) return;
+    let event;
+    try { event = JSON.parse(data); } catch (_error) { return; }
+    if (!CLIENT_INPUT_ARRIVAL_EVENTS.has(String(event?.type || ''))) return;
+    this.registerClientInputArrival(event?.item_id);
+  }
+
+  /**
+   * One frame off the provider socket.
+   *
+   * Two things happen, in this order and for this reason: the arrival is
+   * registered NOW, and the event is then queued behind everything already in
+   * flight. Reversing them, or folding the registration into the handler alone,
+   * reintroduces the window this method exists to close.
+   */
+  receiveProviderSocketMessage(data) {
+    this.noteProviderClientInput(data);
+    this.eventChain = this.eventChain
+      .then(() => this.handleProviderMessage(data))
+      .catch(() => this.terminalize('failed', 'provider_event_failed', 'live_provider_event_failed', false).catch(() => {}));
+    this.state.waitUntil(this.eventChain);
+    return this.eventChain;
+  }
+
   registerStoppedClientTurn(event) {
     const itemId = String(event?.item_id || '');
     if (!itemId) {
@@ -796,14 +1165,23 @@ export class ConsumerLiveSession {
     if (!turn) {
       turn = {
         itemId,
-        ordinal: ++this.clientTurnOrdinal,
+        // The sequence this utterance was given when it ARRIVED, which is
+        // usually earlier than this line: speech_started reaches the socket
+        // before speech_stopped does. Allocating a fresh number here would
+        // date the turn from the moment the server noticed it.
+        //
+        // Its place in the conversation, and the only number it ever has.
+        // Nothing moves it: not a retry, not a later request, not a failure.
+        ordinal: this.registerClientInputArrival(itemId),
         status: 'pending',
         transcript: '',
         stoppedAt: Date.now(),
         // Bound WHEN THE CLIENT STARTS SPEAKING, not when their words finish
         // being transcribed. By the time ASR lands the assistant may already
-        // have asked something else.
-        answersTurnId: this.lastCompletedAssistantTurnId || null
+        // have asked something else. Bound to the authoritative proposition,
+        // which is nothing at all while a newer one is still being presented or
+        // could not be written down -- never to one the client has moved past.
+        answersTurnId: this.boundProposition()
       };
       this.clientTurnsByItemId.set(itemId, turn);
       this.unboundAutoResponseTurnIds.push(itemId);
@@ -1254,6 +1632,13 @@ export class ConsumerLiveSession {
   /* -------------------------------------------------------- provider events */
 
   async handleProviderMessage(data) {
+    // REGISTERED AGAIN, ON PURPOSE. The socket listener already did this before
+    // queueing, which is what closes the window; this covers every other way a
+    // provider event can reach the handler -- a replayed frame, a harness, any
+    // future transport that does not come through that listener -- so no path
+    // can process client input the clock has not seen. It is idempotent per
+    // utterance, so the second call costs a map lookup and changes nothing.
+    this.noteProviderClientInput(data);
     if (this.closing || typeof data !== 'string'
       || new TextEncoder().encode(data).byteLength > MAX_PROVIDER_EVENT_BYTES) return;
     let event;
@@ -1432,7 +1817,7 @@ export class ConsumerLiveSession {
       // in the auto-response queue: a response may already have been created.
       turn = {
         itemId,
-        ordinal: ++this.clientTurnOrdinal,
+        ordinal: this.registerClientInputArrival(itemId),
         status: 'pending',
         transcript: '',
         stoppedAt: 0
@@ -1505,6 +1890,11 @@ export class ConsumerLiveSession {
       answersTurnId: turn.answersTurnId ?? null
     }).catch(() => null);
     if (storedTurn?.id) turn.storedTurnId = storedTurn.id;
+    // Bind a card acknowledgement to its durable client turn before scheduling
+    // the planner, so only a later evidenced answer can resolve it.
+    if (event.typed === true && storedTurn?.id) {
+      await this.recordAcknowledgedUnknown(event.unknownFieldId, storedTurn.id);
+    }
 
     await appendRealtimeEvent(this.env, {
       sessionId: this.meta.sessionId,
@@ -1525,8 +1915,15 @@ export class ConsumerLiveSession {
     await this.touch();
     const answersDirectOffer = this.turnAnswersDirectOffer(turn);
     if (answersDirectOffer) turn.confirmationOfferToken = this.directConfirmationOffer.token;
-    const confirmsPublishedDirectSnapshot = answersDirectOffer
-      && classifyExecutionApproval(transcript) === 'affirmed';
+    // WHAT THIS TURN MEANT IS DECIDED ONCE, HERE, AND NOT BY CODE.
+    //
+    // Started, not awaited. The provider is already replying, and this is the
+    // path that must not grow a model call between a client finishing a
+    // sentence and the assistant being allowed to speak. Everything that needs
+    // the answer -- the scheduling decision below, the confirmation barrier,
+    // the state read at the pre-confirmation boundary -- awaits this same
+    // promise wherever it genuinely has to wait.
+    const approvalDecision = answersDirectOffer ? this.directApprovalDecisionFor(turn) : null;
     // THE OBLIGATION IS REGISTERED BEFORE THE DRAIN, NOT AFTER IT.
     // A deferred get_state resumes inside drainDeferredEvidenceTools below and
     // waits on the planning chain. If this turn were queued after that drain,
@@ -1535,10 +1932,82 @@ export class ConsumerLiveSession {
     // first turn. Scheduling here is what makes "wait for planning" mean "wait
     // for planning that has seen this turn". Nothing is awaited: the pass still
     // runs detached, and Realtime is already speaking.
-    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off'
-      && !confirmsPublishedDirectSnapshot) {
-      this.scheduleDirectModulePlanning(storedTurn.id);
+    // What the scheduling decision settles to, so a caller that must not race
+    // it -- the typed lane, which awaits this turn's planning pass before it
+    // renders a reply -- can wait for the decision rather than for a promise
+    // that had not been created yet.
+    turn.approvalSettled = Promise.resolve();
+    // WHEN THIS ARRIVAL STOPS BLOCKING EXECUTION, and not one instruction
+    // earlier. Knowing WHICH turn a message is is not the same as knowing what
+    // it MEANT: a reply that answers the delivered plan is agreement or a
+    // correction, and which one it is comes back from the reader. Until then
+    // nothing has been retired and nothing has been scheduled, so a later
+    // approval finding "nothing pending" would be finding only that nobody had
+    // looked yet. Every path below sets this, and the arrival is released by
+    // whichever one runs -- never by falling out of the function.
+    let releaseArrival = () => this.resolveClientInputArrival(itemId);
+    // INPUT THE SERVER COULD NOT WRITE DOWN HAS STILL HAPPENED.
+    //
+    // The hold was installed alongside the turn's planning obligation, and that
+    // obligation needs a stored turn id. When the write failed there was no id,
+    // so no obligation, so no hold -- and the arrival was released although
+    // nothing had been decided about what the client said. The correction
+    // disappeared from execution safety state precisely because the server
+    // could not record it.
+    //
+    // So a turn that could not be persisted keeps its hold instead. Nothing
+    // runs against a conversation with a hole in it. The meeting can still
+    // talk; a later message naming the same item clears the hold if it can be
+    // recorded, and otherwise this meeting simply never executes, which is the
+    // correct end for one whose record of the client is incomplete.
+    if (!storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
+      releaseArrival = () => {};
+      this.state.waitUntil(appendRealtimeEvent(this.env, {
+        sessionId: this.meta?.sessionId,
+        leaseId: this.meta?.leaseId,
+        direction: 'server',
+        eventType: 'live.client.turn_unrecorded',
+        payload: { itemId, ordinal: Number(turn.ordinal || 0) }
+      }).catch(() => {}));
     }
+    if (storedTurn?.id && getConsumerConfig(this.env).modulePlannerMode !== 'off') {
+      // A PURE APPROVAL OF THE DELIVERED PLAN IS THE ONE TURN THAT MUST NOT
+      // REOPEN IT. Everything else does, exactly as before -- a correction, a
+      // condition, a question, an unreadable answer, and any failure of the
+      // reader itself. That is the fresh-rejection barrier, and this change
+      // narrows nothing about it: only a positive reading of "they agreed to
+      // this, and added nothing" skips the pass, and the reading fails closed.
+      //
+      // The wait happens inside waitUntil, so the obligation is registered as
+      // soon as the answer exists without the reply path ever blocking on it.
+      if (!approvalDecision) this.scheduleDirectModulePlanning(storedTurn.id);
+      else {
+        // The consequence of this turn is not known yet, so the hold travels
+        // with the decision and is released by it -- after the offer has been
+        // retired or the review scheduled, never before.
+        releaseArrival = () => {};
+        turn.approvalSettled = approvalDecision
+          .then(async (decision) => {
+            if (approvalAuthorisesExecution(decision)) return;
+            // A CHANGE RETIRES THE DELIVERED OFFER, exactly as a fresh verifier
+            // rejection does. The client has said something that makes the
+            // read-back they heard no longer a true statement of what they
+            // want, so what they were shown must stop being approvable
+            // immediately -- not merely stop being executable by this turn.
+            // Whatever the review concludes next has to be certified, read
+            // back, and approved on its own.
+            if (decision?.decision === 'semantic_change') await this.clearDirectConfirmationOffer();
+            this.scheduleDirectModulePlanning(storedTurn.id);
+          })
+          .catch(() => this.scheduleDirectModulePlanning(storedTurn.id))
+          // A REFUSED READING IS STILL A SETTLED ONE. The catch above schedules
+          // the review, so by here the consequence is in state whichever way
+          // the reading went, and there is no path that leaves the hold on.
+          .finally(() => this.resolveClientInputArrival(itemId));
+        this.state.waitUntil(turn.approvalSettled);
+      }
+    }
+    releaseArrival();
     await this.drainDeferredEvidenceTools(itemId, transcript);
     this.scheduleReviewsForClientTurn(itemId, transcript);
     // An unclear answer retains the invitation while detached semantic review
@@ -1588,32 +2057,379 @@ export class ConsumerLiveSession {
    * Everything else -- ingest, persistence, evidence, the tool barrier, the
    * confirmation gate -- is the same code voice runs.
    */
-  async handleTextMessage(body) {
+  /**
+   * Arm the wall-clock ceiling for planning work a caller is waiting on.
+   *
+   * modulePlannerTimeoutMs bounds ONE provider call. This bounds the sequence,
+   * which is a different and much larger thing: up to five calls per pass, more
+   * than one pass per chain when a turn is queued mid-flight, and -- before
+   * this -- a whole second chain scheduled from the pre-confirmation get_state
+   * inside the same request. A typed request could run for minutes behind a
+   * browser that gives up at one, and a voice caller could sit in silence at
+   * the read-back boundary with no bound at all.
+   *
+   * ARMING IS IDEMPOTENT, WHICH IS THE POINT. A get_state inside a typed
+   * request inherits that request's REMAINING budget instead of starting a
+   * fresh one, so the second chain cannot extend the first. Returns the disarm.
+   *
+   * Unarmed planning -- the background pass a voice turn schedules and nobody
+   * blocks on -- keeps today's unbounded behaviour, because there is no caller
+   * waiting for it and cutting it short would only lose work.
+   */
+  /**
+   * A bounded lifecycle for one stretch of planning work.
+   *
+   * EVERY PASS GETS ONE, including the background pass a voice turn schedules
+   * and nobody awaits. Leaving background work unbounded meant it could not be
+   * stopped and could not be reached: the drain captured `null` before its
+   * awaits, so a pass that began unbounded stayed unbounded even after a
+   * blocking boundary armed a ceiling while it was loading context -- it
+   * finished its extraction past that deadline and went on to start a verifier.
+   */
+  newDirectModulePlanningOperation() {
+    const config = getConsumerConfig(this.env);
+    const operation = {
+      id: crypto.randomUUID(),
+      deadlineAt: Date.now() + Number(config.modulePlannerTurnBudgetMs || 90_000),
+      callAllowance: Number(config.modulePlannerCallAllowance || 5),
+      callsUsed: 0,
+      controller: new AbortController()
+    };
+    this.directModulePlanningOperations.add(operation);
+    return operation;
+  }
+
+  releaseDirectModulePlanningOperation(operation) {
+    this.directModulePlanningOperations.delete(operation);
+    if (this.directModulePlanningOperation === operation) this.directModulePlanningOperation = null;
+  }
+
+  armDirectModulePlanningDeadline() {
+    if (this.directModulePlanningOperation !== null) return () => {};
+    const config = getConsumerConfig(this.env);
+    this.directModulePlanningOperation = {
+      id: crypto.randomUUID(),
+      deadlineAt: Date.now() + Number(config.modulePlannerTurnBudgetMs || 90_000),
+      // ONE ALLOWANCE FOR THE WHOLE OPERATION, not for each pass inside it.
+      // Five was the per-pass ceiling and I described it as the request's; a
+      // real typed request was reproduced making SEVEN planner calls, because
+      // the renderer's get_state scheduled a second chain while time remained.
+      // Counting against the operation is what makes the number the client's
+      // guarantee rather than an internal detail of one pass.
+      callAllowance: Number(config.modulePlannerCallAllowance || 5),
+      callsUsed: 0,
+      controller: new AbortController()
+    };
+    const operation = this.directModulePlanningOperation;
+    this.directModulePlanningOperations.add(operation);
+    return () => this.releaseDirectModulePlanningOperation(operation);
+  }
+
+  /** Stop every stretch of planning work this session started. Idempotent. */
+  cancelDirectModulePlanning(reason = 'session_closed') {
+    for (const operation of this.directModulePlanningOperations) {
+      operation.cancelledReason = reason;
+      try { operation.controller.abort(); } catch (_error) { /* already aborted */ }
+    }
+  }
+
+  /**
+   * A MESSAGE THIS MEETING HAS ALREADY RECORDED IS A REPLAY, whatever this
+   * object happens to remember.
+   *
+   * A Durable Object can be rebuilt between two requests. Everything it knew
+   * about which question a client turn answered lived in memory; everything it
+   * wrote down, including which assistant turn spoke last, did not. So a retry
+   * carrying a client turn id the conversation had already used was not
+   * recognised as a retry at all. It became a brand new turn -- and a brand new
+   * turn is bound to whatever the assistant asked LAST.
+   *
+   * The client had said "Yes" to an offer of an explanation. After a rebuild
+   * that same "Yes" was answering "shall I run exactly that plan?", a question
+   * they had never been asked when they said it, and it ran.
+   *
+   * So before a typed message is allowed to become a turn, the durable record
+   * is asked whether it already IS one. If it is, that turn is restored with
+   * the proposition it actually answered, already complete, so the ordinary
+   * retry path takes over: no second turn, no second planning pass, and no
+   * authority it did not have when the client sent it.
+   *
+   * ORDINAL ZERO IS DELIBERATE. This turn is not something the client has just
+   * done -- it is something they did before, sent again -- so it is not the
+   * most recent client input and the execution barrier refuses it on that
+   * basis alone. A client who wants the plan run after a rebuild says so, and
+   * that is a turn of its own, read on its own.
+   */
+  async adoptRecordedClientTurn(itemId) {
+    if (!itemId || this.clientTurnsByItemId.has(itemId) || !this.meta) return null;
+    let recorded;
+    try {
+      recorded = await getRealtimeFinalTurnByProviderItem(
+        this.env, this.meta.leaseId, itemId, 'user'
+      );
+    } catch (_error) {
+      // "I DO NOT KNOW" IS NOT "THERE IS NOTHING".
+      //
+      // A caught failure here used to read as proof that this message had never
+      // been a turn, so a replay after a rebuild became a brand new turn --
+      // bound to whatever the assistant had asked last, and carrying an old
+      // answer into a question it had never been asked. Only PROVEN ABSENCE may
+      // create a turn. Unknown identity refuses the request, and the arrival it
+      // took at the door stays outstanding, so nothing executes past a message
+      // the server cannot account for. A later request for the same message
+      // that does get an answer clears both.
+      throw new ConsumerError(
+        503,
+        'live_turn_identity_unavailable',
+        'That message could not be identified. Please try again in a moment.'
+      );
+    }
+    // REVALIDATED AFTER THE AWAIT, NOT ONLY BEFORE IT.
+    //
+    // The check at the top of this method answered a question about a moment
+    // that has now passed. While the lookup was in flight the same message
+    // could arrive, become a live turn, and acquire a meaning nobody has
+    // decided yet -- and adoption would then replace that turn with a finished,
+    // historical one and release the hold its meaning was still sitting behind.
+    // A live turn always wins: it is the one with obligations.
+    if (this.clientTurnsByItemId.has(itemId)) return null;
+    if (!recorded?.id) return null;
+    const turn = {
+      itemId,
+      ordinal: 0,
+      status: 'completed',
+      transcript: '',
+      stoppedAt: 0,
+      storedTurnId: recorded.id,
+      // THE PROPOSITION IT ANSWERED, from the only place that survives a
+      // rebuild. Never the current proposition cursor, which is where the
+      // conversation is NOW rather than where it was when they answered.
+      answersTurnId: recorded.answersTurnId,
+      replayedFromRecord: true
+    };
+    this.clientTurnsByItemId.set(itemId, turn);
+    // CAUSALLY ATTACHED, WITH NO AUTHORITY. If the question this turn answered
+    // was the certified read-back, then it belongs to that exchange and the
+    // assistant's reply to it belongs there too -- which is what lets the
+    // client approve again afterwards and be heard. It grants the replay
+    // nothing: its ordinal still says it is not something they have just done.
+    if (this.turnAnswersDirectOffer(turn)) {
+      turn.confirmationOfferToken = this.directConfirmationOffer.token;
+    }
+    this.pruneLiveTurnLedger();
+    // AN INHERITED HOLD IS SETTLED BY WHAT IT COULD HAVE CHANGED, NOT BY BEING
+    // FOUND. This message was being decided by an instance that no longer
+    // exists, and nothing here can finish that decision -- the reading, the
+    // retirement, the review all died with it. What the record does prove is
+    // that the words are durable, so any NEW certificate will be built from a
+    // transcript that includes them. The one thing that could still run without
+    // them is the plan already on the table. So that is retired first, and only
+    // then is the hold released: nothing can execute until a fresh certificate
+    // exists, and a fresh certificate cannot leave this message out.
+    //
+    // This reads nothing the client said. It is the same action a correction
+    // would have caused, taken because nobody can now say it was not one.
+    const heldSequence = this.clientInputSequenceByItemId.get(itemId);
+    if (heldSequence !== undefined && this.inheritedClientInput.has(heldSequence)) {
+      if (this.directConfirmationOffer) await this.clearDirectConfirmationOffer();
+      this.state.waitUntil(appendRealtimeEvent(this.env, {
+        sessionId: this.meta?.sessionId,
+        leaseId: this.meta?.leaseId,
+        direction: 'server',
+        eventType: 'live.client.inherited_input_settled',
+        payload: { itemId, storedTurnId: recorded.id }
+      }).catch(() => {}));
+    }
+    // The request took a sequence at the door, as every arrival does. It names
+    // nothing new, so nothing is left outstanding for the meeting to wait on.
+    this.resolveClientInputArrival(itemId);
+    return turn;
+  }
+
+  /**
+   * The client's own name for a typed message, or a fresh one.
+   *
+   * Stated once and used by both the ingress registration and the turn record,
+   * so the generation a request takes at the door is the generation its turn
+   * carries. Two derivations would be two utterances.
+   */
+  static typedInputItemId(body) {
+    const clientTurnId = String(body?.clientTurnId || '').trim();
+    return /^[A-Za-z0-9_-]{8,64}$/.test(clientTurnId)
+      ? `msg_${clientTurnId}`
+      : `msg_${crypto.randomUUID()}`;
+  }
+
+  async handleTextMessage(body, arrival = null) {
+    // INGRESS, OR THE SETTLEMENT OF ONE. Before the budget, before the planner,
+    // before anything is awaited -- because a Durable Object serves typed
+    // requests concurrently, and a second message arriving while the first is
+    // mid-execution is exactly the newer input an older approval must not
+    // outrun. Registering it after the first await would mean the clock moved
+    // only once the server was free, which is the defect this closes.
+    //
+    // `arrival` is the ticket the HTTP route took before it read the body. Here
+    // is where it finds out what it was: a new utterance, or a retry of one
+    // already counted. Without a ticket -- a direct in-process caller -- this
+    // registers the arrival itself, which is the same thing a beat later.
+    //
+    // A retry of the same message carries the same clientTurnId and is the same
+    // utterance, so it never manufactures a newer turn.
+    const itemId = ConsumerLiveSession.typedInputItemId(body);
+    // An empty request is not something the client said. It is refused a few
+    // lines below with a 400, and moving the clock for it would let a dropped
+    // keystroke invalidate an approval the client had genuinely given. Leaving
+    // the ticket unclaimed is enough: the route retires whatever it took, on
+    // every path out, so an empty or rejected message ends where it started.
+    if (String(body?.text || '').trim()) {
+      if (arrival) arrival.claim(itemId);
+      else this.registerClientInputArrival(itemId);
+    }
+    // The budget covers the WHOLE request: the awaited pass, the renderer, and
+    // any get_state the renderer makes -- not just the first await.
+    const disarmPlanningDeadline = this.armDirectModulePlanningDeadline();
+    // What THIS request owns, and nothing another request owns. Carried down
+    // rather than looked up by message id, because every request for a message
+    // shares that id and only one of them created its reply commitment.
+    const requestContext = { commitmentOwner: null };
+    try {
+      return await this.handleTextMessageWithinBudget(body, itemId, requestContext);
+    } catch (error) {
+      // A reply its owner never produced must not leave other requests for this
+      // message waiting on a promise nobody will ever settle. A request that
+      // does not own the commitment holds no token and changes nothing.
+      const abandoned = this.clientTurnsByItemId.get(itemId);
+      if (requestContext.commitmentOwner && abandoned?.abandonAssistantCommitment) {
+        abandoned.abandonAssistantCommitment(requestContext.commitmentOwner, error);
+      }
+      throw error;
+    } finally {
+      disarmPlanningDeadline();
+    }
+  }
+
+  async handleTextMessageWithinBudget(body, ingressItemId = null, requestContext = {}) {
     const text = String(body?.text || '').replace(/\s+/g, ' ').trim().slice(0, MAX_TYPED_MESSAGE_CHARACTERS);
     if (!text) throw new ConsumerError(400, 'live_text_message_invalid', 'That message is empty.');
     const inputMode = body?.inputMode === 'form' ? 'form' : 'text';
     const config = getConsumerConfig(this.env);
     if (this.closing) throw new ConsumerError(409, 'live_meeting_closing', 'This meeting is closing.');
 
-    // A "Not sure" click is recorded BEFORE the planner runs, so the very next
-    // pass already knows not to ask again. Recording it afterwards would let
-    // one more question through, which is the whole complaint.
-    await this.recordAcknowledgedUnknown(body?.unknownFieldId);
-
-    const itemId = `msg_${crypto.randomUUID()}`;
+    // THE CLIENT'S OWN NAME FOR THIS MESSAGE, so a retry after a lost reply is
+    // the same turn rather than a second one. recordRealtimeFinalTurn already
+    // dedupes on this id, so the retry re-reads the turn it made instead of
+    // paying for another planning pass on the same words.
+    //
+    // Taken from the caller when there is one, because the request registered
+    // its arrival under this exact id before it awaited anything. Deriving a
+    // second id here would give the turn a generation the door never issued,
+    // and a fresh random one on every retry.
+    const itemId = ingressItemId || ConsumerLiveSession.typedInputItemId(body);
+    await this.adoptRecordedClientTurn(itemId);
     this.registerStoppedClientTurn({ item_id: itemId });
-    await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode });
+    await this.handleClientTurn({ item_id: itemId, transcript: text, typed: true, inputMode,
+      unknownFieldId: body?.unknownFieldId });
+
+    // WAIT FOR THE DECISION BEFORE WAITING FOR ITS CONSEQUENCE.
+    //
+    // Whether this turn owes a planning pass at all now depends on what it
+    // meant, and that is decided off the reply path. Awaiting the chain first
+    // would find it empty on an approval turn that actually carried a
+    // correction, render a card from the snapshot BEFORE that correction, and
+    // reintroduce the one thing the awaited pass exists to prevent: a screen
+    // showing a field the client has just changed.
+    await (this.clientTurnsByItemId.get(itemId)?.approvalSettled || Promise.resolve())
+      .catch(() => {});
 
     // (1) above. A failed pass is not fatal: the turn is already durable and the
     // renderer falls back to the last good state rather than stalling.
     await this.directModulePlanningChain.catch(() => {});
 
-    const response = this.bindResponseContext(`txt_${crypto.randomUUID()}`, {});
+    // ONE MESSAGE, ONE PROPOSITION, WHOEVER ASKS FOR IT.
+    //
+    // A typed request can be lost after the server has done the work, and the
+    // browser resends. For a moment two requests are answering the same
+    // message. Each used to open its own reply and write its own assistant
+    // turn, and whichever finished LAST became the proposition the client's
+    // next answer would be read against -- whether or not it was the one they
+    // were shown. The client sees "shall I explain what that covers?", says
+    // yes, and that yes is read against a plan read-back that was written after
+    // their screen had already settled.
+    //
+    // Trying to work out afterwards which reply reached them is not something a
+    // server can do. So there is only ever one reply to work out: the first
+    // request to reach this line commits to producing it, and every other
+    // request for the same message ADOPTS that commitment and returns the very
+    // same words. Whatever the client saw, it was this proposition, because
+    // there was no other one to see.
+    //
+    // Claimed synchronously -- check and set with no await between them -- so
+    // two requests cannot both decide they are the first.
+    const committedTurn = this.clientTurnsByItemId.get(itemId);
+    if (committedTurn?.assistantCommitment) return committedTurn.assistantCommitment;
+    // A MESSAGE THE CLIENT HAS ALREADY MOVED PAST GETS NO NEW PROPOSITION.
+    // Checked before the renderer is paid for: a replay of an old message, or a
+    // message whose later sibling has already been answered, could only ever
+    // produce a reply that must be withheld. The authoritative check is still
+    // the one in `beginPresentation`, which is where a race is actually decided.
+    if (committedTurn && ConsumerLiveSession.comparePropositionRank(
+      [Number(committedTurn.ordinal || 0), Number.MAX_SAFE_INTEGER],
+      this.propositionCursor.rank
+    ) < 0) {
+      return { ok: true, turnId: itemId, superseded: true, assistantText: '', readback: false, fallback: false };
+    }
+    let commitReply = () => {};
+    // OWNERSHIP IS A TOKEN, NOT A COINCIDENCE OF MESSAGE ID. Only the request
+    // that created this commitment holds it, and only that request may give the
+    // commitment up. A resend whose own lookup failed, or any other request for
+    // the same message that throws, is not the owner and cannot tear down a
+    // reply another request is still producing.
+    const commitmentOwner = crypto.randomUUID();
+    if (committedTurn) {
+      committedTurn.assistantCommitment = new Promise((resolve, reject) => {
+        commitReply = resolve;
+        committedTurn.abandonAssistantCommitment = (owner, error) => {
+          if (owner !== commitmentOwner) return false;
+          // A reply its owner failed to produce committed nothing, so the next
+          // attempt is free to produce one rather than inheriting that failure.
+          delete committedTurn.assistantCommitment;
+          delete committedTurn.abandonAssistantCommitment;
+          reject(error);
+          return true;
+        };
+      });
+      // Nothing awaits this promise unless another request adopts it, and an
+      // unadopted rejection is not an error anyone reported.
+      committedTurn.assistantCommitment.catch(() => {});
+    }
+    if (committedTurn) requestContext.commitmentOwner = commitmentOwner;
+
+    // A TYPED REPLY ANSWERS THE MESSAGE THAT ASKED FOR IT, AND IT KNOWS WHICH.
+    //
+    // `bindResponseContext` takes the oldest turn off a queue, which is right
+    // for a provider that starts responses on its own and tells us nothing
+    // about which speech caused them. A typed request is not that: it IS the
+    // turn. Taking from the queue instead let two concurrent requests swap
+    // turns -- one request's reply bound to the other's message -- and every
+    // downstream barrier then asked its questions about the wrong turn: the
+    // wrong approval reading, the wrong causal binding, and a request that
+    // could wait forever on a decision belonging to somebody else's sentence.
+    const rootResponseId = `txt_${crypto.randomUUID()}`;
+    this.unboundAutoResponseTurnIds = this.unboundAutoResponseTurnIds
+      .filter((pending) => pending !== itemId);
+    const response = this.createResponseContext({
+      responseId: rootResponseId,
+      rootResponseId,
+      causeItemId: itemId
+    });
     if (!response) throw new ConsumerError(503, 'live_text_response_unavailable', 'The typed meeting could not open a turn.');
 
     const rendered = await renderLiveAssistantText({
       env: this.env,
       config,
+      // Same operation as the planner stage above: one clock and one
+      // cancellation signal for the whole typed turn.
+      operation: this.directModulePlanningOperation,
       volatileStateItem: this.textVolatileStateItem,
       recentTurns: await listRecentRealtimeFinalTurns(
         this.env, this.meta.sessionId, this.meta.leaseId, MAX_TYPED_CONTEXT_TURNS
@@ -1630,7 +2446,7 @@ export class ConsumerLiveSession {
     // `deliverCertifiedReadback` persists the certified prompt on its own
     // continuation response and binds the offer to THAT turn id. Finalizing the
     // root response as well wrote the same text a second time -- and the second
-    // write moved `lastCompletedAssistantTurnId`, which is what the client's
+    // write moved the proposition cursor, which is what the client's
     // next turn records in `answersTurnId`. So the offer pointed at turn A, the
     // approval pointed at turn B, `turnAnswersDirectOffer` was false, and
     // `confirm_and_run` refused every approval with
@@ -1638,8 +2454,13 @@ export class ConsumerLiveSession {
     // is never re-presented. The barrier was right; there were simply two turns
     // where the client had seen one plan.
     const delivered = await this.deliverCertifiedReadback(response, text);
-    const assistantText = delivered || rendered.text;
+    let assistantText = delivered || rendered.text;
     if (!delivered) await this.finalizeTypedAssistantTurn(response, assistantText);
+    // WITHHELD, NOT RETURNED. A reply that could not take binding answers
+    // something the client has already moved past; returning it would put a
+    // question on their screen that their next answer will not be read against.
+    const superseded = response.superseded === true;
+    if (superseded) assistantText = '';
 
     // THE WHOLE REPLY IS BUILT BEFORE THE MEETING CAN BE STOPPED.
     //
@@ -1651,12 +2472,13 @@ export class ConsumerLiveSession {
     const card = await this.typedCardState();
     const stopped = await this.meterTypedUsage(response.responseId, rendered.tokens).catch(() => false);
     if (!stopped) await this.touch();
-    return {
+    const reply = {
       ok: true,
       turnId: itemId,
       assistantText,
-      readback: Boolean(delivered),
-      fallback: rendered.fallback === true && !delivered,
+      readback: Boolean(delivered) && !superseded,
+      fallback: rendered.fallback === true && !delivered && !superseded,
+      ...(superseded ? { superseded: true } : {}),
       // The meeting has reached its allowance. The client keeps this reply and
       // their whole transcript; there is simply no next turn.
       ...(stopped ? { closed: 'budget_exhausted' } : {}),
@@ -1665,6 +2487,10 @@ export class ConsumerLiveSession {
       // filled in -- see the awaited pass at the top of this method.
       card
     };
+    // THE PROPOSITION THIS MESSAGE COMMITTED. Anyone else asking about this
+    // message gets this object, not a second opinion rendered later.
+    commitReply(reply);
+    return reply;
   }
 
   /**
@@ -1684,8 +2510,9 @@ export class ConsumerLiveSession {
       const brief = direct?.brief || null;
       // Built together, from the same brief, so an id the client returns can
       // only ever resolve against the card they were actually shown.
-      this.typedCardIndex = buildTypedCardIndex(brief);
-      return buildTypedCardState(brief);
+      const projection = await projectTypedBrief({ sessionId: this.meta.sessionId, leaseId: this.meta.leaseId, brief });
+      this.typedCardIndex = projection.index;
+      return projection.card;
     } catch (_error) {
       // A card is an enhancement. A projection fault must never cost the
       // client their reply, so the conversation simply carries on without it.
@@ -1702,16 +2529,16 @@ export class ConsumerLiveSession {
    * not recognise is ignored rather than rejected -- a stale card is an
    * ordinary race, not an attack, and the client's message still goes through.
    */
-  async recordAcknowledgedUnknown(fieldId) {
+  async recordAcknowledgedUnknown(fieldId, sourceTurnId) {
     const entry = this.typedCardIndex.get(String(fieldId || ''));
     if (!entry) return;
-    const exists = this.acknowledgedUnknown.some(
+    const existing = this.acknowledgedUnknown.find(
       (item) => item.moduleId === entry.moduleId && item.path === entry.path
     );
-    if (exists) return;
+    if (existing && existing.sourceTurnId === sourceTurnId) return;
     this.acknowledgedUnknown = [
-      ...this.acknowledgedUnknown,
-      { moduleId: entry.moduleId, path: entry.path, acknowledgedAt: Date.now() }
+      ...this.acknowledgedUnknown.filter((item) => item !== existing),
+      { moduleId: entry.moduleId, path: entry.path, sourceTurnId: sourceTurnId || null, acknowledgedAt: Date.now() }
     ].slice(-MAX_ACKNOWLEDGED_UNKNOWN);
     await this.state.storage.put('acknowledgedUnknown', this.acknowledgedUnknown);
     await appendRealtimeEvent(this.env, {
@@ -1807,9 +2634,14 @@ export class ConsumerLiveSession {
     readbackResponse.status = 'completed';
     await this.finalizeTypedAssistantTurn(
       readbackResponse,
-      String(candidate.confirmationPrompt),
-      { readback: true }
+      String(candidate.confirmationPrompt)
     );
+    // A read-back that could not take binding was never put in front of the
+    // client, so it must not be reported as delivered.
+    if (readbackResponse.superseded) {
+      response.superseded = true;
+      return '';
+    }
     return String(candidate.confirmationPrompt);
   }
 
@@ -1821,9 +2653,21 @@ export class ConsumerLiveSession {
    * redundant-question guard, because the typed lane has already awaited the
    * planner and cannot be asking about state it has not seen.
    */
-  async finalizeTypedAssistantTurn(response, text, { readback = false } = {}) {
+  async finalizeTypedAssistantTurn(response, text) {
     const transcript = String(text || '').trim().slice(0, MAX_ASSISTANT_TRANSCRIPT);
     if (!transcript) return null;
+    // BEFORE ANYTHING IS WRITTEN OR RETURNED. A typed reply that cannot take
+    // binding -- because the client has already been answered about something
+    // later -- is withheld, so it never reaches a screen where it could be
+    // mistaken for the current question.
+    const presentation = await this.beginPresentation(
+      this.causeSequenceForResponse(response),
+      { canWithhold: true }
+    );
+    if (!presentation) {
+      response.superseded = true;
+      return null;
+    }
     response.assistantTranscript = transcript;
     response.assistantDone = true;
     response.assistantItemId = `${response.responseId}_assistant`;
@@ -1837,14 +2681,17 @@ export class ConsumerLiveSession {
       role: 'assistant',
       transcript
     }).catch(() => null);
-    if (stored?.id) {
-      // The proposition the client's next turn will answer. Reply binding for
-      // the read-back is built entirely on this id.
-      this.lastCompletedAssistantTurnId = stored.id;
-      await this.state.storage.put('lastCompletedAssistantTurnId', stored.id).catch(() => {});
+    // Promoted only if this presentation still owns binding and its turn was
+    // actually written. Reply binding for the read-back is built on this id.
+    if (stored?.id && await this.completePresentation(presentation, stored.id)) {
       response.storedAssistantTurnId = stored.id;
     }
-    if (readback) await this.maybeArmDirectConfirmation(response);
+    // Ordinary typed replies can continue a delivered offer too. Voice calls
+    // this for every completed assistant turn; skipping it here lost the reply
+    // binding after a clarification or execution receipt, so the next approval
+    // was refused despite answering the same plan. The shared method records
+    // continuation turn ids without inventing new read-back delivery evidence.
+    await this.maybeArmDirectConfirmation(response);
     const cause = response.causeItemId ? this.clientTurnsByItemId.get(response.causeItemId) : null;
     if (!cause || cause.status !== 'pending') {
       this.scheduleResponseReview(response, cause?.status === 'completed' ? cause.transcript : '');
@@ -1926,6 +2773,11 @@ export class ConsumerLiveSession {
   async markClientTranscriptionUnavailable(event = {}) {
     const itemId = String(event?.item_id || '');
     const turn = itemId ? this.clientTurnsByItemId.get(itemId) : null;
+    // WHAT THIS UTTERANCE WAS IS NOW SETTLED: nothing usable. The sequence it
+    // took at the door stands -- the client did speak, and approvals older than
+    // that stay dead -- but there is nothing further to wait for, so a later
+    // turn is not held behind a transcription that is never coming.
+    this.resolveClientInputArrival(itemId);
     if (turn && turn.status !== 'completed') {
       turn.status = 'failed';
       turn.transcript = '';
@@ -1974,6 +2826,22 @@ export class ConsumerLiveSession {
     if (!delta) return;
     const response = this.responseContextForEvent(event);
     if (!response) return;
+    // THE FIRST WORD SPOKEN IS WHEN THIS PROPOSITION REACHES THE CLIENT. Binding
+    // moves to it -- as nothing, until its turn is written -- before anything
+    // the client says next can be registered, because the provider delivers
+    // their speech on this same ordered stream after this event. Speech cannot
+    // be withheld once it is playing.
+    if (!response.presentationBegun) {
+      response.presentationBegun = true;
+      // NOT CAUGHT. If binding cannot be written down while this is already
+      // playing, the durable record would point at a question the client has
+      // moved past and a rebuild would restore it. The event chain fails the
+      // meeting closed instead.
+      response.presentation = await this.beginPresentation(
+        this.causeSequenceForResponse(response),
+        { canWithhold: false }
+      );
+    }
     response.assistantTranscript =
       `${response.assistantTranscript}${delta}`.slice(0, MAX_ASSISTANT_TRANSCRIPT);
     this.syncCurrentResponseAliases(response);
@@ -2021,6 +2889,21 @@ export class ConsumerLiveSession {
     response.assistantItemId = String(event.item_id || `${response.responseId}_assistant`);
     this.syncCurrentResponseAliases(response);
 
+    // WRITTEN AHEAD, even for a response whose words arrived with no deltas:
+    // binding moves to this proposition as nothing before its turn is written,
+    // so a failed write can never leave it on the question before.
+    if (!response.presentationBegun) {
+      response.presentationBegun = true;
+      // NOT CAUGHT. If binding cannot be written down while this is already
+      // playing, the durable record would point at a question the client has
+      // moved past and a rebuild would restore it. The event chain fails the
+      // meeting closed instead.
+      response.presentation = await this.beginPresentation(
+        this.causeSequenceForResponse(response),
+        { canWithhold: false }
+      );
+    }
+
     const storedAssistantTurn = await recordRealtimeFinalTurn(this.env, {
       sessionId: this.meta.sessionId,
       leaseId: this.meta.leaseId,
@@ -2031,9 +2914,10 @@ export class ConsumerLiveSession {
     // The proposition a client turn will answer. Held here because only the
     // live session knows it: stored row order is ASR completion order, and
     // reconstructing the pairing from it later gets terse answers wrong.
-    if (storedAssistantTurn?.id) {
-      this.lastCompletedAssistantTurnId = storedAssistantTurn.id;
-      await this.state.storage.put('lastCompletedAssistantTurnId', storedAssistantTurn.id).catch(() => {});
+    // Promoted only by the presentation that still owns binding, and only once
+    // its turn is really written.
+    if (storedAssistantTurn?.id
+      && await this.completePresentation(response.presentation, storedAssistantTurn.id)) {
       response.storedAssistantTurnId = storedAssistantTurn.id;
     }
 
@@ -2110,10 +2994,401 @@ export class ConsumerLiveSession {
     }).catch(() => {});
   }
 
+  /* ------------------------------------------- the authoritative proposition */
+
+  /**
+   * WHAT A CLIENT'S NEXT REPLY IS AN ANSWER TO.
+   *
+   * Binding used to be "the last assistant turn that happened to be stored",
+   * and every way that phrase can be false produced a plan running against a
+   * question the client never saw: a write that failed left binding on the turn
+   * BEFORE; a reply to an earlier message that finished late moved it sideways;
+   * a rebuild lost the in-memory commitment that kept duplicates in line; and a
+   * request that did not own a reply could tear it down.
+   *
+   * So there is one cursor, and three rules govern it.
+   *
+   *   RANKED. Every presentation carries [cause, order]: the client input it
+   *   answers, then the order it began being presented. A presentation whose
+   *   rank is below the cursor's is answering something the client has already
+   *   moved past, and cannot take binding.
+   *
+   *   WRITTEN AHEAD. The cursor moves to PRESENTING -- which binds to nothing --
+   *   and that move is durably stored BEFORE the proposition can reach the
+   *   client. Only a successful write of the assistant turn promotes it to
+   *   RECORDED. A failed write therefore leaves binding on nothing, never on an
+   *   older question, and a rebuild in between finds PRESENTING, not the past.
+   *
+   *   OWNED. Only the presentation that moved the cursor can promote it. A late
+   *   completion for a presentation that has since been overtaken changes
+   *   nothing.
+   *
+   * None of this reads a word of what anybody said. It is ordering and
+   * durability; what a reply MEANS is still the reader's.
+   */
+  boundProposition() {
+    return this.propositionCursor.state === 'recorded'
+      ? this.propositionCursor.assistantTurnId
+      : null;
+  }
+
+  static comparePropositionRank(left, right) {
+    const [leftCause, leftOrder] = left || [0, 0];
+    const [rightCause, rightOrder] = right || [0, 0];
+    if (leftCause !== rightCause) return leftCause < rightCause ? -1 : 1;
+    if (leftOrder !== rightOrder) return leftOrder < rightOrder ? -1 : 1;
+    return 0;
+  }
+
+  persistPropositionLedger() {
+    const snapshot = {
+      cursor: structuredClone(this.propositionCursor),
+      presentationIndex: this.presentationIndex
+    };
+    this.propositionLedgerWrites = this.propositionLedgerWrites
+      .catch(() => {})
+      .then(() => this.state.storage.put('propositionLedger', snapshot));
+    this.state.waitUntil(this.propositionLedgerWrites.catch(() => {}));
+    return this.propositionLedgerWrites;
+  }
+
+  /**
+   * A proposition is about to reach the client. Returns the presentation that
+   * owns binding, or null when it must not take binding.
+   *
+   * `canWithhold` says whether the caller can still keep this proposition from
+   * the client. A typed reply can: it has not been returned yet, and a reply
+   * that cannot take binding is not returned at all. Speech cannot: by the time
+   * the server hears it the client is hearing it too, so a spoken proposition
+   * that is older than the cursor makes binding UNKNOWN rather than leaving it
+   * pointing at something the client may no longer be answering.
+   *
+   * THE CURSOR IS DURABLE BEFORE THIS RETURNS. If storage refuses the write,
+   * this throws, and nothing is presented against a binding that is not on disk.
+   */
+  async beginPresentation(causeSequence, { canWithhold }) {
+    const rank = [Number(causeSequence || 0), ++this.presentationIndex];
+    if (ConsumerLiveSession.comparePropositionRank(rank, this.propositionCursor.rank) < 0) {
+      if (!canWithhold) {
+        this.propositionCursor = {
+          rank: this.propositionCursor.rank,
+          state: 'presenting',
+          assistantTurnId: null,
+          token: null
+        };
+      }
+      await this.persistPropositionLedger();
+      return null;
+    }
+    const token = crypto.randomUUID();
+    this.propositionCursor = { rank, state: 'presenting', assistantTurnId: null, token };
+    await this.persistPropositionLedger();
+    return { token, rank };
+  }
+
+  /**
+   * The proposition's assistant turn has been written, or has failed to be.
+   * Only the presentation that still owns the cursor may promote it, and only
+   * with a stored turn id -- a failed write leaves binding on nothing.
+   */
+  async completePresentation(presentation, storedAssistantTurnId) {
+    if (!presentation?.token || this.propositionCursor.token !== presentation.token) return false;
+    if (!storedAssistantTurnId) return false;
+    this.propositionCursor = {
+      rank: presentation.rank,
+      state: 'recorded',
+      assistantTurnId: storedAssistantTurnId,
+      token: presentation.token
+    };
+    await this.persistPropositionLedger().catch(() => {});
+    return true;
+  }
+
+  /** The input sequence a response is answering, for ranking its proposition. */
+  causeSequenceForResponse(response) {
+    const causeItemId = response?.causeItemId
+      || response?.continuationChain?.rootCauseItemId
+      || null;
+    const cause = causeItemId ? this.clientTurnsByItemId.get(causeItemId) : null;
+    return Number(cause?.ordinal || 0);
+  }
+
   turnAnswersDirectOffer(turn) {
     const offer = this.directConfirmationOffer;
     return Boolean(offer && !offer.superseded && turn?.answersTurnId
       && [offer.assistantTurnId, ...(offer.confirmationTurnIds || [])].includes(turn.answersTurnId));
+  }
+
+  /**
+   * THE CONTEXT A PERSON WOULD NEED TO KNOW WHAT "YES" MEANT.
+   *
+   * `turnAnswersDirectOffer` above is a causal binding, not a reading: it says
+   * this reply is attached to the offer's own read-back OR to an assistant turn
+   * that continued that exchange. That second clause is what lets a client ask
+   * a question, get an answer, and then approve -- and it is also how a "yes"
+   * to some LATER assistant question arrived at the approval barrier wearing
+   * the offer's binding. Deterministic code cannot tell those apart, because
+   * telling them apart means knowing what was asked and what was answered.
+   *
+   * So the envelope carries both: the exact certified offer as it was
+   * delivered, and the exact assistant utterance this reply was bound to when
+   * the client began speaking. When they are the same turn the reply is an
+   * answer to the plan. When they are not, something else was asked in between
+   * and is quoted here too, and the reader decides which proposition the client
+   * addressed.
+   *
+   * Everything in it is a server record. The client's own words appear once,
+   * whole, unnormalised and labelled as evidence.
+   */
+  async buildExecutionApprovalEnvelope(turn) {
+    const offer = this.directConfirmationOffer;
+    if (!offer) return null;
+    const turns = await listRecentRealtimeFinalTurns(
+      this.env, this.meta.sessionId, this.meta.leaseId, MAX_APPROVAL_CONTEXT_TURNS
+    ).catch(() => []);
+    const answered = turns.find((item) => item.id === turn?.answersTurnId) || null;
+    const readbackIndex = turns.findIndex((item) => item.id === offer.assistantTurnId);
+    const replyIndex = turns.findIndex((item) => item.id === turn?.storedTurnId);
+    return {
+      schemaVersion: EXECUTION_APPROVAL_REQUEST_V1,
+      offer: {
+        offerToken: String(offer.token),
+        planId: String(offer.planId || ''),
+        certificateSignature: String(offer.certificateSignature || ''),
+        snapshotRevision: Number(offer.snapshotRevision || 0),
+        deliveredAsTurnId: offer.assistantTurnId || null,
+        // The certified string, byte for byte as the client received it. The
+        // model is being asked whether they agreed to THIS, so it must be this
+        // and not a summary of it.
+        deliveredConfirmationPrompt: String(offer.confirmationPrompt || '')
+      },
+      turn: {
+        turnId: turn?.storedTurnId || null,
+        ordinal: Number(turn?.ordinal || 0)
+      },
+      answeredUtterance: {
+        turnId: turn?.answersTurnId || null,
+        isTheCertifiedOffer: Boolean(turn?.answersTurnId
+          && turn.answersTurnId === offer.assistantTurnId),
+        text: answered?.role === 'assistant' ? String(answered.transcript || '') : ''
+      },
+      // SAYING WHAT IS MISSING, RATHER THAN LOOKING COMPLETE AND BEING EMPTY.
+      //
+      // When the certified read-back is still inside the window, everything
+      // between it and this reply is here and the context is complete. When it
+      // has fallen out of the window -- a long clarification, a meeting that
+      // ran on -- an empty array would be a silent and confident lie: it would
+      // tell the reader that nothing was said in between. So the flag says the
+      // context is incomplete, every turn that IS available is still sent, and
+      // the prompt requires a correspondingly more conservative reading.
+      interveningContext: {
+        complete: readbackIndex >= 0,
+        availableTurns: turns.length,
+        windowTurns: MAX_APPROVAL_CONTEXT_TURNS,
+        turns: turns
+          .slice(
+            readbackIndex >= 0 ? readbackIndex + 1 : 0,
+            replyIndex >= 0 ? replyIndex : turns.length
+          )
+          .map((item) => ({
+            role: item.role === 'assistant' ? 'assistant' : 'client',
+            turnId: item.id,
+            text: String(item.transcript || '')
+          }))
+      },
+      clientReply: String(turn?.transcript || '')
+    };
+  }
+
+  /**
+   * What this client turn meant, asked at most once and remembered.
+   *
+   * Resolves to `null` for every turn that is not answering a delivered offer,
+   * which is almost all of them: no offer, a superseded one, a turn bound to
+   * some other part of the conversation, or a deployment that is not running
+   * direct apply. Nothing is spent on those.
+   *
+   * The memo is keyed by turn AND offer, so a newly certified offer is a new
+   * question even when the same words answer it.
+   */
+  directApprovalDecisionFor(turn) {
+    // KEPT ON THE TURN, NOT IN A TABLE KEYED BY THE OFFER.
+    //
+    // A reading of `semantic_change` RETIRES the offer it was about, so a table
+    // keyed by the live offer loses the answer at the exact moment the barrier
+    // needs it and silently asks a second time -- which is how one turn would
+    // end up with two readings that can disagree. The turn owns its own
+    // reading; the offer it was taken against is recorded inside it and checked
+    // again at the barrier.
+    if (turn?.approvalDecision) return turn.approvalDecision;
+    const offer = this.directConfirmationOffer;
+    if (getConsumerConfig(this.env).modulePlannerMode !== 'apply'
+      || !offer || !this.turnAnswersDirectOffer(turn)) return Promise.resolve(null);
+    const pending = (async () => {
+      // ITS OWN BUDGET, BECAUSE IT IS NOT PLANNING.
+      //
+      // Spending the turn's planning allowance on this would make a genuine
+      // approval unreadable whenever the previous turn's pass had already used
+      // its calls -- a refusal caused by arithmetic somewhere else entirely.
+      // One call, its own clock, and it joins the set that a closing meeting
+      // cancels, so ending a call still stops it.
+      const operation = {
+        id: crypto.randomUUID(),
+        deadlineAt: Date.now() + Number(
+          getConsumerConfig(this.env).modulePlannerTimeoutMs || 30_000
+        ),
+        callAllowance: 1,
+        callsUsed: 0,
+        controller: new AbortController()
+      };
+      this.directModulePlanningOperations.add(operation);
+      let envelope = null;
+      let decision;
+      try {
+        envelope = await this.buildExecutionApprovalEnvelope(turn);
+        decision = await decideExecutionApproval({
+          env: this.env,
+          config: getConsumerConfig(this.env),
+          envelope,
+          operation
+        });
+      } catch (_error) {
+        // A REFUSAL IS AN ORDINARY OUTCOME AND A THROW IS NOT. This promise is
+        // awaited on the tool path and on the client-turn path; rejecting would
+        // surface a server fault on the turn the client agreed, when the right
+        // answer is simply that nothing established what they meant.
+        decision = { decision: 'unclear', answeredProposition: 'none', reason: 'approval reading failed', source: 'unavailable', latencyMs: 0 };
+      } finally {
+        this.directModulePlanningOperations.delete(operation);
+      }
+      // The reading is bound to the state it was taken against. Both are
+      // checked again at the barrier; recording them is what makes a wrong
+      // execution legible afterwards rather than a mystery.
+      const bound = Object.freeze({
+        ...decision,
+        offerToken: String(offer.token),
+        certificateSignature: String(offer.certificateSignature || ''),
+        turnId: turn.storedTurnId || null,
+        turnOrdinal: Number(turn.ordinal || 0)
+      });
+      await appendRealtimeEvent(this.env, {
+        sessionId: this.meta?.sessionId,
+        leaseId: this.meta?.leaseId,
+        direction: 'server',
+        eventType: 'live.approval.decided',
+        // Structural only: no transcript, no prompt, no figure.
+        payload: {
+          decision: bound.decision,
+          answeredProposition: bound.answeredProposition,
+          source: bound.source,
+          offerToken: bound.offerToken,
+          turnOrdinal: bound.turnOrdinal,
+          answeredTheOffer: envelope?.answeredUtterance?.isTheCertifiedOffer === true,
+          latencyMs: Number(bound.latencyMs || 0)
+        }
+      }).catch(() => {});
+      return bound;
+    })();
+    turn.approvalDecision = pending;
+    return pending;
+  }
+
+  /**
+   * THE ADMISSION TEST FOR ONE APPROVAL, ASKED AS OFTEN AS IT NEEDS TO BE.
+   *
+   * ENTIRELY SYNCHRONOUS, AND THAT IS THE POINT. Every fact it reads is already
+   * in memory, so between the last statement of this function and whatever the
+   * caller does next there is no await, and therefore no window in which newer
+   * client input can arrive unseen. A barrier that had to fetch something to
+   * decide would itself be the gap it was trying to close.
+   *
+   * It answers one question in six parts, and every part is a control fact
+   * rather than a reading of what anyone said:
+   *
+   *   - is this still the client's latest word (the input generation);
+   *   - is the reading still about THIS offer and THIS certificate;
+   *   - does the offer still exist and is it unsuperseded;
+   *   - was it fully delivered;
+   *   - is its review settled;
+   *   - and did the reader actually call it a pure approval of this offer.
+   *
+   * Idempotency is deliberately NOT duplicated here: the plan nonce and the
+   * execution receipt own that, and a second opinion about it from a different
+   * layer could only ever disagree with the layer that enforces it.
+   */
+  executionAdmissionFor(turn, decision) {
+    const boundOrdinal = Number(turn?.ordinal || 0);
+    const boundTurnId = turn?.storedTurnId || null;
+    const boundOfferToken = String(decision?.offerToken || '');
+    const boundCertificate = String(decision?.certificateSignature || '');
+    const boundPlanId = String(this.directConfirmationOffer?.planId || '');
+    const refusal = (code, message) => ({ ok: false, code, refusal: { ok: false, code, retryable: true, message } });
+    return () => {
+      // THE READING HAS TO BE ABOUT THIS TURN, not merely about some turn. The
+      // decision records the turn and ordinal it was taken against; if the
+      // approval being admitted is not that one, nothing here has established
+      // anything about it.
+      if (!boundOrdinal || !boundOfferToken
+        || Number(decision?.turnOrdinal || 0) !== boundOrdinal
+        || (decision?.turnId || null) !== boundTurnId) {
+        return refusal('confirmation_context_invalid',
+          'That confirmation is not attached to anything the client said. Read the current plan '
+          + 'back in full and ask again.');
+      }
+      // IS THIS TURN THE LAST THING THE CLIENT DID?
+      //
+      // `clientInputSequence` only ever rises and a turn's ordinal never moves,
+      // so an approval that stops being current stays that way -- including
+      // when the thing that overtook it turned out to be unreadable, empty, a
+      // retry, or a request that failed before anyone could read it. There is
+      // no path in this file that lowers one or raises the other.
+      if (this.clientInputSequence > boundOrdinal) {
+        return refusal('confirmation_superseded_by_turn',
+          'The client has spoken again since they agreed, so that agreement is no longer their '
+          + 'latest word. Do not run the plan. Answer what they just said, then read the current '
+          + 'plan back and ask again.');
+      }
+      // AND DOES THE SERVER KNOW EVERYTHING THEY SENT BEFORE IT?
+      //
+      // Being the newest thing the client did is not enough. A message that
+      // arrived earlier and has not yet been understood may be a correction,
+      // and an approval that merely came after it would otherwise step over it.
+      // Content that is unknown is treated as content that changes the plan,
+      // because it might be, and finding out costs one more sentence.
+      for (const pending of this.pendingClientInput.keys()) {
+        if (pending >= boundOrdinal) continue;
+        return refusal('client_input_unresolved',
+          'The client sent something before that which has not been read yet. Do not run the '
+          + 'plan. Deal with what they said first, then read the current plan back and ask again.');
+      }
+      const offer = this.directConfirmationOffer;
+      if (!offer || offer.superseded === true
+        || offer.token !== boundOfferToken
+        || String(offer.certificateSignature || '') !== boundCertificate
+        || String(offer.planId || '') !== boundPlanId) {
+        return refusal('confirmation_context_invalid',
+          'The plan changed after the client answered. Read the current plan back in full and '
+          + 'ask again.');
+      }
+      if (offer.readbackFullyDelivered !== true) {
+        return refusal('confirmation_readback_incomplete',
+          'The complete plan read-back has not finished. Read it back in full before confirmation.');
+      }
+      // WHAT THEY MEANT, BEFORE WHETHER THE PLAN IS STILL SETTLED, and for the
+      // same reason the tool's own gate orders them this way: a reply that was
+      // not an approval of this offer is very often the REASON a review is
+      // running, and "still being reviewed" would answer a question the client
+      // did not ask while hiding the one they did.
+      if (!approvalAuthorisesExecution(decision)) {
+        const refused = approvalRefusal(decision);
+        return { ok: false, code: refused.code, refusal: refused };
+      }
+      if (offer.reviewStatus !== 'settled' || offer.reviewPending === true || offer.reviewFailed === true) {
+        return refusal('module_planning_pending',
+          'The latest answer is still being reviewed. Keep this offer while that review completes.');
+      }
+      return { ok: true };
+    };
   }
 
   async beginDirectReadbackAttempt(response) {
@@ -2299,9 +3574,30 @@ export class ConsumerLiveSession {
         if (!nextJob) break;
         const config = getConsumerConfig(this.env);
         if (config.modulePlannerMode === 'off') break;
+        // Released in this iteration's finally when this pass created it; a
+        // boundary's operation is released by the boundary that armed it.
+        let ownOperation = null;
         try {
           await this.directModulePlanningPersistenceChain.catch(() => {});
           const context = await loadLiveContext({ env: this.env, config, sessionId: this.meta.sessionId });
+          // READ AFTER THE AWAITS, NOT BEFORE THEM. Capturing the operation at
+          // the top of the loop meant a background Speak pass captured `null`
+          // and then ran unbounded even though a get_state boundary had armed a
+          // ceiling while it was loading context -- the pass finished its
+          // extraction after the deadline and went on to start a verifier.
+          // A NEW PASS IS NOT STARTED PAST THE CEILING either: the obligation
+          // stays outstanding and the next turn settles it, because starting a
+          // pass nobody can wait for spends money to miss a deadline that has
+          // already passed.
+          const inherited = this.directModulePlanningOperation;
+          const operation = inherited ?? this.newDirectModulePlanningOperation();
+          ownOperation = inherited ? null : operation;
+          this.directModulePlanningAttempts.set(
+            nextJob.turnId,
+            Number(this.directModulePlanningAttempts.get(nextJob.turnId) || 0) + 1
+          );
+          if (operation.controller.signal.aborted) break;
+          if (Number.isFinite(operation.deadlineAt) && Date.now() >= operation.deadlineAt) break;
           const planned = await runDirectModulePlanning({
             env: this.env,
             config,
@@ -2309,13 +3605,41 @@ export class ConsumerLiveSession {
             leaseId: this.meta.leaseId,
             throughTurnId: nextJob.turnId,
             frozenPlanId: this.directConfirmationOffer?.planId || null,
-            acknowledgedUnknown: this.acknowledgedUnknown
+            acknowledgedUnknown: this.acknowledgedUnknown,
+            operation
           });
+          if (config.modulePlannerMode === 'apply'
+            && planned.verification?.verdict === 'pass'
+            && planned.snapshot?.resolvedAcknowledgedUnknown?.length
+            && await verifyDirectModuleCertificate(this.env, planned.certificate, planned.snapshot, null, {
+              config,
+              calculationDateIso: context.profile.assumptions.calculationDateIso,
+              baseCurrency: context.profile.preferences.baseCurrency,
+              currentProfileContext: context.profile
+            })) {
+            // The verifier approved these later answers. Match the original
+            // acknowledgement too, so an in-flight pass cannot erase a newer
+            // "not sure" action for the same requirement.
+            this.acknowledgedUnknown = this.acknowledgedUnknown.filter((entry) =>
+              !planned.snapshot.resolvedAcknowledgedUnknown.some((resolved) =>
+                resolved.moduleId === entry.moduleId && resolved.path === entry.path
+                  && resolved.sourceTurnId === entry.sourceTurnId));
+            await this.state.storage.put('acknowledgedUnknown', this.acknowledgedUnknown);
+          }
           // This full transcript snapshot settles every obligation at or before
           // its watermark. A turn arriving during the call remains and is the
           // only additional pass the drain will run.
+          // A full-transcript pass settles every obligation at or below its
+          // watermark, so every one of them stops being an outstanding attempt
+          // -- not just the job that happened to drive the pass. Leaving the
+          // others recorded made get_state refuse to schedule for turns that
+          // had in fact been settled, and Speak, which reaches the planner
+          // through that boundary, quietly planned less than Type did.
+          const settled = this.directModulePlanningOutstanding
+            .filter((item) => item.sequence <= nextJob.sequence);
           this.directModulePlanningOutstanding = this.directModulePlanningOutstanding
             .filter((item) => item.sequence > nextJob.sequence);
+          for (const item of settled) this.directModulePlanningAttempts.delete(item.turnId);
           await this.persistDirectModulePlanningOutstanding();
           if (config.modulePlannerMode === 'apply'
             && this.directModulePlanningOutstanding.length === 0) {
@@ -2325,6 +3649,9 @@ export class ConsumerLiveSession {
                 && Boolean(planned.brief.verificationCertificate?.signature)
                 && directModulePlanMeaningKey(planned.snapshot, planned.brief.verificationCertificate)
                   === offer.semanticIdentity;
+              // A fresh rejection may catch a correction, owner or uncertainty
+              // the extractor missed. Only a newly certified equivalent plan
+              // can preserve an existing offer; candidate equality cannot.
               if (unchanged && planned.brief.verificationCertificate.confirmationPromptHash
                 === offer.confirmationPromptHash) {
                 offer.reviewStatus = 'settled';
@@ -2356,7 +3683,20 @@ export class ConsumerLiveSession {
           }
         } catch (error) {
           if (this.directConfirmationOffer) {
-            this.directConfirmationOffer.reviewStatus = 'failed';
+            // A CANCELLED PASS RETIRES THE OFFER, IT DOES NOT PARK IT.
+            //
+            // Marking the review failed is right when the planner merely could
+            // not finish: a later turn re-runs it. Cancellation is different --
+            // the meeting is ending, so nothing will ever re-establish whether
+            // the delivered plan still matches the conversation. An offer whose
+            // freshness can no longer be checked must not remain approvable, so
+            // it is retired here exactly as a verifier rejection retires it.
+            if (error?.code === 'module_planner_operation_cancelled') {
+              this.directConfirmationOffer = null;
+              this.directAwaitingConfirmationSnapshotRevision = null;
+            } else {
+              this.directConfirmationOffer.reviewStatus = 'failed';
+            }
             await this.persistDirectConfirmationOffer();
           }
           await appendRealtimeEvent(this.env, {
@@ -2370,6 +3710,7 @@ export class ConsumerLiveSession {
             // module id are structural, so they carry no transcript content and
             // no figure -- anything that is not a pointer is dropped here.
             payload: {
+              ...error?.plannerDiagnostics,
               code: String(error?.code || 'module_planner_failed'),
               moduleId: String(error?.moduleId || '') || null,
               paths: ConsumerLiveSession.pointerPaths(error?.details).slice(0, 40).join(' ')
@@ -2378,6 +3719,11 @@ export class ConsumerLiveSession {
           // Keep the failed watermark durable. A later client turn, get_state,
           // or confirmation attempt may retry it; never spin a paid loop here.
           break;
+        } finally {
+          // A background pass owns the operation it created and ends it here.
+          // A boundary's operation outlives this pass, because the caller
+          // blocked on it still has a renderer stage to pay for.
+          if (ownOperation) this.releaseDirectModulePlanningOperation(ownOperation);
         }
       }
     })().finally(() => { this.directModulePlanningPending = 0; });
@@ -3360,13 +4706,37 @@ export class ConsumerLiveSession {
   async executeToolCallWithTranscript(event, clientTranscript) {
     const name = String(event.name || '');
     const callId = String(event.call_id || '');
-    const approvalOffer = this.directConfirmationOffer;
+    const toolConfig = getConsumerConfig(this.env);
     const approvalResponse = this.responseContextsById.get(String(event.response_id || ''));
     const approvalTurn = this.clientTurnsByItemId.get(approvalResponse?.causeItemId);
+    // THE READING, AWAITED ONCE, SHARED BY EVERY BRANCH BELOW.
+    //
+    // `confirm_and_run` cannot proceed without it. `get_state` waits for it too
+    // because the pre-confirmation state read is where the next read-back is
+    // built: if this turn changed the plan, the model must not be handed a
+    // snapshot that predates the change, and whether it changed the plan is
+    // exactly what this answers. Both are already blocking tool boundaries.
+    //
+    // Memoized per turn and offer, so the parked-then-resumed path below, the
+    // barrier, and the scheduling decision on the client-turn path are all the
+    // same answer to the same question, bought once.
+    const approvalDecision = toolConfig.modulePlannerMode === 'apply'
+      && (name === 'confirm_and_run' || name === 'get_state')
+      ? await this.directApprovalDecisionFor(approvalTurn)
+      : null;
+    // The scheduling consequence of that reading, not just the reading: a
+    // state read must not conclude the background lane is idle while the
+    // obligation this turn owes is still being registered.
+    if (approvalDecision) await (approvalTurn?.approvalSettled || Promise.resolve()).catch(() => {});
+    // READ AFTER THE AWAITS, NEVER BEFORE THEM. A review that settled while the
+    // approval was being read may have retired this offer, and a stale local
+    // copy taken at entry would park a tool call against a plan that no longer
+    // exists.
+    const approvalOffer = this.directConfirmationOffer;
     let proposedToken = '';
     try { proposedToken = JSON.parse(event.arguments || '{}')?.confirmationToken || ''; } catch (_error) { /* invalid tool */ }
-    if (name === 'confirm_and_run' && getConsumerConfig(this.env).modulePlannerMode === 'apply'
-      && classifyExecutionApproval(clientTranscript) === 'affirmed'
+    if (name === 'confirm_and_run' && toolConfig.modulePlannerMode === 'apply'
+      && approvalAuthorisesExecution(approvalDecision)
       && this.turnAnswersDirectOffer(approvalTurn) && proposedToken === approvalOffer?.token
       && !approvalOffer.readbackFullyDelivered && !approvalOffer.deliveryAttempt?.interrupted
       && approvalOffer.deliveryAttempt?.transcriptMatched && approvalOffer.deliveryAttempt?.responseCompleted) {
@@ -3410,8 +4780,16 @@ export class ConsumerLiveSession {
       if (attempt.replayed) {
         result = attempt.result;
       } else {
+        // TWO LANES, TWO SOURCES OF AUTHORITY, AND ONLY ONE OF THEM READS WORDS.
+        //
+        // Under direct apply the answer came from the bounded approval reader
+        // above, bound to this exact offer and to the utterance the client was
+        // actually answering. The archived comparison lane is not the target
+        // architecture and is not in production; it keeps the reader it has.
         const affirmedConfirmation = name === 'confirm_and_run'
-          && classifyExecutionApproval(clientTranscript) === 'affirmed';
+          && (config.modulePlannerMode === 'apply'
+            ? approvalAuthorisesExecution(approvalDecision)
+            : classifyExecutionApproval(clientTranscript) === 'affirmed');
         const directOfferMatches = Boolean(
           affirmedConfirmation
           && this.directConfirmationOffer
@@ -3421,7 +4799,28 @@ export class ConsumerLiveSession {
         const directPlanningUnsettled = this.directModulePlanningPending > 0
           || this.directModulePlanningOutstanding.length > 0
           || this.directConfirmationOffer?.reviewStatus !== 'settled';
-        if (affirmedConfirmation && config.modulePlannerMode === 'apply'
+        // THE FENCE, CHECKED BEFORE ANY OTHER CONFIRMATION VERDICT.
+        //
+        // A turn the client has already moved past does not get told to read
+        // the plan back again, and does not get told its review is pending:
+        // both instructions would have the meeting act on an agreement that is
+        // no longer their latest word. It gets told what actually happened.
+        if (name === 'confirm_and_run' && config.modulePlannerMode === 'apply') {
+          // SAID FIRST, BECAUSE THE OFFER IS ALREADY GONE BY NOW.
+          //
+          // A reading of `semantic_change` retires the offer it was about, and
+          // the admission test below would then report only that there is no
+          // current plan. The difference matters to the meeting: one says
+          // acknowledge the change and re-plan, the other says read the current
+          // plan back. The refusal is the tool's own, imported not restated.
+          if (approvalDecision?.decision === 'semantic_change') {
+            result = approvalRefusal(approvalDecision);
+          } else {
+            const admitted = this.executionAdmissionFor(causalTurn, approvalDecision)();
+            if (!admitted.ok) result = admitted.refusal;
+          }
+        }
+        if (!result && affirmedConfirmation && config.modulePlannerMode === 'apply'
           && !directOfferMatches) {
           result = {
             ok: false,
@@ -3429,7 +4828,7 @@ export class ConsumerLiveSession {
             retryable: true,
             message: 'The verified plan must be read back again before it can run. Call get_state, summarize that current plan, and ask for confirmation.'
           };
-        } else if (directOfferMatches && directPlanningUnsettled) {
+        } else if (!result && directOfferMatches && directPlanningUnsettled) {
           result = {
             ok: false,
             code: 'module_planning_pending',
@@ -3437,7 +4836,7 @@ export class ConsumerLiveSession {
             message: 'The same offer is waiting for its background review. Clarify whether the client wants this plan to run; do not replace the offer or invent new inputs.'
           };
         }
-        if (affirmedConfirmation
+        if (!result && affirmedConfirmation
           && config.modulePlannerMode !== 'apply'
           && config.plannerReconciliationMode !== 'legacy') {
           const lease = await getRealtimeLease(
@@ -3473,13 +4872,47 @@ export class ConsumerLiveSession {
           // never delays native turn-taking before the model starts replying;
           // it may, however, wait here at the explicit pre-confirmation tool
           // boundary so the following read-back reflects every finalized turn.
-          if (this.directModulePlanningPending === 0
-            && this.directModulePlanningOutstanding.length > 0) {
-            this.scheduleDirectModulePlanning(
-              this.directModulePlanningOutstanding.at(-1)?.turnId
-            );
+          // SPEAK BLOCKS HERE TOO, so it gets the same ceiling as Type. The
+          // realtime 8s timeout governs the separate legacy fact reconciler and
+          // has never bounded this await. A spent budget schedules no NEW pass:
+          // it waits for whatever is already running and answers from that.
+          // NO SECOND CHAIN INSIDE ONE OPERATION.
+          //
+          // THE DEFECT THIS FIXES. This branch used to reschedule an
+          // outstanding obligation whenever time remained, so a typed request
+          // whose first pass failed its audit started a WHOLE SECOND chain
+          // here: seven planner calls and two renderer calls in one request,
+          // against a five-call guarantee I had described as the request's.
+          // Five was only ever the per-pass ceiling.
+          //
+          // A failed obligation is now settled by the client's NEXT turn, which
+          // is explicit, bounded and visible, rather than by a second chain the
+          // renderer starts on its own. When this boundary owns the operation
+          // it still schedules the first pass; inside someone else's operation
+          // it waits for what is already running and answers from that.
+          const disarmToolDeadline = this.armDirectModulePlanningDeadline();
+          try {
+            const operation = this.directModulePlanningOperation;
+            const pendingTurnId = this.directModulePlanningOutstanding.at(-1)?.turnId;
+            if (this.directModulePlanningPending === 0
+              && this.directModulePlanningOutstanding.length > 0
+              // ONE ATTEMPT PER TURN, AND THE SAME RULE IN BOTH TRANSPORTS. If
+              // a pass has already been tried for this obligation, trying again
+              // here is the second chain. Gating on who owns the operation
+              // instead would have stopped Type retrying while Speak still did,
+              // which is precisely the parity the shared planner exists to
+              // hold: the transport-parity harness caught the divergence.
+              && !this.directModulePlanningAttempts.has(pendingTurnId)
+              && !operation.controller.signal.aborted
+              && Date.now() < operation.deadlineAt) {
+              this.scheduleDirectModulePlanning(
+                this.directModulePlanningOutstanding.at(-1)?.turnId
+              );
+            }
+            await this.directModulePlanningChain.catch(() => {});
+          } finally {
+            disarmToolDeadline();
           }
-          await this.directModulePlanningChain.catch(() => {});
           const direct = await getLatestRealtimeMeetingBrief(
             this.env,
             this.meta.sessionId,
@@ -3585,18 +5018,47 @@ export class ConsumerLiveSession {
             toolAttemptId: attempt.row.id,
             directConfirmationOffer: config.modulePlannerMode === 'apply'
               ? this.directConfirmationOffer : null,
-            // The proposal audit row keeps the provider item identity. Exact
-            // quote offsets remain a T2 responsibility against the stored turn.
-            evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
+            // THE DECISION, NOT THE WORDS. Under direct apply the tool is given
+            // what the client's answer meant, already bound to this offer and
+            // this turn, and the deterministic gate there checks which decision
+            // came back. Nothing in the tool reads the transcript to find out.
+            executionApproval: config.modulePlannerMode === 'apply' ? approvalDecision : null,
+            // CARRIED ALL THE WAY DOWN, NOT EVALUATED HERE. The tool re-asks it
+            // after its own awaits, and the execution layer re-asks it again
+            // synchronously at the last instruction before the engine. Every
+            // one of those points is somewhere a newer client turn can arrive,
+            // and only the last one is the barrier. See executionAdmissionFor.
+            admitExecution: config.modulePlannerMode === 'apply'
+              ? this.executionAdmissionFor(causalTurn, approvalDecision) : null,
             // Keep the existing dependency name for the tool contract, but pass
             // only the transcript bound to this response's causal user item.
+            // `confirm_and_run` reads this one; the three below it are read by
+            // `save_facts` alone.
             latestClientTranscript: clientTranscript,
-            // Evidence for a figure the client affirmed rather than restated. Both
-            // are required together and neither is model-controlled: the sourced set
-            // holds only what the CLIENT has said, and the read-back is the turn
-            // they were answering.
-            clientSourcedFigures: this.sourcedFigures,
-            assistantReadBack: responseContext?.precedingAssistantTranscript || '',
+            // NOT SUPPLIED UNDER DIRECT APPLY, BECAUSE NOTHING CAN READ THEM.
+            //
+            // These three exist for the legacy fact writer: the provider item
+            // the evidence is filed against, the client-sourced figure set, and
+            // the assistant turn a bare "yes, that's right" was answering. With
+            // `save_facts` refused at the dispatcher in this mode, handing them
+            // over would be passing a parser its inputs on a path that can no
+            // longer reach it. `confirm_and_run` and `get_state` read none of
+            // them.
+            //
+            // The client-transcript parsing that BUILDS `sourcedFigures` is
+            // left alone: it feeds L2 compliance containment, not this tool,
+            // and L2's own mode handling is not this change's business.
+            ...(config.modulePlannerMode === 'apply' ? {} : {
+              // The proposal audit row keeps the provider item identity. Exact
+              // quote offsets remain a T2 responsibility against the stored turn.
+              evidenceRef: causalTurn?.status === 'completed' ? causalTurn.itemId : null,
+              // Evidence for a figure the client affirmed rather than restated. Both
+              // are required together and neither is model-controlled: the sourced set
+              // holds only what the CLIENT has said, and the read-back is the turn
+              // they were answering.
+              clientSourcedFigures: this.sourcedFigures,
+              assistantReadBack: responseContext?.precedingAssistantTranscript || ''
+            }),
             loadContext: () => loadLiveContext({
               env: this.env,
               config: getConsumerConfig(this.env),
@@ -3901,7 +5363,11 @@ export class ConsumerLiveSession {
       config: getConsumerConfig(this.env),
       sessionId: this.meta.sessionId
     }));
-    return { state: projection, violationCount: this.violationCount };
+    const typed = this.textChannel ? await loadStoredTypedState({
+      env: this.env, sessionId: this.meta.sessionId, leaseId: this.meta.leaseId,
+      restoreCardIndex: (index) => { this.typedCardIndex = index; }
+    }) : {};
+    return { state: projection, violationCount: this.violationCount, ...typed };
   }
 
   /* --------------------------------------------------------------- metering */
@@ -3951,8 +5417,16 @@ export class ConsumerLiveSession {
 
     // The euro allowance and the response cap still bound the meeting exactly
     // as they do in v2 — those controls were never the problem.
+    // AN UNSET STOP IS NOT A STOP THAT HAS BEEN REACHED. With no dispatch cap
+    // configured both sides are zero, and `0 >= 0` terminalized the meeting as
+    // budget-exhausted on every single turn -- silently, because the call is
+    // .catch()ed. The guard one screen up in enforceDispatchStop() already
+    // reads `stop > 0`; this copy did not. It stayed invisible while
+    // terminalization had no side effect the conversation could feel, and
+    // surfaced the moment closing a meeting began cancelling its planning.
+    const dispatchStop = Number(lease?.dispatch_stop_eur_micros || 0);
     if (lease && (Number(lease.response_count || 0) >= config.realtimeMaxResponses
-      || Number(lease.estimated_cost_eur_micros || 0) >= Number(lease.dispatch_stop_eur_micros || 0))) {
+      || (dispatchStop > 0 && Number(lease.estimated_cost_eur_micros || 0) >= dispatchStop))) {
       await this.terminalize('budget_exhausted', 'dispatch_stop_reached', null, true).catch(() => {});
     }
   }
@@ -4061,6 +5535,12 @@ export class ConsumerLiveSession {
       throw new ConsumerError(409, 'live_close_in_progress', 'The live meeting is already closing.');
     }
     this.closing = true;
+    // A CLOSED MEETING STOPS BUYING PLANNING FOR ITSELF. An extraction already
+    // in flight used to run to completion and then dispatch its verifier with
+    // an un-aborted signal, after the client had ended the meeting: paid work
+    // for a conversation that no longer exists. Cancelling here reaches both
+    // the call in flight and the stages that would have followed it.
+    this.cancelDirectModulePlanning(`meeting_${status}`);
     const termination = { status, reason, errorCode: errorCode || null, usageKnown: usageKnown === true };
     this.pendingTerminalization = termination;
     await this.state.storage.put('pendingTerminalization', termination);

@@ -172,7 +172,11 @@ export async function renderLiveAssistantText({
   volatileStateItem = '',
   recentTurns = [],
   fallbackQuestion = '',
-  dispatchTool
+  dispatchTool,
+  // The operation this reply belongs to. The renderer is a blocking stage of the
+  // same typed turn, so it shares that turn's clock and cancellation rather than
+  // holding a private twenty seconds beyond it.
+  operation = null
 }) {
   const fallbackText = boundedAssistantText(fallbackQuestion)
     || 'Could you tell me a little more about that?';
@@ -182,7 +186,25 @@ export async function renderLiveAssistantText({
   });
   const tools = liveToolsForConfig(config);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RENDERER_TIMEOUT_MS);
+  // THE RENDERER WAS OUTSIDE THE BUDGET IT WAS SUPPOSED TO BE INSIDE. Its own
+  // twenty seconds began where the planner's ceiling ended, so an operation
+  // that had already run out of time still dispatched a renderer call and the
+  // detached compliance review behind it. It now gets whatever the operation
+  // has left, and no more.
+  const remaining = Number.isFinite(operation?.deadlineAt)
+    ? operation.deadlineAt - Date.now()
+    : Number.POSITIVE_INFINITY;
+  if (operation?.controller?.signal?.aborted || remaining <= 0) {
+    return {
+      text: fallbackText,
+      toolCalls: [],
+      tokens: { inputTextTokens: 0, cachedTextTokens: 0, outputTextTokens: 0 },
+      fallback: true
+    };
+  }
+  const cancel = () => controller.abort();
+  operation?.controller?.signal?.addEventListener?.('abort', cancel, { once: true });
+  const timer = setTimeout(cancel, Math.max(1, Math.min(RENDERER_TIMEOUT_MS, remaining)));
   const toolCalls = [];
   const tokens = { inputTextTokens: 0, cachedTextTokens: 0, outputTextTokens: 0 };
 
@@ -231,5 +253,6 @@ export async function renderLiveAssistantText({
     };
   } finally {
     clearTimeout(timer);
+    operation?.controller?.signal?.removeEventListener?.('abort', cancel);
   }
 }

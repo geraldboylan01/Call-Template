@@ -24,6 +24,9 @@ import {
   LIVE_TOOL_DEFINITIONS,
   LIVE_TOOL_NAMES,
   assertLiveToolName,
+  assertLiveToolActiveInMode,
+  liveToolNamesForConfig,
+  executeLiveTool,
   liveStateProjection,
   livePlanningConfig,
   partitionSupportedConfirmedNoneFacts,
@@ -250,6 +253,91 @@ assert.throws(() => assertLiveToolName('propose_facts'), isUnknownTool);
 // deflect every unanticipated question.
 assert.throws(() => assertLiveToolName('get_intake_explanation'), isUnknownTool);
 checks += 2;
+
+/* --------------------------- a mode's tools are the tools it actually has -- */
+
+// THE DEFECT THIS PINS. Direct apply stopped ADVERTISING save_facts -- it is
+// absent from the provider tool list and from the system prompt, because the
+// background planner reads the transcript itself. The dispatcher did not know
+// that: it validated against every name this file defines, so the name alone
+// still routed into the legacy fact writer and its deterministic reading of
+// client language -- spoken-number extraction, owner cues, pension identity,
+// categorical-none presence conflicts and a second approval grammar.
+//
+// Unadvertised is not unavailable. This makes it so.
+const APPLY = { modulePlannerMode: 'apply' };
+const FACTS = { modulePlannerMode: 'shadow' };
+assert.deepEqual([...liveToolNamesForConfig(APPLY)].sort(), ['confirm_and_run', 'get_state']);
+assert.deepEqual([...liveToolNamesForConfig(FACTS)].sort(), ['confirm_and_run', 'get_state', 'save_facts']);
+// No config is not apply mode: every offline caller and probe that passes
+// nothing must keep the full lane, or this becomes a silent behaviour change
+// everywhere it is omitted.
+assert.deepEqual([...liveToolNamesForConfig(undefined)].sort(), [...LIVE_TOOL_NAMES].sort());
+checks += 3;
+
+const isWrongMode = (error) => error?.code === 'live_tool_not_in_mode';
+assert.throws(() => assertLiveToolActiveInMode('save_facts', APPLY), isWrongMode);
+// "No such tool" and "not in this mode" are different facts, and a rejected
+// tool attempt has to be able to say which. save_facts is still a REAL tool --
+// the legacy lane calls it -- so the name check must keep accepting it and the
+// mode check is what refuses it here.
+assert.equal(assertLiveToolName('save_facts'), 'save_facts');
+for (const name of ['get_state', 'confirm_and_run']) {
+  assert.equal(assertLiveToolActiveInMode(name, APPLY), name, `${name} stays available under direct apply`);
+}
+assert.equal(assertLiveToolActiveInMode('save_facts', FACTS), 'save_facts',
+  'and the legacy lane is untouched: this change is a mode boundary, not a removal');
+checks += 4;
+
+// REFUSED BEFORE ANY ARGUMENT IS READ, so the executor's parser is never
+// entered. `loadContext` would throw if it were: nothing here supplies one.
+await assert.rejects(
+  () => executeLiveTool('save_facts', { facts: [{ factId: 'cash_savings', value: 25000 }] }, { config: APPLY }),
+  isWrongMode,
+  'save_facts must be unreachable through the dispatcher under direct apply'
+);
+checks += 1;
+
+/* ------- and no production path can reach the dispatcher without a config -- */
+
+// WHY THIS IS A SOURCE CHECK RATHER THAN A BEHAVIOUR ONE.
+//
+// `liveToolIsActive` treats a missing config as the legacy lane, so that every
+// offline caller, probe and harness that passes nothing keeps the full toolset.
+// That compatibility default is only safe while no PRODUCTION path can reach
+// the dispatcher without a config -- if one could, omitting it would silently
+// re-open save_facts in a direct apply session.
+//
+// Today exactly one production site calls it, inside executeToolCallWithTranscript,
+// and `config` there is bound synchronously from getConsumerConfig(this.env)
+// before any await, then passed unconditionally. That is the whole argument,
+// and it is a fact about the call graph rather than about any one call, so it
+// is pinned as one: a second call site is the thing that would break it, and a
+// second call site is exactly what a later change is most likely to add.
+const productionSources = ['live/live_session.js', 'live/live_tools.js', 'live/live_provider.js',
+  'live/live_text_channel.js', 'live/typed_state.js', 'live/typed_projection.js', 'router.js']
+  .map((name) => ({
+    name,
+    text: readFileSync(fileURLToPath(new URL(`../worker/src/consumer/${name}`, import.meta.url)), 'utf8')
+  }));
+const dispatchSites = productionSources.flatMap(({ name, text }) => {
+  // The definition and its own internals live in live_tools.js; every other
+  // occurrence is a caller.
+  const body = name === 'live/live_tools.js'
+    ? text.slice(0, text.indexOf('export async function executeLiveTool'))
+    : text;
+  return [...body.matchAll(/executeLiveTool\s*\(/g)].map((match) => ({ name, index: match.index }));
+});
+assert.equal(dispatchSites.length, 1,
+  `exactly one production path may dispatch a live tool; found ${dispatchSites.length}`);
+assert.equal(dispatchSites[0].name, 'live/live_session.js');
+const dispatchCall = productionSources
+  .find((source) => source.name === 'live/live_session.js').text
+  .slice(dispatchSites[0].index, dispatchSites[0].index + 800);
+assert.match(dispatchCall, /^\s*config,\s*$/m,
+  'the one production dispatch must pass the config the mode gate reads, or the missing-config '
+  + 'compatibility default becomes a live bypass');
+checks += 3;
 
 /* ------------------------------------------------- the fact-gate inversion */
 

@@ -988,7 +988,7 @@ assert.match(realtimeSource, /turn\.disabled = !this\.active \|\| this\.welcomeP
 assert.match(realtimeSource, /turn\.setAttribute\('aria-disabled', String\(turn\.disabled\)\)/);
 assert.match(realtimeSource, /commit_empty\|buffer_too_small\|input_audio_buffer_commit/);
 assert.match(appSource, /const draft = captureConversationDraft\(appRoot\)[\s\S]*renderCurrentJourney\(\)[\s\S]*restoreConversationDraft\(appRoot, draft\)/);
-assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)/);
+assert.match(appSource, /async function handleDeleteSession\(\) \{\s*await typedMeetingController\.end\('deletion'\);\s*await realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)/);
 assert.match(appSource, /deleteSessionButton\.addEventListener\('click',[\s\S]*realtimeVoiceController\.end\(\{ reason: 'deletion' \}\)[\s\S]*openDialog\(deleteSessionDialog\)/);
 assert.doesNotMatch(appSource, /voiceController|createVoiceController|bounded_fallback/);
 assert.doesNotMatch(viewsSource, /app allowance|fixed conservative reservation/);

@@ -1,0 +1,275 @@
+{
+  "schemaVersion": "AiLedSeededProposalProbeV1",
+  "id": "seed-hypothetical-rate-promoted",
+  "originalCaseId": "mortgage-correction-hypothetical",
+  "test": {
+    "id": "mortgage-correction-hypothetical",
+    "moduleId": "mortgage_analysis",
+    "turns": [
+      {
+        "id": "a1",
+        "role": "assistant",
+        "transcript": "What are you hoping to work out?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c1",
+        "role": "user",
+        "transcript": "I want to review our existing home mortgage, jointly held by me, Aoife, and Ben. The balance is about 240 grand, rate 4.5 percent and 22 years remaining. It is repayment.",
+        "answersTurnId": "a1"
+      },
+      {
+        "id": "a2",
+        "role": "assistant",
+        "transcript": "What changes would you like to explore?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c2",
+        "role": "user",
+        "transcript": "I checked the rate and it is actually 4.1 percent. Maybe if rates reached 6 percent someday that would be scary, but do not use 6. Show what paying 500 extra a year does. No lump sum overpayment and no fixed payment amount for this illustration.",
+        "answersTurnId": "a2"
+      },
+      {
+        "id": "a3",
+        "role": "assistant",
+        "transcript": "Keep the current 4.1 percent rate for this comparison?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c3",
+        "role": "user",
+        "transcript": "Yes. The mortgage is still about 240000, 4.1 percent, 22 years. Use the normal calculation date and compare the 500 a year overpayment.",
+        "answersTurnId": "a3"
+      }
+    ],
+    "expected": {
+      "values": {
+        "currentBalance": 240000,
+        "annualInterestRate": 0.041,
+        "remainingTermYears": 22,
+        "annualOverpayment": 500,
+        "oneOffOverpayment": 0,
+        "loanKind": "mortgage"
+      }
+    },
+    "ready": true,
+    "partner": true
+  },
+  "seededProposal": {
+    "schemaVersion": "ModulePlanningSnapshotV1",
+    "baseSnapshotRevision": 0,
+    "throughTurnId": "c3",
+    "modules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "outputKey": "generated.pbsInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No balance-sheet review was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "pension_projection",
+        "outputKey": "generated.pensionInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No pension projection was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "liquidity_analysis",
+        "outputKey": "generated.liquidityPlan",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No cash-reserve analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "mortgage_analysis",
+        "outputKey": "generated.mortgageInputs",
+        "status": "ready",
+        "selection": {
+          "origin": "client_requested",
+          "reason": "The client asked to review the existing home mortgage and compare an annual overpayment."
+        },
+        "inputJson": "{\"loanKind\":\"mortgage\",\"currentBalance\":240000,\"annualInterestRate\":0.06,\"startDateIso\":\"2026-09-05\",\"endDateIso\":null,\"remainingTermYears\":22,\"repaymentType\":\"repayment\",\"fixedPaymentAmount\":null,\"oneOffOverpayment\":0,\"annualOverpayment\":500}",
+        "steeringSummary": "Review Aoife and Ben’s jointly held repayment mortgage using about €240,000, a 6% annual interest rate, 22 years remaining, €500 annual overpayment, no lump sum and no supplied fixed payment.",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [
+          {
+            "path": "/loanKind",
+            "valueJson": "\"mortgage\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/startDateIso",
+            "valueJson": "\"2026-09-05\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/repaymentType",
+            "valueJson": "\"repayment\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/endDateIso",
+            "valueJson": "null",
+            "source": "contract_default"
+          },
+          {
+            "path": "/fixedPaymentAmount",
+            "valueJson": "null",
+            "source": "contract_default"
+          },
+          {
+            "path": "/oneOffOverpayment",
+            "valueJson": "0",
+            "source": "contract_default"
+          }
+        ],
+        "evidence": [
+          {
+            "path": "/currentBalance",
+            "source": "conversation",
+            "turnId": "c3",
+            "quote": "The mortgage is still about 240000, 4.1 percent, 22 years.",
+            "profilePath": ""
+          },
+          {
+            "path": "/remainingTermYears",
+            "source": "conversation",
+            "turnId": "c3",
+            "quote": "The mortgage is still about 240000, 4.1 percent, 22 years.",
+            "profilePath": ""
+          },
+          {
+            "path": "/annualOverpayment",
+            "source": "conversation",
+            "turnId": "c3",
+            "quote": "compare the 500 a year overpayment",
+            "profilePath": ""
+          },
+          {
+            "path": "/oneOffOverpayment",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "No lump sum overpayment",
+            "profilePath": ""
+          },
+          {
+            "path": "/fixedPaymentAmount",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "no fixed payment amount for this illustration",
+            "profilePath": ""
+          },
+          {
+            "path": "/annualInterestRate",
+            "source": "conversation",
+            "turnId": "c2",
+            "quote": "I checked the rate and it is actually 4.1 percent. Maybe if rates reached 6 percent someday that would be scary, but do not use 6. Show what paying 500 extra a year does. No lump sum overpayment and no fixed payment amount for this illustration.",
+            "profilePath": ""
+          }
+        ]
+      },
+      {
+        "moduleId": "loan_analysis",
+        "outputKey": "generated.loanInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The requested borrowing analysis concerns an existing home mortgage, not a non-housing loan."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "college_funding",
+        "outputKey": "generated.collegeFundingInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No college-funding analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "house_purchase",
+        "outputKey": "generated.housePurchaseInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The client is reviewing an existing mortgage, not planning a future purchase."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      }
+    ],
+    "generalAmbiguities": [],
+    "confirmationPrompt": "I’ll review Aoife and Ben’s jointly held repayment mortgage using about €240,000 at 6%, with 22 years remaining, comparing €500 extra each year, with no lump sum and no fixed payment supplied. Shall I run exactly that plan?"
+  },
+  "manifest": {
+    "syntheticInjection": true,
+    "sourcePath": "diagnostics/ai-led-comparison-main-v1/r1/mortgage-correction-hypothetical/full_repair.json",
+    "sourceRequestHash": "37b1fa3cc3150b71ecdc057f6a7949ac59adbf1c7b6351862ecbca54a8911a2f",
+    "sourceProposalHash": "d0acbcc53bfcd8c444368f81cdb3065033e9e9a625512747ddca12220a5af61b",
+    "seededProposalHash": "8a4c07434163794a801d0ebd098cd75f94c1e9713e573e9944fdac19837f23be",
+    "sourceCallIndex": 1,
+    "sourceRepetition": 1,
+    "sourceArm": "full_repair",
+    "changes": [
+      "Promote the explicitly hypothetical 6% rate to current annualInterestRate, replacing the supported 4.1%.",
+      "Make steering and confirmation consistently claim the wrong 6%.",
+      "Replace rate evidence with a verbatim c2 turn containing the hypothetical and the instruction not to use it; no quotation is fabricated."
+    ],
+    "normalizerOutcome": {
+      "status": "ready",
+      "inputSupportIssues": []
+    },
+    "grading": "The seeded first proposal is intentionally wrong. Its first independent audit must reject certification. A subsequent supported correction may certify; a genuine unresolved case must remain uncertified. Distinguish safe refusal from successful recovery. Do not pool this injected-proposal probe into the naturally sampled main corpus.",
+    "injection": "All arms receive the identical seededProposal as extractor call 1. No model critique is injected. Use a zero-latency, zero-token synthetic response; mark it synthetic and keep it separate from paid/cached call totals. Then call the unchanged real verifier and recovery logic. Never place this manifest or the test expected/rubric in a provider request."
+  }
+}

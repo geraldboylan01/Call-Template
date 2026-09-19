@@ -10,6 +10,7 @@ import {
   IRELAND_RULES_CATALOGUE_VERSION,
   IRISH_STATE_PENSION_CONTRIBUTORY
 } from './ireland_rules.js';
+import { readJsonPointer, stableStringify } from './utils.js';
 
 /**
  * Version of the server-owned portion of direct module inputs.
@@ -22,8 +23,33 @@ import {
 export const DIRECT_MODULE_POLICY_VERSION = 'direct-module-policy-1.1.0';
 const AFFORDABLE_END_AGE_DEFAULTS = Object.freeze([85, 90, 95, 100]);
 
-function policy(path, value, source = 'planning_policy', mode = 'fixed') {
-  return Object.freeze({ path, value, source, mode });
+/**
+ * `recite` declares that this assumption is MATERIAL TO THE CLIENT and must be
+ * read back with its actual value before they confirm.
+ *
+ * THE DEFECT THIS FIXES. Both prompts required "material numeric financial
+ * assumptions" in the read-back, and both had to infer which ones those were.
+ * They disagreed: the planner said "standard cost and rate assumptions" and the
+ * auditor withheld approval for eight omissions -- the DIRT rate, the mortgage
+ * illustration rate, the term, the purchase costs, the deposit savings rate.
+ * Materiality of a SERVER-OWNED value is a policy decision the server already
+ * owns, so it is declared here once and supplied to both, rather than guessed
+ * twice. It is a FLOOR: the auditor keeps its own judgement on top for
+ * client-authored figures, and nothing here tells it to approve anything.
+ *
+ * Deliberately NOT recited: identifiers and schema versions, the ordinary
+ * calculation date, a repayment discriminator with no contract alternative, an
+ * unspecified optional payment, and a mode label -- the same exemptions the
+ * verifier prompt already names. Reciting those would bury the figures that
+ * matter under bookkeeping nobody would question.
+ */
+function policy(path, value, source = 'planning_policy', mode = 'fixed', recite = false) {
+  return Object.freeze({ path, value, source, mode, recite });
+}
+
+/** The same declaration, for a value the client must hear read back. */
+function recited(path, value, source = 'planning_policy', mode = 'fixed') {
+  return policy(path, value, source, mode, true);
 }
 
 /**
@@ -41,22 +67,26 @@ function policy(path, value, source = 'planning_policy', mode = 'fixed') {
  */
 const PER_ELEMENT_POLICY = Object.freeze({
   pensionMember: Object.freeze([
-    Object.freeze({ field: 'includeStatePension', value: true, source: 'planning_policy', mode: 'default' }),
-    Object.freeze({ field: 'statePensionFraction', value: 1, source: 'planning_policy', mode: 'default' }),
-    Object.freeze({ field: 'statePensionStartAge', value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge, source: 'planning_policy', mode: 'default' }),
-    Object.freeze({ field: 'statePensionEscalationRate', value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate, source: 'planning_policy', mode: 'fixed' })
+    // Whether a State Pension is counted at all, and from what age, changes the
+    // answer materially and a client can check both. The fraction and the
+    // escalation rate refine the same assumption and are left to the auditor's
+    // own judgement rather than forced into every read-back.
+    Object.freeze({ field: 'includeStatePension', value: true, source: 'planning_policy', mode: 'default', recite: true }),
+    Object.freeze({ field: 'statePensionFraction', value: 1, source: 'planning_policy', mode: 'default', recite: false }),
+    Object.freeze({ field: 'statePensionStartAge', value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge, source: 'planning_policy', mode: 'default', recite: true }),
+    Object.freeze({ field: 'statePensionEscalationRate', value: IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate, source: 'planning_policy', mode: 'fixed', recite: false })
   ]),
   collegeChild: Object.freeze([
     // These are defaults, not facts. A client may name a different start age
     // or course length and the semantic planner's value must survive.
-    Object.freeze({ field: 'collegeStartAge', value: PLANEIR_ASSUMPTIONS.collegeFunding.startAge, source: 'contract_default', mode: 'default' }),
-    Object.freeze({ field: 'collegeDurationYears', value: PLANEIR_ASSUMPTIONS.collegeFunding.durationYears, source: 'contract_default', mode: 'default' })
+    Object.freeze({ field: 'collegeStartAge', value: PLANEIR_ASSUMPTIONS.collegeFunding.startAge, source: 'contract_default', mode: 'default', recite: true }),
+    Object.freeze({ field: 'collegeDurationYears', value: PLANEIR_ASSUMPTIONS.collegeFunding.durationYears, source: 'contract_default', mode: 'default', recite: true })
   ])
 });
 
 function expandPerElement(specs, collection, prefix) {
   return (Array.isArray(collection) ? collection : []).flatMap((_item, index) => (
-    specs.map((spec) => policy(`${prefix}/${index}/${spec.field}`, spec.value, spec.source, spec.mode))
+    specs.map((spec) => policy(`${prefix}/${index}/${spec.field}`, spec.value, spec.source, spec.mode, spec.recite === true))
   ));
 }
 
@@ -65,7 +95,7 @@ function describePerElement(specs, pathTemplate) {
   return Object.freeze({
     pathTemplate,
     fields: Object.freeze(specs.map((spec) => Object.freeze({
-      field: spec.field, value: spec.value, source: spec.source, mode: spec.mode
+      field: spec.field, value: spec.value, source: spec.source, mode: spec.mode, recite: spec.recite === true
     })))
   });
 }
@@ -100,8 +130,8 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
       pensionMemberDefaults: describePerElement(PER_ELEMENT_POLICY.pensionMember, '/pensions/{index}'),
       pensionModeDefaults: Object.freeze({
         incomeMode: Object.freeze({ path: '/incomeMode', value: 'target', source: 'contract_default', mode: 'default' }),
-        targetIncomePctOfSalary: Object.freeze({ path: '/targetIncomePctOfSalary', value: 0.5, source: 'contract_default', mode: 'default', appliesWhen: "incomeMode is 'target'" }),
-        affordableEndAges: Object.freeze({ path: '/affordableEndAges', value: AFFORDABLE_END_AGE_DEFAULTS, source: 'contract_default', mode: 'default', appliesWhen: "incomeMode is 'affordable'" })
+        targetIncomePctOfSalary: Object.freeze({ path: '/targetIncomePctOfSalary', value: 0.5, source: 'contract_default', mode: 'default', recite: true, appliesWhen: "incomeMode is 'target'" }),
+        affordableEndAges: Object.freeze({ path: '/affordableEndAges', value: AFFORDABLE_END_AGE_DEFAULTS, source: 'contract_default', mode: 'default', recite: true, appliesWhen: "incomeMode is 'affordable'" })
       }),
       collegeChildPolicy: describePerElement(PER_ELEMENT_POLICY.collegeChild, '/children/{index}')
     }),
@@ -114,14 +144,14 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
       ]),
       pension_projection: Object.freeze([
         policy('/currentYear', year),
-        policy('/growthRate', PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate),
-        policy('/inflationRate', PLANEIR_ASSUMPTIONS.inflation.generalRate),
-        policy('/wageGrowthRate', PLANEIR_ASSUMPTIONS.inflation.generalRate, 'planning_policy', 'default'),
+        recited('/growthRate', PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate),
+        recited('/inflationRate', PLANEIR_ASSUMPTIONS.inflation.generalRate),
+        recited('/wageGrowthRate', PLANEIR_ASSUMPTIONS.inflation.generalRate, 'planning_policy', 'default'),
         // Mode is semantic: affordable versus target comes from the client's
         // question. Target is only the documented fallback when neither was
         // expressed, never a fixed value that can overrule the AI's reading.
         policy('/incomeMode', 'target', 'contract_default', 'default'),
-        policy('/horizonEndAge', 100, 'contract_default', 'default')
+        recited('/horizonEndAge', 100, 'contract_default', 'default')
       ]),
       liquidity_analysis: Object.freeze([]),
       mortgage_analysis: Object.freeze([
@@ -151,17 +181,17 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
       ]),
       college_funding: Object.freeze([
         policy('/currentYear', year),
-        policy('/inflationRate', PLANEIR_ASSUMPTIONS.inflation.educationRate),
+        recited('/inflationRate', PLANEIR_ASSUMPTIONS.inflation.educationRate),
         policy('/scenarios', approvedCollegeScenarios())
       ]),
       house_purchase: Object.freeze([
         policy('/schemaVersion', house.schemaVersion),
         policy('/calculationDateIso', date),
-        policy('/depositSavingsGrossAer', house.depositSavingsGrossAer),
-        policy('/dirtRate', house.dirtRate),
-        policy('/mortgageIllustrationRate', house.mortgageIllustrationRate),
-        policy('/mortgageTermYears', house.mortgageTermYears),
-        policy('/purchaseCosts', house.purchaseCosts),
+        recited('/depositSavingsGrossAer', house.depositSavingsGrossAer),
+        recited('/dirtRate', house.dirtRate),
+        recited('/mortgageIllustrationRate', house.mortgageIllustrationRate),
+        recited('/mortgageTermYears', house.mortgageTermYears),
+        recited('/purchaseCosts', house.purchaseCosts),
         policy('/emergencyReserveMode', 'suggested', 'contract_default', 'default'),
         policy('/emergencyReserveTarget', null, 'contract_default', 'default'),
         policy('/intendedUse', 'principal_private_residence')
@@ -181,18 +211,25 @@ export function directModulePolicyEntries(moduleId, input, envelope) {
     const reserve = resolveLiquidityReservePolicy(input?.clientStatus);
     entries.push(
       policy('/policyVersion', LIQUIDITY_RESERVE_POLICY.policyVersion),
-      policy('/minimumBufferMonths', reserve.minimumBufferMonths),
-      policy('/targetBufferMonths', reserve.targetBufferMonths)
+      recited('/minimumBufferMonths', reserve.minimumBufferMonths),
+      recited('/targetBufferMonths', reserve.targetBufferMonths)
     );
   }
   if (moduleId === 'pension_projection') {
     if (input?.incomeMode === 'target') {
-      entries.push(
-        policy('/targetIncomePctOfSalary', 0.5, 'contract_default', 'default')
-      );
+      // TARGET MODE TAKES A EURO AMOUNT OR A PERCENTAGE, NEVER BOTH. When the
+      // client has named the amount, the percentage default is not a value this
+      // calculation relies on, so reading it back would announce an assumption
+      // the answer does not rest on -- which the auditor rightly refused. The
+      // policy entry stays either way, because the disclosure rules are about
+      // what MAY be supplied; only its place in the spoken floor is conditional.
+      const relied = readJsonPointer(input, '/targetIncomeToday') === undefined;
+      entries.push(relied
+        ? recited('/targetIncomePctOfSalary', 0.5, 'contract_default', 'default')
+        : policy('/targetIncomePctOfSalary', 0.5, 'contract_default', 'default'));
     } else if (input?.incomeMode === 'affordable') {
       entries.push(
-        policy('/affordableEndAges', AFFORDABLE_END_AGE_DEFAULTS, 'contract_default', 'default')
+        recited('/affordableEndAges', AFFORDABLE_END_AGE_DEFAULTS, 'contract_default', 'default')
       );
     }
     entries.push(...expandPerElement(PER_ELEMENT_POLICY.pensionMember, input?.pensions, '/pensions'));
@@ -207,11 +244,62 @@ export function directModulePolicyEntries(moduleId, input, envelope) {
       ?? DEFAULT_HOUSE_PURCHASE_RULES.purchaseCosts.surveyOrEngineerByAcquisition.unknown;
     const index = entries.findIndex((entry) => entry.path === '/purchaseCosts');
     if (index >= 0) {
-      entries[index] = policy('/purchaseCosts', {
+      entries[index] = recited('/purchaseCosts', {
         ...entries[index].value,
         surveyOrEngineer: survey
       });
     }
   }
   return entries;
+}
+
+/**
+ * The server-owned assumptions this particular calculation actually relies on,
+ * with their actual values, for the read-back the client confirms.
+ *
+ * SPECIFIC TO THIS CALCULATION, not a blanket recital. directModulePolicyEntries
+ * is already conditional on the authored input -- the liquidity buffer resolves
+ * from clientStatus, pension emits the target OR the affordable default but
+ * never both, per-member and per-child entries expand only for the members and
+ * children that exist, and house purchase resolves its survey cost from the
+ * acquisition type. On top of that, an entry the CLIENT overrode is dropped
+ * here: a parent who said their child starts at nineteen is not being told an
+ * assumption, they are being read back their own answer, and the auditor
+ * already covers that. What remains is the floor -- the values the client never
+ * supplied, that move the result, and that they cannot check unless we say them.
+ */
+export function directModuleMaterialAssumptions(moduleId, input, envelope) {
+  return directModulePolicyEntries(moduleId, input, envelope)
+    .filter((entry) => entry.recite === true)
+    .filter((entry) => {
+      const actual = readJsonPointer(input, entry.path);
+      return actual === undefined || stableStringify(actual) === stableStringify(entry.value);
+    })
+    // AN OBJECT IS NOT A VALUE ANYONE CAN READ BACK. "Recite /purchaseCosts
+    // with its actual value" left both sides to decide what that meant, and
+    // they decided differently: the planner said "the stated purchase costs"
+    // and the auditor wanted the five amounts inside it. Neither was wrong
+    // about the rule, because the rule did not say. Expanding to the scalar
+    // amounts here says it once, to both, in the only form a person can check.
+    .flatMap((entry) => scalarLeaves(entry.path, entry.value)
+      .map(([path, value]) => Object.freeze({ path, value, source: entry.source })));
+}
+
+/**
+ * Each scalar inside a policy value, addressed by its own pointer.
+ *
+ * Numbers and booleans only. A null is a value nobody supplied, and there is
+ * nothing to read back about it; a string at a policy path is a mode
+ * discriminator -- stampDutyMode "rules" -- which the auditor already exempts
+ * and which no client could check. Reciting either would bury the amounts that
+ * matter under bookkeeping, which is the failure this list exists to prevent.
+ */
+function scalarLeaves(path, value) {
+  if (value === null || typeof value !== 'object') {
+    return typeof value === 'number' || typeof value === 'boolean' ? [[path, value]] : [];
+  }
+  return Object.entries(value).flatMap(([key, nested]) => scalarLeaves(
+    `${path}/${String(key).replace(/~/g, '~0').replace(/\//g, '~1')}`,
+    nested
+  ));
 }

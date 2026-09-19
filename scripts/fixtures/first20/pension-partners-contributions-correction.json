@@ -1,0 +1,71 @@
+{
+  "fixtureNote": "Minimal faithful extract of diagnostics/first20/paid-v10c-r2b/pension-partners-contributions-correction.json from the paid v10c-r2b run. Only the fields audit-claude-integrity.mjs reads are kept: the conversation turns, and the first provider call's output text (the authored snapshot). Nothing was edited.",
+  "turns": [
+    {
+      "id": "a1",
+      "role": "assistant",
+      "transcript": "What would you like to work out?",
+      "answersTurnId": null
+    },
+    {
+      "id": "c1",
+      "role": "user",
+      "transcript": "Can our pensions support a gross household income of 60000 a year in today's money from 2052? I am Aoife, 42, and Ben is 40. I retire at 67 and Ben at 66. Use target income, not a maximum affordable income comparison.",
+      "answersTurnId": "a1"
+    },
+    {
+      "id": "a2",
+      "role": "assistant",
+      "transcript": "What are your salaries, pension pots and contributions?",
+      "answersTurnId": null
+    },
+    {
+      "id": "c2",
+      "role": "user",
+      "transcript": "My salary is 80000, my pot is 180000, I pay 8 percent of salary and my employer pays 6 percent. Ben earns 60000, his pot is 120000, he pays 7 percent and his employer pays 5 percent. We are both employees.",
+      "answersTurnId": "a2"
+    },
+    {
+      "id": "a3",
+      "role": "assistant",
+      "transcript": "Any corrections, other pensions or future retirement income?",
+      "answersTurnId": null
+    },
+    {
+      "id": "c3",
+      "role": "user",
+      "transcript": "I checked: Ben's pot is 125000, not 120000. Those are our only pension funds. No defined benefit pensions, rental income, annuities or other retirement income. Include the full Irish State Pension for both from age 66 as a planning assumption. Use your standard growth, inflation and salary growth, and plan to age 100. The target stays 60000 from 2052.",
+      "answersTurnId": "a3"
+    }
+  ],
+  "providerCalls": [
+    {
+      "response": {
+        "output": [
+          {
+            "id": "rs_086641fbb8c8dd98016a9f327031d087d2ac0df8ee4fede7f3",
+            "type": "reasoning",
+            "content": [],
+            "encrypted_content": "gAAAAABqnzJ_DmBSng1HaTcS4Yhx-SEFfQQuzAS3f8Wkxdb4dCjBOLfP1-k21oFyvYg5t2X0w22oO0FecR5-GvBzWul07fZ5IHAOKGQ4SQatqN72sFdhoJaeKm_114IBlaDM2wNO2Szwvwud4rLiBQTrmu3wLU9qSV09NVX8MepNdbgZFD55gH5Aze6n6aaxwlNHYz26tocIMvnx6Ii51g-GVS7-ErgjexlXiIjGp_id1lKv_AnprxIUwMd0YlBcf-oARawo9mMPAFYIKQ18EPG2pzCS6hEUr2ohOwin7WNSTBvNHt4ChqMIejUjMSjsQ10HPM83TQDpVwWNEAQNFj8Y8QSWUfwykzhqIHfR5vNeIlVzEfjDPF_pBxN3Oc64NBtQ5QNE_B9VuybczK4ITH3KIrGj_HjSyFp7Ekz8rIzj0m_3QPse14kyg48UZh5sJM03dLdEWCV4VUw-W50o_eEM3c4CdeLtGF8Z-dlvRHifTVXIkE6KsTHISZminqL4y2sqTaASZGZWveV0lahBFuhzOSRsOs70uS5m9AKGiHT_XcpAtqaYq4kjYW7gBPfcAeLk3KQ6qLnm2u2wpAoGW9MUR3tPs1QwRZsL3dDZhype0lQfGI0jZHO__sCP1zT6FYmrW95KpaA0YwxEMws80oFQ7eoyRC-ZvMMhEgVA7NeN-wJKJocJwM_kI8mVhH4B8DKy5CVL2vOdPM0RJc6fquqEI6DHVxV70aizgbQ8eh6Kg4FPlTZgLhfU7qNp82Z1DF2ZbLLY8ubBCNPBqZT9zAexmKlWB7gZ5Ld6453rhcG0Rxh37TQ3-J8xelbyJXs3JCm-Cdtg3N0fd92TNbQNS2p_I6dCzwaPX4lPk0BpIPrQS0UZuaWqLchxpe96w28R0nH-mz7o04wYL82DF_RM2FanR3u7_8yGcbkFHuuU7vx1pHJ6r1R_mQf1wwnmIVo-4rLmDY2nfzih10d0aVAsoqlw3TXyJkwIFVtN52zAr4vjfupDuvHSnnGhB7v0V_HEVgP1EasoUHIzH8p7iP5o3eEGtQNyhv6L965zxhtdeF0TWSZIX8bh-dWW7iBdPXUTA_lba4ioTIbyL8yTRks1jqrim5AJsRRIBtdohrI8wEL9oemstHHlQ-q4MWw9HB4b1_thil6fYyT0Wwrql9ou2vBzprbW96b_45K_-K3y-tJSXt0K-jdXm3eNatO7LUODrtxG2g3z6vP0kDgDsCdCnNfbA0NuzGFTKUK4296swBAuRk2rNQqqZecj9z-488Emh0TFUgwdsIefh59RIpXpzE7AXcJ46CZntAk9pKv-hy-4yDUn9s0ugaPMRy9u4Sf2C88UTtWQ8k68O8B02avcXlOT1eyL9NDqsI3-oe45LgTyOlHiDRX_kUyByvavqL7jacAULxgcIiUOxspk4-M8y4SwZXz8hW3s12IVLjbnYnyRPhaG-cFBltDQI6Q-g7NUfUXLBeGNyIchasJEVQnJYWwpPycUDOeD4A6RetGUs3qg4JllZDoDF6TfJiPzWGmZgnN0y96PyhmEQ0iE58B59FJVU5ao10Xyn2jgD6WG5V1HtbAuclomkjYwea7E9r3ZobjGM_Sp-9NJ1qP5kGqrwIeo01cNyEfNg1zoQD7QdJqE7AT40niT2YT8ipt0_GXodkkezFDWJnHkZWje89QypSmLcncDJeLEIF2GSbLp7r8aG7yf_b_ibd0ZVBFj-WP9kAz9kzAP-QW5ox8pf1Tth_TucDdT_7u9znQ4ZexUXHa2ZWuvMNY3fyLVb7uQR2j6Bmtnp7yZNmalBRELRHIq3thsyfjEAmAS7AirGxkfTKZWCxK4Lxiq58rLmMclAXnVu2ev1ozrwmj1E6b3GrLcnBRsSVPNGjP78Z6QT67IIqTTHK1BSNmO7j8pU3ZGAgb8WhpCG6Ig5a_TmPGJuwMlzPycryL8r7JeF2JMEWXZ_DqK0bd9uDq5nGKG5bySj56MbnGaR5e0bSBbwuJth6oc3fIO5Gn8KTQMsNW7iovzyvUSspqXqIc2Oh9JyJunXajOE9ZdXsvY_3WRY02VSDMzMNfX5BIxlyA67hMosMa-OBlKGq7kQICP5J9ayJPKmLKnN0bZDhSc_bzbsdSH49W4UgY_lvvD1ui63KXUttQXjFsxW9iEZSBAv5rShZOlX291aLuSNv9mkZEv8y9XPieSEwxOjzS9TDvzf32GAO1jGbA1pblnHYzwtiQsFUAIygCaEpujR06hY0ve_g7jNZyak2_0RPh2LNFr24dBe0hokkZfDfUChpou6XWFHknO1opxSZ_UDvYxIwF7KgRxCm4D5adq23cyVm0dxSwWMZMJnv-GdmrXUj3VOZQcTsuA9dnrm_KKzOLRkF6lgnbZOMwMDXdVUXAE5WfqeKrwOYZ4UTHhEVPkZ994J_yX74yJ2prdGLpu9YH1uAidr0sGl5c-nSxvQ1hF8QtMqOtLBWkO0FuBJDr8b16eW3bHIjGd74isvytzWcaa2-W9YpJ3W4gUtGDz06Gf0xchmggx2GelzlcIhybIT-wuEhGTQL0rMshPDr0Urzohe9cNsfdZV7q_aa2jH9IT5J75LqQZmMhFLYybMT0dQ_41SoEFOHt2XILyi_7vvmHZAX-cOIxoJ5ZakfvZuI_YXKHZZTuLfKFlkOSdzF0lFm0D0Zje4XODmv_uOswpIZ1rZgMX743Sif-RLrDYP2jFtDRQkbOcHWfBYITOvtmkGNep2-3DXmaMVg-88Z_RxqrMGB3F",
+            "summary": []
+          },
+          {
+            "id": "msg_086641fbb8c8dd98016a9f3272e1d087d29dc80071c8f5c2be",
+            "type": "message",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "annotations": [],
+                "logprobs": [],
+                "text": "{\"schemaVersion\":\"ModulePlanningSnapshotV1\",\"baseSnapshotRevision\":0,\"throughTurnId\":\"c3\",\"modules\":[{\"moduleId\":\"personal_balance_sheet\",\"outputKey\":\"generated.pbsInputs\",\"status\":\"not_relevant\",\"selection\":{\"origin\":\"not_selected\",\"reason\":\"Not needed for the requested household pension projection.\"},\"inputJson\":\"{}\",\"steeringSummary\":\"\",\"resolvedAcknowledgedUnknown\":[],\"missing\":[],\"ambiguities\":[],\"assumptions\":[],\"evidence\":[]},{\"moduleId\":\"pension_projection\",\"outputKey\":\"generated.pensionInputs\",\"status\":\"ready\",\"selection\":{\"origin\":\"client_requested\",\"reason\":\"They asked whether their pensions can support a €60,000 household income from 2052.\"},\"inputJson\":\"{\\\"currentYear\\\":2026,\\\"growthRate\\\":0.05,\\\"inflationRate\\\":0.02,\\\"wageGrowthRate\\\":0.02,\\\"incomeMode\\\":\\\"target\\\",\\\"targetIncomeToday\\\":60000,\\\"targetStartYear\\\":2052,\\\"horizonEndAge\\\":100,\\\"pensions\\\":[{\\\"id\\\":\\\"aoife\\\",\\\"title\\\":\\\"Aoife\\\",\\\"currentAge\\\":42,\\\"retirementAge\\\":67,\\\"currentSalary\\\":80000,\\\"currentPot\\\":180000,\\\"personalPct\\\":0.08,\\\"employerPct\\\":0.06,\\\"includeStatePension\\\":true,\\\"statePensionFraction\\\":1,\\\"statePensionStartAge\\\":66,\\\"statePensionEscalationRate\\\":0.02},{\\\"id\\\":\\\"ben\\\",\\\"title\\\":\\\"Ben\\\",\\\"currentAge\\\":40,\\\"retirementAge\\\":66,\\\"currentSalary\\\":60000,\\\"currentPot\\\":125000,\\\"personalPct\\\":0.07,\\\"employerPct\\\":0.05,\\\"includeStatePension\\\":true,\\\"statePensionFraction\\\":1,\\\"statePensionStartAge\\\":66,\\\"statePensionEscalationRate\\\":0.02}],\\\"otherIncomeSources\\\":[]}\",\"steeringSummary\":\"Target-mode household pension projection for Aoife, age 42, retiring at 67, with salary €80,000, pension pot €180,000, personal contribution 8% and employer contribution 6%; and Ben, age 40, retiring at 66, with salary €60,000, corrected pension pot €125,000, personal contribution 7% and employer contribution 5%. The target is gross household income of €60,000 a year in today's money from 2052. Both are employees, have no other retirement income, include the full Irish State Pension from age 66, and the plan runs to age 100 using standard growth, inflation and salary-growth assumptions.\",\"resolvedAcknowledgedUnknown\":[],\"missing\":[],\"ambiguities\":[],\"assumptions\":[{\"path\":\"/currentYear\",\"valueJson\":\"2026\",\"source\":\"planning_policy\"},{\"path\":\"/growthRate\",\"valueJson\":\"0.05\",\"source\":\"planning_policy\"},{\"path\":\"/inflationRate\",\"valueJson\":\"0.02\",\"source\":\"planning_policy\"},{\"path\":\"/wageGrowthRate\",\"valueJson\":\"0.02\",\"source\":\"planning_policy\"},{\"path\":\"/incomeMode\",\"valueJson\":\"\\\"target\\\"\",\"source\":\"contract_default\"},{\"path\":\"/horizonEndAge\",\"valueJson\":\"100\",\"source\":\"contract_default\"},{\"path\":\"/pensions/0/statePensionFraction\",\"valueJson\":\"1\",\"source\":\"planning_policy\"},{\"path\":\"/pensions/0/statePensionEscalationRate\",\"valueJson\":\"0.02\",\"source\":\"planning_policy\"},{\"path\":\"/pensions/1/statePensionFraction\",\"valueJson\":\"1\",\"source\":\"planning_policy\"},{\"path\":\"/pensions/1/statePensionEscalationRate\",\"valueJson\":\"0.02\",\"source\":\"planning_policy\"}],\"evidence\":[{\"path\":\"/targetIncomeToday\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"Can our pensions support a gross household income of 60000 a year in today's money from 2052?\",\"profilePath\":\"\"},{\"path\":\"/targetStartYear\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"The target stays 60000 from 2052.\",\"profilePath\":\"\"},{\"path\":\"/pensions/0\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"I am Aoife, 42, and Ben is 40. I retire at 67 and Ben at 66.\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/currentAge\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"I am Aoife, 42\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/retirementAge\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"I retire at 67\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/currentSalary\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"My salary is 80000\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/currentPot\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"My salary is 80000, my pot is 180000\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/personalPct\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"I pay 8 percent of salary\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/employerPct\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"my employer pays 6 percent\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/includeStatePension\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"Include the full Irish State Pension for both from age 66 as a planning assumption.\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/statePensionStartAge\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"Include the full Irish State Pension for both from age 66 as a planning assumption.\",\"profilePath\":\"\"},{\"path\":\"/pensions/1\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"I am Aoife, 42, and Ben is 40. I retire at 67 and Ben at 66.\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/currentAge\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"Ben is 40\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/retirementAge\",\"source\":\"conversation\",\"turnId\":\"c1\",\"quote\":\"Ben at 66\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/currentSalary\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"Ben earns 60000\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/currentPot\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"Ben's pot is 125000, not 120000\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/personalPct\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"he pays 7 percent\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/employerPct\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"his employer pays 5 percent\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/includeStatePension\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"Include the full Irish State Pension for both from age 66 as a planning assumption.\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/statePensionStartAge\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"Include the full Irish State Pension for both from age 66 as a planning assumption.\",\"profilePath\":\"\"},{\"path\":\"/otherIncomeSources\",\"source\":\"conversation\",\"turnId\":\"c3\",\"quote\":\"Those are our only pension funds. No defined benefit pensions, rental income, annuities or other retirement income.\",\"profilePath\":\"\"},{\"path\":\"/pensions/0/employmentStatus\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"We are both employees.\",\"profilePath\":\"\"},{\"path\":\"/pensions/1/employmentStatus\",\"source\":\"conversation\",\"turnId\":\"c2\",\"quote\":\"We are both employees.\",\"profilePath\":\"\"}]}],\"generalAmbiguities\":[],\"confirmationPrompt\":\"I’ll run a target-income household pension projection for Aoife and Ben: Aoife is 42, earns €80,000, has €180,000 saved, contributes 8% with 6% employer contributions, and retires at 67; Ben is 40, earns €60,000, has €125,000 saved, contributes 7% with 5% employer contributions, and retires at 66. The target is €60,000 gross a year in today’s money from 2052, including the full State Pension from 66, with no other retirement income. I’ll assume 5% growth, 2% inflation, 2% salary growth, and project to age 100. Shall I run exactly that plan?\"}"
+              }
+            ],
+            "phase": "final_answer",
+            "role": "assistant"
+          }
+        ]
+      }
+    }
+  ]
+}

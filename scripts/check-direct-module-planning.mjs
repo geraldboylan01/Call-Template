@@ -2,6 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { directModuleTestInputs } from './live-harness/direct-fixtures.mjs';
+import { LIQUIDITY_RESERVE_POLICY } from '../js/liquidity_reserve.js';
 
 import { approvedCollegeScenarios, PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
@@ -252,6 +253,49 @@ for (const [moduleId, tamperedInput] of policyTamperCases) {
 }
 pass('AI-authored inputs cannot override pension, liquidity, college, or house-purchase engine policy');
 
+// ...AND A SERVER-OWNED STRING NOBODY SAYS IS SUPPLIED, NOT RETYPED.
+//
+// FOUND WITH THE REAL MODEL. The planner simply omitted liquidity's
+// /policyVersion. It is a version tag: the client never says one, the planner
+// has no discretion over one, and it cannot move a figure -- yet the whole
+// snapshot, every module in it and the state the meeting steers on were
+// discarded over it. Every tamper case above is a NUMBER, and every one of them
+// still fails loudly, which is the line: a rate, a buffer or a term is an
+// integrity signal, a version tag is bookkeeping.
+{
+  const { policyVersion: _omitted, ...withoutVersion } = inputs.liquidity_analysis;
+  const rows = DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: id === 'liquidity_analysis' ? 'ready' : 'not_relevant',
+    inputJson: id === 'liquidity_analysis' ? JSON.stringify(withoutVersion) : '',
+    steeringSummary: '', missing: [], ambiguities: [], assumptions: [],
+    evidence: id === 'liquidity_analysis'
+      ? Object.keys(withoutVersion).map((key) => ({
+        path: `/${key}`, source: 'conversation', turnId: 'turn-policy', quote: 'Use the standard Planéir policy.', profilePath: ''
+      }))
+      : []
+  }));
+  const completed = normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-policy',
+    modules: rows,
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planéir policy.' }],
+    throughTurnId: 'turn-policy', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const row = completed.modules.find((item) => item.moduleId === 'liquidity_analysis');
+  assert.equal(row.status, 'ready', 'an omitted server-owned version tag is supplied, not fatal');
+  assert.equal(row.input.policyVersion, LIQUIDITY_RESERVE_POLICY.policyVersion,
+    'and it is the server value, so nothing the planner wrote can stand in for it');
+}
+pass('an omitted server-owned string is completed by the server, while a tampered number still fails closed');
+
 const transcript = 'About two and a half thousand a month, and the mortgage is two hundred and forty grand.';
 const moduleRows = DIRECT_MODULE_IDS.map((moduleId) => ({
   moduleId,
@@ -432,8 +476,140 @@ pass('spoken-word evidence supports the AI-authored native number without determ
   assert.equal(filled.input, null);
   assert.deepEqual(filled.evidence, []);
   assert.equal(completed.modules.length, APPROVED_CONSUMER_MODULE_IDS.length);
+
+  // A DISCLOSURE THAT CONTRADICTS THE INPUT IS THE SAME BOOKKEEPING, and the
+  // same rule has to hold for it: dropped, never fatal, and never a rescue.
+  //
+  // FOUND WITH THE REAL MODEL. A client said "we spend about 4000 a month"; the
+  // planner authored the 4000 correctly and ALSO disclosed "I am leaving
+  // monthlyExpenditure to the server default (null)". Two contradictory lines
+  // of bookkeeping about a figure it had understood and quoted. That threw
+  // module_snapshot_assumption_invalid and destroyed the whole snapshot.
+  //
+  // These two cases are the pair that makes dropping safe. The claim is
+  // discarded either way; what decides the outcome is whether the CONVERSATION
+  // supports the value, which is the only thing that ever should have.
+  const overpayingInput = { ...inputs.mortgage_analysis, annualOverpayment: 500 };
+  const overpayingRows = (evidence) => moduleRows.map((item) => (
+    item.moduleId === 'mortgage_analysis'
+      ? { ...item, inputJson: JSON.stringify(overpayingInput), evidence }
+      : item
+  ));
+  const normalizeOverpaying = (evidence, turns) => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-1',
+    modules: overpayingRows(evidence),
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns,
+    throughTurnId: 'turn-1', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: EVIDENCE_PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const mortgageRow = moduleRows.find((item) => item.moduleId === 'mortgage_analysis');
+
+  // 1. NO EVIDENCE: dropping the contradictory claim must not let 500 through.
+  // The module leaves this pass not ready, carries no authored input, cannot be
+  // certified and cannot execute -- and the overpayment becomes a question.
+  const unevidenced = normalizeOverpaying(
+    mortgageRow.evidence,
+    [{ id: 'turn-1', role: 'user', transcript }]
+  );
+  const unevidencedRow = unevidenced.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.notEqual(unevidencedRow.status, 'ready');
+  assert.equal(unevidencedRow.authoredInput, undefined);
+  assert.equal(
+    unevidencedRow.assumptions.some((item) => item.path === '/annualOverpayment'), false,
+    'a disclosure that contradicts the authored input is discarded, never recorded as support'
+  );
+  assert.ok(
+    unevidencedRow.inputSupportIssues.includes('/annualOverpayment'),
+    'the value the dropped claim would have supported must be reported unsupported'
+  );
+  assert.ok(unevidencedRow.missing.some((need) => need.path === '/annualOverpayment'));
+
+  // 2. WITH EVIDENCE: the same divergence is allowed, because a `default` entry
+  // exists precisely so a client may name their own value. The claim is still
+  // dropped; the quote is what carries the figure.
+  const overpayingTranscript = `${transcript} We pay 500 a year off it as well.`;
+  const evidenced = normalizeOverpaying(
+    [
+      ...mortgageRow.evidence,
+      { path: '/annualOverpayment', source: 'conversation', turnId: 'turn-1', quote: '500 a year off it', profilePath: '' }
+    ],
+    [{ id: 'turn-1', role: 'user', transcript: overpayingTranscript }]
+  );
+  const evidencedRow = evidenced.modules.find((item) => item.moduleId === 'mortgage_analysis');
+  assert.equal(evidencedRow.status, 'ready');
+  assert.equal(evidencedRow.input.annualOverpayment, 500);
+  assert.equal(
+    evidencedRow.assumptions.some((item) => item.path === '/annualOverpayment'), false,
+    'the contradictory claim is dropped here too: evidence carried the value, not bookkeeping'
+  );
+
+  // A FIGURE IS NOT MADE AMBIGUOUS BY A LONGER FIGURE THAT ENDS THE SAME WAY.
+  //
+  // FOUND WITH THE REAL MODEL. A client said "a joint mortgage of 250 thousand
+  // ... his is worth 50 thousand". The planner quoted "50 thousand" for the
+  // second amount -- exactly right, and the only thing it could have quoted --
+  // and the citation was refused as appearing twice, because "250 thousand"
+  // contains it. Shared suffixes are ordinary in money talk. The uniqueness
+  // rule is unchanged; what changed is that a match embedded inside a longer
+  // word or number is no longer counted as an occurrence of it.
+  const overpayTranscript = `${transcript} We started at 1500 a month and now pay 500 a year extra.`;
+  const citedOverpayment = (quote, turnTranscript) => normalizeOverpaying(
+    [
+      ...mortgageRow.evidence,
+      { path: '/annualOverpayment', source: 'conversation', turnId: 'turn-1', quote, profilePath: '' }
+    ],
+    [{ id: 'turn-1', role: 'user', transcript: turnTranscript }]
+  ).modules.find((item) => item.moduleId === 'mortgage_analysis');
+
+  const sharedSuffix = citedOverpayment('500', overpayTranscript);
+  assert.equal(sharedSuffix.status, 'ready',
+    'a standalone 500 is one occurrence even though 1500 contains it');
+  assert.equal(sharedSuffix.input.annualOverpayment, 500);
+
+  // And the rule still bites the other way: a span the client never said on its
+  // own supports nothing, even though the characters are present.
+  const embeddedOnly = citedOverpayment('500', `${transcript} We pay 1500 a month.`);
+  assert.notEqual(embeddedOnly.status, 'ready',
+    'a quote whose only match sits inside a longer number is not something the client said');
+  // THE REASON HAS TO BE THE RIGHT REASON. The characters of "500" ARE present,
+  // inside "1500"; what is missing is the client ever saying them as their own
+  // phrase. Reporting that as an absent substring sends the planner hunting for
+  // a typo that is not there, so the two cases carry different labels.
+  assert.ok(
+    embeddedOnly.droppedCitations.some((item) => (
+      item.path === '/annualOverpayment'
+      && item.reason === 'quote_only_appears_inside_a_longer_word_or_number_in_that_turn'
+    )),
+    'the server records WHY it dropped the citation, so the repair can widen the quote instead of resending it'
+  );
+  const trulyAbsent = citedOverpayment('700 a year extra', `${transcript} We pay 1500 a month.`);
+  assert.ok(
+    trulyAbsent.droppedCitations.some((item) => (
+      item.reason === 'quote_is_not_a_contiguous_substring_of_that_turn'
+    )),
+    'a quote whose characters are genuinely absent is reported as absent, not as an embedded match'
+  );
+
+  // A genuinely repeated span is still refused: uniqueness is what makes a
+  // citation point at one claim rather than either of two.
+  const genuinelyRepeated = citedOverpayment(
+    'a year extra',
+    `${transcript} We pay 500 a year extra, and before that 300 a year extra.`
+  );
+  assert.notEqual(genuinelyRepeated.status, 'ready');
+  assert.ok(genuinelyRepeated.droppedCitations.some((item) => (
+    item.reason === 'quote_appears_more_than_once_in_that_turn'
+  )));
 }
 pass('dropped planner bookkeeping never rescues an unsupported value or an undisclosed default');
+pass('a default policy path may diverge only on evidence, never on a disclosure that contradicts the input');
+pass('a shared numeric suffix no longer makes an exact citation ambiguous, and a dropped citation says why');
 
 /* ---------- an empty collection is a claim, and it needs saying out loud ---- */
 
@@ -907,8 +1083,8 @@ const certificateConfig = {
   modulePlannerModel: 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 5000,
-  modulePlannerPromptVersion: 'direct-module-planner-v6',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v3'
+  modulePlannerPromptVersion: 'direct-module-planner-v13',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v12'
 };
 let providerCalls = 0;
 let verifierCalls = 0;
@@ -1290,8 +1466,8 @@ try {
       modulePlannerModel: 'gpt-5.6-luna',
       modulePlannerReasoningEffort: 'low',
       modulePlannerTimeoutMs: 5000,
-      modulePlannerPromptVersion: 'direct-module-planner-v6',
-      moduleVerifierPromptVersion: 'direct-module-verifier-v3'
+      modulePlannerPromptVersion: 'direct-module-planner-v13',
+      moduleVerifierPromptVersion: 'direct-module-verifier-v12'
     },
     turns: [{ id: 'turn-2', role: 'user', transcript: 'The balance is all I know right now.' }],
     throughTurnId: 'turn-2',

@@ -24,7 +24,7 @@
  */
 
 import { buildLiveCataloguePrompt } from './catalogue_prompt.js';
-import { LIVE_TOOL_DEFINITIONS } from './live_tools.js';
+import { LIVE_TOOL_DEFINITIONS, liveToolIsActive } from './live_tools.js';
 
 /**
  * The tools this lane offers, for EITHER transport.
@@ -41,7 +41,10 @@ export function liveToolsForConfig(config) {
 
 function toolsForDirectModulePlanning() {
   return LIVE_TOOL_DEFINITIONS
-    .filter((tool) => tool.name !== 'save_facts')
+    // THE SAME PREDICATE THE DISPATCHER REFUSES BY. Filtering on a literal name
+    // here meant "unadvertised" and "unavailable" were two independent
+    // decisions, and only one of them was made.
+    .filter((tool) => liveToolIsActive(tool.name, { modulePlannerMode: 'apply' }))
     .map((tool) => {
       if (tool.name !== 'confirm_and_run') return tool;
       return {

@@ -8,7 +8,7 @@
  */
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
-import { attachLiveSession, newLiveMeeting, settle } from './live-harness/session.mjs';
+import { attachLiveSession, attachTypedSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { LiveProviderSimulator } from './live-harness/provider.mjs';
 import { directModuleTestInputs } from './live-harness/direct-fixtures.mjs';
 import {
@@ -19,6 +19,10 @@ import { readJsonPointer, sha256Json } from '../js/planning/utils.js';
 import { decryptJson, sha256Base64Url, stableStringify } from '../worker/src/consumer/crypto.js';
 import { getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
 import { confirmAndRunRealtimeAnalysisPlan } from '../worker/src/consumer/realtime_analysis.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  approvalDecisionResponse
+} from './live-harness/approval-script.mjs';
 
 const TODAY = new Date().toISOString().slice(0, 10);
 const INPUTS = directModuleTestInputs(TODAY);
@@ -45,10 +49,14 @@ const SCENARIOS = [
   { id: 'correction_before_readback', moduleIds: ['mortgage_analysis'], correction: true }
 ];
 const rows = [];
+const spokenResults = new Map();
 const originalFetch = globalThis.fetch;
+let approvalCount = 0;
 let scenario;
 let extractionCount = 0;
 let verificationCount = 0;
+let typedRendererSteps = [];
+let typedCallSequence = 0;
 
 function extraction(envelope) {
   const source = envelope.conversation.find((turn) => turn.role === 'client' && turn.text.includes('Fixture details:'));
@@ -95,7 +103,19 @@ function extraction(envelope) {
 
 globalThis.fetch = async (_url, request) => {
   const body = JSON.parse(request.body);
+  if (!body.text?.format?.name) {
+    const step = typedRendererSteps.shift();
+    assert.ok(step, 'the typed renderer follows the scripted provider actions');
+    const output = step.tool
+      ? [{ type: 'function_call', name: step.tool, arguments: JSON.stringify(step.args || {}), call_id: `typed_completion_${++typedCallSequence}` }]
+      : [{ type: 'message', content: [{ type: 'output_text', text: step.speech }] }];
+    return { ok: true, json: async () => ({ status: 'completed', output, usage: {} }) };
+  }
   const envelope = JSON.parse(body.input?.[1]?.content || '{}');
+  if (body.text?.format?.name === APPROVAL_DECISION_SCHEMA_NAME) {
+    approvalCount += 1;
+    return approvalDecisionResponse(envelope);
+  }
   let value;
   if (body.text?.format?.name === 'module_planning_snapshot_v1') {
     extractionCount += 1;
@@ -113,55 +133,86 @@ globalThis.fetch = async (_url, request) => {
   return { ok: true, json: async () => ({ status: 'completed', output_text: JSON.stringify(value) }) };
 };
 
+// Exercise the actual typed message renderer and shared tool dispatcher. The
+// observer records its output after the real barrier runs; it changes no result.
+function completionTransport(channel, rig) {
+  if (channel === 'speak') {
+    const simulator = new LiveProviderSimulator(rig);
+    return async ({ text, tool, args = {}, speech = 'I have those details.' }) => {
+      let result;
+      await simulator.turn({ clientText: text, act: async ({ callTool }) => {
+        if (tool) result = (await callTool(tool, args)).result;
+        return { speech: tool === 'get_state' ? result?.confirmationPrompt : speech };
+      } });
+      return { result };
+    };
+  }
+  let observed;
+  const dispatch = rig.session.dispatchTextToolCall.bind(rig.session);
+  rig.session.dispatchTextToolCall = async (...args) => {
+    observed = await dispatch(...args);
+    return observed;
+  };
+  return async ({ text, tool, args = {}, speech = 'I have those details.' }) => {
+    observed = undefined;
+    typedRendererSteps = [...(tool ? [{ tool, args }] : []), { speech }];
+    const response = await rig.session.handleTextMessage({ text });
+    assert.equal(response.fallback, false, 'typed completion must not conceal a renderer or tool failure');
+    assert.equal(typedRendererSteps.length, 0, 'the actual typed renderer completed every scripted step');
+    return { result: observed, response };
+  };
+}
+
+function comparableResults(results) {
+  // Per-execution identity and wall-clock observation naturally differ. Every
+  // native output, warning, assumption, calculation version and hash must match.
+  return results.map(({ runId, calculatedAt, ...result }) => result)
+    .sort((left, right) => left.moduleId.localeCompare(right.moduleId));
+}
+
 try {
   for (scenario of SCENARIOS) {
     for (const approval of APPROVALS) {
-      const label = `${scenario.id}/${approval}`;
+      for (const channel of ['speak', 'type']) {
+      const label = `${channel}/${scenario.id}/${approval}`;
       const meeting = await newLiveMeeting(`completion-${rows.length}`, {
-        CONSUMER_MODULE_PLANNER_MODE: 'apply', OPENAI_API_KEY: 'synthetic-test-key'
+        CONSUMER_MODULE_PLANNER_MODE: 'apply', CONSUMER_TYPED_LANE_ENABLED: 'true', OPENAI_API_KEY: 'synthetic-test-key'
       });
-      const rig = await attachLiveSession(meeting);
-      const simulator = new LiveProviderSimulator(rig);
-      await simulator.turn({
-        clientText: `${scenario.id === 'general_checkup' ? 'I would like a financial check-up.' : `Please examine my ${scenario.moduleIds.map((id) => NAMES[id]).join(' and ')}.`} Fixture details: ${scenario.moduleIds.map((id) => DETAILS[id]).join(' ')}`,
-        act: async () => ({ speech: 'I have those details.' })
-      });
+      const rig = await (channel === 'speak' ? attachLiveSession : attachTypedSession)(meeting);
+      const turn = completionTransport(channel, rig);
+      await turn({ text: `${scenario.id === 'general_checkup' ? 'I would like a financial check-up.' : `Please examine my ${scenario.moduleIds.map((id) => NAMES[id]).join(' and ')}.`} Fixture details: ${scenario.moduleIds.map((id) => DETAILS[id]).join(' ')}` });
       await settle(rig.durable, rig.session);
       if (scenario.correction) {
-        await simulator.turn({ clientText: 'Actually the balance is €240,000, not €230,000.', act: async () => ({ speech: 'I have the corrected balance.' }) });
+        await turn({ text: 'Actually the balance is €240,000, not €230,000.', speech: 'I have the corrected balance.' });
         await settle(rig.durable, rig.session);
       }
-      let token;
-      await simulator.turn({
-        clientText: 'Please read the plan back.',
-        act: async ({ callTool }) => {
-          const state = (await callTool('get_state', {})).result;
-          assert.equal(state.readyToConfirm, true, `${label}: ready snapshot ${JSON.stringify(state)}`);
-          token = state.confirmationToken;
-          return { speech: state.confirmationPrompt };
-        }
-      });
+      const presented = await turn({ text: 'Please read the plan back.', tool: 'get_state' });
+      const state = presented.result;
+      assert.equal(state.readyToConfirm, true, `${label}: ready snapshot ${JSON.stringify(state)}`);
+      const token = state.confirmationToken;
+      if (channel === 'type') {
+        assert.equal(presented.response.readback, true, `${label}: certified prompt is displayed`);
+        assert.equal(presented.response.assistantText, state.confirmationPrompt, `${label}: exact certified displayed text`);
+      }
       await settle(rig.durable, rig.session);
       assert.equal(rig.session.directConfirmationOffer?.token, token, label);
       assert.equal(rig.session.directConfirmationOffer?.readbackFullyDelivered, true, label);
       const offer = structuredClone(rig.session.directConfirmationOffer);
       const frozen = await getRealtimeAnalysisPlanExecution(meeting.env, meeting.sessionId, offer.planId, meeting.meetingId);
       const modelCallsBeforeApproval = extractionCount + verificationCount;
+      const approvalReadingsBefore = approvalCount;
       const approvalStarted = performance.now();
-      let result;
-      await simulator.turn({
-        clientText: approval,
-        act: async ({ callTool }) => {
-          result = (await callTool('confirm_and_run', { confirmationToken: token })).result;
-          return {};
-        }
-      });
+      const { result } = await turn({ text: approval, tool: 'confirm_and_run', args: { confirmationToken: token } });
       const observedAt = performance.now();
       await settle(rig.durable, rig.session);
       assert.equal(result?.ok, true, `${label}: ${JSON.stringify(result)}`);
       assert.equal(result?.status, 'complete', label);
       assert.equal(result?.completedCount, scenario.moduleIds.length, label);
       assert.equal(extractionCount + verificationCount, modelCallsBeforeApproval, `${label}: approval must not re-plan`);
+      // ONE READING, AND ONLY A READING. The approval turn buys exactly one
+      // bounded decision about what the client meant, and buys back neither a
+      // planner nor a verifier pass over financial content nobody changed.
+      assert.equal(approvalCount - approvalReadingsBefore, 1, `${label}: the approval turn is read exactly once`);
       const plans = (await meeting.env.CONSUMER_DB.prepare('SELECT * FROM consumer_realtime_analysis_plans WHERE session_id = ?').bind(meeting.sessionId).all()).results;
       assert.equal(plans.length, 1, `${label}: one frozen offer`);
       assert.equal(plans[0].id, frozen.row.id);
@@ -171,6 +222,15 @@ try {
       assert.equal(runs[0].input_snapshot_hash_b64u, await sha256Base64Url(stableStringify(frozen.input.moduleInputs)), `${label}: exact frozen execution bundle`);
       const storedResults = await decryptJson(meeting.env, runs[0].payload_encrypted, `consumer/analysis/${meeting.sessionId}/${runs[0].id}`);
       assert.equal(storedResults.results.length, scenario.moduleIds.length);
+      const parityKey = `${scenario.id}/${approval}`;
+      const completedState = {
+        moduleInputs: frozen.input.moduleInputs,
+        results: comparableResults(storedResults.results),
+        sessionStage: (await meeting.env.CONSUMER_DB.prepare('SELECT stage FROM consumer_sessions WHERE id = ?').bind(meeting.sessionId).first()).stage
+      };
+      assert.equal(completedState.sessionStage, 'results', `${label}: client reaches results`);
+      if (channel === 'speak') spokenResults.set(parityKey, completedState);
+      else assert.deepEqual(completedState, spokenResults.get(parityKey), `${label}: exact Type/Speak native inputs and persisted results parity`);
       const moduleRuns = (await meeting.env.CONSUMER_DB.prepare('SELECT * FROM consumer_module_runs WHERE session_id = ?').bind(meeting.sessionId).all()).results;
       assert.equal(moduleRuns.length, scenario.moduleIds.length);
       for (const moduleId of scenario.moduleIds) {
@@ -181,14 +241,11 @@ try {
         assert.equal(moduleRuns.find((item) => item.module_id === moduleId)?.input_snapshot_hash_b64u, executedHash);
       }
       // A new provider tool-call id against the same offer joins its receipt.
-      await simulator.turn({ clientText: approval, act: async ({ callTool }) => {
-        const duplicate = (await callTool('confirm_and_run', { confirmationToken: token })).result;
-        assert.equal(duplicate?.status, 'complete', `${label}: duplicate approval receipt ${JSON.stringify(duplicate)}`);
-        return {};
-      } });
+      const duplicate = (await turn({ text: approval, tool: 'confirm_and_run', args: { confirmationToken: token } })).result;
+      assert.equal(duplicate?.status, 'complete', `${label}: duplicate approval receipt ${JSON.stringify(duplicate)}`);
       // Reconstruct the Durable Object from persisted state; a retry through
       // the execution service still uses the saved plan nonce and same run.
-      const restarted = await attachLiveSession(meeting, { initial: Object.fromEntries(rig.durable.values) });
+      const restarted = await (channel === 'speak' ? attachLiveSession : attachTypedSession)(meeting, { initial: Object.fromEntries(rig.durable.values) });
       assert.equal(restarted.session.directConfirmationOffer?.planId, offer.planId);
       const replay = await confirmAndRunRealtimeAnalysisPlan({
         env: meeting.env, config: meeting.config, sessionId: meeting.sessionId,
@@ -198,19 +255,23 @@ try {
       assert.equal(replay.analysisPlan.analysisRunId, runs[0].id);
       const count = await meeting.env.CONSUMER_DB.prepare('SELECT COUNT(*) AS n FROM consumer_analysis_runs WHERE session_id = ?').bind(meeting.sessionId).first();
       assert.equal(Number(count.n), 1, `${label}: retries never rerun modules`);
-      rows.push({ scenario: scenario.id, approval, approvalToPersistedObservationMs: Number((observedAt - approvalStarted).toFixed(2)) });
+      rows.push({ channel, scenario: scenario.id, approval, approvalToPersistedObservationMs: Number((observedAt - approvalStarted).toFixed(2)) });
+      }
     }
-    console.info(`[LiveCompletionMatrix] ${scenario.id}: 8/8 one-approval completions; zero duplicate executions or hash mismatches.`);
+    console.info(`[LiveCompletionMatrix] ${scenario.id}: 8/8 approvals in both Type and Speak; identical inputs and results, zero duplicate executions or hash mismatches.`);
   }
 } finally {
   globalThis.fetch = originalFetch;
 }
-assert.equal(rows.length, 80);
+assert.equal(rows.length, 160);
 const sorted = rows.map((row) => row.approvalToPersistedObservationMs).sort((a, b) => a - b);
 const percentile = (fraction) => sorted[Math.ceil(sorted.length * fraction) - 1];
 console.info(JSON.stringify({
   lane: 'local-scripted-provider-real-durable-object-and-database',
   representativeCalls: rows.length, oneApprovalCompletions: rows.length,
+  typedCompletions: rows.filter((row) => row.channel === 'type').length,
+  spokenCompletions: rows.filter((row) => row.channel === 'speak').length,
+  completedResultsParityPairs: spokenResults.size,
   doubleExecutions: 0, approvedExecutedInputMismatches: 0,
   approvalToPersistedObservationMs: { p50: percentile(0.5), p95: percentile(0.95), min: sorted[0], max: sorted.at(-1) },
   productionTimeoutEvidence: false,

@@ -18,11 +18,23 @@ import {
 } from '../worker/src/consumer/direct_module_planner.js';
 import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
 import { getLatestRealtimeMeetingBrief, getRealtimeAnalysisPlanExecution } from '../worker/src/consumer/realtime_repository.js';
+import {
+  APPROVAL_DECISION_SCHEMA_NAME,
+  approvalDecisionResponse
+} from './live-harness/approval-script.mjs';
 
 const pass = (message) => console.info(`[DirectModuleLivePath] PASS: ${message}`);
 const TODAY = new Date().toISOString().slice(0, 10);
 const CLIENT_TURN = 'Please analyse my existing repayment mortgage. The balance is two hundred and forty thousand euro, the rate is four point one percent, and there are twenty two years left. I do not want to model an overpayment.';
 const CONFIRMATION_PROMPT = 'I will run the existing mortgage analysis using a €240,000 balance, 4.1% interest and 22 years remaining, with no overpayment. Would you like me to run exactly that plan now?';
+const COLLEGE_EVIDENCE = (turnId) => [
+  { path: '/children/0', source: 'conversation', turnId, quote: COLLEGE_QUOTE, profilePath: '' }
+];
+const MORTGAGE_EVIDENCE = (turnId) => [
+  { path: '/currentBalance', source: 'conversation', turnId, quote: 'two hundred and forty thousand euro', profilePath: '' },
+  { path: '/annualInterestRate', source: 'conversation', turnId, quote: 'four point one percent', profilePath: '' },
+  { path: '/remainingTermYears', source: 'conversation', turnId, quote: 'twenty two years', profilePath: '' }
+];
 const MORTGAGE_INPUT = Object.freeze({
   loanKind: 'mortgage',
   currentBalance: 240000,
@@ -57,11 +69,7 @@ function extractionFor(throughTurnId, baseSnapshotRevision = 0, evidenceTurnId =
         { path: '/oneOffOverpayment', valueJson: '0', source: 'contract_default' },
         { path: '/annualOverpayment', valueJson: '0', source: 'contract_default' }
       ] : [],
-      evidence: moduleId === 'mortgage_analysis' ? [
-        { path: '/currentBalance', source: 'conversation', turnId: evidenceTurnId, quote: 'two hundred and forty thousand euro', profilePath: '' },
-        { path: '/annualInterestRate', source: 'conversation', turnId: evidenceTurnId, quote: 'four point one percent', profilePath: '' },
-        { path: '/remainingTermYears', source: 'conversation', turnId: evidenceTurnId, quote: 'twenty two years', profilePath: '' }
-      ] : []
+      evidence: moduleId === 'mortgage_analysis' ? MORTGAGE_EVIDENCE(evidenceTurnId) : []
     })),
     generalAmbiguities: [],
     confirmationPrompt: CONFIRMATION_PROMPT
@@ -119,9 +127,7 @@ function collegeExtractionFor(throughTurnId, previousSnapshot, evidenceTurnId) {
         { path: '/children/0/collegeStartAge', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.startAge), source: 'contract_default' },
         { path: '/children/0/collegeDurationYears', valueJson: String(PLANEIR_ASSUMPTIONS.collegeFunding.durationYears), source: 'contract_default' }
       ] : [],
-      evidence: moduleId === 'college_funding' ? [
-        { path: '/children/0', source: 'conversation', turnId: evidenceTurnId, quote: COLLEGE_QUOTE, profilePath: '' }
-      ] : []
+      evidence: moduleId === 'college_funding' ? COLLEGE_EVIDENCE(evidenceTurnId) : []
     })),
     generalAmbiguities: [],
     confirmationPrompt: COLLEGE_PROMPT
@@ -153,6 +159,9 @@ let holdNextExtraction = null;
 globalThis.fetch = async (_url, request) => {
   const body = JSON.parse(request.body);
   const requestBody = JSON.parse(body.input?.[1]?.content || '{}');
+  if (body.text?.format?.name === APPROVAL_DECISION_SCHEMA_NAME) {
+    return approvalDecisionResponse(requestBody);
+  }
   let value;
   if (body.text?.format?.name === 'module_planning_snapshot_v1') {
     extractionCalls += 1;
@@ -330,13 +339,56 @@ try {
   const frozenExecution = await getRealtimeAnalysisPlanExecution(
     meeting.env, meeting.sessionId, frozenOffer.planId, meeting.meetingId
   );
+  // THE LEGACY FACT WRITER IS UNREACHABLE IN THIS MODE.
+  //
+  // Direct apply stopped ADVERTISING save_facts -- it is absent from the
+  // provider tool list and from the system prompt, because the background
+  // planner reads the transcript itself. The dispatcher did not know that: it
+  // validated against every name the live lane defines, so the name alone still
+  // routed into the legacy fact writer's deterministic reading of client
+  // language -- spoken-number extraction, owner cues, pension identity,
+  // categorical-none presence conflicts and a second approval grammar.
+  //
+  // Nothing in production asked for it; the model had to produce a name it was
+  // never shown. That is exactly why it needed closing, and why a hallucinated
+  // name should now cost a beat of conversation rather than a parser.
+  //
+  // Driven inside an EXISTING client turn on purpose. A turn of its own would
+  // schedule a legitimate extra planning pass and move the call counts this
+  // file pins below, which would hide the very thing being measured.
+  const revisionBeforeSave = (await meeting.env.CONSUMER_DB.prepare(
+    'SELECT current_profile_revision AS revision FROM consumer_sessions WHERE id = ?'
+  ).bind(meeting.sessionId).first()).revision;
+  let refusedSave = null;
   await simulator.turn({
     clientText: 'That seems sensible to me.',
-    act: async () => ({ speech: 'Would you like me to run that plan now?' })
+    act: async ({ callTool }) => {
+      refusedSave = (await callTool('save_facts', {
+        facts: [{ factId: 'cash_savings', value: 25000, certainty: 'stated' }]
+      })).result;
+      return { speech: 'Would you like me to run that plan now?' };
+    }
   });
   await settle(durable, session);
+  assert.equal(refusedSave?.ok, false, 'save_facts must not succeed under direct apply');
+  assert.equal(refusedSave?.code, 'live_tool_not_in_mode',
+    'and must be refused for the mode, not mistaken for an unknown tool or a parser failure');
+  const saveAttempts = (await meeting.env.CONSUMER_DB.prepare(`
+    SELECT status, error_code FROM consumer_realtime_tool_attempts
+    WHERE realtime_session_id = ? AND tool_name = 'save_facts'
+  `).bind(meeting.meetingId).all()).results || [];
+  assert.equal(saveAttempts.length, 1, 'the refusal is still recorded as an attempt, so it stays visible');
+  assert.equal(saveAttempts[0].status, 'rejected');
+  assert.equal(saveAttempts[0].error_code, 'live_tool_not_in_mode');
+  const revisionAfterSave = (await meeting.env.CONSUMER_DB.prepare(
+    'SELECT current_profile_revision AS revision FROM consumer_sessions WHERE id = ?'
+  ).bind(meeting.sessionId).first()).revision;
+  assert.equal(revisionAfterSave, revisionBeforeSave,
+    'a refused save writes no fact: the profile revision cannot move');
+  pass('save_facts is refused at the dispatcher under direct apply, and writes nothing');
+
   assert.equal(session.directConfirmationOffer?.token, frozenOffer.token,
-    'unclear confirmation must not destroy the offer');
+    'unclear confirmation must not destroy the offer, and neither does a refused tool');
   assert.equal(session.directConfirmationOffer?.planId, frozenOffer.planId);
   assert.equal(session.directConfirmationOffer?.readbackFullyDelivered, true);
   assert.equal(session.directConfirmationOffer?.reviewStatus, 'settled');

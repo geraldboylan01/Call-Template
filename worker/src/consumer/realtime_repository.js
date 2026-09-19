@@ -432,10 +432,10 @@ export async function createRealtimeLease(
         response_count, tool_call_count, estimated_cost_eur_micros,
         close_reason, error_code, created_at, activated_at,
         last_active_at, ended_at, control_token_hash_b64u,
-        invite_jti_hash_b64u, activation_id_hash_b64u
+        invite_jti_hash_b64u, activation_id_hash_b64u, channel
       )
       SELECT ?, ?, ?, 'openai', NULL, NULL, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?, ?
+             ?, ?, 0, 0, 0, 0, NULL, NULL, ?, NULL, ?, NULL, ?, ?, ?, ?
       WHERE EXISTS (
         SELECT 1
         FROM consumer_sessions AS sessions
@@ -485,6 +485,7 @@ export async function createRealtimeLease(
       controlTokenHashB64u,
       invite.jti_hash_b64u,
       activationIdHashB64u,
+      typed ? 'typed' : 'voice',
       providerCostEntry.id,
       sessionRow.id,
       config.realtimeNoticeId,
@@ -500,7 +501,7 @@ export async function createRealtimeLease(
     return row;
   } catch (error) {
     if (error instanceof ConsumerError) throw error;
-    const active = await getActiveRealtimeLease(env, sessionRow.id).catch(() => null);
+    const active = await (typed ? getActiveTypedLease : getActiveRealtimeLease)(env, sessionRow.id).catch(() => null);
     if (active) {
       throw new ConsumerError(409, 'realtime_call_active', 'A live voice call is already active for this planning session.');
     }
@@ -1415,6 +1416,33 @@ export async function recordRealtimeUsage(env, request) {
   return {
     responseCount: safeInteger(row?.response_count),
     estimatedCostMicroEur: safeInteger(row?.estimated_cost_eur_micros)
+  };
+}
+
+/**
+ * THE TURN THIS PROVIDER ITEM ALREADY IS, IF THE MEETING HAS ONE.
+ *
+ * A Durable Object can be rebuilt between two requests, and everything it knew
+ * about which question a client turn answered lived in memory. This is where
+ * that fact actually persists, so a message the client resends can be
+ * recognised as the turn it already is -- answering the question it originally
+ * answered -- instead of being taken for something new and bound to whatever
+ * the assistant asked last.
+ *
+ * Structural only: the id and the causal link, never the transcript.
+ */
+export async function getRealtimeFinalTurnByProviderItem(env, leaseId, providerItemId, role = 'user') {
+  const providerItemHash = await sha256Base64Url(String(providerItemId));
+  const row = await db(env).prepare(`
+    SELECT id, answers_turn_id, meeting_sequence FROM consumer_realtime_final_turns
+    WHERE realtime_session_id = ? AND provider_item_id_hash_b64u = ? AND role = ?
+    LIMIT 1
+  `).bind(leaseId, providerItemHash, role).first();
+  if (!row) return null;
+  return {
+    id: row.id,
+    answersTurnId: row.answers_turn_id || null,
+    meetingSequence: safeInteger(row.meeting_sequence)
   };
 }
 

@@ -1919,6 +1919,11 @@ export function renderLaneChoice(root, { onSpeak, onType } = {}) {
 
   const speak = element('button', 'primary-button lane-choice-option');
   speak.type = 'button';
+  // The lane each door opens, named rather than inferred from its wording.
+  // The protected deployment proof has to pick Speak out of this card before
+  // it may spend a paid meeting, and matching on display copy would make a
+  // rewording of the button a failed production activation.
+  speak.dataset.lane = 'speak';
   speak.append(element('span', 'lane-choice-option-title', 'Speak'));
   speak.append(element('span', 'lane-choice-option-detail',
     'Talk it through out loud. Needs a microphone.'));
@@ -1926,6 +1931,7 @@ export function renderLaneChoice(root, { onSpeak, onType } = {}) {
 
   const type = element('button', 'secondary-button lane-choice-option');
   type.type = 'button';
+  type.dataset.lane = 'type';
   type.append(element('span', 'lane-choice-option-title', 'Type'));
   type.append(element('span', 'lane-choice-option-detail',
     'Chat on screen. No microphone, and you can take your time.'));
@@ -1940,6 +1946,7 @@ export function renderLaneChoice(root, { onSpeak, onType } = {}) {
 export function renderUnavailable(root, {
   message = '',
   liveMeetingFailure = false,
+  typedMeetingFailure = false,
   transcript = ''
 } = {}) {
   root.replaceChildren();
@@ -1947,7 +1954,7 @@ export function renderUnavailable(root, {
   append(
     card,
     element('p', 'section-kicker', 'Planéir'),
-    element('h1', '', liveMeetingFailure ? 'Live call unavailable' : 'Failed to load'),
+    element('h1', '', typedMeetingFailure ? 'Planning session unavailable' : liveMeetingFailure ? 'Live call unavailable' : 'Failed to load'),
     element(
       'p',
       '',
@@ -1962,19 +1969,19 @@ export function renderUnavailable(root, {
     ));
   }
   const savedTranscript = String(transcript || '').trim();
-  if (liveMeetingFailure && savedTranscript) {
+  if ((liveMeetingFailure || typedMeetingFailure) && savedTranscript) {
     const transcriptPanel = element('section', 'failed-live-transcript');
     const transcriptArea = element('textarea');
     transcriptArea.id = 'failedLiveCallTranscript';
     transcriptArea.readOnly = true;
     transcriptArea.value = savedTranscript;
-    transcriptArea.setAttribute('aria-label', 'Saved live call transcript');
+    transcriptArea.setAttribute('aria-label', typedMeetingFailure ? 'Saved planning conversation' : 'Saved live call transcript');
     const copyButton = element('button', 'secondary-button', 'Copy transcript');
     copyButton.type = 'button';
     copyButton.dataset.action = 'copy-failed-live-transcript';
     append(
       transcriptPanel,
-      element('h2', '', 'Saved call transcript'),
+      element('h2', '', typedMeetingFailure ? 'Saved planning conversation' : 'Saved call transcript'),
       element('p', '', 'Everything saved before the connection failed is available below.'),
       transcriptArea,
       copyButton

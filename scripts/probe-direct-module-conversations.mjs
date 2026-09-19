@@ -32,8 +32,8 @@ const baseConfig = {
   modulePlannerModel: process.env.CONSUMER_MODULE_PLANNER_MODEL || 'gpt-5.6-luna',
   modulePlannerReasoningEffort: 'low',
   modulePlannerTimeoutMs: 120_000,
-  modulePlannerPromptVersion: 'direct-module-planner-v6',
-  moduleVerifierPromptVersion: 'direct-module-verifier-v3'
+  modulePlannerPromptVersion: 'direct-module-planner-v13',
+  moduleVerifierPromptVersion: 'direct-module-verifier-v12'
 };
 
 function profile({ partner = false } = {}) {

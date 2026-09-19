@@ -1,0 +1,259 @@
+{
+  "schemaVersion": "AiLedSeededProposalProbeV1",
+  "id": "seed-superseded-borrower-restored",
+  "originalCaseId": "holdout-loan-changed-selected-borrower",
+  "test": {
+    "id": "holdout-loan-changed-selected-borrower",
+    "moduleId": "loan_analysis",
+    "turns": [
+      {
+        "id": "a1",
+        "role": "assistant",
+        "transcript": "What would you like to review?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c1",
+        "role": "user",
+        "transcript": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+        "answersTurnId": "a1"
+      },
+      {
+        "id": "a2",
+        "role": "assistant",
+        "transcript": "Anything to change before I read that back?",
+        "answersTurnId": null
+      },
+      {
+        "id": "c2",
+        "role": "user",
+        "transcript": "Actually, switch the review completely to Ben's car loan. Do not review mine. His current figures are definitely 9000 outstanding, 7 percent a year and exactly two years remaining. For his loan use no annual overpayment and no lump sum; do not carry over the extra 500 from my loan. No fixed payment amount for his illustration either.",
+        "answersTurnId": "a2"
+      }
+    ],
+    "expected": {
+      "values": {
+        "currentBalance": 9000,
+        "annualInterestRate": 0.07,
+        "remainingTermYears": 2,
+        "annualOverpayment": 0,
+        "oneOffOverpayment": 0,
+        "loanKind": "loan"
+      }
+    },
+    "ready": true,
+    "partner": true,
+    "semanticRubric": "The selected entity changes from Aoife to Ben, not just the amount. All execution inputs belong to Ben. The confirmation must identify Ben's loan and must not describe it as Aoife's; the abandoned 500 annual overpayment must not survive."
+  },
+  "seededProposal": {
+    "schemaVersion": "ModulePlanningSnapshotV1",
+    "baseSnapshotRevision": 0,
+    "throughTurnId": "c2",
+    "modules": [
+      {
+        "moduleId": "personal_balance_sheet",
+        "outputKey": "generated.pbsInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No balance-sheet review was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "pension_projection",
+        "outputKey": "generated.pensionInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No pension projection was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "liquidity_analysis",
+        "outputKey": "generated.liquidityPlan",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No cash-reserve analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "mortgage_analysis",
+        "outputKey": "generated.mortgageInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "The selected debt is a non-housing car loan."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "loan_analysis",
+        "outputKey": "generated.loanInputs",
+        "status": "ready",
+        "selection": {
+          "origin": "client_requested",
+          "reason": "Aoife asked to review only her car loan."
+        },
+        "inputJson": "{\"loanKind\":\"loan\",\"currentBalance\":18000,\"annualInterestRate\":0.085,\"startDateIso\":\"2026-09-05\",\"endDateIso\":null,\"remainingTermYears\":4,\"repaymentType\":\"repayment\",\"fixedPaymentAmount\":null,\"oneOffOverpayment\":0,\"annualOverpayment\":500}",
+        "steeringSummary": "Review Aoife’s car loan only: €18,000 at 8.5%, four years remaining, €500 annual overpayment, no lump sum and no supplied fixed payment. Ben’s loan is excluded.",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [
+          {
+            "path": "/loanKind",
+            "valueJson": "\"loan\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/startDateIso",
+            "valueJson": "\"2026-09-05\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/repaymentType",
+            "valueJson": "\"repayment\"",
+            "source": "planning_policy"
+          },
+          {
+            "path": "/endDateIso",
+            "valueJson": "null",
+            "source": "contract_default"
+          },
+          {
+            "path": "/fixedPaymentAmount",
+            "valueJson": "null",
+            "source": "contract_default"
+          }
+        ],
+        "evidence": [
+          {
+            "path": "/currentBalance",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+            "profilePath": ""
+          },
+          {
+            "path": "/annualInterestRate",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+            "profilePath": ""
+          },
+          {
+            "path": "/remainingTermYears",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+            "profilePath": ""
+          },
+          {
+            "path": "/annualOverpayment",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+            "profilePath": ""
+          },
+          {
+            "path": "/oneOffOverpayment",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+            "profilePath": ""
+          },
+          {
+            "path": "/fixedPaymentAmount",
+            "source": "conversation",
+            "turnId": "c1",
+            "quote": "I am Aoife. I have a car loan with 18000 outstanding at 8.5 percent, four years remaining. My spouse Ben has a separate car loan of 9000 at 7 percent, two years remaining. Both are normal repayment loans. Review only my loan and try 500 extra each year, with no lump sum and no fixed monthly payment supplied.",
+            "profilePath": ""
+          }
+        ]
+      },
+      {
+        "moduleId": "college_funding",
+        "outputKey": "generated.collegeFundingInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No college-funding analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      },
+      {
+        "moduleId": "house_purchase",
+        "outputKey": "generated.housePurchaseInputs",
+        "status": "not_relevant",
+        "selection": {
+          "origin": "not_selected",
+          "reason": "No house-purchase analysis was requested."
+        },
+        "inputJson": "{}",
+        "steeringSummary": "",
+        "resolvedAcknowledgedUnknown": [],
+        "missing": [],
+        "ambiguities": [],
+        "assumptions": [],
+        "evidence": []
+      }
+    ],
+    "generalAmbiguities": [],
+    "confirmationPrompt": "I’ll review Aoife’s car loan only: €18,000 at 8.5% for four remaining years, with €500 extra each year, no lump sum and no fixed payment supplied. Ben’s loan is excluded. Shall I run exactly that plan?"
+  },
+  "manifest": {
+    "syntheticInjection": true,
+    "sourcePath": "diagnostics/ai-led-comparison-main-v1/r1/holdout-loan-changed-selected-borrower/full_repair.json",
+    "sourceRequestHash": "34194ea4d96fc107babcb02ca2b6e20c19d87531434e45ae7ed2ca0d00af1482",
+    "sourceProposalHash": "0d9f6db03d2631dbe3db02a085a2d9130d0db514281932076db9b0cc9c58d139",
+    "seededProposalHash": "b015d57c702f645434d8bf1570fb069da061eb79584448fb3944b9e5e15f5db4",
+    "sourceCallIndex": 1,
+    "sourceRepetition": 1,
+    "sourceArm": "full_repair",
+    "changes": [
+      "Restore the abandoned Aoife loan and €500 annual overpayment after the explicit switch to Ben’s €9,000/7%/two-year/zero-overpayment loan.",
+      "Make selection reason, steering and confirmation consistently name the wrong selected borrower.",
+      "Use verbatim earlier c1 evidence only; the full later borrower-switch turn remains present in the conversation."
+    ],
+    "normalizerOutcome": {
+      "status": "ready",
+      "inputSupportIssues": []
+    },
+    "grading": "The seeded first proposal is intentionally wrong. Its first independent audit must reject certification. A subsequent supported correction may certify; a genuine unresolved case must remain uncertified. Distinguish safe refusal from successful recovery. Do not pool this injected-proposal probe into the naturally sampled main corpus.",
+    "injection": "All arms receive the identical seededProposal as extractor call 1. No model critique is injected. Use a zero-latency, zero-token synthetic response; mark it synthetic and keep it separate from paid/cached call totals. Then call the unchanged real verifier and recovery logic. Never place this manifest or the test expected/rubric in a provider request."
+  }
+}
