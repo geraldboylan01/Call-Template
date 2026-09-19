@@ -9776,6 +9776,14 @@ function getLiquidityMonthlyExpenditure(plan = {}) {
 function computeLiquidityAssessment(plan = {}) {
   const currencySymbol = normalizeDisplayCurrencySymbol(plan.currencySymbol, '€');
   const clientStatus = getLiquidityClientStatus(plan);
+  // RETIREMENT IS A STATUS, NOT A FIELD. Two labels below read a bare
+  // `retired` that nothing ever declared, so every Liquidity render threw
+  // `retired is not defined` before it drew anything -- including payloads
+  // that supplied the buffer months explicitly, because `clientLabel` reads it
+  // unconditionally. The payload contract has no `retired` field and is not
+  // gaining one: the cohort is derived from `clientStatus`, the same value the
+  // policy lookup already uses.
+  const isRetired = clientStatus === 'retired';
   const policy = resolveLiquidityReservePolicy(clientStatus);
   const minimumBufferMonths = getPositiveFiniteNumber(plan.minimumBufferMonths)
     ?? policy.minimumBufferMonths;
@@ -9847,7 +9855,7 @@ function computeLiquidityAssessment(plan = {}) {
       : targetCash);
 
   const targetLabel = plan.targetLabel
-    || (retired
+    || (isRetired
       ? `${formatLiquidityMonths(targetBufferMonths)} retired reserve`
       : `${formatLiquidityMonths(targetBufferMonths)} emergency fund`);
   const primaryActionDetail = plan.primaryActionDetail || ({
@@ -9865,7 +9873,7 @@ function computeLiquidityAssessment(plan = {}) {
     actionAmount,
     actionMode,
     annualExpenditure,
-    clientLabel: retired ? 'Retired reserve' : 'Working reserve',
+    clientLabel: isRetired ? 'Retired reserve' : 'Working reserve',
     clientStatus,
     currencySymbol,
     currentCash,
