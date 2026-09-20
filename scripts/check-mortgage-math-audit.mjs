@@ -557,11 +557,151 @@ function referenceScheduleWithAnnual(balance, annualRate, months, payment, annua
 }
 
 {
+  // WHEN THE LUMP SUM LANDS IS WORTH MONEY, and the engine has to charge for
+  // the wait rather than quietly crediting the client with paying early.
+  //
+  // Re-simulated here from the formula: the loan runs at its contractual
+  // repayment until the chosen month, and only then does the balance drop.
+  const lumpMonth = 24;
+  const rate = 0.0425 / 12;
+  const payment = referencePayment(320_000, 0.0425, 324);
+  let balance = 320_000;
+  let interest = 0;
+  let months = 0;
+  while (balance > 0.005 && months < 400) {
+    const charged = balance * rate;
+    interest += charged;
+    balance = balance + charged - payment;
+    months += 1;
+    if (months === lumpMonth) balance -= 25_000;
+    if (balance < 0) balance = 0;
+  }
+
+  const deferred = computeAmortizationMonthlySchedule({
+    ...BASE,
+    currentBalance: 320_000,
+    annualInterestRate: 0.0425,
+    endDateIso: '2052-12-01',
+    oneOffOverpayment: 25_000,
+    oneOffOverpaymentMonth: lumpMonth
+  });
+  assert.equal(deferred.monthsSimulated, months, 'a deferred lump sum clears the loan when the formula says it does');
+  assert.ok(
+    Math.abs(deferred.totalInterestLifetime - interest) < 0.01,
+    'and removes exactly the interest the formula says it removes'
+  );
+  assert.equal(deferred.lumpSumApplied, 25_000, 'the whole lump sum is still paid in');
+  assert.equal(deferred.lumpSumMonth, lumpMonth);
+  assert.equal(deferred.openingBalance, 320_000, 'and money not yet paid does not reduce the opening balance');
+
+  const immediate = computeAmortizationMonthlySchedule({
+    ...BASE,
+    currentBalance: 320_000,
+    annualInterestRate: 0.0425,
+    endDateIso: '2052-12-01',
+    oneOffOverpayment: 25_000
+  });
+  assert.ok(
+    deferred.totalInterestLifetime > immediate.totalInterestLifetime,
+    'waiting two years costs interest that paying now would have removed'
+  );
+  assert.equal(immediate.lumpSumMonth, 0, 'and the default is still that it is already paid');
+  assert.equal(
+    immediate.monthsSimulated,
+    computeAmortizationMonthlySchedule({
+      ...BASE,
+      currentBalance: 320_000,
+      annualInterestRate: 0.0425,
+      endDateIso: '2052-12-01',
+      oneOffOverpayment: 25_000,
+      oneOffOverpaymentMonth: 0
+    }).monthsSimulated,
+    'stating month 0 explicitly is the same loan'
+  );
+
+  // The timing control moves the lump in EVERY case at once. Two cases on one
+  // screen answering "when would you pay it" differently is the defect.
+  const moved = computeMortgageComparison(FOUR_CASE_LOAN, { oneOffOverpaymentMonth: lumpMonth });
+  for (const item of moved.cases) {
+    assert.equal(item.projection.lumpSumMonth, lumpMonth, `${item.id} moved with the rest`);
+  }
+  const atZero = computeMortgageComparison(FOUR_CASE_LOAN);
+  assert.ok(
+    moved.cases.find((item) => item.id === 'lump-25k').interestSaved
+      < atZero.cases.find((item) => item.id === 'lump-25k').interestSaved,
+    'and deferring removes less interest'
+  );
+  assert.equal(
+    moved.cases.find((item) => item.id === 'annual-3k').totalInterestLifetime,
+    atZero.cases.find((item) => item.id === 'annual-3k').totalInterestLifetime,
+    'while a case with no lump sum is untouched by the timing'
+  );
+  pass('a lump sum can be paid later, it costs interest to wait, and the timing moves every case together');
+}
+
+{
+  // KEEP THE TERM AND LOWER THE REPAYMENT: the same money, the other answer.
+  const comparison = computeMortgageComparison(FOUR_CASE_LOAN);
+  const reduction = comparison.repaymentReduction;
+  assert.ok(reduction, 'a case set with a lump sum offers the alternative');
+  assert.equal(reduction.lumpSum, 25_000, 'modelled from the largest lump sum on the table');
+
+  // From the formula: the payment that amortises the post-lump balance over
+  // the full remaining term.
+  const expectedPayment = referencePayment(320_000 - 25_000, 0.0425, 324);
+  assert.ok(
+    Math.abs(reduction.newPayment - expectedPayment) < 0.01,
+    'the recalculated repayment is the annuity payment on the smaller balance'
+  );
+  assert.equal(
+    reduction.projection.monthsSimulated,
+    324,
+    'the term does not move'
+  );
+  assert.ok(reduction.monthlyReduction > 0, 'and the repayment falls');
+  assert.ok(
+    Math.abs(reduction.freedOverRemainingTerm - (reduction.monthlyReduction * 324)) < 0.01,
+    'what is freed is the monthly drop over every month it applies to'
+  );
+
+  // THE TRADE, STATED HONESTLY. Cash flow now costs interest later, and the
+  // module says so beside the figure that looks like a saving.
+  assert.ok(reduction.interestSavedVsBase > 0, 'it still removes interest against doing nothing');
+  assert.ok(
+    reduction.extraInterestVsShorterTerm > 0,
+    'but it costs more interest than the same lump sum spent on shortening the term'
+  );
+  // Measured against the case that put in the SAME lump sum and nothing else,
+  // so the only difference between the two is what the lender did with it.
+  assert.equal(reduction.shorterTermCaseId, 'lump-25k', 'measured against the same lump sum, spent the other way');
+  assert.ok(
+    reduction.extraInterestVsShorterTerm
+      === reduction.totalInterestLifetime
+        - comparison.cases.find((item) => item.id === 'lump-25k').totalInterestLifetime,
+    'and the two figures come from the same pair of schedules'
+  );
+
+  // A yearly amount cannot be re-amortised into a lower repayment.
+  const noLump = computeMortgageComparison({
+    ...FOUR_CASE_LOAN,
+    scenarios: [
+      { id: 'current', title: 'No overpayment' },
+      { id: 'annual-3k', title: '3,000 a year', annualOverpayment: 3_000 }
+    ]
+  });
+  assert.equal(noLump.repaymentReduction, null, 'and a case set without one does not invent the decision');
+  pass('keeping the term lowers the repayment, and the module can price what that costs in interest');
+}
+
+{
   // A payload with no cases is still one case, so nothing downstream has to
   // special-case the shape.
   const projection = computeMortgageProjection({ ...BASE, currentBalance: 200_000, annualInterestRate: 0.04, remainingTermYears: 25 });
   assert.equal(projection.comparisonTable, null, 'a single case has nothing to compare');
-  assert.deepEqual(projection.charts.map((chart) => chart.id), ['mortgage-mixed-annual'], 'and draws only its own chart');
+  // The module draws its own balance curve and year-interest columns in SVG,
+  // so the focused pane shows no charts card. The payload keeps one chart for
+  // the surfaces that render a module without it -- the video summary.
+  assert.deepEqual(projection.charts.map((chart) => chart.id), ['mortgage-mixed-annual'], 'and one chart ships for the surfaces with no module');
   const cases = getMortgageScenarioCases({ ...BASE, currentBalance: 200_000, annualInterestRate: 0.04, remainingTermYears: 25 });
   assert.equal(cases.length, 1);
   pass('a payload with no cases behaves exactly as it did before cases existed');
@@ -578,14 +718,29 @@ function referenceScheduleWithAnnual(balance, annualRate, months, payment, annua
   }
   const selected = computeMortgageProjection(FOUR_CASE_LOAN, { scenarioId: 'lump-25k' });
   assert.equal(selected.scenarioId, 'lump-25k');
-  assert.equal(selected.comparisonTable.columns.length, 5, 'one measure column and one per case');
+  // ONE ROW PER CASE, in the same order and direction as the buttons above it.
+  assert.equal(selected.comparisonTable.columns.length, 7, 'seven measures, read left to right');
+  assert.equal(selected.comparisonTable.columns[0], 'Case');
+  assert.equal(
+    selected.comparisonTable.columns.at(-1),
+    'Interest saved per \u20ac1 in',
+    'the long label, because the short one reads like a return'
+  );
+  assert.equal(selected.comparisonTable.rows.length, 4, 'one row per case');
+  assert.deepEqual(
+    selected.comparisonTable.rows.map((row) => row[0]),
+    ['No overpayment', '3,000 a year', '25,000 lump sum', 'Lump sum and 3,000 a year'],
+    'in payload order'
+  );
   for (const row of selected.comparisonTable.rows) {
     assert.equal(row.length, selected.comparisonTable.columns.length, `row "${row[0]}" matches the column count`);
   }
+  // The two comparison charts are gone: they restated the shaded gap of the
+  // module's own balance chart in a second unit.
   assert.deepEqual(
     selected.charts.map((chart) => chart.id),
-    ['mortgage-mixed-annual', 'mortgage-scenario-balance', 'mortgage-scenario-interest'],
-    'a chosen alternative draws the two comparison charts as well'
+    ['mortgage-mixed-annual'],
+    'and a chosen case adds no chart that restates what the module already draws'
   );
   // An unknown case id falls back to the base rather than rendering nothing.
   assert.equal(computeMortgageProjection(FOUR_CASE_LOAN, { scenarioId: 'no-such-case' }).scenarioId, 'current');
