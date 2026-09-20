@@ -120,11 +120,17 @@ const DEFAULT_OVERPAYMENT_BENEFIT = 'shorterTerm';
 /** Keys a case may restate. Everything else it inherits from the loan itself. */
 const SCENARIO_OVERRIDE_KEYS = Object.freeze([
   'oneOffOverpayment',
+  'oneOffOverpaymentMonth',
   'annualOverpayment',
   'fixedPaymentAmount',
   'annualInterestRate',
   'overpaymentBenefit'
 ]);
+
+/** `2026-01-01` + 24 -> `2028-01-01`. Month arithmetic on an ISO month start. */
+function addMonthsToIso(iso, months) {
+  return formatIsoDateUtc(addUtcMonths(toMonthStartUtc(parseIsoDateStrict(iso, 'startMonthIso')), months));
+}
 
 function formatEuro(amount) {
   return new Intl.NumberFormat('en-IE', {
@@ -193,6 +199,34 @@ export function formatMonthsDuration(months) {
   return parts.join(' ');
 }
 
+/**
+ * `98` -> `8 years 2 months`. The same duration, spelled out.
+ *
+ * Abbreviations belong in a table column, where the header carries the meaning
+ * and the width is scarce. In a sentence a client reads aloud -- "8 years 2
+ * months sooner than December 2052" -- "8 yrs 2 mths" is a form to be decoded
+ * rather than a length of time to be felt.
+ */
+export function formatMonthsDurationLong(months) {
+  if (!isFiniteNumber(months) || Math.round(months) <= 0) {
+    return 'None';
+  }
+
+  const total = Math.round(months);
+  const years = Math.floor(total / 12);
+  const remainder = total % 12;
+  const parts = [];
+
+  if (years > 0) {
+    parts.push(`${years} ${years === 1 ? 'year' : 'years'}`);
+  }
+  if (remainder > 0) {
+    parts.push(`${remainder} ${remainder === 1 ? 'month' : 'months'}`);
+  }
+
+  return parts.join(' ');
+}
+
 function normalizeLoanKind(rawLoanKind, defaultLoanKind = 'mortgage') {
   const fallback = String(defaultLoanKind || 'mortgage').trim().toLowerCase() || 'mortgage';
   if (fallback !== 'mortgage' && fallback !== 'loan') {
@@ -232,6 +266,29 @@ function normalizeOverpaymentBenefit(value, fallback, fieldName) {
   }
 
   return normalized;
+}
+
+/**
+ * WHEN THE LUMP SUM LANDS, counted in whole months from the start of the schedule.
+ *
+ * 0 means it is already paid, so it comes off the opening balance and the
+ * schedule never charges interest on it. Anything higher is a lump sum the
+ * client has not paid yet: the loan runs at its contractual repayment until
+ * that month, and only then does the balance drop. The difference is the whole
+ * point of the timing control -- the same euro removes less interest the
+ * longer it waits, because it has fewer months and a smaller balance to work
+ * against.
+ */
+function normalizeOverpaymentMonth(value, fieldName) {
+  const months = optionalFiniteNumber(value, 0, fieldName);
+  if (months < 0) {
+    throw new Error(`generated.mortgageInputs.${fieldName} must be greater than or equal to 0.`);
+  }
+  if (!Number.isInteger(months)) {
+    throw new Error(`generated.mortgageInputs.${fieldName} must be a whole number of months.`);
+  }
+
+  return months;
 }
 
 function normalizeScenarioId(value, fallback, fieldName) {
@@ -293,6 +350,13 @@ function normalizeMortgageScenario(rawCase, index) {
       throw new Error(`generated.mortgageInputs.${label}.oneOffOverpayment must be greater than or equal to 0.`);
     }
     overrides.oneOffOverpayment = amount;
+  }
+
+  if (has(rawScenario, 'oneOffOverpaymentMonth')) {
+    overrides.oneOffOverpaymentMonth = normalizeOverpaymentMonth(
+      rawScenario.oneOffOverpaymentMonth,
+      `${label}.oneOffOverpaymentMonth`
+    );
   }
 
   if (has(rawScenario, 'annualOverpayment')) {
@@ -456,6 +520,11 @@ export function normalizeMortgageInputs(raw, { defaultLoanKind = 'mortgage' } = 
     throw new Error('generated.mortgageInputs.oneOffOverpayment must be greater than or equal to 0.');
   }
 
+  const oneOffOverpaymentMonth = normalizeOverpaymentMonth(
+    raw.oneOffOverpaymentMonth,
+    'oneOffOverpaymentMonth'
+  );
+
   const annualOverpayment = optionalFiniteNumber(raw.annualOverpayment, 0, 'annualOverpayment');
   if (annualOverpayment < 0) {
     throw new Error('generated.mortgageInputs.annualOverpayment must be greater than or equal to 0.');
@@ -489,6 +558,7 @@ export function normalizeMortgageInputs(raw, { defaultLoanKind = 'mortgage' } = 
     repaymentType,
     fixedPaymentAmount,
     oneOffOverpayment,
+    oneOffOverpaymentMonth,
     annualOverpayment,
     overpaymentBenefit,
     baseScenarioId,
@@ -508,6 +578,7 @@ function resolveScenarioInputs(inputs, scenario) {
     repaymentType: inputs.repaymentType,
     fixedPaymentAmount: inputs.fixedPaymentAmount,
     oneOffOverpayment: inputs.oneOffOverpayment,
+    oneOffOverpaymentMonth: inputs.oneOffOverpaymentMonth,
     annualOverpayment: inputs.annualOverpayment,
     overpaymentBenefit: inputs.overpaymentBenefit
   };
@@ -651,8 +722,16 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
   const term = resolveTermMonths(inputs);
   const monthlyRate = inputs.annualInterestRate / 12;
 
-  const lumpSumApplied = Math.min(inputs.oneOffOverpayment, inputs.currentBalance);
-  const openingBalance = Math.max(0, inputs.currentBalance - inputs.oneOffOverpayment);
+  // A lump sum that is already paid comes off before the first month's
+  // interest is charged. One that is still to be paid does not: the loan runs
+  // at its contractual repayment until the month it lands, which is why the
+  // opening balance below is untouched when `oneOffOverpaymentMonth` is set.
+  const lumpSumMonth = Math.min(inputs.oneOffOverpaymentMonth, term.monthCount);
+  const lumpSumPaidUpfront = lumpSumMonth === 0;
+  const upfrontLumpSum = lumpSumPaidUpfront
+    ? Math.min(inputs.oneOffOverpayment, inputs.currentBalance)
+    : 0;
+  const openingBalance = Math.max(0, inputs.currentBalance - upfrontLumpSum);
 
   // The contractual payment is the one the loan agreement already sets: it is
   // derived from the balance BEFORE any overpayment, because a lump sum the
@@ -663,14 +742,18 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
 
   const takesLowerPayment = inputs.fixedPaymentAmount === null
     && inputs.overpaymentBenefit === 'lowerPayment';
-  const monthlyPaymentUsed = takesLowerPayment
+  const openingPayment = takesLowerPayment && lumpSumPaidUpfront
     ? computeMonthlyPayment(openingBalance, inputs.annualInterestRate, term.monthCount)
     : contractualPayment;
 
   const monthlySchedule = [];
   let balance = openingBalance;
+  // Re-amortising at a deferred lump sum changes the payment part-way through,
+  // so the payment is a running value rather than one figure for the schedule.
+  let payment = openingPayment;
   let paymentOverpaymentTotal = 0;
   let annualOverpaymentTotal = 0;
+  let lumpSumApplied = upfrontLumpSum;
 
   for (let monthIndex = 0; monthIndex < term.monthCount && balance > SETTLEMENT_EPSILON; monthIndex += 1) {
     const periodDate = addUtcMonths(term.startMonthDate, monthIndex);
@@ -678,7 +761,7 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
 
     const balanceStart = balance;
     const interestPaid = balanceStart * monthlyRate;
-    let principalPaid = monthlyPaymentUsed - interestPaid;
+    let principalPaid = payment - interestPaid;
 
     if (principalPaid <= 0) {
       throw new Error('Negative amortisation: payment is too low to cover monthly interest.');
@@ -714,6 +797,27 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
       annualOverpaymentTotal += annualOverpaymentApplied;
     }
 
+    // The deferred lump sum lands here, after this month's repayment, in the
+    // month the client said they would pay it.
+    let lumpSumAppliedThisMonth = 0;
+    if (!lumpSumPaidUpfront && monthIndex + 1 === lumpSumMonth && balance > 0) {
+      lumpSumAppliedThisMonth = Math.min(inputs.oneOffOverpayment, balance);
+      principalPaid += lumpSumAppliedThisMonth;
+      totalPaid += lumpSumAppliedThisMonth;
+      balance -= lumpSumAppliedThisMonth;
+      lumpSumApplied += lumpSumAppliedThisMonth;
+
+      // Keeping the term means re-amortising what is left over the months that
+      // remain. Without this the lower-payment case would go on paying the
+      // contractual figure and clear early, which is the other case entirely.
+      if (takesLowerPayment && balance > SETTLEMENT_EPSILON) {
+        const monthsLeft = term.monthCount - lumpSumMonth;
+        if (monthsLeft > 0) {
+          payment = computeMonthlyPayment(balance, inputs.annualInterestRate, monthsLeft);
+        }
+      }
+    }
+
     monthlySchedule.push({
       monthIndex,
       dateIso: formatIsoDateUtc(periodDate),
@@ -724,6 +828,8 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
       totalPaid,
       paymentOverpayment,
       annualOverpaymentApplied,
+      lumpSumApplied: lumpSumAppliedThisMonth,
+      paymentThisMonth: payment,
       balanceEnd: balance
     });
   }
@@ -750,10 +856,14 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
     termMonthsPlanned: term.monthCount,
     monthlyRate,
     contractualPayment,
-    monthlyPaymentUsed,
+    // What leaves the account each month. A deferred re-amortisation changes
+    // it part-way through, so this reports the figure the client ends up on.
+    monthlyPaymentUsed: payment,
+    openingPayment,
     overpaymentBenefit: inputs.overpaymentBenefit,
     openingBalance,
     lumpSumApplied,
+    lumpSumMonth,
     annualOverpaymentTotal,
     paymentOverpaymentTotal,
     totalOverpaid: lumpSumApplied + annualOverpaymentTotal + paymentOverpaymentTotal,
@@ -777,14 +887,22 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
  * where they actually stand, not from a position they left years ago.
  */
 export function computeMortgageComparison(rawInputs, options = {}) {
-  const { scenarioId: _ignored, ...normalizeOptions } = options;
-  const normalized = normalizeMortgageInputs(rawInputs, normalizeOptions);
+  const { scenarioId: _ignored, oneOffOverpaymentMonth, ...normalizeOptions } = options;
+  // MOVING THE LUMP SUM MOVES IT IN EVERY CASE AT ONCE.
+  //
+  // The timing control asks one question -- when would you pay it -- and the
+  // answer has to apply to the whole case set, or two cases on the same screen
+  // would be answering it differently.
+  const timedInputs = Number.isFinite(oneOffOverpaymentMonth)
+    ? withLumpSumMonth(rawInputs, oneOffOverpaymentMonth)
+    : rawInputs;
+  const normalized = normalizeMortgageInputs(timedInputs, normalizeOptions);
   const scenarios = getScenarioList(normalized);
   const baseScenario = resolveBaseScenario(normalized, scenarios);
 
   const projections = new Map(scenarios.map((scenario) => [
     scenario.id,
-    computeAmortizationMonthlySchedule(rawInputs, { ...normalizeOptions, scenarioId: scenario.id })
+    computeAmortizationMonthlySchedule(timedInputs, { ...normalizeOptions, scenarioId: scenario.id })
   ]));
 
   const baseProjection = projections.get(baseScenario.id);
@@ -827,8 +945,22 @@ export function computeMortgageComparison(rawInputs, options = {}) {
     baseScenarioId: baseScenario.id,
     baseCase: cases.find((item) => item.isBase) || cases[0],
     cases,
-    hasScenarios
+    hasScenarios,
+    termMonths: resolveTermMonths(resolveScenarioInputs(normalized, baseScenario)).monthCount,
+    startDateIso: normalized.startDateIso,
+    loanKind: normalized.loanKind,
+    lumpSumMonth: baseProjection.lumpSumMonth,
+    contractualPayment: baseProjection.contractualPayment
   };
+
+  // The other thing a lump sum can do. Derived rather than authored, because
+  // it is the same money answering a different question, and a client who is
+  // told what overpaying buys them will ask it.
+  comparison.repaymentReduction = buildRepaymentReductionVariant(
+    timedInputs,
+    normalizeOptions,
+    comparison
+  );
 
   // Built here rather than by the caller so the side-by-side table and the
   // per-case figures can never disagree about what a case is worth.
@@ -837,6 +969,92 @@ export function computeMortgageComparison(rawInputs, options = {}) {
     : null;
 
   return comparison;
+}
+
+/** The same payload with every lump sum moved to one month. */
+function withLumpSumMonth(rawInputs, month) {
+  const next = { ...rawInputs, oneOffOverpaymentMonth: month };
+  if (Array.isArray(rawInputs?.scenarios)) {
+    next.scenarios = rawInputs.scenarios.map((scenario) => {
+      // Idempotent normalisation means a stored case nests its changes under
+      // `overrides`, and an authored one states them flat. Both have to move.
+      if (scenario?.overrides && typeof scenario.overrides === 'object' && !Array.isArray(scenario.overrides)) {
+        return { ...scenario, overrides: { ...scenario.overrides, oneOffOverpaymentMonth: month } };
+      }
+      return { ...scenario, oneOffOverpaymentMonth: month };
+    });
+  }
+
+  return next;
+}
+
+/**
+ * KEEP THE TERM AND LOWER THE REPAYMENT: the same lump sum, spent differently.
+ *
+ * Modelled from whichever case puts in the largest lump sum, because that is
+ * the one the client is weighing. It is null when no case has a lump sum --
+ * a yearly amount cannot be re-amortised into a lower repayment, and offering
+ * the comparison anyway would invent a decision nobody is facing.
+ */
+function buildRepaymentReductionVariant(rawInputs, normalizeOptions, comparison) {
+  // Largest lump sum first, and where two cases put in the same lump, the one
+  // that puts in nothing else. This section's whole claim is "the same money,
+  // spent the other way", so the case it is measured against has to differ
+  // from it in exactly one respect: what the lender did with the lump sum.
+  const shorterTermCase = comparison.cases
+    .filter((item) => !item.isBase && item.projection.lumpSumApplied > SETTLEMENT_EPSILON)
+    .sort((left, right) => (
+      (right.projection.lumpSumApplied - left.projection.lumpSumApplied)
+      || ((left.totalOverpaid - left.projection.lumpSumApplied)
+        - (right.totalOverpaid - right.projection.lumpSumApplied))
+    ))[0];
+
+  if (!shorterTermCase) {
+    return null;
+  }
+
+  const lumpSum = shorterTermCase.projection.lumpSumApplied;
+  const lumpSumMonth = shorterTermCase.projection.lumpSumMonth;
+  const baseProjection = comparison.baseCase.projection;
+
+  // Same lump, same month, but the annual amount is dropped: this section is
+  // about one decision, and carrying a yearly overpayment into it would make
+  // the repayment it reports one the client never agreed to.
+  const projection = computeAmortizationMonthlySchedule({
+    ...rawInputs,
+    scenarios: null,
+    baseScenarioId: null,
+    oneOffOverpayment: lumpSum,
+    oneOffOverpaymentMonth: lumpSumMonth,
+    annualOverpayment: 0,
+    overpaymentBenefit: 'lowerPayment'
+  }, normalizeOptions);
+
+  const contractualPayment = projection.contractualPayment;
+  const newPayment = projection.monthlyPaymentUsed;
+  const monthlyReduction = contractualPayment - newPayment;
+  const monthsAtNewPayment = Math.max(0, projection.termMonthsPlanned - lumpSumMonth);
+
+  return {
+    lumpSum,
+    lumpSumMonth,
+    projection,
+    contractualPayment,
+    newPayment,
+    monthlyReduction,
+    monthsAtNewPayment,
+    freedOverRemainingTerm: monthlyReduction * monthsAtNewPayment,
+    payoffDateIso: projection.payoffDateIso,
+    totalInterestLifetime: projection.totalInterestLifetime,
+    interestSavedVsBase: baseProjection.totalInterestLifetime - projection.totalInterestLifetime,
+    // The honest cost of choosing cash flow over term: interest this case pays
+    // that the shorter-term case with the identical lump sum does not.
+    extraInterestVsShorterTerm: projection.totalInterestLifetime
+      - shorterTermCase.projection.totalInterestLifetime,
+    shorterTermCaseId: shorterTermCase.id,
+    shorterTermCaseTitle: shorterTermCase.title,
+    shorterTermPayoffDateIso: shorterTermCase.payoffDateIso
+  };
 }
 
 /** The case list a switcher renders, each with the outcome it leads to. */
@@ -875,155 +1093,38 @@ function buildScenarioCaseDetail(item) {
   return parts.join(' · ');
 }
 
+/**
+ * ONE ROW PER CASE, because a case is what the client is choosing between.
+ *
+ * The measures used to be the rows and the cases the columns, which reads as a
+ * spec sheet: four things compared on eight axes. Turning it back puts the
+ * cases in the same order and the same direction as the buttons above it, so
+ * the row the client just selected is the row that lights up.
+ */
 function buildComparisonTable(comparison, wording) {
-  const columns = ['Measure', ...comparison.cases.map((item) => item.title)];
-  const cell = (item, fn) => fn(item);
-
-  const rows = [
-    ['Monthly payment', ...comparison.cases.map((item) => cell(item, (c) => formatEuro(c.monthlyPaymentUsed)))],
-    [`${wording.titleCase} cleared`, ...comparison.cases.map((item) => cell(item, (c) => (
-      c.payoffDateIso ? formatMonthYear(c.payoffDateIso) : 'Not within term'
-    )))],
-    ['Time saved', ...comparison.cases.map((item) => cell(item, (c) => (
-      c.isBase ? '—' : formatMonthsDuration(c.monthsSaved)
-    )))],
-    ['Total interest', ...comparison.cases.map((item) => cell(item, (c) => formatEuro(c.totalInterestLifetime)))],
-    ['Interest saved', ...comparison.cases.map((item) => cell(item, (c) => (
-      c.isBase ? '—' : formatEuro(c.interestSaved)
-    )))],
-    ['Total overpaid', ...comparison.cases.map((item) => cell(item, (c) => (
-      c.totalOverpaid > SETTLEMENT_EPSILON ? formatEuro(c.totalOverpaid) : '—'
-    )))],
-    ['Saved per €1 overpaid', ...comparison.cases.map((item) => cell(item, (c) => (
-      c.savedPerEuroOverpaid === null ? '—' : formatEuro(c.savedPerEuroOverpaid)
-    )))],
-    ['Total paid', ...comparison.cases.map((item) => cell(item, (c) => formatEuro(c.totalPaidLifetime)))]
+  const columns = [
+    'Case',
+    'Cleared',
+    'Time saved',
+    'Total interest',
+    'Interest saved',
+    'Paid in',
+    // Not "saved per EUR1" -- the short label reads like a return, and this
+    // column is not one.
+    'Interest saved per \u20ac1 in'
   ];
+
+  const rows = comparison.cases.map((item) => [
+    item.title,
+    item.payoffDateIso ? formatMonthYear(item.payoffDateIso) : `Not within the ${wording.noun} term`,
+    item.isBase || item.monthsSaved <= 0 ? '\u2014' : formatMonthsDuration(item.monthsSaved),
+    formatEuroWhole(item.totalInterestLifetime),
+    item.isBase || item.interestSaved <= 0 ? '\u2014' : formatEuroWhole(item.interestSaved),
+    item.totalOverpaid > SETTLEMENT_EPSILON ? formatEuroWhole(item.totalOverpaid) : '\u2014',
+    item.savedPerEuroOverpaid === null ? '\u2014' : formatEuro(item.savedPerEuroOverpaid)
+  ]);
 
   return { columns, rows };
-}
-
-/** Year labels spanning every case, so two paths of different lengths line up. */
-function buildComparisonLabels(comparison, fallbackYear) {
-  const years = new Set();
-  comparison.cases.forEach((item) => {
-    item.projection.annualSchedule.forEach((row) => years.add(row.year));
-  });
-
-  if (years.size === 0) {
-    return [String(fallbackYear)];
-  }
-
-  return [...years].sort((left, right) => left - right).map((year) => String(year));
-}
-
-function buildBalanceSeries(projection, labels) {
-  const byYear = new Map(projection.annualSchedule.map((row) => [String(row.year), row.balanceEndRaw]));
-  let settled = false;
-  return labels.map((label) => {
-    if (byYear.has(label)) {
-      const value = byYear.get(label);
-      if (value <= SETTLEMENT_EPSILON) settled = true;
-      return value;
-    }
-    // Past its payoff year a case owes nothing; before its first year it has
-    // no path at all. Only the first is a zero -- the second is a gap.
-    return settled ? 0 : null;
-  });
-}
-
-function buildCumulativeInterestSeries(projection, labels) {
-  const byYear = new Map(projection.annualSchedule.map((row) => [String(row.year), row.interestPaidRaw]));
-  let running = 0;
-  let started = false;
-  return labels.map((label) => {
-    if (byYear.has(label)) {
-      running += byYear.get(label);
-      started = true;
-      return running;
-    }
-    // A repaid loan stops adding interest but keeps the total it reached, so
-    // the gap to the base case stays visible for the rest of the chart.
-    return started ? running : null;
-  });
-}
-
-function buildScenarioCharts(comparison, selectedCase, wording) {
-  if (!comparison.hasScenarios || selectedCase.isBase) {
-    return [];
-  }
-
-  const baseCase = comparison.baseCase;
-  const fallbackYear = parseIsoDateStrict(selectedCase.projection.inputs.startDateIso, 'startDateIso').getUTCFullYear();
-  const labels = buildComparisonLabels(comparison, fallbackYear);
-
-  const annotations = [];
-  if (baseCase.payoffYear) {
-    annotations.push({
-      xLabel: String(baseCase.payoffYear),
-      label: `${baseCase.title}: ${formatMonthYear(baseCase.payoffDateIso)}`,
-      tone: 'neutral'
-    });
-  }
-  if (selectedCase.payoffYear && selectedCase.payoffYear !== baseCase.payoffYear) {
-    annotations.push({
-      xLabel: String(selectedCase.payoffYear),
-      label: `Cleared ${formatMonthYear(selectedCase.payoffDateIso)}`,
-      tone: 'positive'
-    });
-  }
-
-  return [
-    {
-      id: 'mortgage-scenario-balance',
-      title: `What You Still Owe: ${selectedCase.title} vs ${baseCase.title}`,
-      subtitle: 'The shaded gap is debt cleared earlier',
-      type: 'line',
-      labels,
-      datasets: [
-        {
-          label: `Balance — ${baseCase.title}`,
-          data: buildBalanceSeries(baseCase.projection, labels)
-        },
-        {
-          label: `Balance — ${selectedCase.title}`,
-          data: buildBalanceSeries(selectedCase.projection, labels)
-        }
-      ],
-      display: { valueFormat: 'currency' },
-      annotations,
-      insights: [
-        {
-          label: 'Interest saved',
-          detail: `${formatEuroWhole(selectedCase.interestSaved)} less interest over the life of the ${wording.noun}.`
-        }
-      ]
-    },
-    {
-      id: 'mortgage-scenario-interest',
-      title: `Interest Paid So Far: ${selectedCase.title} vs ${baseCase.title}`,
-      subtitle: 'The gap between the lines is the interest saved',
-      type: 'line',
-      labels,
-      datasets: [
-        {
-          label: `Interest paid — ${baseCase.title}`,
-          data: buildCumulativeInterestSeries(baseCase.projection, labels)
-        },
-        {
-          label: `Interest paid — ${selectedCase.title}`,
-          data: buildCumulativeInterestSeries(selectedCase.projection, labels)
-        }
-      ],
-      display: { valueFormat: 'currency' },
-      insights: [
-        {
-          label: 'Where the saving comes from',
-          detail: 'Clearing capital sooner means less balance for interest to be charged on every month after.'
-        }
-      ]
-    }
-  ];
 }
 
 function buildSummarySentences(projection, comparison, selectedCase, wording) {
@@ -1063,26 +1164,17 @@ export function computeMortgageProjection(rawInputs, options = {}) {
     ? 'Remaining loan balance at term end'
     : 'Remaining balance at term end';
 
-  const fallbackYear = parseIsoDateStrict(projection.inputs.startDateIso, 'startDateIso').getUTCFullYear();
-  const labels = annualSchedule.length > 0
-    ? annualSchedule.map((row) => String(row.year))
-    : [String(fallbackYear)];
-
-  const balanceSeries = annualSchedule.length > 0
-    ? annualSchedule.map((row) => row.balanceEndRaw)
-    : [0];
-  const principalSeries = annualSchedule.length > 0
-    ? annualSchedule.map((row) => row.principalPaidRaw)
-    : [0];
-  const interestSeries = annualSchedule.length > 0
-    ? annualSchedule.map((row) => row.interestPaidRaw)
-    : [0];
-
   const assumptionsTable = {
     columns: ['Assumption', 'Value', 'Notes'],
     rows: [
       [currentBalanceLabel, formatEuro(projection.inputs.currentBalance), 'Balance before any overpayment'],
-      ['One-off overpayment', formatEuro(projection.inputs.oneOffOverpayment), 'Applied immediately at start'],
+      [
+        'One-off overpayment',
+        formatEuro(projection.inputs.oneOffOverpayment),
+        projection.lumpSumMonth > 0
+          ? `Paid in ${formatMonthYear(addMonthsToIso(projection.startMonthIso, projection.lumpSumMonth - 1))}`
+          : 'Applied immediately at start'
+      ],
       ['Opening balance used', formatEuro(projection.openingBalance), 'Starting balance for amortisation maths'],
       ['Annual interest rate', formatPercent(projection.inputs.annualInterestRate), 'Monthly compounding used internally'],
       [termLabel, `${projection.termMonthsPlanned} months`, `${projection.startMonthIso} to ${projection.endMonthIso}`],
@@ -1116,6 +1208,26 @@ export function computeMortgageProjection(rawInputs, options = {}) {
     }
   }
 
+  // ONE CHART, AND THE MODULE SCREEN DOES NOT SHOW IT.
+  //
+  // The repayment-case module draws its own balance curve and its own
+  // year-by-year interest columns, in SVG, on the same clock as the rail and
+  // the cut line above them, so the focused pane renders no charts card at
+  // all. The two comparison charts that used to be emitted here -- balance
+  // against the base case, and cumulative interest against the base case --
+  // are gone for good: they restated the shaded gap of the module's own
+  // balance chart in a second unit, and on a first viewing two falling lines
+  // of similar shape read as one fact shown twice.
+  //
+  // This one survives for the surfaces that have no module to draw it for
+  // them: the video summary, and anything else rendering from the payload
+  // alone. It follows the selected case like every other derived figure.
+  const fallbackYear = parseIsoDateStrict(projection.inputs.startDateIso, 'startDateIso').getUTCFullYear();
+  const labels = annualSchedule.length > 0
+    ? annualSchedule.map((row) => String(row.year))
+    : [String(fallbackYear)];
+  const series = (key) => (annualSchedule.length > 0 ? annualSchedule.map((row) => row[key]) : [0]);
+
   const charts = [
     {
       id: 'mortgage-mixed-annual',
@@ -1123,21 +1235,11 @@ export function computeMortgageProjection(rawInputs, options = {}) {
       type: 'bar',
       labels,
       datasets: [
-        {
-          label: 'Remaining balance',
-          data: balanceSeries
-        },
-        {
-          label: 'Principal repaid (annual)',
-          data: principalSeries
-        },
-        {
-          label: 'Interest paid (annual)',
-          data: interestSeries
-        }
+        { label: 'Remaining balance', data: series('balanceEndRaw') },
+        { label: 'Principal repaid (annual)', data: series('principalPaidRaw') },
+        { label: 'Interest paid (annual)', data: series('interestPaidRaw') }
       ]
-    },
-    ...buildScenarioCharts(comparison, selectedCase, wording)
+    }
   ];
 
   const summarySentences = buildSummarySentences(projection, comparison, selectedCase, wording);

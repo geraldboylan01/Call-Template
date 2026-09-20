@@ -296,6 +296,8 @@ export function runMortgageMathTests() {
       repaymentType: 'repayment'
     });
     assert(projection.comparisonTable === null, 'A single case has nothing to compare');
+    // One chart, for the surfaces that render from the payload alone; the
+    // module screen draws its own balance curve and year-interest columns.
     assert(projection.charts.length === 1, 'And draws only its own chart');
   }));
 

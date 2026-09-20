@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Repayment case module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #050a11;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 40px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1120px; margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildRepaymentCaseModule } from '../js/repayment_case_module.js';
+
+      const params = new URLSearchParams(location.search);
+      const twoCases = params.get('cases') === '2';
+      const authoredMonth = params.has('month') ? Number(params.get('month')) : null;
+      const loanKind = params.get('kind') === 'loan' ? 'loan' : 'mortgage';
+
+      const allCases = [
+        { id: 'current', title: 'No overpayment', oneOffOverpayment: 0, annualOverpayment: 0 },
+        { id: 'lump-25k', title: '€25,000 lump sum', oneOffOverpayment: 25000 },
+        { id: 'annual-3k', title: '€3,000 every year', annualOverpayment: 3000 },
+        { id: 'both', title: 'Lump sum + €3,000 a year', oneOffOverpayment: 25000, annualOverpayment: 3000 }
+      ];
+
+      const rawInputs = {
+        currentBalance: 320000,
+        annualInterestRate: 0.0425,
+        startDateIso: '2026-01-01',
+        endDateIso: '2052-12-01',
+        repaymentType: 'repayment',
+        loanKind,
+        overpaymentBenefit: 'shorterTerm',
+        baseScenarioId: 'current',
+        scenarios: twoCases ? [allCases[0], allCases[3]] : allCases
+      };
+
+      // An authored deferral, to prove the module opens on what was authored
+      // rather than on its own default of "already paid".
+      if (authoredMonth !== null) rawInputs.oneOffOverpaymentMonth = authoredMonth;
+
+      document.getElementById('mount').append(buildRepaymentCaseModule({
+        rawInputs,
+        engineOptions: { defaultLoanKind: loanKind }
+      }));
+    </script>
+  </body>
+</html>

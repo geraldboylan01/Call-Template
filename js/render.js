@@ -32,6 +32,7 @@ import {
   computeLiquidityReserve,
   resolveLiquidityReservePolicy
 } from './liquidity_reserve.js';
+import { buildRepaymentCaseModule } from './repayment_case_module.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -7902,316 +7903,45 @@ function buildNetRetirementScenarioOptions(module, cases, selectedId) {
   return options;
 }
 
-/* --------------------------------------------- the mortgage case comparison */
-
-/** Money mid-tween must be rendered by the same formatter as money at rest. */
-function formatMortgageValueForElement(element, value) {
-  const format = element?.dataset?.mortgageValueFormat;
-  if (format === 'ratio') {
-    return `€${Number(value).toFixed(2)}`;
-  }
-  if (format === 'months') {
-    return formatMonthsDuration(value);
-  }
-
-  return formatRetirementCurrency(value);
-}
-
-function setMortgageValue(element, key, value, format = 'currency') {
-  setScenarioValueDataset(element, { prefix: 'mortgage', key, value, format });
-}
-
-function buildMortgagePositionChips(comparison, selectedCase) {
-  const chips = document.createElement('div');
-  chips.className = 'retirement-position-chips';
-
-  const items = [
-    {
-      key: 'payment',
-      label: 'Monthly payment',
-      value: selectedCase.monthlyPaymentUsed,
-      format: 'currency',
-      tone: selectedCase.paymentDelta > 0.005 ? 'risk' : 'neutral'
-    }
-  ];
-
-  if (!selectedCase.isBase && selectedCase.monthsSaved > 0) {
-    items.push({
-      key: 'months-saved',
-      label: 'Cleared earlier by',
-      value: selectedCase.monthsSaved,
-      format: 'months',
-      tone: 'positive'
-    });
-  }
-
-  // Below half a cent is float residue, not money the client paid in.
-  if (selectedCase.totalOverpaid >= 0.005) {
-    items.push({
-      key: 'overpaid',
-      label: 'Total paid in',
-      value: selectedCase.totalOverpaid,
-      format: 'currency',
-      tone: 'neutral'
-    });
-  }
-
-  // The line that decides the conversation: what a euro of the client's own
-  // money buys. Only shown when a euro was actually paid in -- a rate switch
-  // saves interest without one, and claiming a return there would dress a
-  // different decision up as one.
-  if (selectedCase.savedPerEuroOverpaid !== null) {
-    items.push({
-      key: 'per-euro',
-      label: 'Saved per €1 paid in',
-      value: selectedCase.savedPerEuroOverpaid,
-      format: 'ratio',
-      tone: selectedCase.savedPerEuroOverpaid >= 1 ? 'positive' : 'neutral'
-    });
-  }
-
-  items.forEach((item) => {
-    const chip = document.createElement('span');
-    chip.className = 'retirement-position-chip';
-    if (item.tone && item.tone !== 'neutral') {
-      chip.dataset.tone = item.tone;
-    }
-
-    const label = document.createElement('span');
-    label.className = 'retirement-position-chip-label';
-    label.textContent = item.label;
-    chip.appendChild(label);
-
-    const value = document.createElement('strong');
-    value.className = 'retirement-position-chip-value';
-    value.textContent = formatMortgageValueForElement(
-      { dataset: { mortgageValueFormat: item.format } },
-      item.value
-    );
-    setMortgageValue(value, `chip:${item.key}`, item.value, item.format);
-    chip.appendChild(value);
-
-    chips.appendChild(chip);
-  });
-
-  return chips;
-}
-
-function buildMortgageScenarioOptions(module, comparison, selectedId, onSelect) {
-  const options = document.createElement('div');
-  options.className = 'retirement-scenario-options';
-  options.setAttribute('role', 'radiogroup');
-  options.setAttribute('aria-label', 'Choose repayment case');
-
-  const cases = getMortgageScenarioCasesForModule(module);
-  const detailById = new Map(cases.map((item) => [item.id, item.detail]));
-
-  comparison.cases.forEach((item) => {
-    const isActive = item.id === selectedId;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'retirement-scenario-card mortgage-scenario-card';
-    button.dataset.mortgageScenarioId = item.id;
-    button.classList.toggle('is-active', isActive);
-    button.setAttribute('role', 'radio');
-    button.setAttribute('aria-checked', isActive ? 'true' : 'false');
-
-    const title = document.createElement('span');
-    title.className = 'retirement-scenario-title';
-    title.textContent = item.title;
-    button.appendChild(title);
-
-    const detail = document.createElement('span');
-    detail.className = 'retirement-scenario-detail';
-    // Each button states its own outcome, so the comparison can be read before
-    // anything is clicked rather than only by clicking through every case.
-    detail.textContent = detailById.get(item.id) || item.description || '';
-    button.appendChild(detail);
-
-    button.addEventListener('click', () => onSelect(item.id));
-    options.appendChild(button);
-  });
-
-  return options;
-}
-
-function buildMortgageDecisionPanel(module, comparison, selectedId, onSelect) {
-  const selectedCase = comparison.cases.find((item) => item.id === selectedId) || comparison.baseCase;
-  const wording = module?.generated?.loanInputs ? 'loan' : 'mortgage';
-
-  const panel = document.createElement('section');
-  panel.className = 'generated-card retirement-decision-panel mortgage-decision-panel';
-  panel.dataset.generatedCard = 'mortgage-decision';
-
-  const hero = document.createElement('div');
-  hero.className = 'retirement-required-pot-card';
-
-  const eyebrow = document.createElement('p');
-  eyebrow.className = 'retirement-required-eyebrow';
-  const value = document.createElement('div');
-  value.className = 'retirement-required-value';
-  const detail = document.createElement('p');
-  detail.className = 'retirement-required-detail';
-
-  if (selectedCase.isBase) {
-    // The base has no saving to show, so it shows the cost of changing
-    // nothing -- which is the number the alternatives are measured against.
-    eyebrow.textContent = 'Interest on this path';
-    value.textContent = formatRetirementCurrency(selectedCase.totalInterestLifetime);
-    setMortgageValue(value, 'hero', selectedCase.totalInterestLifetime, 'currency');
-    detail.textContent = selectedCase.payoffDateIso
-      ? `What this ${wording} costs in interest if nothing changes, clearing in ${formatMonthYear(selectedCase.payoffDateIso)}.`
-      : `What this ${wording} costs in interest over the modelled term.`;
-  } else {
-    eyebrow.textContent = 'Interest saved';
-    value.textContent = formatRetirementCurrency(selectedCase.interestSaved);
-    setMortgageValue(value, 'hero', selectedCase.interestSaved, 'currency');
-    const clearing = selectedCase.payoffDateIso
-      ? ` — ${wording === 'loan' ? 'loan' : 'mortgage'}-free in ${formatMonthYear(selectedCase.payoffDateIso)}`
-      : '';
-    detail.textContent = `Compared with ${comparison.baseCase.title}${clearing}.`;
-  }
-
-  hero.appendChild(eyebrow);
-  hero.appendChild(value);
-  hero.appendChild(detail);
-  hero.appendChild(buildMortgagePositionChips(comparison, selectedCase));
-  panel.appendChild(hero);
-
-  const scenarioArea = document.createElement('div');
-  scenarioArea.className = 'retirement-scenario-area';
-
-  const scenarioLabel = document.createElement('p');
-  scenarioLabel.className = 'retirement-scenario-label';
-  scenarioLabel.textContent = 'Repayment case';
-  scenarioArea.appendChild(scenarioLabel);
-  scenarioArea.appendChild(buildMortgageScenarioOptions(module, comparison, selectedId, onSelect));
-  panel.appendChild(scenarioArea);
-
-  return panel;
-}
-
-function buildMortgageComparisonCard(module, comparison, selectedId) {
-  const table = comparison.comparisonTable;
-  if (!table) {
+/**
+ * The repayment-case module.
+ *
+ * Everything the client sees about overpaying lives in here: the case ladder,
+ * both heroes, the time rail, the interest bar with its cut line, the cost bar
+ * on the same ruler, both charts, the comparison table, the two notes about
+ * the per-euro column, and the keep-the-term alternative.
+ *
+ * It owns its own clock, so unlike the panel it replaces it does NOT rebuild
+ * its subtree on every click: the figures travel from what they were to what
+ * they become, in one 520ms pass, and the elements they live in stay put.
+ */
+function buildMortgageScenarioShell(module) {
+  const inputs = getLoanEngineInputs(module);
+  if (!inputs) {
     return null;
   }
 
-  const card = document.createElement('section');
-  card.className = 'generated-card generated-table-card mortgage-comparison-card';
-  card.dataset.generatedCard = 'mortgage-comparison';
-
-  const { header } = buildGeneratedCardHeader('Every case side by side');
-  card.appendChild(header);
-
-  const wrap = document.createElement('div');
-  wrap.className = 'generated-table-wrap';
-
-  const tableEl = document.createElement('table');
-  tableEl.className = 'generated-table mortgage-comparison-table';
-
-  const selectedColumn = comparison.cases.findIndex((item) => item.id === selectedId) + 1;
-
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  table.columns.forEach((column, index) => {
-    const th = document.createElement('th');
-    th.textContent = column;
-    if (index === selectedColumn) {
-      th.dataset.activeCase = 'true';
-    }
-    headRow.appendChild(th);
-  });
-  thead.appendChild(headRow);
-  tableEl.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  table.rows.forEach((row) => {
-    const tr = document.createElement('tr');
-    row.forEach((cell, index) => {
-      const td = document.createElement('td');
-      td.textContent = cell;
-      if (index === selectedColumn) {
-        td.dataset.activeCase = 'true';
-      }
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  tableEl.appendChild(tbody);
-
-  wrap.appendChild(tableEl);
-  card.appendChild(wrap);
-  return card;
-}
-
-/**
- * The panel and the table, swapped in place when a case is chosen.
- *
- * Swapping just this subtree is what makes a case change feel immediate: the
- * rest of the module is patched separately and slightly later, but the figure
- * the client is looking at moves on the very next frame.
- */
-function buildMortgageScenarioShell(module) {
   const comparison = getMortgageComparisonForModule(module);
   if (!comparison || comparison.cases.length === 0) {
     return null;
   }
 
-  const host = document.createElement('div');
-  host.className = 'mortgage-scenario-content-host';
-
-  let selectedId = getMortgageScenarioForModule(module);
-
-  const renderCase = (nextId, { animate = false } = {}) => {
-    const previousValues = collectScenarioValueMap(host, { prefix: 'mortgage' });
-    const content = document.createElement('div');
-    content.className = 'mortgage-scenario-content';
-    content.dataset.scenarioId = nextId;
-    content.classList.toggle('is-entering', animate);
-
-    const panel = buildMortgageDecisionPanel(module, comparison, nextId, (caseId) => {
-      if (caseId === selectedId) {
-        return;
-      }
-      renderCase(caseId, { animate: true });
-      // Persisting also patches the assumptions, outputs and charts cards,
-      // which sit outside this host.
-      if (typeof window.__setMortgageScenario === 'function') {
-        window.__setMortgageScenario(module.id, caseId);
+  try {
+    return buildRepaymentCaseModule({
+      rawInputs: inputs,
+      engineOptions: { defaultLoanKind: getMortgageDefaultLoanKind(module) },
+      selectedCaseId: getMortgageScenarioForModule(module),
+      onSelectCase: (caseId) => {
+        // Persisting also patches the assumptions and outputs cards, which sit
+        // outside this module. The module has already moved its own figures.
+        if (typeof window.__setMortgageScenario === 'function') {
+          window.__setMortgageScenario(module.id, caseId);
+        }
       }
     });
-    content.appendChild(panel);
-
-    const comparisonCard = buildMortgageComparisonCard(module, comparison, nextId);
-    if (comparisonCard) {
-      content.appendChild(comparisonCard);
-    }
-
-    host.replaceChildren(content);
-    selectedId = nextId;
-
-    if (!animate) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      content.classList.remove('is-entering');
-      const animated = animateScenarioNumericValues(content, previousValues, {
-        prefix: 'mortgage',
-        formatValue: formatMortgageValueForElement
-      });
-      if (!animated) {
-        // Nothing moved, or motion is reduced: say that something changed
-        // rather than leaving the switch looking like it did nothing.
-        content.classList.add('mortgage-scenario-content-highlight');
-        window.setTimeout(() => content.classList.remove('mortgage-scenario-content-highlight'), 700);
-      }
-    });
-  };
-
-  renderCase(selectedId);
-  return host;
+  } catch (_error) {
+    return null;
+  }
 }
 
 function buildNetRetirementDecisionPanel(module) {
@@ -13415,7 +13145,15 @@ function buildGeneratedSection(module, {
     }
   }
 
-  if (isPensionModule(displayModule) || isNetRetirementModule(displayModule) || isMortgageModule(displayModule)) {
+  // NO CHARTS CARD FOR A REPAYMENT MODULE.
+  //
+  // It draws its own balance curve and its own year-by-year interest columns,
+  // beside the figures they explain and on the same clock as the rail and the
+  // cut line. The engine's remaining chart still ships in the payload for the
+  // surfaces that have no module to draw it for them -- the video summary
+  // above all -- but repeating it here, in a second visual language, further
+  // down the same page, is the duplication this module was built to remove.
+  if (isPensionModule(displayModule) || isNetRetirementModule(displayModule)) {
     grid.appendChild(buildChartsCard(displayModule, generated.charts, { showPensionToggle, readOnly }));
   }
 
@@ -13647,7 +13385,10 @@ export function patchFocusedGeneratedCards({
     });
   }
 
-  if (patchCharts) {
+  // A repayment module has no charts card to patch, and building one here
+  // would put back the duplicate the module was built to remove -- visible
+  // only after the first case click, which is the worst way to find it.
+  if (patchCharts && !isMortgageModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);

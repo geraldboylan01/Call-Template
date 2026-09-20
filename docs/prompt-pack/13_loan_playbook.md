@@ -52,6 +52,7 @@ Do not use the older workaround that forced non-housing loans through `generated
 - `repaymentType` - must be `repayment`
 - `fixedPaymentAmount` - optional number or `null`
 - `oneOffOverpayment` - optional number, default 0
+- `oneOffOverpaymentMonth` - optional whole number of months from the start, default 0 (already paid)
 - `annualOverpayment` - optional number, default 0
 - `overpaymentBenefit` - optional, `shorterTerm` (default) or `lowerPayment`
 - `baseScenarioId` - optional, required to match a case id when `scenarios` is present
@@ -78,7 +79,7 @@ Rules are the same as the Mortgage playbook:
 - Maximum 4 cases, including the do-nothing case. A fifth case is rejected.
 - Each case needs a unique `id` and a short, client-facing `title`.
 - A case restates only what it changes; everything else is inherited from the loan.
-- A case may override `oneOffOverpayment`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and the term as either `endDateIso` or `remainingTermYears`, never both.
+- A case may override `oneOffOverpayment`, `oneOffOverpaymentMonth`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and the term as either `endDateIso` or `remainingTermYears`, never both.
 - Set `baseScenarioId` to the case the others are measured against, normally the do-nothing case.
 - Always include the do-nothing case explicitly, or there is no interest saved to show.
 - `overpaymentBenefit` defaults to `shorterTerm`, which holds the repayment and clears the loan earlier. Use `lowerPayment` only when Gerry says the client wants the repayment reduced instead.
@@ -137,7 +138,8 @@ For this playbook, do not emit:
 The app computes the repeatable loan outputs after apply.
 
 ## Rendering Expectations
-- The runtime will render assumptions, repayment outputs, and charts from the loan engine after the payload is applied.
+A loan with cases renders the same repayment-case module as a mortgage, in loan wording throughout: the case ladder and its commitment rails, the note that the monthly repayment is unchanged in every case, the lump-sum timing control, both heroes (when the loan clears, and what share of the interest bill goes), the time rail, the interest bar, the cost bar, two charts, the comparison table, the two notes on the per-euro column, and the keep-the-term alternative. See the mortgage playbook's Rendering Expectations for what each part is for. Assumptions and repayment outputs render below it.
+
 - Keep the payload to `generated.loanInputs` plus a concise screen-share summary.
 - If Gerry wants a teaching module about borrowing tradeoffs, create a separate Education or Report module instead of mixing block structures into this engine module.
 

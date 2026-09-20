@@ -88,6 +88,7 @@ Cases, when Gerry wants to compare options:
 - `repaymentType` - must be `repayment`
 - `fixedPaymentAmount` - optional number or `null`
 - `oneOffOverpayment` - optional number, default 0
+- `oneOffOverpaymentMonth` - optional whole number of months from the start, default 0 (already paid)
 - `annualOverpayment` - optional number, default 0
 - `overpaymentBenefit` - optional, `shorterTerm` (default) or `lowerPayment`
 - `baseScenarioId` - optional, required to match a case id when `scenarios` is present
@@ -106,7 +107,7 @@ Rules:
 - Maximum 4 cases, including the do-nothing case. A fifth case is rejected.
 - Each case needs a unique `id` and a client-facing `title`.
 - A case restates only what it changes. Everything it leaves out is inherited from the loan itself, so a rate correction reaches every case that did not override it.
-- A case may override `oneOffOverpayment`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and the term as either `endDateIso` or `remainingTermYears`, never both.
+- A case may override `oneOffOverpayment`, `oneOffOverpaymentMonth`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and the term as either `endDateIso` or `remainingTermYears`, never both.
 - Set `baseScenarioId` to the case everything else is measured against. Normally this is the do-nothing case. If the client already overpays and is asking about doing more, make their current position the base so the saving shown is the saving from here.
 - Always include the base case explicitly. Without something to compare against, there is no interest saved to show.
 - Order cases from least to most action. The buttons read left to right as an increasing commitment.
@@ -116,6 +117,14 @@ Case titles are buttons on a live call, so keep them short, concrete, and in the
 - Good: `No overpayment`, `3,000 a year`, `25,000 lump sum`, `Lump sum and 3,000 a year`, `Switch to 3.2%`
 - Avoid: `Scenario 1`, `Base case`, `Aggressive overpayment strategy`, `Option B`
 - Do not put the word `scenario` in a title.
+
+## When The Lump Sum Is Paid
+`oneOffOverpaymentMonth` is the number of whole months from the start of the schedule before the lump sum lands. `0`, the default, means it is already paid, so it comes off the opening balance and the schedule never charges interest on it.
+
+Rules:
+- Leave it out unless Gerry says the money is not available yet. The module has its own control for deferring it, and the client can move it on the call.
+- Set it when Gerry states a date: a bonus in March, a policy maturing in two years, a sale that has not closed.
+- Waiting costs money, and the module says so: the same lump sum removes less interest the longer it waits, because it has fewer months and a smaller balance to work against.
 
 ## Overpayment Benefit
 An Irish lender asks the borrower which they want when capital is paid off a mortgage:
@@ -172,9 +181,19 @@ For this playbook, do not emit:
 The app computes the repeatable mortgage outputs after apply.
 
 ## Rendering Expectations
-- The runtime renders the interest saved, the case buttons, a side-by-side comparison table, the payment structure, outputs, and charts from the mortgage engine after the payload is applied.
+The runtime renders one module, top to bottom, from `generated.mortgageInputs`. It answers one question: what does overpaying actually buy the client.
+
+- A case ladder. Each card carries the money that case commits and a rail filled to its share of the largest commitment, so the cards read as increasing commitment rather than four equal options. **The module opens on the base case**, so every figure starts on the path the client is already on and the click is what changes it.
+- A note under the ladder stating that the monthly repayment is the same in every case. This is the one thing a client cannot infer from the screen and will otherwise get wrong, so do not restate it in the summary.
+- A timing control for when the lump sum is paid, which recalculates every case.
+- **Two heroes, side by side and permanently labelled**: when the mortgage clears, and what proportion of the interest bill goes and what it costs. Both read the same on every case; only the values move.
+- A time rail spanning the whole term, an interest bar cut at what this case still pays, and a cost bar of the client's own money on the identical scale.
+- Two charts, drawn by the module itself rather than by the charts card, which this module does not show: the remaining balance against the base case, and the interest charged each year.
+- A table with one row per case, and two notes explaining the per-euro column, which ranks the cases differently from every other measure on the screen.
+- A closing section on the alternative: keep the term and lower the repayment instead, and what that costs in interest.
+
+Notes for authoring:
 - Each case button shows its own outcome, so the comparison can be read before anything is clicked.
-- Two comparison charts are drawn for a selected alternative: remaining balance against the base case, and interest paid so far against the base case.
 - Keep the payload to `generated.mortgageInputs` plus a concise screen-share summary.
 - If Gerry wants affordability teaching or a narrative tradeoff report, create a separate Education or Report module rather than mixing block structures into this engine module.
 

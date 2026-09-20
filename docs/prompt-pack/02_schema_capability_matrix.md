@@ -287,6 +287,7 @@ Playbooks should only emit the subset they are responsible for.
   - `repaymentType`
   - `fixedPaymentAmount`
   - `oneOffOverpayment`
+  - `oneOffOverpaymentMonth`
   - `annualOverpayment`
   - `overpaymentBenefit`
   - `baseScenarioId`
@@ -295,10 +296,12 @@ Playbooks should only emit the subset they are responsible for.
 - Current runtime rejects `interestOnly`.
 - `overpaymentBenefit` is exactly `shorterTerm` (default) or `lowerPayment`. It decides whether capital paid off the loan shortens the term at an unchanged repayment, or keeps the term and re-amortises the repayment down.
 - `scenarios[]` supports at most 4 cases including the base case, matching the module-wide case cap. A fifth case is rejected.
-- Each scenario supports `id`, `title`, `description`, and the overrides `oneOffOverpayment`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and exactly one of `endDateIso` or `remainingTermYears`.
+- Each scenario supports `id`, `title`, `description`, and the overrides `oneOffOverpayment`, `oneOffOverpaymentMonth`, `annualOverpayment`, `fixedPaymentAmount`, `annualInterestRate`, `overpaymentBenefit`, and exactly one of `endDateIso` or `remainingTermYears`.
+- `oneOffOverpaymentMonth` is whole months from the start of the schedule before the lump sum lands; `0` (the default) means it is already paid and comes off the opening balance.
 - Scenario ids must be unique. A scenario inherits every field it does not restate.
 - `baseScenarioId` must match a scenario id when `scenarios` is present; the runtime measures every comparison figure against that case.
-- The runtime owns interest saved, time saved, total overpaid, saved per euro, the side-by-side comparison table, and the two comparison charts. Do not supply them.
+- The runtime owns interest saved, time saved, total overpaid, saved per euro, the comparison table, the keep-the-term repayment-reduction figures, and both charts. Do not supply them.
+- The repayment-case module draws its own balance curve and year-by-year interest columns beside the figures they explain, so the focused pane shows no charts card. The runtime still computes one payload chart for the surfaces that render a module without it, such as the video summary. Do not supply it.
 
 ## Loan Support
 - Use `generated.loanInputs`

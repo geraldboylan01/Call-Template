@@ -8322,9 +8322,10 @@ function setMortgageScenarioForModule(moduleId, scenarioId) {
 
   appState.mortgageScenarioByModuleId.set(moduleId, nextCase.id);
 
-  // The decision panel and the side-by-side table have already swapped
-  // themselves; this brings the cards outside that host -- summary,
-  // assumptions, outputs and charts -- onto the same case.
+  // The repayment-case module has already moved its own figures, on its own
+  // clock; this brings the cards outside it -- summary, assumptions and
+  // outputs -- onto the same case. It must not rebuild the module itself, or
+  // the count-up the client is watching would be replaced mid-travel.
   if (appState.mode === 'focused' && appState.session.activeModuleId === moduleId) {
     patchFocusedModuleGeneratedContent(moduleId, {
       patchSummary: true,

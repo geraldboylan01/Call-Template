@@ -1423,69 +1423,6 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   min-width: 0;
 }
 
-/* The mortgage case comparison reuses the retirement decision-panel language:
-   one hero figure, tone chips, and a grid of case cards. Only the things that
-   are genuinely different are declared here. */
-
-.mortgage-scenario-content-host {
-  grid-column: 1 / -1;
-  min-width: 0;
-}
-
-.mortgage-scenario-content {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  transition: opacity 180ms ease, transform 180ms ease, filter 220ms ease;
-}
-
-.mortgage-scenario-content.is-entering {
-  opacity: 0.62;
-  transform: translateY(4px);
-}
-
-.mortgage-scenario-content-highlight {
-  animation: pbs-content-highlight 680ms ease;
-}
-
-.mortgage-decision-panel {
-  grid-column: auto;
-}
-
-/* Four cases need to stay readable side by side, so they are allowed to be
-   narrower than the retirement pair they inherit from. */
-.mortgage-decision-panel .retirement-scenario-options {
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-}
-
-.mortgage-scenario-card {
-  min-height: 74px;
-}
-
-.mortgage-comparison-card {
-  grid-column: auto;
-  min-height: 0;
-}
-
-.mortgage-comparison-table {
-  font-variant-numeric: tabular-nums;
-}
-
-.mortgage-comparison-table th:not(:first-child),
-.mortgage-comparison-table td:not(:first-child) {
-  text-align: right;
-}
-
-.mortgage-comparison-table th[data-active-case],
-.mortgage-comparison-table td[data-active-case] {
-  background: rgba(56, 189, 248, 0.11);
-}
-
-.mortgage-comparison-table th[data-active-case] {
-  color: #f8fbff;
-  box-shadow: inset 0 -2px 0 rgba(56, 189, 248, 0.64);
-}
-
 .pbs-scenario-switcher {
   display: flex;
   align-items: flex-start;
@@ -3303,14 +3240,6 @@ a.liquidity-evidence-source:focus-visible {
     min-height: 78px;
   }
 
-  .mortgage-decision-panel .retirement-scenario-options {
-    grid-template-columns: 1fr;
-  }
-
-  .mortgage-comparison-table th,
-  .mortgage-comparison-table td {
-    white-space: nowrap;
-  }
 
   .pbs-table-frame {
     border-radius: 10px;
@@ -9618,5 +9547,791 @@ body.overview-has-selection .toast-host {
   .house-purchase-table th,
   .house-purchase-table td {
     padding: 9px;
+  }
+}
+
+/* ============================================================================
+   THE REPAYMENT-CASE MODULE
+
+   Dark UI shown on a shared screen in daylight, so contrast is not optional.
+   One centred column, everything reflowing through auto-fit tracks: nothing
+   that holds text has a fixed height, and at phone width the hero pair, the
+   charts, the stat row and the notes all collapse to one column on their own.
+
+   Hover lifts by a pixel and brightens a border. Active pushes back down.
+   No opacity fades and no scaling -- the only motion that means anything in
+   this module is the motion driven by the clock.
+   ========================================================================= */
+
+.rcm {
+  --rcm-ink: #f4f8fc;
+  --rcm-body: #b7c8d9;
+  --rcm-muted: #8fa6bc;
+  --rcm-faint: #6f8599;
+  --rcm-accent: #8dd3ff;
+  --rcm-accent-deep: #4eb0ff;
+  --rcm-positive: #7ad7b4;
+  --rcm-amber: #e2b765;
+  --rcm-hairline: rgba(149, 188, 225, 0.18);
+  --rcm-divider: rgba(149, 188, 225, 0.13);
+  --rcm-panel: rgba(10, 20, 35, 0.55);
+  --rcm-track: rgba(149, 188, 225, 0.08);
+  --rcm-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(20px, 2.6vw, 30px);
+  color: var(--rcm-ink);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+}
+
+.rcm-eyebrow {
+  color: var(--rcm-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.rcm-eyebrow-accent {
+  color: var(--rcm-accent);
+}
+
+.rcm-eyebrow-amber {
+  color: var(--rcm-amber);
+}
+
+.rcm-inline-figure {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+}
+
+/* ------------------------------------------------------------- 1. context */
+
+.rcm-context {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 24px;
+}
+
+.rcm-context-facts {
+  color: var(--rcm-muted);
+  font-family: var(--rcm-mono);
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------- 2. case ladder */
+
+.rcm-ladder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.rcm-case {
+  appearance: none;
+  display: block;
+  min-width: 0;
+  border: 1px solid var(--rcm-hairline);
+  border-radius: 12px;
+  background: rgba(149, 188, 225, 0.05);
+  cursor: pointer;
+  padding: 13px 16px 14px;
+  text-align: left;
+  font-family: inherit;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.rcm-case:hover {
+  border-color: rgba(141, 211, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.rcm-case:active {
+  transform: translateY(1px);
+}
+
+.rcm-case:focus-visible {
+  outline: 2px solid var(--rcm-accent);
+  outline-offset: 2px;
+}
+
+.rcm-case.is-active {
+  border-color: var(--rcm-accent);
+  background: rgba(92, 183, 242, 0.16);
+}
+
+.rcm-case-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rcm-case-name {
+  color: var(--rcm-body);
+  font-size: 14px;
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.rcm-case.is-active .rcm-case-name {
+  color: var(--rcm-ink);
+}
+
+.rcm-case-amount {
+  color: var(--rcm-muted);
+  font-family: var(--rcm-mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* The commitment rail. This is what makes the cards a ladder rather than four
+   equal options: the fill is each case's share of the largest amount anyone
+   puts in, so increasing commitment is visible before a word is read. */
+.rcm-case-rail {
+  height: 3px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: rgba(149, 188, 225, 0.14);
+}
+
+.rcm-case-rail-fill {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(141, 211, 255, 0.32);
+  transition: background 180ms ease;
+}
+
+.rcm-case.is-active .rcm-case-rail-fill {
+  background: var(--rcm-accent);
+}
+
+/* -------------------------------------------------------- 3. the premise */
+
+.rcm-premise {
+  max-width: 74ch;
+  margin: 0;
+  color: var(--rcm-muted);
+  font-size: 13.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* ---------------------------------------------------- 4. lump-sum timing */
+
+.rcm-timing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  border: 1px solid rgba(149, 188, 225, 0.14);
+  border-radius: 999px;
+  background: rgba(10, 20, 35, 0.5);
+  padding: 12px 16px;
+  transition: opacity 200ms ease;
+}
+
+/* Dimmed rather than hidden, with the sentence saying why: a control that
+   vanishes on some cases is a control the client has to rediscover. */
+.rcm-timing.is-inactive {
+  opacity: 0.5;
+}
+
+.rcm-timing-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rcm-pill {
+  appearance: none;
+  border: 1px solid var(--rcm-hairline);
+  border-radius: 999px;
+  background: rgba(149, 188, 225, 0.06);
+  color: var(--rcm-body);
+  cursor: pointer;
+  padding: 7px 14px;
+  font-family: var(--rcm-mono);
+  font-size: 12.5px;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.rcm-pill:hover:not(:disabled) {
+  border-color: rgba(141, 211, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.rcm-pill:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.rcm-pill:focus-visible {
+  outline: 2px solid var(--rcm-accent);
+  outline-offset: 2px;
+}
+
+.rcm-pill.is-active {
+  border-color: var(--rcm-accent);
+  background: var(--rcm-accent);
+  color: #050a11;
+}
+
+.rcm-pill:disabled {
+  color: var(--rcm-faint);
+  cursor: default;
+}
+
+.rcm-timing-note {
+  flex: 1 1 260px;
+  color: var(--rcm-muted);
+  font-size: 12.5px;
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------------------- 5. the hero card */
+
+.rcm-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(26px, 3.4vw, 40px);
+  border: 1px solid var(--rcm-hairline);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(24, 42, 64, 0.5), rgba(8, 16, 28, 0.86));
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+  padding: clamp(20px, 3vw, 36px);
+}
+
+.rcm-band {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rcm-hero-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  align-items: start;
+  gap: clamp(20px, 3vw, 44px);
+  min-width: 0;
+}
+
+.rcm-hero {
+  min-width: 0;
+}
+
+.rcm-hero .rcm-eyebrow {
+  display: block;
+  margin-bottom: 12px;
+  letter-spacing: 0.18em;
+}
+
+/* TWO HEROES, EACH PERMANENTLY LABELLED. One hero that changes meaning
+   between cases is the defect this replaces: the same large figure read as
+   "interest you pay" on one click and "interest you save" on the next. */
+.rcm-hero-figure {
+  color: var(--rcm-ink);
+  font-size: clamp(38px, 6.4vw, 76px);
+  font-weight: 780;
+  letter-spacing: -0.035em;
+  line-height: 0.94;
+}
+
+.rcm-hero-figure-positive {
+  color: var(--rcm-positive);
+}
+
+.rcm-hero-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.rcm-hero-money {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+  font-size: clamp(15px, 2vw, 21px);
+}
+
+.rcm-hero-sub {
+  max-width: 32ch;
+  margin-top: 12px;
+  color: var(--rcm-body);
+  font-size: 15.5px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.rcm-split-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 12.5px;
+}
+
+.rcm-split-row-baseline {
+  align-items: baseline;
+}
+
+.rcm-caption {
+  color: var(--rcm-muted);
+}
+
+.rcm-label-accent {
+  color: var(--rcm-accent);
+  font-weight: 600;
+}
+
+.rcm-label-positive {
+  color: var(--rcm-positive);
+  font-weight: 600;
+}
+
+.rcm-mono-muted {
+  color: var(--rcm-muted);
+  font-family: var(--rcm-mono);
+  font-size: 12.5px;
+}
+
+/* ------------------------------------------------------ band 2: the rail */
+
+.rcm-rail {
+  position: relative;
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: rgba(149, 188, 225, 0.12);
+}
+
+.rcm-rail-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--rcm-accent-deep), var(--rcm-accent));
+}
+
+.rcm-rail-remainder {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 6px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(90deg, rgba(122, 215, 180, 0.6) 0 6px, transparent 6px 12px);
+}
+
+.rcm-rail-marker {
+  position: absolute;
+  top: -13px;
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background: var(--rcm-ink);
+  transform: translateX(-1px);
+}
+
+/* The contractual end date, which never moves whatever the client chooses. */
+.rcm-rail-end {
+  position: absolute;
+  top: -9px;
+  right: 0;
+  width: 1px;
+  height: 24px;
+  background: rgba(190, 202, 207, 0.4);
+}
+
+.rcm-rail-ticks {
+  position: absolute;
+  top: 15px;
+  right: 0;
+  left: 0;
+  height: 14px;
+}
+
+.rcm-rail-tick {
+  position: absolute;
+  color: var(--rcm-faint);
+  font-family: var(--rcm-mono);
+  font-size: 10.5px;
+  transform: translateX(-50%);
+}
+
+.rcm-rail-gutter {
+  height: 12px;
+}
+
+/* ---------------------------------------------- band 3: the interest bar */
+
+.rcm-interest-bar {
+  display: flex;
+  height: clamp(58px, 7vw, 78px);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--rcm-track);
+}
+
+/* THE CUT LINE. The 2px ink border on the right of this segment is the most
+   important element in the module: it is what the client's eye is already on
+   when the number changes, which is how they learn without being told that
+   money going in is the thing that moves it. It must stay visible against
+   the fill at both 3% and 39%, so it is ink rather than a tint of the fill. */
+.rcm-interest-fill {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  border-right: 2px solid var(--rcm-ink);
+  background: linear-gradient(180deg, rgba(78, 176, 255, 0.55), rgba(78, 176, 255, 0.3));
+  padding-left: 16px;
+}
+
+.rcm-interest-figure {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+  font-size: clamp(13px, 1.6vw, 17px);
+  white-space: nowrap;
+}
+
+.rcm-interest-hatch {
+  flex: 1;
+  min-width: 0;
+  background: repeating-linear-gradient(135deg, rgba(122, 215, 180, 0.22) 0 8px, transparent 8px 16px);
+}
+
+/* -------------------------------------------------- band 4: the cost bar */
+
+/* Deliberately on the SAME denominator as the interest bar above it. The
+   client's own money is not a small grey pill beside a large green saving:
+   it is a bar on the same ruler, which is the only honest way to show it. */
+.rcm-cost-bar {
+  height: clamp(28px, 3.6vw, 38px);
+  border-radius: 8px;
+  background: var(--rcm-track);
+}
+
+.rcm-cost-fill {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 100%;
+  min-width: 0;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(226, 183, 101, 0.6), rgba(226, 183, 101, 0.32));
+  padding-left: 16px;
+}
+
+.rcm-cost-fill.is-empty {
+  background: none;
+  padding-left: 0;
+}
+
+.rcm-cost-figure {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* ----------------------------------------------------- band 5: the charts */
+
+.rcm-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: clamp(22px, 3vw, 40px);
+  min-width: 0;
+}
+
+.rcm-chart {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rcm-chart .rcm-eyebrow {
+  letter-spacing: 0.14em;
+}
+
+.rcm-svg {
+  display: block;
+  width: 100%;
+  height: clamp(130px, 17vw, 186px);
+}
+
+.rcm-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--rcm-faint);
+  font-family: var(--rcm-mono);
+  font-size: 10.5px;
+}
+
+/* ------------------------------------------------------ 6. the comparison */
+
+.rcm-panel {
+  border: 1px solid var(--rcm-hairline);
+  border-radius: 16px;
+  background: var(--rcm-panel);
+  min-width: 0;
+}
+
+.rcm-table-panel {
+  overflow: hidden;
+}
+
+.rcm-table-scroll {
+  overflow-x: auto;
+}
+
+.rcm-table {
+  width: 100%;
+  min-width: 660px;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.rcm-table th {
+  color: var(--rcm-muted);
+  font-weight: 600;
+  padding: 12px 14px;
+  text-align: right;
+}
+
+.rcm-table th:first-child {
+  padding-left: 18px;
+  text-align: left;
+}
+
+.rcm-table th:last-child,
+.rcm-table td:last-child {
+  padding-right: 18px;
+}
+
+.rcm-table td {
+  border-top: 1px solid rgba(149, 188, 225, 0.12);
+  color: var(--rcm-body);
+  font-family: var(--rcm-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  padding: 12px 14px;
+  text-align: right;
+}
+
+.rcm-table .rcm-table-case {
+  color: var(--rcm-body);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding-left: 18px;
+  text-align: left;
+}
+
+.rcm-table .rcm-table-per-euro {
+  color: var(--rcm-positive);
+}
+
+.rcm-table tr.is-active {
+  background: rgba(92, 183, 242, 0.1);
+}
+
+.rcm-table tr.is-active .rcm-table-case {
+  color: var(--rcm-ink);
+}
+
+/* ---------------------------------------------------------- 7. the notes */
+
+/* LOAD-BEARING. The per-euro column ranks the cases differently from every
+   other measure on the screen, and without these two paragraphs a client
+   reads that difference as a contradiction. */
+.rcm-notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 22px 36px;
+  padding: clamp(18px, 2.4vw, 28px);
+}
+
+.rcm-note {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.rcm-note-body {
+  margin: 0;
+  color: var(--rcm-body);
+  font-size: 14.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------- 8. keep the term instead */
+
+.rcm-reduction {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(18px, 2.4vw, 26px);
+  border-top: 1px solid var(--rcm-hairline);
+  padding-top: clamp(30px, 4vw, 48px);
+}
+
+.rcm-reduction-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rcm-reduction-title {
+  max-width: 26ch;
+  margin: 0;
+  color: var(--rcm-ink);
+  font-family: 'Iowan Old Style', 'Source Serif 4', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  font-size: clamp(24px, 3.2vw, 38px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+}
+
+.rcm-reduction-lede {
+  max-width: 64ch;
+  margin: 0;
+  color: var(--rcm-body);
+  font-size: 15.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.rcm-reduction-card {
+  gap: clamp(24px, 3vw, 34px);
+}
+
+.rcm-payment-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.rcm-reduction-figure {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+  font-size: clamp(20px, 3.4vw, 34px);
+}
+
+/* Both bars share one scale from zero, so a repayment that falls by eight per
+   cent is drawn falling by eight per cent. The difference figure is NOT put
+   inside the gap between them -- at true scale it never fits. */
+.rcm-payment-bar {
+  position: relative;
+  height: clamp(30px, 4vw, 40px);
+  border-radius: 8px;
+  background: rgba(149, 188, 225, 0.06);
+}
+
+.rcm-payment-fill-now {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(149, 188, 225, 0.34), rgba(149, 188, 225, 0.18));
+}
+
+.rcm-payment-fill-after {
+  height: 100%;
+  border-radius: 8px;
+  border-right: 2px solid var(--rcm-ink);
+  background: linear-gradient(180deg, rgba(226, 183, 101, 0.55), rgba(226, 183, 101, 0.3));
+}
+
+.rcm-payment-hatch {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 0 8px 8px 0;
+  background: repeating-linear-gradient(135deg, rgba(226, 183, 101, 0.18) 0 8px, transparent 8px 16px);
+}
+
+.rcm-payment-caption {
+  color: var(--rcm-muted);
+  font-size: 12.5px;
+  text-align: right;
+}
+
+.rcm-stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px 30px;
+  border-top: 1px solid rgba(149, 188, 225, 0.14);
+  padding-top: clamp(4px, 1vw, 8px);
+}
+
+.rcm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rcm-stat-value {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+  font-size: 19px;
+}
+
+.rcm-reduction-note {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--rcm-body);
+  font-size: 14.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------------------- 9. disclosure */
+
+.rcm-disclosure {
+  max-width: 78ch;
+  margin: 0;
+  color: var(--rcm-faint);
+  font-size: 12.5px;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* A stadium radius is a pill only while the row is one line. Once the year
+   pills wrap onto a second row it becomes a lozenge with the label floating
+   inside the curve, so at phone width it goes back to being a panel. */
+@media (max-width: 640px) {
+  .rcm-timing {
+    border-radius: 16px;
+  }
+}
+
+/* Under reduced motion the clock runs at zero duration, so nothing here
+   should be transitioning either. */
+@media (prefers-reduced-motion: reduce) {
+  .rcm-case,
+  .rcm-pill,
+  .rcm-case-rail-fill,
+  .rcm-timing {
+    transition: none;
+  }
+
+  .rcm-case:hover,
+  .rcm-case:active,
+  .rcm-pill:hover:not(:disabled),
+  .rcm-pill:active:not(:disabled) {
+    transform: none;
   }
 }
