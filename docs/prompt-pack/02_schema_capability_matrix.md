@@ -300,7 +300,8 @@ Playbooks should only emit the subset they are responsible for.
 - `oneOffOverpaymentMonth` is whole months from the start of the schedule before the lump sum lands; `0` (the default) means it is already paid and comes off the opening balance.
 - Scenario ids must be unique. A scenario inherits every field it does not restate.
 - `baseScenarioId` must match a scenario id when `scenarios` is present; the runtime measures every comparison figure against that case.
-- The runtime owns interest saved, time saved, total overpaid, saved per euro, the comparison table, the keep-the-term repayment-reduction figures, and both charts. Do not supply them.
+- The runtime owns interest saved, time saved, total overpaid, interest saved per euro paid in, the comparison table, the keep-the-term repayment-reduction figures, and both charts. Do not supply them.
+- The per-euro figure is not a return, a rate or a yield, and no summary may describe it as one.
 - The repayment-case module draws its own balance curve and year-by-year interest columns beside the figures they explain, so the focused pane shows no charts card. The runtime still computes one payload chart for the surfaces that render a module without it, such as the video summary. Do not supply it.
 
 ## Loan Support

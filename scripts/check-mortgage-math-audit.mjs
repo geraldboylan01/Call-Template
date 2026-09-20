@@ -531,7 +531,7 @@ function referenceScheduleWithAnnual(balance, annualRate, months, payment, annua
   assert.equal(
     byId.get('switch').savedPerEuroOverpaid,
     null,
-    'but no euro was overpaid, so no return per euro is claimed'
+    'but no euro was overpaid, so no per-euro figure is claimed'
   );
   pass('a case inherits every fact it does not restate, and a saving with no overpayment reports no return');
 }

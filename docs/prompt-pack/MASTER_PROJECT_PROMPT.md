@@ -1004,7 +1004,7 @@ This playbook is for an existing housing loan with a balance, rate, and repaymen
 ### Job
 Parse the dictated mortgage details into `generated.mortgageInputs`, set up the cases Gerry wants to compare, and write a short client-facing summary.
 
-The browser app owns the repeatable mortgage maths after the payload is applied, including every comparison figure: interest saved, time saved, amount paid in, and the return per euro.
+The browser app owns the repeatable mortgage maths after the payload is applied, including every comparison figure: interest saved, time saved, amount paid in, and the interest saved per euro paid in.
 
 ### Boundary With House Purchase
 - Existing mortgage balance, repayment, term, payoff, or overpayment -> `generated.mortgageInputs`.
@@ -1117,9 +1117,11 @@ Case titles are buttons on a live call, so keep them short, concrete, and in the
 `oneOffOverpaymentMonth` is the number of whole months from the start of the schedule before the lump sum lands. `0`, the default, means it is already paid, so it comes off the opening balance and the schedule never charges interest on it.
 
 Rules:
-- Leave it out unless Gerry says the money is not available yet. The module has its own control for deferring it, and the client can move it on the call.
-- Set it when Gerry states a date: a bonus in March, a policy maturing in two years, a sale that has not closed.
+- Omit it when the money is in hand, or when Gerry says nothing about timing. The module then opens on today and offers the next few years as alternatives.
+- Set it whenever Gerry puts the money in the future, even loosely. `in five years` -> `60`. `in a couple of years` -> `24`. `when the policy matures in 2031` -> the months from `startDateIso` to January 2031. Years times twelve; round to the nearest whole month.
+- The module opens on the year you set and offers a window around it: the year before, that year, and the two after, with paying today always available alongside. So setting it is what makes the conversation about that year rather than about today.
 - Waiting costs money, and the module says so: the same lump sum removes less interest the longer it waits, because it has fewer months and a smaller balance to work against.
+- It is a timing fact, not a case. Do not build separate cases for the same lump sum paid in different years -- the module already moves it, in every case at once.
 
 ## Overpayment Benefit
 An Irish lender asks the borrower which they want when capital is paid off a mortgage:
@@ -1138,6 +1140,7 @@ Rules:
 - If Gerry gives a remaining term, set `remainingTermYears` and set `endDateIso` to `null`
 - If Gerry gives a fixed monthly payment, set `fixedPaymentAmount`
 - A monthly overpayment is a higher repayment: express `pay 1,800 a month instead of 1,662` as `fixedPaymentAmount: 1800` on that case
+- A lump sum placed in the future sets `oneOffOverpaymentMonth` in whole months: spoken `in 5 years` -> `60`, `in 18 months` -> `18`, `next year` -> `12`
 - If Gerry does not give overpayments, set them to 0
 - Always set `repaymentType` to `repayment`
 
@@ -1151,9 +1154,10 @@ Use placeholders only when needed to keep an exploratory module moving:
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
 - Describe the scenario in plain English using the balance, rate, term or end date, repayment structure, and the cases being compared.
-- Tell the client how to read the first screen: the headline figure is the interest saved by the selected case, the buttons switch between the options, and the table underneath shows every case side by side.
+- Tell the client how to read the first screen: it opens on their current path, the buttons step through the cases, and each case answers two things side by side -- when the mortgage clears, and how much of the interest bill goes. The table underneath shows every case at once.
 - Mention overpayments only if Gerry gave them.
-- Do not state the interest saved, the payoff date, or the return per euro as a number. The runtime calculates those and they must not be duplicated or contradicted in the summary.
+- Do not state the interest saved, the payoff date, or the per-euro figure as a number. The runtime calculates those and they must not be duplicated or contradicted in the summary.
+- Never call the per-euro figure a return, a rate or a yield. It is the interest avoided divided by the money put in to avoid it, and the module carries two paragraphs explaining why that is a different question from every other measure on the screen. A summary that calls it a return contradicts them.
 - Do not claim that the modeled payment path is the only possible structure.
 
 ### Caveats Worth Carrying

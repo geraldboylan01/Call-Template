@@ -53,6 +53,7 @@ Do not use the older workaround that forced non-housing loans through `generated
 - `fixedPaymentAmount` - optional number or `null`
 - `oneOffOverpayment` - optional number, default 0
 - `oneOffOverpaymentMonth` - optional whole number of months from the start, default 0 (already paid)
+  - Set it whenever Gerry puts the money in the future: `in 3 years` -> `36`. The module then opens on that year and offers the year before, that year, and the two after, with paying today alongside. Omit it when the money is in hand.
 - `annualOverpayment` - optional number, default 0
 - `overpaymentBenefit` - optional, `shorterTerm` (default) or `lowerPayment`
 - `baseScenarioId` - optional, required to match a case id when `scenarios` is present
@@ -122,7 +123,8 @@ Use placeholders only when needed to keep an exploratory module moving:
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
 - Explain the scenario in plain English using non-housing loan wording, not mortgage wording.
 - Use the balance, rate, term/end date or fixed payment, and overpayment facts supplied.
-- Tell the client how to read the first screen: focus on payoff timing, interest cost, payment structure, and the effect of any overpayment.
+- Tell the client how to read the first screen: with cases, it opens on their current path and the buttons step through the others, each showing when the loan clears and how much of the interest bill goes. Without cases, focus on payoff timing, interest cost and payment structure.
+- Never call the per-euro figure a return, a rate or a yield. It is the interest avoided divided by the money put in to avoid it.
 - Mention overpayments only if Gerry gave them.
 
 ## Omit By Default
@@ -138,7 +140,7 @@ For this playbook, do not emit:
 The app computes the repeatable loan outputs after apply.
 
 ## Rendering Expectations
-A loan with cases renders the same repayment-case module as a mortgage, in loan wording throughout: the case ladder and its commitment rails, the note that the monthly repayment is unchanged in every case, the lump-sum timing control, both heroes (when the loan clears, and what share of the interest bill goes), the time rail, the interest bar, the cost bar, two charts, the comparison table, the two notes on the per-euro column, and the keep-the-term alternative. See the mortgage playbook's Rendering Expectations for what each part is for. Assumptions and repayment outputs render below it.
+A loan with cases renders the same repayment-case module as a mortgage, in loan wording throughout: the case ladder and its commitment rails, the note that the monthly repayment is unchanged in every case, the lump-sum timing control, both heroes (when the loan clears, and what share of the interest bill goes), the time rail, the interest bar, the cost bar, the two charts the module draws for itself, the comparison table, the two notes on the per-euro column, and the keep-the-term alternative. See the mortgage playbook's Rendering Expectations for what each part is for. Assumptions and repayment outputs render below it.
 
 - Keep the payload to `generated.loanInputs` plus a concise screen-share summary.
 - If Gerry wants a teaching module about borrowing tradeoffs, create a separate Education or Report module instead of mixing block structures into this engine module.

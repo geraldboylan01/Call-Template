@@ -432,13 +432,13 @@ Liquidity examples must stay cash-only. They should use `generated.liquidityPlan
 
 These examples model an existing borrowing balance and repayment path. Use the separate House Purchase contract below for a future target home, deposit path, purchase timing, household affordability, or Irish purchase-support screen.
 
-Use `scenarios` when the call is about comparing options rather than modelling one path. Up to 4 cases including the do-nothing case; each case restates only what it changes, and `baseScenarioId` names the case every comparison figure is measured against. The runtime owns interest saved, time saved, total paid in, and the return per euro.
+Use `scenarios` when the call is about comparing options rather than modelling one path. Up to 4 cases including the do-nothing case; each case restates only what it changes, and `baseScenarioId` names the case every comparison figure is measured against. The runtime owns interest saved, time saved, total paid in, and the interest saved per euro paid in -- which is not a return, and must not be described as one.
 
 ```json
 {
   "title": "Mortgage Projection - Client",
   "generated": {
-    "summaryHtml": "<p>This module compares four ways of handling the same mortgage: carrying on as you are, paying a set amount extra each year, putting a lump sum against the balance, and doing both. The headline figure is the interest saved by the case selected, the buttons switch between the options, and the table underneath lays every case out side by side. Each case holds the same monthly repayment, so what changes is when the mortgage clears and what it costs in interest.</p>",
+    "summaryHtml": "<p>This module compares four ways of handling the same mortgage: carrying on as you are, paying a set amount extra each year, putting a lump sum against the balance, and doing both. It opens on the path you are already on, and the buttons step through the others: each one shows when the mortgage clears and how much of the interest bill goes. Each case holds the same monthly repayment, so what changes is when the mortgage clears and what it costs in interest.</p>",
     "mortgageInputs": {
       "currentBalance": 320000,
       "annualInterestRate": 0.0425,
