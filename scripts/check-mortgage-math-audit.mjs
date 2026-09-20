@@ -755,6 +755,74 @@ function referenceScheduleWithAnnual(balance, annualRate, months, payment, annua
 }
 
 {
+  // A STATED REPAYMENT DOES NOT CANCEL THE LENDER'S CHOICE.
+  //
+  // `lowerPayment` used to be ignored whenever `fixedPaymentAmount` was set,
+  // which is the normal case -- the adviser reads the repayment off the
+  // client's statement. The keep-the-term section then reported the repayment
+  // unchanged and nothing freed, for every payload that named a repayment.
+  const withFixed = {
+    ...BASE,
+    currentBalance: 100_000,
+    annualInterestRate: 0,
+    remainingTermYears: 10,
+    fixedPaymentAmount: 1_000,
+    oneOffOverpayment: 20_000,
+    overpaymentBenefit: 'lowerPayment'
+  };
+  const lowered = computeAmortizationMonthlySchedule(withFixed);
+  assert.equal(lowered.contractualPayment, 1_000, 'the stated repayment is what they pay today');
+  close(lowered.monthlyPaymentUsed, 80_000 / 120, 1e-9, 'and the lump sum re-amortises it over the full term');
+  assert.equal(lowered.monthsSimulated, 120, 'with the term unchanged');
+
+  // Holding the repayment instead still shortens the term, as before.
+  const held = computeAmortizationMonthlySchedule({ ...withFixed, overpaymentBenefit: 'shorterTerm' });
+  assert.equal(held.monthlyPaymentUsed, 1_000, 'shorterTerm holds the stated repayment');
+  assert.ok(held.monthsSimulated < 120, 'and finishes early');
+  pass('a stated repayment sets what is paid before the lump sum, not what the lender does after it');
+}
+
+{
+  // THE KEEP-THE-TERM SECTION NEEDS A TERM LEFT TO KEEP.
+  const shared = {
+    ...BASE,
+    currentBalance: 90_000,
+    annualInterestRate: 0.0235,
+    remainingTermYears: 9,
+    fixedPaymentAmount: 946,
+    baseScenarioId: 'current'
+  };
+
+  const clearedOutright = computeMortgageComparison({
+    ...shared,
+    scenarios: [
+      { id: 'current', title: 'Current mortgage' },
+      { id: 'clear', title: 'Clear it', oneOffOverpayment: 90_000 }
+    ]
+  });
+  assert.equal(
+    clearedOutright.repaymentReduction,
+    null,
+    'a lump sum that clears the balance leaves no repayment to lower'
+  );
+
+  const partial = computeMortgageComparison({
+    ...shared,
+    scenarios: [
+      { id: 'current', title: 'Current mortgage' },
+      { id: 'part', title: '30,000 lump', oneOffOverpayment: 30_000 }
+    ]
+  });
+  assert.ok(partial.repaymentReduction, 'a partial lump sum still offers the alternative');
+  assert.equal(partial.repaymentReduction.contractualPayment, 946, 'measured from what they pay today');
+  assert.ok(
+    partial.repaymentReduction.monthlyReduction > 0,
+    'and the repayment genuinely falls, even though a repayment was stated'
+  );
+  pass('the keep-the-term section is offered only when there is a repayment left to lower');
+}
+
+{
   // A payload with no cases is still one case, so nothing downstream has to
   // special-case the shape.
   const projection = computeMortgageProjection({ ...BASE, currentBalance: 200_000, annualInterestRate: 0.04, remainingTermYears: 25 });

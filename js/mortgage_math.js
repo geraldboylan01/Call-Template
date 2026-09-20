@@ -740,8 +740,18 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
     ? computeMonthlyPayment(inputs.currentBalance, inputs.annualInterestRate, term.monthCount)
     : inputs.fixedPaymentAmount;
 
-  const takesLowerPayment = inputs.fixedPaymentAmount === null
-    && inputs.overpaymentBenefit === 'lowerPayment';
+  // WHAT THE CLIENT PAYS NOW AND WHAT THE LENDER DOES WITH A LUMP SUM ARE
+  // TWO DIFFERENT FACTS.
+  //
+  // This used to require `fixedPaymentAmount === null`, which quietly threw
+  // away `lowerPayment` for every payload that stated the client's actual
+  // repayment -- and stating it is the normal case, because the adviser reads
+  // it off the client's statement. The author asked for the repayment to be
+  // recalculated and the engine held it flat instead, so the section built to
+  // show what keeping the term costs reported that it cost nothing and freed
+  // nothing. `fixedPaymentAmount` sets the repayment BEFORE the lump sum;
+  // `overpaymentBenefit` decides what happens to it after.
+  const takesLowerPayment = inputs.overpaymentBenefit === 'lowerPayment';
   const openingPayment = takesLowerPayment && lumpSumPaidUpfront
     ? computeMonthlyPayment(openingBalance, inputs.annualInterestRate, term.monthCount)
     : contractualPayment;
@@ -1044,10 +1054,30 @@ function buildRepaymentReductionVariant(rawInputs, normalizeOptions, comparison)
     overpaymentBenefit: 'lowerPayment'
   }, normalizeOptions);
 
-  const contractualPayment = projection.contractualPayment;
+  const contractualPayment = comparison.contractualPayment;
   const newPayment = projection.monthlyPaymentUsed;
   const monthlyReduction = contractualPayment - newPayment;
   const monthsAtNewPayment = Math.max(0, projection.termMonthsPlanned - lumpSumMonth);
+
+  // A LUMP SUM THAT CLEARS THE WHOLE BALANCE HAS NO OTHER WAY TO BE SPENT.
+  //
+  // "Keep the term and lower the repayment" needs a balance left to spread
+  // over that term. Clear the mortgage outright and there is no term, no
+  // repayment and no trade to price -- but the section still rendered, and
+  // with nothing to re-amortise it reported the repayment unchanged, nothing
+  // freed each month, and an interest bill of zero that was somehow also zero
+  // more than the alternative. Every figure in it was a sentence about a
+  // decision the client no longer faces.
+  if (projection.balanceRemaining <= SETTLEMENT_EPSILON && monthsAtNewPayment > 0
+    && projection.monthsSimulated <= lumpSumMonth) {
+    return null;
+  }
+
+  // Nothing worth a section of its own: a reduction under a cent is rounding,
+  // not cash flow.
+  if (monthlyReduction <= SETTLEMENT_EPSILON) {
+    return null;
+  }
 
   return {
     lumpSum,
