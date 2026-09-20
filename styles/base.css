@@ -9577,6 +9577,11 @@ body.overview-has-selection .toast-host {
   --rcm-panel: rgba(10, 20, 35, 0.55);
   --rcm-track: rgba(149, 188, 225, 0.08);
   --rcm-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  /* The y-scale gutter. In px because the gutter and the x-axis sit in
+     different font sizes, and an em in each puts the years out of line with
+     the curve they label. */
+  --rcm-chart-gutter: 38px;
+  --rcm-chart-gap: 8px;
 
   grid-column: 1 / -1;
   display: flex;
@@ -10063,10 +10068,110 @@ body.overview-has-selection .toast-host {
   letter-spacing: 0.14em;
 }
 
+/* The scale lives in a gutter beside the plot, not inside the SVG: these
+   charts stretch to their container with preserveAspectRatio="none", which
+   would stretch any text drawn in them along with the curve. */
+.rcm-chart-plot {
+  display: grid;
+  grid-template-columns: var(--rcm-chart-gutter) minmax(0, 1fr);
+  gap: 0 var(--rcm-chart-gap);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.rcm-chart-yaxis {
+  position: relative;
+}
+
+/* Positioned against the same two y coordinates the paths are drawn between,
+   so a tick names the line it sits on rather than the edge of the box. */
+.rcm-chart-ytick {
+  position: absolute;
+  right: 0;
+  color: var(--rcm-faint);
+  font-family: var(--rcm-mono);
+  font-size: 10.5px;
+  line-height: 1;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.rcm-chart-area {
+  position: relative;
+  min-width: 0;
+  /* A finger dragging ACROSS the chart reads it; a finger dragging UP still
+     scrolls the page. `none` would trap the scroll on a tall phone page where
+     two charts sit in the middle of everything else. */
+  touch-action: pan-y;
+}
+
 .rcm-svg {
   display: block;
   width: 100%;
   height: clamp(130px, 17vw, 186px);
+}
+
+/* Distinct from the payoff marker, which is solid ink and means something
+   permanent: this one is the client's own pointer and it is dashed. */
+.rcm-chart-guide {
+  position: absolute;
+  top: 0;
+  bottom: 14px;
+  width: 1px;
+  background: repeating-linear-gradient(180deg, rgba(244, 248, 252, 0.55) 0 3px, transparent 3px 6px);
+  pointer-events: none;
+  transform: translateX(-0.5px);
+}
+
+/* Pinned to the top of the plot rather than following the pointer down the
+   curve, so a finger never covers the figure it was put there to reveal. */
+.rcm-chart-readout {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 100%;
+  border: 1px solid rgba(149, 188, 225, 0.28);
+  border-radius: 9px;
+  background: rgba(6, 14, 26, 0.94);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+  padding: 7px 10px;
+  pointer-events: none;
+}
+
+/* `display: flex` above outranks the user agent's `[hidden] { display: none }`,
+   so without this the empty chip sat on the chart permanently -- a small
+   bordered oval floating over the first column, there from page load. */
+.rcm-chart-readout[hidden] {
+  display: none;
+}
+
+.rcm-chart-readout-when {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
+  font-size: 11.5px;
+}
+
+.rcm-chart-readout-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 11.5px;
+}
+
+/* The label may wrap on a narrow phone; the figure never does. */
+.rcm-chart-readout-value {
+  white-space: nowrap;
+}
+
+.rcm-chart-readout-label {
+  color: var(--rcm-muted);
+}
+
+.rcm-chart-readout-value {
+  color: var(--rcm-ink);
+  font-family: var(--rcm-mono);
 }
 
 .rcm-chart-axis {
@@ -10075,6 +10180,8 @@ body.overview-has-selection .toast-host {
   color: var(--rcm-faint);
   font-family: var(--rcm-mono);
   font-size: 10.5px;
+  /* Aligned to the plot, not the gutter, so the years sit under the curve. */
+  margin-left: calc(var(--rcm-chart-gutter) + var(--rcm-chart-gap));
 }
 
 /* ------------------------------------------------------ 6. the comparison */
