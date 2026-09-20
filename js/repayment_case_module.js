@@ -1023,7 +1023,11 @@ export function buildRepaymentCaseModule({
     refs.railFill.style.width = widthPct;
     refs.railRemainder.style.left = widthPct;
     refs.railMarker.style.left = widthPct;
-    refs.payingLabel.textContent = `Still paying · ${formatMonthsDurationLong(monthsNow)}`;
+    // A lump sum that clears the whole balance leaves nothing to pay, and
+    // "Still paying - None" is a sentence nobody would say out loud.
+    refs.payingLabel.textContent = Math.round(monthsNow) > 0
+      ? `Still paying · ${formatMonthsDurationLong(monthsNow)}`
+      : 'Nothing left to pay';
     refs.freeLabel.textContent = shown.monthsSaved > 0
       ? `${formatMonthsDurationLong(set.termMonths - monthsNow)} ${freeWordLower}`
       : 'Paying to the end of the term';

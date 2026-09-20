@@ -694,6 +694,67 @@ function referenceScheduleWithAnnual(balance, annualRate, months, payment, annua
 }
 
 {
+  // A DEBT CLEARED OUTRIGHT IS CLEARED, NOT UNREPAID.
+  //
+  // A lump sum that settles the whole balance leaves the schedule empty, and
+  // an empty schedule used to read as "never repaid": the same table row said
+  // the case saved nine years AND that the mortgage was not repaid within its
+  // term. Clearing a mortgage is the most complete version of the thing this
+  // module exists to show, so it cannot be the one case it reports backwards.
+  const shared = {
+    ...BASE,
+    currentBalance: 90_000,
+    annualInterestRate: 0.0235,
+    remainingTermYears: 9,
+    fixedPaymentAmount: 946
+  };
+
+  const cleared = computeAmortizationMonthlySchedule({ ...shared, oneOffOverpayment: 90_000 });
+  assert.equal(cleared.monthsSimulated, 0, 'nothing is left to amortise');
+  assert.equal(cleared.balanceRemaining, 0, 'and nothing is outstanding');
+  assert.equal(cleared.payoffDateIso, '2026-01-01', 'so it is cleared in the first month of the schedule');
+  assert.equal(cleared.payoffYear, 2026);
+  assert.equal(cleared.lumpSumApplied, 90_000, 'the whole lump sum went in');
+
+  // More than the balance still clears it, and still only spends the balance.
+  const overshoot = computeAmortizationMonthlySchedule({ ...shared, oneOffOverpayment: 120_000 });
+  assert.equal(overshoot.payoffDateIso, '2026-01-01');
+  assert.equal(overshoot.lumpSumApplied, 90_000, 'a lump sum cannot pay more than is owed');
+
+  // Deferred, it clears in the month it lands rather than in month one.
+  const later = computeAmortizationMonthlySchedule({
+    ...shared,
+    oneOffOverpayment: 90_000,
+    oneOffOverpaymentMonth: 24
+  });
+  assert.equal(later.payoffDateIso, '2027-12-01', 'the 24th month of a schedule starting January 2026');
+  assert.ok(later.totalInterestLifetime > 0, 'and two years of interest were charged before it landed');
+
+  // A loan that genuinely is not repaid still says so.
+  const unrepaid = computeAmortizationMonthlySchedule({
+    ...shared,
+    remainingTermYears: 2,
+    fixedPaymentAmount: 946
+  });
+  assert.equal(unrepaid.payoffDateIso, null, 'a balance left standing has no payoff date');
+  assert.ok(unrepaid.balanceRemaining > 0);
+
+  // And the table says the same thing as the figures beside it.
+  const table = computeMortgageProjection({
+    ...shared,
+    baseScenarioId: 'current',
+    scenarios: [
+      { id: 'current', title: 'Current mortgage' },
+      { id: 'clear', title: 'Clear it', oneOffOverpayment: 90_000 }
+    ]
+  }, { scenarioId: 'clear' }).comparisonTable;
+  const clearedRow = table.rows.find((row) => row[0] === 'Clear it');
+  assert.equal(clearedRow[1], 'Jan 2026', 'the row reports the month it was cleared');
+  assert.ok(!clearedRow.some((cell) => String(cell).includes('Not within')), 'and never calls it unrepaid');
+  pass('a lump sum that clears the whole balance reports the month it cleared, not "never repaid"');
+}
+
+{
   // A payload with no cases is still one case, so nothing downstream has to
   // special-case the shape.
   const projection = computeMortgageProjection({ ...BASE, currentBalance: 200_000, annualInterestRate: 0.04, remainingTermYears: 25 });

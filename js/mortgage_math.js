@@ -842,8 +842,22 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
   // cent that the display rounds to zero while the prose calls it a debt.
   if (balance <= SETTLEMENT_EPSILON) balance = 0;
 
-  const payoffMonth = balance <= 0 && monthlySchedule.length > 0
-    ? monthlySchedule[monthlySchedule.length - 1]
+  // A DEBT CLEARED OUTRIGHT IS CLEARED, NOT UNREPAID.
+  //
+  // A lump sum big enough to settle the whole balance leaves the loop with
+  // nothing to do, so the schedule is empty -- and payoff detection used to
+  // read an empty schedule as "never repaid". The client who just cleared
+  // their mortgage was told, in the same table row, that it saved them nine
+  // years and that it was "not within the mortgage term". Settling on day one
+  // is settling in the first month of the schedule.
+  const settled = balance <= 0;
+  const payoffDateIso = !settled
+    ? null
+    : (monthlySchedule.length > 0
+      ? monthlySchedule[monthlySchedule.length - 1].dateIso
+      : formatIsoDateUtc(term.startMonthDate));
+  const payoffYear = payoffDateIso
+    ? Number(payoffDateIso.slice(0, 4))
     : null;
 
   return {
@@ -869,8 +883,8 @@ export function computeAmortizationMonthlySchedule(rawInputs, options = {}) {
     totalOverpaid: lumpSumApplied + annualOverpaymentTotal + paymentOverpaymentTotal,
     balanceRemaining: balance,
     monthsSimulated: monthlySchedule.length,
-    payoffDateIso: payoffMonth ? payoffMonth.dateIso : null,
-    payoffYear: payoffMonth ? payoffMonth.year : null,
+    payoffDateIso,
+    payoffYear,
     totalInterestLifetime,
     totalPrincipalLifetime,
     totalPaidLifetime,
