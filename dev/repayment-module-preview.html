@@ -34,7 +34,23 @@
         { id: 'both', title: 'Lump sum + €3,000 a year', oneOffOverpayment: 25000, annualOverpayment: 3000 }
       ];
 
-      const rawInputs = {
+      // ?preset=clear reproduces the 90,000 balance cleared by a 90,000 lump.
+      const clearPreset = params.get('preset') === 'clear';
+
+      const rawInputs = clearPreset ? {
+        currentBalance: 90000,
+        annualInterestRate: 0.0235,
+        startDateIso: '2026-09-20',
+        remainingTermYears: 9.0833333333,
+        repaymentType: 'repayment',
+        fixedPaymentAmount: 946,
+        loanKind: 'mortgage',
+        baseScenarioId: 'current',
+        scenarios: [
+          { id: 'current', title: 'Current mortgage' },
+          { id: 'clear', title: 'Clear it with \u20ac90,000', oneOffOverpayment: 90000 }
+        ]
+      } : {
         currentBalance: 320000,
         annualInterestRate: 0.0425,
         startDateIso: '2026-01-01',
