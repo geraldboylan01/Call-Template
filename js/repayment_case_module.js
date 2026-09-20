@@ -126,6 +126,73 @@ function setAttrs(node, attributes) {
   Object.entries(attributes).forEach(([name, value]) => node.setAttribute(name, String(value)));
 }
 
+/**
+ * Money for an axis tick, where the gutter is narrow and the exact figure is
+ * a pointer away. `90000` -> `EUR90k`, `2262` -> `EUR2.3k`, `0` -> `EUR0`.
+ */
+function eurCompact(value) {
+  const amount = Number.isFinite(value) ? Math.max(0, value) : 0;
+  if (amount < 1000) {
+    return `\u20ac${Math.round(amount)}`;
+  }
+
+  // A gutter this narrow has room for five characters, so a seven-figure
+  // balance goes to millions rather than running off the edge as "EUR1200k".
+  if (amount >= 1_000_000) {
+    const millions = amount / 1_000_000;
+    return `\u20ac${millions.toFixed(millions < 10 ? 1 : 0).replace(/\.0$/, '')}m`;
+  }
+
+  const thousands = amount / 1000;
+  return `\u20ac${thousands.toFixed(thousands < 10 ? 1 : 0).replace(/\.0$/, '')}k`;
+}
+
+/**
+ * A chart's plotting area, with a gutter for the y scale and the furniture a
+ * pointer needs.
+ *
+ * The SVGs are drawn with `preserveAspectRatio="none"` so their curves can be
+ * interpolated in viewBox units and still fill whatever width they are given.
+ * That rules out text inside them -- it would stretch with the box -- so the
+ * scale is HTML in a gutter beside the plot, positioned against the same two
+ * y coordinates the paths are drawn between.
+ */
+function buildChartPlot(svg, { top, bottom, height }) {
+  const plot = el('div', 'rcm-chart-plot');
+  const yAxis = el('div', 'rcm-chart-yaxis');
+  const area = el('div', 'rcm-chart-area');
+
+  const guide = el('div', 'rcm-chart-guide');
+  guide.hidden = true;
+  const readout = el('div', 'rcm-chart-readout');
+  readout.hidden = true;
+
+  area.append(svg, guide, readout);
+  plot.append(yAxis, area);
+
+  return {
+    plot,
+    area,
+    yAxis,
+    guide,
+    readout,
+    // Where zero and the top of the scale sit, as a share of the element's
+    // height, so a tick can be placed against the line it names.
+    topRatio: top / height,
+    bottomRatio: bottom / height
+  };
+}
+
+/** Three ticks: nothing, halfway, and the top of the scale. */
+function renderYAxis(chart, maxValue) {
+  const span = chart.bottomRatio - chart.topRatio;
+  chart.yAxis.replaceChildren(...[1, 0.5, 0].map((share) => {
+    const tick = el('span', 'rcm-chart-ytick', eurCompact(maxValue * share));
+    tick.style.top = `${((chart.topRatio + (span * (1 - share))) * 100).toFixed(3)}%`;
+    return tick;
+  }));
+}
+
 /** A figure set in mono inside a sentence, so the number is read as a number. */
 function withFigure(paragraph, before, figure, after) {
   paragraph.append(before);
@@ -437,8 +504,10 @@ export function buildRepaymentCaseModule({
     'vector-effect': 'non-scaling-stroke'
   });
   balanceSvg.append(refs.balanceArea, refs.balanceBasePath, refs.balanceCasePath, refs.balanceMarker, balanceBaseline);
+  // Zero sits at y=205 and the top of the scale at y=15, in a 215-unit box.
+  refs.balancePlot = buildChartPlot(balanceSvg, { top: 15, bottom: 205, height: 215 });
   refs.balanceAxis = el('div', 'rcm-chart-axis');
-  balanceChart.append(refs.balanceChartLabel, balanceSvg, refs.balanceAxis);
+  balanceChart.append(refs.balanceChartLabel, refs.balancePlot.plot, refs.balanceAxis);
 
   // The year columns read left to right, the columns shrink, and then they
   // stop existing: the hollow ones are years the client never reaches. That is
@@ -453,8 +522,10 @@ export function buildRepaymentCaseModule({
     focusable: 'false'
   });
   refs.yearSvg.classList.add('rcm-svg');
+  // Zero at y=190, the tallest column's top at y=10, in a 200-unit box.
+  refs.yearPlot = buildChartPlot(refs.yearSvg, { top: 10, bottom: 190, height: 200 });
   refs.yearAxis = el('div', 'rcm-chart-axis');
-  yearChart.append(refs.yearSvg, refs.yearAxis);
+  yearChart.append(refs.yearPlot.plot, refs.yearAxis);
 
   chartsBand.append(balanceChart, yearChart);
   hero.append(chartsBand);
@@ -657,6 +728,7 @@ export function buildRepaymentCaseModule({
 
   function selectCase(index) {
     if (index === selectedIndex) return;
+    hideScrubs();
     const duration = isReducedMotion() ? 0 : CLICK_MS;
     anim.from = selectedIndex;
     anim.t = duration ? 0 : 1;
@@ -671,6 +743,7 @@ export function buildRepaymentCaseModule({
 
   function selectLumpYear(offset) {
     if (offset * 12 === set.lumpSumMonth) return;
+    hideScrubs();
     stopClock();
     // The outgoing figures have to stay coherent while the schedules under
     // them are recomputed, so the whole pre-change set is held for the length
@@ -680,6 +753,7 @@ export function buildRepaymentCaseModule({
     set = buildCaseSet(rawInputs, engineOptions, offset * 12);
     const duration = isReducedMotion() ? 0 : CLICK_MS;
     anim.t = duration ? 0 : 1;
+    renderAxes();
     renderStatic();
     runClock(duration);
   }
@@ -1104,7 +1178,145 @@ export function buildRepaymentCaseModule({
     }
   }
 
+  /**
+   * READING A VALUE OFF A CHART, WITH A MOUSE OR A FINGER.
+   *
+   * One interaction for both: pointer events mean a laptop gets hover and a
+   * phone gets drag-to-scrub from the same handler, and a tap is just a drag
+   * that did not move. The readout is pinned to the TOP of the plot rather
+   * than following the pointer down the curve, so a finger never covers the
+   * figure it was put there to reveal.
+   *
+   * The guide snaps to the data point rather than tracking the raw pointer:
+   * a chart sampled by month should not imply it can be read between months.
+   */
+  function attachScrub(chart, resolve) {
+    let active = false;
+
+    const hide = () => {
+      active = false;
+      chart.guide.hidden = true;
+      chart.readout.hidden = true;
+    };
+
+    const show = (event) => {
+      const rect = chart.area.getBoundingClientRect();
+      if (rect.width <= 0) return;
+
+      const fraction = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+      const reading = resolve(fraction);
+      if (!reading) {
+        hide();
+        return;
+      }
+
+      active = true;
+      chart.guide.style.left = `${(reading.position * 100).toFixed(2)}%`;
+      chart.guide.hidden = false;
+
+      chart.readout.replaceChildren(
+        el('span', 'rcm-chart-readout-when', reading.when),
+        ...reading.lines.map(([label, value]) => {
+          const row = el('span', 'rcm-chart-readout-row');
+          row.append(el('span', 'rcm-chart-readout-label', label));
+          row.append(el('span', 'rcm-chart-readout-value', value));
+          return row;
+        })
+      );
+      chart.readout.hidden = false;
+
+      // MEASURED, THEN CLAMPED. Offsetting the chip by a fixed amount either
+      // side of the guide reads fine on a laptop and runs off the edge of a
+      // phone, where the plot is 259px wide and the chip is 190px of it. So
+      // the chip is placed only after it has been rendered and its real width
+      // is known, and it is never allowed outside the plot.
+      const areaWidth = rect.width;
+      const chipWidth = chart.readout.offsetWidth;
+      const preferred = (reading.position * areaWidth)
+        + (reading.position > 0.5 ? -(chipWidth + 10) : 10);
+      chart.readout.style.left = `${clamp(preferred, 0, Math.max(0, areaWidth - chipWidth)).toFixed(1)}px`;
+    };
+
+    chart.area.addEventListener('pointerenter', show);
+    chart.area.addEventListener('pointermove', show);
+    chart.area.addEventListener('pointerdown', (event) => {
+      // A touch drag scrubs the chart instead of scrolling the page.
+      if (event.pointerType !== 'mouse') chart.area.setPointerCapture(event.pointerId);
+      show(event);
+    });
+    chart.area.addEventListener('pointerup', (event) => {
+      if (chart.area.hasPointerCapture?.(event.pointerId)) {
+        chart.area.releasePointerCapture(event.pointerId);
+      }
+      if (event.pointerType !== 'mouse') hide();
+    });
+    chart.area.addEventListener('pointerleave', hide);
+    chart.area.addEventListener('pointercancel', hide);
+
+    return { hide, isActive: () => active };
+  }
+
+  /**
+   * A figure halfway through a transition is true of nothing, so the readout
+   * goes away when a case changes rather than reporting a blend of two.
+   */
+  function hideScrubs() {
+    refs.balanceScrub?.hide();
+    refs.yearScrub?.hide();
+  }
+
+  /** What the balance chart says at one month. */
+  function readBalanceAt(fraction) {
+    const month = clamp(Math.round(fraction * set.termMonths), 0, set.termMonths);
+    const selected = currentCase();
+    const base = set.cases[baseIndex];
+    const at = (item) => (month < item.balances.length ? item.balances[month] : 0);
+
+    const lines = [['You owe', eur(at(selected))]];
+    // The shaded band IS the difference, so the figure that explains it
+    // belongs in the readout beside the one the client is pointing at.
+    if (selected.id !== base.id) {
+      lines.push(['On the current path', eur(at(base))]);
+    }
+
+    return {
+      position: set.termMonths > 0 ? month / set.termMonths : 0,
+      when: monthYearAt(Math.max(1, month)),
+      lines
+    };
+  }
+
+  /** What the year chart says at one column. */
+  function readYearAt(fraction) {
+    const count = set.years.length;
+    if (count === 0) return null;
+
+    const index = clamp(Math.floor(fraction * count), 0, count - 1);
+    const selected = currentCase();
+    const base = set.cases[baseIndex];
+    const charged = selected.yearInterest[index] || 0;
+
+    const lines = [[
+      charged > EPSILON ? 'Interest charged' : 'Charged',
+      charged > EPSILON ? eur(charged) : 'Nothing — cleared by then'
+    ]];
+    if (selected.id !== base.id) {
+      lines.push(['On the current path', eur(base.yearInterest[index] || 0)]);
+    }
+
+    return {
+      // The centre of the column, so the guide lands on the bar rather than
+      // wherever inside it the pointer happened to be.
+      position: (index + 0.5) / count,
+      when: String(set.years[index]),
+      lines
+    };
+  }
+
   function renderAxes() {
+    renderYAxis(refs.balancePlot, set.openingBalance);
+    renderYAxis(refs.yearPlot, Math.max(...set.cases[baseIndex].yearInterest, 1));
+
     refs.balanceAxis.replaceChildren(
       el('span', null, String(set.startYear)),
       el('span', null, String(set.years[set.years.length - 1]))
@@ -1126,6 +1338,9 @@ export function buildRepaymentCaseModule({
     }
     refs.railTicks.replaceChildren(...ticks);
   }
+
+  refs.balanceScrub = attachScrub(refs.balancePlot, readBalanceAt);
+  refs.yearScrub = attachScrub(refs.yearPlot, readYearAt);
 
   renderAxes();
   renderStatic();
