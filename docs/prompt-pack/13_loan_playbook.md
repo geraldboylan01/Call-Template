@@ -53,6 +53,7 @@ Do not use the older workaround that forced non-housing loans through `generated
 - `fixedPaymentAmount` - optional number or `null`
 - `oneOffOverpayment` - optional number, default 0
 - `oneOffOverpaymentMonth` - optional whole number of months from the start, default 0 (already paid)
+  - Set it whenever Gerry puts the money in the future: `in 3 years` -> `36`. The module then opens on that year and offers the year before, that year, and the two after, with paying today alongside. Omit it when the money is in hand.
 - `annualOverpayment` - optional number, default 0
 - `overpaymentBenefit` - optional, `shorterTerm` (default) or `lowerPayment`
 - `baseScenarioId` - optional, required to match a case id when `scenarios` is present

@@ -41,8 +41,32 @@ const SETTLE_GRACE_MS = 120;
 /** Below this a figure is rounding residue, not money. */
 const EPSILON = 0.005;
 
-/** The years a lump sum can be deferred to, as offsets from the first year. */
-const LUMP_YEAR_OFFSETS = Object.freeze([0, 1, 2, 3, 5]);
+/** The years offered when the money is already in hand. */
+const DEFAULT_LUMP_YEAR_OFFSETS = Object.freeze([0, 1, 2, 3, 5]);
+
+/**
+ * WHICH YEARS THE TIMING ROW OFFERS, given when the client said they could
+ * pay.
+ *
+ * "In about five years" is a real answer, and the useful question after it is
+ * not "what about next year" -- it is "what if it came a year sooner, and what
+ * if it slips". So a deferred lump sum gets a window around the year it was
+ * given: one year earlier, that year, and the two after it.
+ *
+ * Paying now stays on the row whatever the default is. It is the comparison
+ * the timing note is built on -- what the wait costs -- and dropping it would
+ * leave the client with four adjacent years that barely differ.
+ */
+function buildLumpYearOffsets(authoredMonth, termMonths) {
+  const authoredYear = authoredMonth > 0 ? Math.round(authoredMonth / 12) : 0;
+  const offsets = authoredYear > 0
+    ? [0, authoredYear - 1, authoredYear, authoredYear + 1, authoredYear + 2]
+    : [...DEFAULT_LUMP_YEAR_OFFSETS];
+
+  return Object.freeze([...new Set(offsets)]
+    .filter((offset) => offset >= 0 && offset * 12 < termMonths)
+    .sort((left, right) => left - right));
+}
 
 /** Ease-out cubic: fast enough to feel caused, slow enough to be followed. */
 function easeOutCubic(k) {
@@ -212,6 +236,14 @@ export function buildRepaymentCaseModule({
   if (set.cases.length === 0) {
     return null;
   }
+
+  // FIXED AT CONSTRUCTION, FROM THE PAYLOAD.
+  //
+  // Deriving the window from the currently selected year instead would make
+  // it re-centre on every click: the pills would shift under the cursor, and
+  // the row would stop being one of the static anchors the moving figures are
+  // read against.
+  const lumpYearOffsets = buildLumpYearOffsets(set.lumpSumMonth, set.termMonths);
 
   const loanKind = set.comparison.loanKind === 'loan' ? 'loan' : 'mortgage';
   const freeWord = loanKind === 'loan' ? 'Loan-free' : 'Mortgage-free';
@@ -731,16 +763,8 @@ export function buildRepaymentCaseModule({
     const isActive = selected.hasLump;
     refs.timing.classList.toggle('is-inactive', !isActive);
 
-    // An authored month that is not a whole number of years from the start
-    // gets its own pill rather than being rounded into someone else's: the
-    // row has to be able to show the state it is actually in.
     const authored = set.lumpSumMonth;
-    const offsets = [...new Set([
-      ...LUMP_YEAR_OFFSETS,
-      ...(authored % 12 === 0 ? [authored / 12] : [])
-    ])]
-      .filter((offset) => offset * 12 < set.termMonths)
-      .sort((left, right) => left - right);
+    const offsets = lumpYearOffsets;
 
     refs.timingPills.replaceChildren(...offsets.map((offset) => {
       const on = offset * 12 === authored;

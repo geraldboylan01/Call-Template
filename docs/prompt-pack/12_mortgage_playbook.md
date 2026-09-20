@@ -122,9 +122,11 @@ Case titles are buttons on a live call, so keep them short, concrete, and in the
 `oneOffOverpaymentMonth` is the number of whole months from the start of the schedule before the lump sum lands. `0`, the default, means it is already paid, so it comes off the opening balance and the schedule never charges interest on it.
 
 Rules:
-- Leave it out unless Gerry says the money is not available yet. The module has its own control for deferring it, and the client can move it on the call.
-- Set it when Gerry states a date: a bonus in March, a policy maturing in two years, a sale that has not closed.
+- Omit it when the money is in hand, or when Gerry says nothing about timing. The module then opens on today and offers the next few years as alternatives.
+- Set it whenever Gerry puts the money in the future, even loosely. `in five years` -> `60`. `in a couple of years` -> `24`. `when the policy matures in 2031` -> the months from `startDateIso` to January 2031. Years times twelve; round to the nearest whole month.
+- The module opens on the year you set and offers a window around it: the year before, that year, and the two after, with paying today always available alongside. So setting it is what makes the conversation about that year rather than about today.
 - Waiting costs money, and the module says so: the same lump sum removes less interest the longer it waits, because it has fewer months and a smaller balance to work against.
+- It is a timing fact, not a case. Do not build separate cases for the same lump sum paid in different years -- the module already moves it, in every case at once.
 
 ## Overpayment Benefit
 An Irish lender asks the borrower which they want when capital is paid off a mortgage:
@@ -143,6 +145,7 @@ Rules:
 - If Gerry gives a remaining term, set `remainingTermYears` and set `endDateIso` to `null`
 - If Gerry gives a fixed monthly payment, set `fixedPaymentAmount`
 - A monthly overpayment is a higher repayment: express `pay 1,800 a month instead of 1,662` as `fixedPaymentAmount: 1800` on that case
+- A lump sum placed in the future sets `oneOffOverpaymentMonth` in whole months: spoken `in 5 years` -> `60`, `in 18 months` -> `18`, `next year` -> `12`
 - If Gerry does not give overpayments, set them to 0
 - Always set `repaymentType` to `repayment`
 
