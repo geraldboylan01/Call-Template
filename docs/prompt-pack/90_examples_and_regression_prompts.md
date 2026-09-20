@@ -263,8 +263,9 @@ Checks:
 - each case restates only what it changes; none repeats the balance, rate or term
 - case titles read as client options, not `Scenario 1` or `Base case`
 - `overpaymentBenefit` is omitted or `shorterTerm`
-- does not state the interest saved, payoff dates or return per euro as numbers; those are runtime-owned
-- summary tells the client the headline is the interest saved and the buttons switch cases
+- does not state the interest saved, payoff dates or the per-euro figure as numbers; those are runtime-owned
+- does not call the per-euro figure a return, a rate or a yield
+- summary tells the client the screen opens on their current path and the buttons step through the cases
 
 ### MORT-5
 Prompt:

@@ -1004,7 +1004,7 @@ This playbook is for an existing housing loan with a balance, rate, and repaymen
 ### Job
 Parse the dictated mortgage details into `generated.mortgageInputs`, set up the cases Gerry wants to compare, and write a short client-facing summary.
 
-The browser app owns the repeatable mortgage maths after the payload is applied, including every comparison figure: interest saved, time saved, amount paid in, and the return per euro.
+The browser app owns the repeatable mortgage maths after the payload is applied, including every comparison figure: interest saved, time saved, amount paid in, and the interest saved per euro paid in.
 
 ### Boundary With House Purchase
 - Existing mortgage balance, repayment, term, payoff, or overpayment -> `generated.mortgageInputs`.
@@ -1151,9 +1151,10 @@ Use placeholders only when needed to keep an exploratory module moving:
 ### Summary Rules
 - Keep `generated.summaryHtml` to 2 to 4 sentences.
 - Describe the scenario in plain English using the balance, rate, term or end date, repayment structure, and the cases being compared.
-- Tell the client how to read the first screen: the headline figure is the interest saved by the selected case, the buttons switch between the options, and the table underneath shows every case side by side.
+- Tell the client how to read the first screen: it opens on their current path, the buttons step through the cases, and each case answers two things side by side -- when the mortgage clears, and how much of the interest bill goes. The table underneath shows every case at once.
 - Mention overpayments only if Gerry gave them.
-- Do not state the interest saved, the payoff date, or the return per euro as a number. The runtime calculates those and they must not be duplicated or contradicted in the summary.
+- Do not state the interest saved, the payoff date, or the per-euro figure as a number. The runtime calculates those and they must not be duplicated or contradicted in the summary.
+- Never call the per-euro figure a return, a rate or a yield. It is the interest avoided divided by the money put in to avoid it, and the module carries two paragraphs explaining why that is a different question from every other measure on the screen. A summary that calls it a return contradicts them.
 - Do not claim that the modeled payment path is the only possible structure.
 
 ### Caveats Worth Carrying

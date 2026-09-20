@@ -217,7 +217,7 @@ export function runMortgageMathTests() {
       );
     });
     assert(base.totalOverpaid === 0, 'The base overpays exactly nothing, not nearly nothing');
-    assert(base.savedPerEuroOverpaid === null, 'The base has no return per euro to report');
+    assert(base.savedPerEuroOverpaid === null, 'The base has no per-euro figure to report');
   }));
 
   cases.push(runCase('Total overpaid comes from the schedule, not the inputs', () => {
@@ -243,7 +243,7 @@ export function runMortgageMathTests() {
     const [base, switched] = comparison.cases;
     assert(switched.monthlyPaymentUsed < base.monthlyPaymentUsed, 'The overriding case uses its own rate');
     assert(switched.interestSaved > 0, 'Switching to a lower rate should save interest');
-    assert(switched.savedPerEuroOverpaid === null, 'A saving with no overpayment reports no return per euro');
+    assert(switched.savedPerEuroOverpaid === null, 'A saving with no overpayment reports no per-euro figure');
   }));
 
   cases.push(runCase('Normalising twice describes the same cases as normalising once', () => {
