@@ -1701,6 +1701,37 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'pension-retirement-age-cases-demo',
+    label: 'Retirement Age Cases Demo',
+    payload: {
+      title: 'Retirement Projection (Retirement Age Cases Demo)',
+      generated: {
+        summaryHtml: '<p>This retirement projection compares retiring at 58, 62 or 66 on the same screen. Start with the case cards and the required pension pot, then use the chart to see how the retirement point and the pension balance move with each choice.</p>',
+        pensionInputs: {
+          currentAge: 50,
+          retirementAge: 62,
+          currentSalary: 90000,
+          currentPot: 400000,
+          personalPct: 0.05,
+          employerPct: 0.06,
+          growthRate: 0.05,
+          inflationRate: 0.02,
+          wageGrowthRate: 0.02,
+          horizonEndAge: 92,
+          incomeMode: 'target',
+          targetIncomeToday: 45000,
+          currentYear: 2026,
+          baseScenarioId: 'retire-62',
+          scenarios: [
+            { id: 'retire-62', title: 'Retire at 62' },
+            { id: 'retire-58', title: 'Retire at 58', retirementAge: 58 },
+            { id: 'retire-66', title: 'Keep going to 66', retirementAge: 66, personalPct: 0.1 }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'pension-couple-income-stack-demo',
     label: 'Retirement Couple Income Stack Demo',
     payload: {
@@ -3229,6 +3260,86 @@ function applyUpdatedProjectionToModule({
   }
 }
 
+/** What a Retirement case can hold, and so what an inline edit can land on. */
+const PENSION_CASE_EDITABLE_FIELDS = new Set([
+  'retirementAge',
+  'personalPct',
+  'employerPct',
+  'currentPot',
+  'rentalIncomeToday',
+  'targetIncomeToday'
+]);
+
+/**
+ * Where an inline edit lands.
+ *
+ * With the base case on screen, an edit changes the household's own facts, and
+ * every case that inherits that fact moves with it. With another case on
+ * screen, an edit to something that case restates changes THAT case --
+ * otherwise the client types 58 into a card headed "Retire at 58" and watches
+ * the base move instead.
+ *
+ * Returns true when the edit went to a case.
+ */
+function applyPensionCaseAssumptionEdit(module, candidate, field, value) {
+  if (!PENSION_CASE_EDITABLE_FIELDS.has(field)) {
+    return false;
+  }
+
+  const selectedScenarioId = getPensionScenarioForModule(module.id);
+  if (!selectedScenarioId) {
+    return false;
+  }
+
+  if (Array.isArray(candidate.scenarios) && candidate.scenarios.length > 0) {
+    // Read through the engine's own case list: an authored case states its
+    // changes flat and a stored one nests them under `overrides`, and only the
+    // engine knows both shapes. Writing the whole list back in the normalised
+    // shape leaves one shape behind rather than two.
+    const cases = getPensionScenarioCasesForModule(module);
+    const selected = cases.find((pensionCase) => pensionCase.id === selectedScenarioId);
+    if (!selected || selected.isBase) {
+      return false;
+    }
+
+    // Only a field the case already restates. Editing an inherited figure from
+    // a case card is a change to the household, not a new override nobody asked
+    // for.
+    if (!Object.prototype.hasOwnProperty.call(selected.overrides, field)) {
+      return false;
+    }
+
+    candidate.scenarios = cases.map((pensionCase) => ({
+      id: pensionCase.id,
+      title: pensionCase.title,
+      description: pensionCase.description,
+      overrides: pensionCase.id === selectedScenarioId
+        ? { ...pensionCase.overrides, [field]: value }
+        : { ...pensionCase.overrides }
+    }));
+    return true;
+  }
+
+  if (field === 'rentalIncomeToday' && Array.isArray(candidate.rentalIncomeScenarios)) {
+    let updatedSelectedScenario = false;
+    candidate.rentalIncomeScenarios = candidate.rentalIncomeScenarios.map((scenario) => {
+      if (scenario?.id !== selectedScenarioId) {
+        return scenario;
+      }
+
+      updatedSelectedScenario = true;
+      return {
+        ...scenario,
+        rentalIncomeToday: value
+      };
+    });
+
+    return updatedSelectedScenario && candidate.baseScenarioId !== selectedScenarioId;
+  }
+
+  return false;
+}
+
 function commitPensionAssumptionField({
   module,
   state,
@@ -3255,23 +3366,12 @@ function commitPensionAssumptionField({
   }
   candidate[field] = parsed.value;
 
-  if (field === 'rentalIncomeToday' && Array.isArray(candidate.rentalIncomeScenarios)) {
-    const selectedScenarioId = getPensionScenarioForModule(module.id);
-    let updatedSelectedScenario = false;
-    candidate.rentalIncomeScenarios = candidate.rentalIncomeScenarios.map((scenario) => {
-      if (scenario?.id !== selectedScenarioId) {
-        return scenario;
-      }
-
-      updatedSelectedScenario = true;
-      return {
-        ...scenario,
-        rentalIncomeToday: parsed.value
-      };
-    });
-
-    if (updatedSelectedScenario && candidate.baseScenarioId !== selectedScenarioId) {
-      candidate.rentalIncomeToday = baseInputs.rentalIncomeToday ?? 0;
+  if (applyPensionCaseAssumptionEdit(module, candidate, field, parsed.value)) {
+    // The edit changed the case, so the household's own figure stays as it was.
+    if (typeof baseInputs[field] === 'undefined') {
+      delete candidate[field];
+    } else {
+      candidate[field] = baseInputs[field];
     }
   }
 

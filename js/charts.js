@@ -718,7 +718,13 @@ function chartToCsv(chartData, _module) {
       lines.push([panel.title || panelKey].map(csvEscape).join(','));
       lines.push(['Label', ...panelDatasets.map((dataset) => dataset.label || '')].map(csvEscape).join(','));
       panelLabels.forEach((label, index) => {
-        const row = [label, ...panelDatasets.map((dataset) => clampNumber(dataset.data?.[index] ?? ''))];
+        // A year a series does not cover is left empty, not written as zero.
+        // With cases sharing one axis, most series start later than the axis
+        // does, and a zero there would read as an emptied pension pot.
+        const row = [label, ...panelDatasets.map((dataset) => {
+          const value = dataset.data?.[index];
+          return value === null || typeof value === 'undefined' ? '' : clampNumber(value);
+        })];
         lines.push(row.map(csvEscape).join(','));
       });
       lines.push('');

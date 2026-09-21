@@ -2808,6 +2808,29 @@ function getPensionScenarioForModule(module) {
   return getDefaultPensionScenarioForModule(module) || cases[0].id;
 }
 
+/**
+ * The figures the assumption inputs show.
+ *
+ * The table above them is the SELECTED case's, so the boxes have to be too. A
+ * card headed "Retire at 58" that offers 62 in the retirement-age box is
+ * describing two different plans at once.
+ */
+function getPensionAssumptionInputs(module) {
+  const inputs = module?.generated?.pensionInputs;
+  if (!inputs || !Array.isArray(inputs.scenarios) || inputs.scenarios.length === 0) {
+    return inputs;
+  }
+
+  // Read through the engine's own case list rather than the payload's: an
+  // authored case states its changes flat and a stored one nests them under
+  // `overrides`, and only the engine knows both shapes.
+  const selectedId = getPensionScenarioForModule(module);
+  const selected = getPensionScenarioCasesForModule(module)
+    .find((pensionCase) => pensionCase.id === selectedId);
+
+  return selected?.overrides ? { ...inputs, ...selected.overrides } : inputs;
+}
+
 function getPensionDisplayModule(module) {
   if (!isPensionModule(module)) {
     return module;
@@ -4019,7 +4042,7 @@ function createEditableAssumptionCell({
   const errors = status?.errors && typeof status.errors === 'object' ? status.errors : {};
 
   if (isPensionModule(module)) {
-    const pensionInputs = module.generated.pensionInputs;
+    const pensionInputs = getPensionAssumptionInputs(module);
     const pensionFieldMap = {
       currentage: {
         field: 'currentAge',
@@ -7680,12 +7703,29 @@ function getRetirementCaseProjection(module, scenarioId) {
   }
 }
 
+/**
+ * What the card says this case is.
+ *
+ * A case that changes an age or a contribution has to say so in the words the
+ * client would use -- "Retires at 58, income from 2034" -- because the title
+ * alone does not tell them what moved. A case the author described in their own
+ * sentence keeps that sentence. A rent-only case reads as it always has.
+ */
 function buildRetirementCaseDetail(projection) {
   const debug = projection?.debug || {};
   const details = [];
+  const described = typeof debug.selectedScenarioDescription === 'string'
+    ? debug.selectedScenarioDescription.trim()
+    : '';
+  const summary = typeof debug.selectedScenarioSummary === 'string'
+    ? debug.selectedScenarioSummary.trim()
+    : '';
+  const changed = described || summary;
   const rent = Number(debug.rentalIncomeToday);
 
-  if (Number.isFinite(rent)) {
+  if (changed) {
+    details.push(changed);
+  } else if (debug.hasRentalContext && Number.isFinite(rent)) {
     details.push(rent > 0
       ? `${formatRetirementCurrency(rent)} gross rent today`
       : 'Rental income removed');
@@ -7700,11 +7740,25 @@ function buildRetirementCaseDetail(projection) {
   return details.join(' - ');
 }
 
+/**
+ * What the case group is called.
+ *
+ * "Retirement income case" is right for cases that only move income around. A
+ * case set that changes when someone retires or what they pay in is a
+ * retirement case, and calling it an income case would misdescribe the choice.
+ */
+function getRetirementCaseGroupLabel(module) {
+  const inputs = module?.generated?.pensionInputs;
+  return Array.isArray(inputs?.scenarios) && inputs.scenarios.length > 0
+    ? 'Retirement case'
+    : 'Retirement income case';
+}
+
 function buildRetirementScenarioOptions(module, cases, selectedId) {
   const options = document.createElement('div');
   options.className = 'retirement-scenario-options';
   options.setAttribute('role', 'radiogroup');
-  options.setAttribute('aria-label', 'Choose retirement income case');
+  options.setAttribute('aria-label', 'Choose retirement case');
 
   cases.forEach((pensionCase) => {
     const projection = getRetirementCaseProjection(module, pensionCase.id);
@@ -7780,7 +7834,7 @@ function buildRetirementDecisionPanel(module) {
 
     const scenarioLabel = document.createElement('p');
     scenarioLabel.className = 'retirement-scenario-label';
-    scenarioLabel.textContent = 'Retirement income case';
+    scenarioLabel.textContent = getRetirementCaseGroupLabel(module);
     scenarioArea.appendChild(scenarioLabel);
     scenarioArea.appendChild(buildRetirementScenarioOptions(module, cases, selectedId));
     panel.appendChild(scenarioArea);
@@ -8004,7 +8058,7 @@ function buildPensionScenarioSwitcher(module, cases) {
   const selectedId = getPensionScenarioForModule(module);
   const wrap = document.createElement('section');
   wrap.className = 'pension-scenario-switcher';
-  wrap.setAttribute('aria-label', 'Retirement income case');
+  wrap.setAttribute('aria-label', getRetirementCaseGroupLabel(module));
 
   const label = document.createElement('span');
   label.className = 'pension-scenario-switcher-label';
@@ -8014,7 +8068,7 @@ function buildPensionScenarioSwitcher(module, cases) {
   const options = document.createElement('div');
   options.className = 'pension-scenario-options';
   options.setAttribute('role', 'group');
-  options.setAttribute('aria-label', 'Choose retirement income case');
+  options.setAttribute('aria-label', 'Choose retirement case');
 
   cases.forEach((pensionCase) => {
     const button = document.createElement('button');

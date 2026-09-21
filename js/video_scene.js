@@ -186,11 +186,17 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.assumptions = projection.assumptionsTable;
       resolved.generated.outputs = projection.outputsTable;
       resolved.generated.charts = projection.charts;
+      // The engine has already resolved the case, ages and timing included, so
+      // the scene names the case the engine actually ran -- not the id that was
+      // asked for, which may no longer exist.
       return {
         module: resolved,
         activeScenario: {
-          id: projection.debug?.currentScenario?.id || scenarioId || 'base',
-          title: projection.debug?.currentScenario?.title || 'Current retirement case'
+          id: projection.debug?.selectedScenarioId || scenarioId || 'base',
+          title: projection.debug?.selectedScenarioTitle || 'Current retirement case',
+          description: projection.debug?.selectedScenarioDescription
+            || projection.debug?.selectedScenarioSummary
+            || ''
         },
         projectionDebug: projection.debug,
         calculationStatus: 'resolved'
