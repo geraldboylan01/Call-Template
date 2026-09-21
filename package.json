@@ -102,6 +102,7 @@
     "check:liquidity-render": "node ./scripts/check-liquidity-render.mjs",
     "check:mortgage-math-audit": "node ./scripts/check-mortgage-math-audit.mjs",
     "check:pension-projection-audit": "node ./scripts/check-pension-projection-audit.mjs",
+    "test:pension": "node ./scripts/run-pension-math-tests.mjs",
     "check:net-retirement-audit": "node ./scripts/check-net-retirement-audit.mjs",
     "check:college-funding-audit": "node ./scripts/check-college-funding-audit.mjs",
     "check:video-summary": "node ./scripts/check-video-summary-module.mjs",

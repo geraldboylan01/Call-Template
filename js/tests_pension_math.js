@@ -1,4 +1,8 @@
-import { computePensionProjection } from './pension_math.js';
+import {
+  computePensionProjection,
+  getPensionScenarioCases,
+  normalizePensionInputs
+} from './pension_math.js';
 
 function assert(condition, message) {
   if (!condition) {
@@ -72,6 +76,34 @@ const COUPLE_INPUTS = Object.freeze({
     }
   ]
 });
+
+/** The couple, with one piece of income a case can take away. */
+const COUPLE_WITH_DB_INPUTS = Object.freeze({
+  ...COUPLE_INPUTS,
+  otherIncomeSources: [
+    {
+      id: 'mary-db',
+      title: 'Mary DB pension',
+      type: 'db',
+      ownerId: 'mary',
+      annualAmountToday: 12000,
+      startAge: 66,
+      inflationIndexed: true
+    }
+  ]
+});
+
+const withoutTargetStartYear = (payload) => {
+  const next = { ...payload };
+  delete next.targetStartYear;
+  return next;
+};
+
+const withoutOtherIncome = (payload) => {
+  const next = { ...payload };
+  delete next.otherIncomeSources;
+  return next;
+};
 
 const USER_SPOUSE_PAYLOAD = Object.freeze({
   currentYear: 2026,
@@ -817,6 +849,451 @@ export function runPensionMathTests() {
 
     assert(Number.isFinite(result.totalIncomeToday) && result.totalIncomeToday > 0, 'Affordable total income should be finite');
     assert(result.totalIncomeToday > result.incomeToday, 'Affordable total should include non-pension income');
+  }));
+
+  /* --------------------------------------------------------------- cases ---
+   *
+   * A case is only worth showing on a card if it means the same thing as a
+   * module of its own would. Every fixture below is proved against a standalone
+   * payload written out by hand -- not against the merge that produced it --
+   * because a merge that is wrong in the same way twice would otherwise agree
+   * with itself.
+   */
+
+  /** What a case changes about the payload is not itself an output figure. */
+  function stripCaseIdentity(projection) {
+    const debug = JSON.parse(JSON.stringify(projection.debug));
+    [
+      'selectedScenarioId',
+      'selectedScenarioTitle',
+      'selectedScenarioDescription',
+      'selectedScenarioSummary',
+      'selectedScenarioIsBase',
+      'selectedScenarioOverrides',
+      'baseScenarioId',
+      'chartAxisYears',
+      // Whether the module is showing a rent comparison at all is a fact about
+      // the case set, not about this case's arithmetic.
+      'hasRentalContext'
+    ].forEach((key) => {
+      delete debug[key];
+    });
+    [
+      'scenarios',
+      'rentalIncomeScenarios',
+      'baseScenarioId',
+      'selectedScenarioId',
+      'selectedScenarioTitle',
+      'selectedScenarioDescription',
+      'selectedScenarioSummary'
+    ].forEach((key) => {
+      delete debug.inputs[key];
+    });
+    return debug;
+  }
+
+  /** The values a chart draws, with the shared axis's leading and trailing gaps removed. */
+  function chartValues(projection) {
+    return projection.charts.map((chart) => ({
+      title: chart.title,
+      datasets: (chart.datasets || []).map((dataset) => ({
+        label: dataset.label,
+        data: (dataset.data || []).filter((value) => value !== null)
+      }))
+    }));
+  }
+
+  /**
+   * Every row the two projections both report, so a case row cannot hide a
+   * wrong figure. The row naming the case is the one exception: saying which
+   * case is on screen is the point of it.
+   */
+  function sharedTableRows(projection, standalone, table) {
+    const standaloneByLabel = new Map(standalone[table].rows.map((row) => [row[0], row[1]]));
+    return projection[table].rows
+      .filter((row) => row[0] !== 'Retirement income case' && standaloneByLabel.has(row[0]))
+      .map((row) => [row[0], row[1], standaloneByLabel.get(row[0])]);
+  }
+
+  function assertCaseEqualsStandalone(fixtureName, base, caseId, standalone) {
+    const fromCase = computePensionProjection(base, { scenarioId: caseId });
+    const fromPayload = computePensionProjection(standalone);
+
+    assert(
+      JSON.stringify(stripCaseIdentity(fromCase)) === JSON.stringify(stripCaseIdentity(fromPayload)),
+      `${fixtureName}: case "${caseId}" should compute the same figures as its standalone payload`
+    );
+    assert(
+      JSON.stringify(chartValues(fromCase)) === JSON.stringify(chartValues(fromPayload)),
+      `${fixtureName}: case "${caseId}" should chart the same values as its standalone payload`
+    );
+    sharedTableRows(fromCase, fromPayload, 'outputsTable').forEach(([label, actual, expected]) => {
+      assert(actual === expected, `${fixtureName}: case "${caseId}" output "${label}" should read ${expected}, got ${actual}`);
+    });
+    sharedTableRows(fromCase, fromPayload, 'assumptionsTable').forEach(([label, actual, expected]) => {
+      assert(actual === expected, `${fixtureName}: case "${caseId}" assumption "${label}" should read ${expected}, got ${actual}`);
+    });
+  }
+
+  const RETIREMENT_AGE_BASE = {
+    currentAge: 50,
+    retirementAge: 62,
+    currentSalary: 90000,
+    currentPot: 400000,
+    personalPct: 0.05,
+    employerPct: 0.06,
+    growthRate: 0.05,
+    inflationRate: 0.02,
+    wageGrowthRate: 0.02,
+    horizonEndAge: 92,
+    currentYear: 2026,
+    incomeMode: 'target',
+    targetIncomeToday: 45000,
+    includeStatePension: true
+  };
+
+  /**
+   * Every fixture, and the standalone payload each of its cases claims to be.
+   *
+   * Rule 5 is checked here for every case in every fixture at once, so a new
+   * fixture cannot be added without its equality being proved too.
+   */
+  const CASE_FIXTURES = [
+    {
+      name: 'Single person retiring at 58, 62 or 66',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        baseScenarioId: 'retire-62',
+        scenarios: [
+          { id: 'retire-62', title: 'Retire at 62' },
+          { id: 'retire-58', title: 'Retire at 58', retirementAge: 58 },
+          { id: 'retire-66', title: 'Retire at 66', retirementAge: 66 }
+        ]
+      },
+      standalone: {
+        'retire-62': { ...RETIREMENT_AGE_BASE },
+        'retire-58': { ...RETIREMENT_AGE_BASE, retirementAge: 58 },
+        'retire-66': { ...RETIREMENT_AGE_BASE, retirementAge: 66 }
+      }
+    },
+    {
+      name: 'Single person paying in more, topping up, or working part-time',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        baseScenarioId: 'as-is',
+        scenarios: [
+          { id: 'as-is', title: 'As things stand' },
+          { id: 'pay-10', title: 'Pay in 10%', personalPct: 0.1 },
+          { id: 'top-up', title: 'Top up the pot', currentPot: 475000 },
+          {
+            id: 'part-time',
+            title: 'Part-time to 65',
+            retirementAge: 60,
+            additionalIncomeSources: [
+              {
+                id: 'part-time-work',
+                title: 'Part-time income',
+                type: 'employment',
+                annualAmountToday: 25000,
+                startAge: 60,
+                endAge: 65,
+                inflationIndexed: true
+              }
+            ]
+          }
+        ]
+      },
+      standalone: {
+        'as-is': { ...RETIREMENT_AGE_BASE },
+        'pay-10': { ...RETIREMENT_AGE_BASE, personalPct: 0.1 },
+        'top-up': { ...RETIREMENT_AGE_BASE, currentPot: 475000 },
+        'part-time': {
+          ...RETIREMENT_AGE_BASE,
+          retirementAge: 60,
+          otherIncomeSources: [
+            {
+              id: 'part-time-work',
+              title: 'Part-time income',
+              type: 'employment',
+              annualAmountToday: 25000,
+              startAge: 60,
+              endAge: 65,
+              inflationIndexed: true
+            }
+          ]
+        }
+      }
+    },
+    {
+      name: 'Single person changing rent and retirement age together',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        rentalIncomeToday: 18000,
+        baseScenarioId: 'keep-letting',
+        scenarios: [
+          { id: 'keep-letting', title: 'Keep letting, retire at 62' },
+          { id: 'sell-and-go', title: 'Sell up and retire at 58', retirementAge: 58, rentalIncomeToday: 0 }
+        ]
+      },
+      standalone: {
+        'keep-letting': { ...RETIREMENT_AGE_BASE, rentalIncomeToday: 18000 },
+        'sell-and-go': { ...RETIREMENT_AGE_BASE, retirementAge: 58, rentalIncomeToday: 0 }
+      }
+    },
+    {
+      name: 'Couple with staggered retirement, one member moving',
+      base: {
+        ...COUPLE_INPUTS,
+        baseScenarioId: 'as-planned',
+        scenarios: [
+          { id: 'as-planned', title: 'As planned' },
+          {
+            id: 'mary-earlier',
+            title: 'Mary retires at 62',
+            pensionOverrides: [{ id: 'mary', retirementAge: 62 }]
+          },
+          {
+            id: 'mary-no-state-pension',
+            title: 'Mary without the State Pension',
+            pensionOverrides: [{ id: 'mary', includeStatePension: false }]
+          }
+        ]
+      },
+      standalone: {
+        'as-planned': { ...COUPLE_INPUTS },
+        // targetStartYear was written for the plan as it stood; a case that
+        // moves a retirement age derives its own, so the standalone drops it.
+        'mary-earlier': {
+          ...withoutTargetStartYear(COUPLE_INPUTS),
+          pensions: [
+            COUPLE_INPUTS.pensions[0],
+            { ...COUPLE_INPUTS.pensions[1], retirementAge: 62 }
+          ]
+        },
+        'mary-no-state-pension': {
+          ...COUPLE_INPUTS,
+          pensions: [
+            COUPLE_INPUTS.pensions[0],
+            { ...COUPLE_INPUTS.pensions[1], includeStatePension: false }
+          ]
+        }
+      }
+    },
+    {
+      name: 'Couple dropping a DB pension and lowering the target',
+      base: {
+        ...COUPLE_WITH_DB_INPUTS,
+        baseScenarioId: 'as-planned',
+        scenarios: [
+          { id: 'as-planned', title: 'As planned' },
+          { id: 'no-db', title: 'Without the DB pension', excludedIncomeSourceIds: ['mary-db'] },
+          { id: 'spend-less', title: 'Spend €60,000', targetIncomeToday: 60000 }
+        ]
+      },
+      standalone: {
+        'as-planned': { ...COUPLE_WITH_DB_INPUTS },
+        'no-db': withoutOtherIncome(COUPLE_WITH_DB_INPUTS),
+        'spend-less': { ...COUPLE_WITH_DB_INPUTS, targetIncomeToday: 60000 }
+      }
+    },
+    {
+      name: 'Affordable mode, cases retiring at 60 or 66',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        incomeMode: 'affordable',
+        affordableEndAges: [90, 95],
+        targetIncomeToday: undefined,
+        baseScenarioId: 'retire-62',
+        scenarios: [
+          { id: 'retire-62', title: 'Retire at 62' },
+          { id: 'retire-60', title: 'Retire at 60', retirementAge: 60 },
+          { id: 'retire-66', title: 'Retire at 66', retirementAge: 66 }
+        ]
+      },
+      standalone: {
+        'retire-62': { ...RETIREMENT_AGE_BASE, incomeMode: 'affordable', affordableEndAges: [90, 95], targetIncomeToday: undefined },
+        'retire-60': { ...RETIREMENT_AGE_BASE, incomeMode: 'affordable', affordableEndAges: [90, 95], targetIncomeToday: undefined, retirementAge: 60 },
+        'retire-66': { ...RETIREMENT_AGE_BASE, incomeMode: 'affordable', affordableEndAges: [90, 95], targetIncomeToday: undefined, retirementAge: 66 }
+      }
+    }
+  ];
+
+  CASE_FIXTURES.forEach((fixture) => {
+    cases.push(runCase(`${fixture.name}: every case equals its standalone payload`, () => {
+      const caseIds = getPensionScenarioCases(fixture.base).map((entry) => entry.id);
+      assert(
+        caseIds.length === Object.keys(fixture.standalone).length,
+        `${fixture.name}: every case needs a standalone payload to be measured against`
+      );
+      caseIds.forEach((caseId) => {
+        assertCaseEqualsStandalone(fixture.name, fixture.base, caseId, fixture.standalone[caseId]);
+      });
+    }));
+  });
+
+  cases.push(runCase('A retirement-age case re-derives its own timing', () => {
+    const base = CASE_FIXTURES[0].base;
+    const earlier = computePensionProjection(base, { scenarioId: 'retire-58' });
+    const later = computePensionProjection(base, { scenarioId: 'retire-66' });
+
+    assert(earlier.debug.incomeStartYear === 2034, `Retiring at 58 should start income in 2034, got ${earlier.debug.incomeStartYear}`);
+    assert(later.debug.incomeStartYear === 2042, `Retiring at 66 should start income in 2042, got ${later.debug.incomeStartYear}`);
+    assert(earlier.debug.requiredPotReferenceYear === 2034, 'The required pot reference year should follow the case');
+    assert(earlier.debug.retirementYear === 2034, 'The retirement year should follow the case');
+  }));
+
+  cases.push(runCase('A base timing year does not carry into a case that moves a retirement age', () => {
+    const base = CASE_FIXTURES[3].base;
+    const asPlanned = computePensionProjection(base, { scenarioId: 'as-planned' });
+    const maryEarlier = computePensionProjection(base, { scenarioId: 'mary-earlier' });
+
+    assert(asPlanned.debug.incomeStartYear === 2052, 'The base keeps the income start year it states');
+    assert(maryEarlier.debug.incomeStartYear === 2048, `Mary retiring at 62 should start household income in 2048, got ${maryEarlier.debug.incomeStartYear}`);
+    assert(maryEarlier.debug.requiredPotReferenceYear === 2051, 'The reference year should be the later retirement');
+    assert(maryEarlier.debug.inputs.includeEmploymentIncomeDuringBridge === true, 'Staggered retirement should bring bridge employment income back');
+    assert(maryEarlier.debug.employmentIncomeNominalAtRetirement > 0, 'John should still be earning through the bridge years');
+  }));
+
+  cases.push(runCase('A case restating timing keeps it even when it moves a retirement age', () => {
+    const projection = computePensionProjection({
+      ...RETIREMENT_AGE_BASE,
+      baseScenarioId: 'as-is',
+      scenarios: [
+        { id: 'as-is', title: 'As things stand' },
+        { id: 'bridge', title: 'Stop at 58, draw from 62', retirementAge: 58, incomeStartYear: 2038 }
+      ]
+    }, { scenarioId: 'bridge' });
+
+    assert(projection.debug.incomeStartYear === 2038, 'A case that restates the income start year should keep it');
+    assert(projection.debug.inputs.primaryPension.retirementAge === 58, 'Contributions should still stop at 58');
+  }));
+
+  cases.push(runCase('Every case shares one chart axis', () => {
+    const base = CASE_FIXTURES[0].base;
+    const axes = ['retire-58', 'retire-62', 'retire-66'].map((scenarioId) => {
+      const projection = computePensionProjection(base, { scenarioId });
+      const drawdown = projection.charts.find((chart) => chart.meta?.kind === 'pensionDrawdownComposite');
+      return {
+        drawdown: drawdown.labels.join(','),
+        accumulation: projection.charts[0].labels.join(',')
+      };
+    });
+
+    assert(axes.every((axis) => axis.drawdown === axes[0].drawdown), 'The drawdown axis should not move with the case');
+    assert(axes.every((axis) => axis.accumulation === axes[0].accumulation), 'The accumulation axis should not move with the case');
+    assert(axes[0].drawdown.startsWith('58,'), `The shared axis should start at the earliest retirement age, got ${axes[0].drawdown.slice(0, 12)}`);
+    assert(axes[0].accumulation.endsWith(',66'), `The shared accumulation axis should run to the latest retirement age, got ${axes[0].accumulation.slice(-12)}`);
+  }));
+
+  cases.push(runCase('A case card says what the case changes', () => {
+    const byId = new Map(getPensionScenarioCases(CASE_FIXTURES[1].base).map((entry) => [entry.id, entry]));
+
+    assert(byId.get('as-is').summary === '', 'The base case changes nothing, so it says nothing');
+    assert(byId.get('pay-10').summary === 'Personal contributions 10.0%', `Unexpected contributions summary: ${byId.get('pay-10').summary}`);
+    assert(byId.get('top-up').summary === 'Pension value €475,000', `Unexpected top-up summary: ${byId.get('top-up').summary}`);
+    assert(
+      byId.get('part-time').summary.startsWith('Retires at 60, income from 2036, part-time income'),
+      `Unexpected part-time summary: ${byId.get('part-time').summary}`
+    );
+  }));
+
+  cases.push(runCase('Case payloads are rejected with the case named', () => {
+    const rejects = (raw, expected) => {
+      let message = '';
+      try {
+        normalizePensionInputs(raw);
+      } catch (error) {
+        message = error?.message || '';
+      }
+      assert(message === expected, `Expected "${expected}", got "${message}"`);
+    };
+    const withCases = (scenarios, extra = {}) => ({ ...RETIREMENT_AGE_BASE, ...extra, scenarios });
+    const couple = (scenarios) => ({ ...COUPLE_INPUTS, scenarios });
+
+    rejects(
+      withCases(Array.from({ length: 5 }, (_, index) => ({ id: `case-${index}`, title: `Case ${index}` }))),
+      'generated.pensionInputs.scenarios supports at most 4 cases; received 5.'
+    );
+    rejects(
+      withCases([{ id: 'same', title: 'One' }, { id: 'same', title: 'Two' }]),
+      'generated.pensionInputs.scenarios[1].id must be unique.'
+    );
+    rejects(
+      couple([{ id: 'as-planned', title: 'As planned' }, { id: 'earlier', title: 'Retire at 58', pensionOverrides: [{ id: 'joan', retirementAge: 58 }] }]),
+      'generated.pensionInputs.scenarios[1] (Retire at 58): pensionOverrides[0].id must match a pension id.'
+    );
+    rejects(
+      withCases([{ id: 'as-is', title: 'As things stand' }, { id: 'faster', title: 'Faster growth', growthRate: 0.07 }]),
+      'generated.pensionInputs.scenarios[1] (Faster growth): growthRate is not a case override.'
+    );
+    rejects(
+      { ...RETIREMENT_AGE_BASE, scenarios: [{ id: 'a', title: 'A' }], rentalIncomeScenarios: [{ id: 'r', title: 'R', rentalIncomeToday: 0 }] },
+      'generated.pensionInputs must use scenarios or rentalIncomeScenarios, not both.'
+    );
+    rejects(
+      withCases([{ id: 'as-is', title: 'As things stand' }, { id: 'too-early', title: 'Retire at 30', retirementAge: 30 }]),
+      'generated.pensionInputs.scenarios[1] (Retire at 30): retirementAge must be greater than or equal to currentAge.'
+    );
+    rejects(
+      withCases([{ id: 'as-is', title: 'As things stand' }], { baseScenarioId: 'missing' }),
+      'generated.pensionInputs.baseScenarioId must match a case id.'
+    );
+    rejects(
+      { ...COUPLE_WITH_DB_INPUTS, scenarios: [{ id: 'as-planned', title: 'As planned' }, { id: 'no-db', title: 'Without the DB pension', excludedIncomeSourceIds: ['mary-db-pension'] }] },
+      'generated.pensionInputs.scenarios[1] (Without the DB pension): excludedIncomeSourceIds must match an other income source id.'
+    );
+    rejects(
+      couple([{ id: 'as-planned', title: 'As planned' }, { id: 'earlier', title: 'Retire at 58', retirementAge: 58 }]),
+      'generated.pensionInputs.scenarios[1] (Retire at 58): retirementAge must be set through pensionOverrides when the payload has more than one pension.'
+    );
+  }));
+
+  cases.push(runCase('Editing a case moves that case and leaves the household alone', () => {
+    // The shape the app writes back when a figure is edited with a non-base
+    // case on screen: the whole case list, normalised, with one override
+    // changed and the household's own figure untouched.
+    const base = CASE_FIXTURES[0].base;
+    const edited = {
+      ...base,
+      scenarios: getPensionScenarioCases(base).map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        description: entry.description,
+        overrides: entry.id === 'retire-58'
+          ? { ...entry.overrides, retirementAge: 57 }
+          : { ...entry.overrides }
+      }))
+    };
+
+    const movedCase = computePensionProjection(edited, { scenarioId: 'retire-58' });
+    const untouchedBase = computePensionProjection(edited, { scenarioId: 'retire-62' });
+    const standalone = computePensionProjection({ ...RETIREMENT_AGE_BASE, retirementAge: 57 });
+
+    assert(movedCase.debug.inputs.primaryPension.retirementAge === 57, 'The edited case should retire at 57');
+    assert(untouchedBase.debug.inputs.primaryPension.retirementAge === 62, 'The base case should not move');
+    assert(
+      movedCase.debug.requiredPot === standalone.debug.requiredPot,
+      'The edited case should still equal the standalone payload it now describes'
+    );
+  }));
+
+  cases.push(runCase('A stored case reads the same way the second time', () => {
+    const base = CASE_FIXTURES[1].base;
+    const stored = JSON.parse(JSON.stringify(normalizePensionInputs(base)));
+    const reStored = normalizePensionInputs(stored);
+
+    assert(
+      JSON.stringify(stored.scenarios) === JSON.stringify(reStored.scenarios),
+      'Normalising a stored payload again should not change its cases'
+    );
+    ['pay-10', 'top-up', 'part-time'].forEach((scenarioId) => {
+      const fresh = computePensionProjection(base, { scenarioId });
+      const reloaded = computePensionProjection(stored, { scenarioId });
+      assert(
+        fresh.debug.requiredPot === reloaded.debug.requiredPot,
+        `Case "${scenarioId}" should survive a session round trip`
+      );
+    });
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;

@@ -1174,7 +1174,7 @@ function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEn
   };
 }
 
-function normalizePensionInputsInternal(raw) {
+function normalizePensionInputsInternal(raw, { validateCases = true } = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error('generated.pensionInputs must be an object.');
   }
@@ -1303,6 +1303,29 @@ function normalizePensionInputsInternal(raw) {
 
   normalized.otherIncomeSources = normalizeOtherIncomeSources(raw.otherIncomeSources, pensions, currentYear);
 
+  const cases = normalizePensionCases(
+    raw,
+    pensions.map((member) => member.id),
+    normalized.otherIncomeSources.map((source) => source.id)
+  );
+  if (cases) {
+    normalized.scenarios = cases;
+    const requestedBaseId = typeof raw.baseScenarioId === 'string' ? raw.baseScenarioId.trim() : '';
+    if (requestedBaseId && !cases.some((entry) => entry.id === requestedBaseId)) {
+      throw new Error('generated.pensionInputs.baseScenarioId must match a case id.');
+    }
+    normalized.baseScenarioId = requestedBaseId || cases[0].id;
+
+    // Rule: every case has to stand on its own. Normalising each merged case
+    // here means a payload that would fail on the third card is refused now,
+    // rather than on the click that reaches it.
+    if (validateCases) {
+      cases.forEach((caseEntry, index) => {
+        normalizePensionCaseInputs(raw, caseEntry, index, normalized);
+      });
+    }
+  }
+
   return normalized;
 }
 
@@ -1310,49 +1333,541 @@ export function normalizePensionInputs(raw) {
   return normalizePensionInputsInternal(raw);
 }
 
-function resolvePensionScenario(inputs, scenarioId = '') {
-  const scenarios = Array.isArray(inputs.rentalIncomeScenarios)
-    ? inputs.rentalIncomeScenarios
-    : [];
+/* ------------------------------------------------------------------ cases ---
+ *
+ * A Retirement case restates only what it changes -- an age, a contribution
+ * rate, a pot, a piece of income -- and inherits everything else from the base
+ * inputs. It is then merged back into a whole payload and normalised as if it
+ * had been authored on its own, which is the only way "retire at 58" can be
+ * trusted to mean the same thing on a case card as it would in a module of its
+ * own. There is no second projection path: every case goes through the one
+ * normaliser and the one engine.
+ */
 
-  if (scenarios.length === 0) {
-    return {
-      id: 'base',
-      title: inputs.rentalIncomeToday > 0 ? 'With rental income' : 'Current position',
-      rentalIncomeToday: inputs.rentalIncomeToday
-    };
+/** What a case may restate for the household. */
+const PENSION_CASE_HOUSEHOLD_KEYS = Object.freeze([
+  'rentalIncomeToday',
+  'targetIncomeToday',
+  'targetIncomePctOfSalary',
+  'excludedIncomeSourceIds',
+  'additionalIncomeSources'
+]);
+
+/** What a case may restate about one person's pension. */
+const PENSION_CASE_MEMBER_KEYS = Object.freeze([
+  'retirementAge',
+  'personalPct',
+  'employerPct',
+  'currentPot',
+  'includeStatePension'
+]);
+
+/**
+ * Timing a case may restate -- and, once it moves a retirement age, timing the
+ * base no longer gets to decide.
+ *
+ * An income start year written for retirement at 62 is not a fact about
+ * retiring at 58; it is the old answer to the question the case is asking
+ * again. A case that changes any retirement age therefore drops these and lets
+ * them be derived from its own ages, exactly as a standalone payload would.
+ */
+const PENSION_CASE_TIMING_KEYS = Object.freeze([
+  'incomeStartYear',
+  'targetStartYear',
+  'targetStartAge',
+  'requiredPotReferenceYear',
+  'includeEmploymentIncomeDuringBridge'
+]);
+
+/** The income start year is one fact written three ways; a case restates all three at once. */
+const PENSION_CASE_START_KEYS = Object.freeze(['incomeStartYear', 'targetStartYear', 'targetStartAge']);
+
+/** The target income is one fact written two ways, for the same reason. */
+const PENSION_CASE_TARGET_KEYS = Object.freeze(['targetIncomeToday', 'targetIncomePctOfSalary']);
+
+const PENSION_CASE_OVERRIDE_KEYS = new Set([
+  ...PENSION_CASE_HOUSEHOLD_KEYS,
+  ...PENSION_CASE_MEMBER_KEYS,
+  ...PENSION_CASE_TIMING_KEYS,
+  'pensionOverrides'
+]);
+
+/** Keys that name a case rather than change it. */
+const PENSION_CASE_IDENTITY_KEYS = new Set(['id', 'title', 'description', 'interpretation', 'overrides']);
+
+function hasValue(source, key) {
+  return Boolean(source)
+    && Object.prototype.hasOwnProperty.call(source, key)
+    && typeof source[key] !== 'undefined';
+}
+
+/** How an error names the case it came from, so a rejection is actionable. */
+function pensionCaseLabel(index, title) {
+  return `generated.pensionInputs.scenarios[${index}] (${title})`;
+}
+
+function normalizePensionCaseMemberFields(source, label, { skipKeys = null } = {}) {
+  const fields = {};
+
+  Object.keys(source).forEach((key) => {
+    if (skipKeys && skipKeys.has(key)) {
+      return;
+    }
+    if (!hasValue(source, key)) {
+      return;
+    }
+    if (!PENSION_CASE_MEMBER_KEYS.includes(key)) {
+      throw new Error(`${label}: ${key} is not a case override.`);
+    }
+    fields[key] = source[key];
+  });
+
+  return fields;
+}
+
+/**
+ * One case, read the same way whether it was just authored or read back off a
+ * saved session.
+ *
+ * THIS NORMALISER MUST BE IDEMPOTENT. An authored case states its changes flat
+ * -- `{ id, title, retirementAge: 58 }` -- and this returns them nested under
+ * `overrides`, which is the shape the app then stores and normalises again.
+ * Reading only the flat keys the second time round would find none, and quietly
+ * return a case that changes nothing: four buttons, four identical answers, and
+ * no error anywhere.
+ */
+function normalizePensionCase(rawCase, index, memberIds, incomeSourceIds) {
+  if (!rawCase || typeof rawCase !== 'object' || Array.isArray(rawCase)) {
+    throw new Error(`generated.pensionInputs.scenarios[${index}] must be an object.`);
   }
 
-  const requestedId = typeof scenarioId === 'string' ? scenarioId.trim() : '';
-  const fallbackId = typeof inputs.baseScenarioId === 'string' && inputs.baseScenarioId.trim()
-    ? inputs.baseScenarioId.trim()
-    : scenarios[0].id;
+  const id = normalizeScenarioId(rawCase.id, `case-${index + 1}`);
+  const title = typeof rawCase.title === 'string' && rawCase.title.trim()
+    ? rawCase.title.trim()
+    : `Case ${index + 1}`;
+  const description = typeof rawCase.description === 'string' && rawCase.description.trim()
+    ? rawCase.description.trim()
+    : (typeof rawCase.interpretation === 'string' ? rawCase.interpretation.trim() : '');
+  const label = pensionCaseLabel(index, title);
 
-  return scenarios.find((scenario) => scenario.id === requestedId)
-    || scenarios.find((scenario) => scenario.id === fallbackId)
-    || scenarios[0];
+  const source = rawCase.overrides && typeof rawCase.overrides === 'object' && !Array.isArray(rawCase.overrides)
+    ? rawCase.overrides
+    : rawCase;
+
+  const overrides = {};
+  Object.keys(source).forEach((key) => {
+    if (PENSION_CASE_IDENTITY_KEYS.has(key) || !hasValue(source, key)) {
+      return;
+    }
+    if (!PENSION_CASE_OVERRIDE_KEYS.has(key)) {
+      throw new Error(`${label}: ${key} is not a case override.`);
+    }
+    if (PENSION_CASE_MEMBER_KEYS.includes(key) && memberIds.length > 1) {
+      throw new Error(
+        `${label}: ${key} must be set through pensionOverrides when the payload has more than one pension.`
+      );
+    }
+    overrides[key] = source[key];
+  });
+
+  if (hasValue(overrides, 'pensionOverrides')) {
+    if (!Array.isArray(overrides.pensionOverrides)) {
+      throw new Error(`${label}: pensionOverrides must be an array when provided.`);
+    }
+
+    overrides.pensionOverrides = overrides.pensionOverrides.map((entry, entryIndex) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error(`${label}: pensionOverrides[${entryIndex}] must be an object.`);
+      }
+
+      const memberId = normalizeScenarioId(entry.id, '');
+      if (!memberIds.includes(memberId)) {
+        throw new Error(`${label}: pensionOverrides[${entryIndex}].id must match a pension id.`);
+      }
+
+      return {
+        id: memberId,
+        ...normalizePensionCaseMemberFields(entry, `${label}: pensionOverrides[${entryIndex}]`, {
+          skipKeys: new Set(['id'])
+        })
+      };
+    });
+  }
+
+  if (hasValue(overrides, 'excludedIncomeSourceIds')) {
+    if (!Array.isArray(overrides.excludedIncomeSourceIds)) {
+      throw new Error(`${label}: excludedIncomeSourceIds must be an array when provided.`);
+    }
+    // A case that names income the base does not have would silently leave
+    // that income in place: the card says "without the DB pension" and the
+    // figures behind it still count it.
+    overrides.excludedIncomeSourceIds.forEach((sourceId) => {
+      if (!incomeSourceIds.includes(normalizeScenarioId(sourceId, ''))) {
+        throw new Error(`${label}: excludedIncomeSourceIds must match an other income source id.`);
+      }
+    });
+  }
+
+  if (hasValue(overrides, 'additionalIncomeSources') && !Array.isArray(overrides.additionalIncomeSources)) {
+    throw new Error(`${label}: additionalIncomeSources must be an array when provided.`);
+  }
+
+  return { id, title, description, overrides };
+}
+
+/** Rent-only cases, expressed as cases so there is one case path and not two. */
+function pensionCasesFromRentalScenarios(rentalScenarios) {
+  return rentalScenarios.map((scenario) => ({
+    id: scenario.id,
+    title: scenario.title,
+    description: '',
+    overrides: { rentalIncomeToday: scenario.rentalIncomeToday }
+  }));
+}
+
+function normalizePensionCases(raw, memberIds, incomeSourceIds) {
+  const hasCases = Array.isArray(raw.scenarios) && raw.scenarios.length > 0;
+  const hasRentalCases = Array.isArray(raw.rentalIncomeScenarios) && raw.rentalIncomeScenarios.length > 0;
+
+  if (hasCases && hasRentalCases) {
+    throw new Error(
+      'generated.pensionInputs must use scenarios or rentalIncomeScenarios, not both.'
+    );
+  }
+
+  if (typeof raw.scenarios !== 'undefined' && raw.scenarios !== null && !Array.isArray(raw.scenarios)) {
+    throw new Error('generated.pensionInputs.scenarios must be an array when provided.');
+  }
+
+  if (!hasCases) {
+    return null;
+  }
+
+  if (raw.scenarios.length > MAX_MODULE_SCENARIO_CASES) {
+    throw new Error(
+      `generated.pensionInputs.scenarios supports at most ${MAX_MODULE_SCENARIO_CASES} cases; `
+      + `received ${raw.scenarios.length}.`
+    );
+  }
+
+  const usedIds = new Set();
+  return raw.scenarios.map((rawCase, index) => {
+    const normalized = normalizePensionCase(rawCase, index, memberIds, incomeSourceIds);
+    if (usedIds.has(normalized.id)) {
+      throw new Error(`generated.pensionInputs.scenarios[${index}].id must be unique.`);
+    }
+    usedIds.add(normalized.id);
+    return normalized;
+  });
+}
+
+/**
+ * The payload this case would have been, had it been authored on its own.
+ *
+ * Everything the case does not restate is inherited untouched, so a later
+ * change to the household's growth rate or salary reaches every case at once.
+ */
+function buildPensionCaseRawInputs(raw, caseEntry, base) {
+  const overrides = caseEntry?.overrides || {};
+  const merged = { ...raw };
+  delete merged.scenarios;
+  delete merged.rentalIncomeScenarios;
+  delete merged.baseScenarioId;
+
+  const memberIds = base.pensions.map((member) => member.id);
+  const memberChanges = new Map();
+  const flatMemberFields = {};
+  PENSION_CASE_MEMBER_KEYS.forEach((key) => {
+    if (hasValue(overrides, key)) {
+      flatMemberFields[key] = overrides[key];
+    }
+  });
+  if (Object.keys(flatMemberFields).length > 0) {
+    memberChanges.set(memberIds[0], { ...flatMemberFields });
+  }
+  (Array.isArray(overrides.pensionOverrides) ? overrides.pensionOverrides : []).forEach((entry) => {
+    const { id, ...fields } = entry;
+    memberChanges.set(id, { ...(memberChanges.get(id) || {}), ...fields });
+  });
+
+  if (Array.isArray(raw.pensions)) {
+    merged.pensions = raw.pensions.map((member, index) => {
+      const change = memberChanges.get(memberIds[index]);
+      return change ? { ...member, ...change } : member;
+    });
+  } else {
+    Object.assign(merged, memberChanges.get(memberIds[0]) || {});
+  }
+
+  if (hasValue(overrides, 'rentalIncomeToday')) {
+    merged.rentalIncomeToday = overrides.rentalIncomeToday;
+  }
+
+  if (PENSION_CASE_TARGET_KEYS.some((key) => hasValue(overrides, key))) {
+    PENSION_CASE_TARGET_KEYS.forEach((key) => {
+      delete merged[key];
+      if (hasValue(overrides, key)) {
+        merged[key] = overrides[key];
+      }
+    });
+  }
+
+  const excludedIds = Array.isArray(overrides.excludedIncomeSourceIds)
+    ? overrides.excludedIncomeSourceIds.map((id) => String(id ?? '').trim()).filter(Boolean)
+    : [];
+  const additionalSources = Array.isArray(overrides.additionalIncomeSources)
+    ? overrides.additionalIncomeSources
+    : [];
+
+  if (excludedIds.length > 0 || additionalSources.length > 0) {
+    const rawSources = Array.isArray(raw.otherIncomeSources) ? raw.otherIncomeSources : [];
+    // Matched by position against the normalised base, because a source that
+    // was authored without an id still has one by the time the case names it.
+    const kept = rawSources.filter((_source, index) => (
+      !excludedIds.includes(base.otherIncomeSources[index]?.id)
+    ));
+    merged.otherIncomeSources = [...kept, ...additionalSources];
+  }
+
+  const changesRetirementAge = [...memberChanges.values()]
+    .some((change) => hasValue(change, 'retirementAge'));
+  if (changesRetirementAge) {
+    PENSION_CASE_TIMING_KEYS.forEach((key) => {
+      delete merged[key];
+    });
+  }
+
+  if (PENSION_CASE_START_KEYS.some((key) => hasValue(overrides, key))) {
+    PENSION_CASE_START_KEYS.forEach((key) => {
+      delete merged[key];
+    });
+  }
+
+  PENSION_CASE_TIMING_KEYS.forEach((key) => {
+    if (hasValue(overrides, key)) {
+      merged[key] = overrides[key];
+    }
+  });
+
+  return merged;
+}
+
+/** A case's own inputs, with any failure reported against the case that caused it. */
+function normalizePensionCaseInputs(raw, caseEntry, index, base) {
+  const merged = buildPensionCaseRawInputs(raw, caseEntry, base);
+
+  try {
+    return normalizePensionInputsInternal(merged);
+  } catch (error) {
+    const message = String(error?.message || error);
+    // `legacy.` is the internal name for the one member a single-person
+    // payload describes, and it means nothing to whoever wrote the case.
+    const field = message
+      .replace(/^generated\.pensionInputs\./, '')
+      .replace(/^legacy\./, '');
+    throw new Error(`${pensionCaseLabel(index, caseEntry.title)}: ${field}`);
+  }
+}
+
+/** The case a bare payload is: one case, covering everything the payload says. */
+function defaultPensionCase(base) {
+  return {
+    id: 'base',
+    title: base.rentalIncomeToday > 0 ? 'With rental income' : 'Current position',
+    description: '',
+    overrides: {}
+  };
+}
+
+/**
+ * Every case this payload describes, each normalised as its own standalone
+ * payload, plus which one opens the module.
+ */
+function buildPensionCaseSet(rawInputs) {
+  const base = normalizePensionInputsInternal(rawInputs, { validateCases: false });
+  const authored = Array.isArray(base.scenarios) && base.scenarios.length > 0
+    ? base.scenarios
+    : (Array.isArray(base.rentalIncomeScenarios) && base.rentalIncomeScenarios.length > 0
+      ? pensionCasesFromRentalScenarios(base.rentalIncomeScenarios)
+      : null);
+  const entries = authored || [defaultPensionCase(base)];
+  const cases = entries.map((caseEntry, index) => ({
+    ...caseEntry,
+    inputs: authored
+      ? normalizePensionCaseInputs(rawInputs, caseEntry, index, base)
+      : base
+  }));
+  const baseCaseId = cases.some((entry) => entry.id === base.baseScenarioId)
+    ? base.baseScenarioId
+    : cases[0].id;
+
+  return {
+    base,
+    cases: cases.map((entry) => ({ ...entry, isBase: entry.id === baseCaseId })),
+    baseCaseId,
+    hasAuthoredCases: Boolean(authored)
+  };
+}
+
+function resolvePensionCase(caseSet, scenarioId = '') {
+  const requestedId = typeof scenarioId === 'string' ? scenarioId.trim() : '';
+  return caseSet.cases.find((entry) => entry.id === requestedId)
+    || caseSet.cases.find((entry) => entry.id === caseSet.baseCaseId)
+    || caseSet.cases[0];
+}
+
+/**
+ * What a case card says this case changes, in the words the client used.
+ *
+ * Built here rather than in the renderer because the video brief has to say
+ * the same thing about the same case, and two descriptions of one decision is
+ * one description too many.
+ */
+function buildPensionCaseSummary(caseEntry, caseInputs, base) {
+  const overrides = caseEntry?.overrides || {};
+  const parts = [];
+  const isSingle = base.pensions.length === 1;
+  const memberById = new Map(base.pensions.map((member) => [member.id, member]));
+  const caseMemberById = new Map(caseInputs.pensions.map((member) => [member.id, member]));
+
+  caseInputs.pensions.forEach((member) => {
+    const baseMember = memberById.get(member.id);
+    if (!baseMember || member.retirementAge === baseMember.retirementAge) {
+      return;
+    }
+    parts.push(isSingle
+      ? `Retires at ${member.retirementAge}`
+      : `${member.title} retires at ${member.retirementAge}`);
+  });
+
+  if (caseInputs.incomeStartYear !== base.incomeStartYear) {
+    parts.push(`income from ${caseInputs.incomeStartYear}`);
+  }
+
+  caseInputs.pensions.forEach((member) => {
+    const baseMember = memberById.get(member.id);
+    if (!baseMember) {
+      return;
+    }
+    const who = isSingle ? '' : `${member.title} `;
+    if (member.personalPct !== baseMember.personalPct) {
+      parts.push(`${who}personal contributions ${toPercentText(member.personalPct)}`);
+    }
+    if (member.employerPct !== baseMember.employerPct) {
+      parts.push(`${who}employer contributions ${toPercentText(member.employerPct)}`);
+    }
+    if (member.currentPot !== baseMember.currentPot) {
+      parts.push(`${who}pension value ${toEuroText(member.currentPot)}`);
+    }
+    if (member.includeStatePension !== baseMember.includeStatePension) {
+      parts.push(member.includeStatePension
+        ? `${who}State Pension included`
+        : `${who}State Pension excluded`);
+    }
+  });
+
+  if (hasValue(overrides, 'rentalIncomeToday') && caseInputs.rentalIncomeToday !== base.rentalIncomeToday) {
+    parts.push(caseInputs.rentalIncomeToday > 0
+      ? `${toEuroText(caseInputs.rentalIncomeToday)} gross rent today`
+      : 'rental income removed');
+  }
+
+  if (caseInputs.targetIncomeToday !== base.targetIncomeToday) {
+    parts.push(`${toEuroText(caseInputs.targetIncomeToday)} target income`);
+  }
+
+  const baseSourceIds = new Set(base.otherIncomeSources.map((source) => source.id));
+  const caseSourceIds = new Set(caseInputs.otherIncomeSources.map((source) => source.id));
+  base.otherIncomeSources
+    .filter((source) => !caseSourceIds.has(source.id))
+    .forEach((source) => parts.push(`${source.title} removed`));
+  caseInputs.otherIncomeSources
+    .filter((source) => !baseSourceIds.has(source.id))
+    .forEach((source) => parts.push(
+      `${source.title} ${toEuroText(source.annualAmountToday)} p.a. from ${source.startYear}`
+      + (source.endYear ? ` to ${source.endYear}` : '')
+    ));
+
+  if (parts.length === 0) {
+    return '';
+  }
+
+  const [first, ...rest] = parts;
+  const sentence = [first, ...rest.map((part) => part.charAt(0).toLowerCase() + part.slice(1))].join(', ');
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+/**
+ * The chart axis every case shares: the union of the years the cases cover.
+ *
+ * Switching case should move the retirement point and the balance line. If the
+ * axis rescaled with the case, the client would be reading two differently
+ * stretched pictures and comparing them by eye.
+ */
+function buildPensionCaseAxis(caseSet) {
+  const ranges = caseSet.cases.map((entry) => {
+    const inputs = entry.inputs;
+    const isAffordable = inputs.incomeMode === 'affordable' && !inputs.minDrawdownMode;
+    const endYear = isAffordable && inputs.affordableEndAges.length > 0
+      ? yearForAge(
+        inputs.primaryPension,
+        inputs.affordableEndAges[inputs.affordableEndAges.length - 1],
+        inputs.currentYear
+      )
+      : inputs.horizonEndYear;
+    return { startYear: inputs.incomeStartYear, endYear };
+  });
+
+  const startYear = Math.min(...ranges.map((range) => range.startYear));
+  const endYear = Math.max(...ranges.map((range) => range.endYear));
+  const retirementAgeById = new Map();
+  caseSet.cases.forEach((entry) => {
+    entry.inputs.pensions.forEach((member) => {
+      retirementAgeById.set(
+        member.id,
+        Math.max(retirementAgeById.get(member.id) ?? member.retirementAge, member.retirementAge)
+      );
+    });
+  });
+
+  return {
+    years: buildYearRange(startYear, endYear),
+    endYear,
+    accumulationEndAgeById: retirementAgeById
+  };
+}
+
+/** A simulation's series, read onto the shared axis; a year it does not cover is a gap. */
+function alignSeriesToYears(simulation, values, years) {
+  return years.map((year) => {
+    const index = simulationIndexForYear(simulation, year);
+    const value = index >= 0 && Array.isArray(values) ? values[index] : null;
+    return Number.isFinite(value) ? value : null;
+  });
 }
 
 export function getPensionScenarioCases(rawInputs) {
-  const inputs = normalizePensionInputs(rawInputs);
-  const scenarios = Array.isArray(inputs.rentalIncomeScenarios)
-    ? inputs.rentalIncomeScenarios
-    : [];
-
-  if (scenarios.length === 0) {
-    return [{
-      id: 'base',
-      title: inputs.rentalIncomeToday > 0 ? 'With rental income' : 'Current position',
-      rentalIncomeToday: inputs.rentalIncomeToday
-    }];
-  }
-
-  return scenarios.map((scenario) => ({ ...scenario }));
+  const caseSet = buildPensionCaseSet(rawInputs);
+  return caseSet.cases.map((entry) => {
+    const summary = caseSet.hasAuthoredCases
+      ? buildPensionCaseSummary(entry, entry.inputs, caseSet.base)
+      : '';
+    return {
+      id: entry.id,
+      title: entry.title,
+      description: entry.description,
+      isBase: entry.isBase,
+      summary,
+      overrides: { ...entry.overrides },
+      ...(hasValue(entry.overrides, 'rentalIncomeToday')
+        ? { rentalIncomeToday: entry.overrides.rentalIncomeToday }
+        : {})
+    };
+  });
 }
 
 export function getDefaultPensionScenarioId(rawInputs) {
-  const inputs = normalizePensionInputs(rawInputs);
-  return resolvePensionScenario(inputs, '').id;
+  return buildPensionCaseSet(rawInputs).baseCaseId;
 }
 
 function aggregateScenario(memberScenarios) {
@@ -1374,49 +1889,60 @@ function aggregateScenario(memberScenarios) {
   return aggregate;
 }
 
-function buildAccumulationChart(member, currentScenario, maxScenario) {
+function buildAccumulationChart(member, currentScenario, maxScenario, axisEndAge = null) {
   const titleAlreadyIncludesPension = /pension/i.test(member.title);
   const titlePrefix = titleAlreadyIncludesPension ? member.title : `${member.title} Pension`;
   const titleSuffix = titleAlreadyIncludesPension
     ? ' pot at retirement (before withdrawals)'
     : ' Pot at Retirement (Before Withdrawals)';
+  // A case that retires earlier stops earlier; the axis still runs to the
+  // latest retirement age on offer, so the shorter run-up reads as a shorter
+  // bar rather than as a differently drawn chart.
+  const endAge = Number.isFinite(axisEndAge)
+    ? Math.max(axisEndAge, member.retirementAge)
+    : member.retirementAge;
+  const labels = [];
+  for (let age = member.currentAge; age <= endAge; age += 1) {
+    labels.push(String(age));
+  }
+  const onAxis = (values) => padSeries(values, labels.length);
 
   return {
     title: `${titlePrefix}${titleSuffix}`,
     type: 'bar',
-    labels: currentScenario.labels,
+    labels,
     datasets: [
       {
         label: 'Pot (current)',
-        data: currentScenario.balances
+        data: onAxis(currentScenario.balances)
       },
       {
         label: 'Pot (max)',
-        data: maxScenario.balances
+        data: onAxis(maxScenario.balances)
       },
       {
         label: 'Personal (current)',
-        data: currentScenario.personalEurSeries
+        data: onAxis(currentScenario.personalEurSeries)
       },
       {
         label: 'Employer (current)',
-        data: currentScenario.employerEurSeries
+        data: onAxis(currentScenario.employerEurSeries)
       },
       {
         label: 'Growth (current)',
-        data: currentScenario.growthEurSeries
+        data: onAxis(currentScenario.growthEurSeries)
       },
       {
         label: 'Personal (max)',
-        data: maxScenario.personalEurSeries
+        data: onAxis(maxScenario.personalEurSeries)
       },
       {
         label: 'Employer (max)',
-        data: maxScenario.employerEurSeries
+        data: onAxis(maxScenario.employerEurSeries)
       },
       {
         label: 'Growth (max)',
-        data: maxScenario.growthEurSeries
+        data: onAxis(maxScenario.growthEurSeries)
       }
     ]
   };
@@ -1432,62 +1958,65 @@ function memberHasPrivatePensionPosition(member) {
     || (Number(member.employerPct) || 0) > 0;
 }
 
-function buildIncomeSurplusDataset(simulation, suffix, hidden = false) {
+function buildIncomeSurplusDataset(simulation, suffix, hidden = false, onAxis = (values) => values) {
   return {
     label: `Surplus (${suffix})`,
-    data: simulation.surpluses,
+    data: onAxis(simulation.surpluses),
     hidden
   };
 }
 
-function buildIncomeStackDatasets(simulation, suffix, hidden = false, { includeSurplus = false } = {}) {
+function buildIncomeStackDatasets(simulation, suffix, hidden = false, {
+  includeSurplus = false,
+  onAxis = (values) => values
+} = {}) {
   const datasets = [
     {
       label: `Employment income (${suffix})`,
-      data: simulation.employmentIncome,
+      data: onAxis(simulation.employmentIncome),
       hidden
     },
     {
       label: `State Pension (${suffix})`,
-      data: simulation.statePensionIncome,
+      data: onAxis(simulation.statePensionIncome),
       hidden
     },
     {
       label: `Rental income (${suffix})`,
-      data: simulation.rentalIncome,
+      data: onAxis(simulation.rentalIncome),
       hidden
     },
     {
       label: `Other income (${suffix})`,
-      data: simulation.otherIncome,
+      data: onAxis(simulation.otherIncome),
       hidden
     },
     {
       label: `Mandatory pension withdrawals (${suffix})`,
-      data: simulation.mandatoryWithdrawals,
+      data: onAxis(simulation.mandatoryWithdrawals),
       hidden
     },
     {
       label: `Elected pension withdrawals (${suffix})`,
-      data: simulation.electedWithdrawals,
+      data: onAxis(simulation.electedWithdrawals),
       hidden
     },
     {
       label: `Shortfall (${suffix})`,
-      data: simulation.shortfalls,
+      data: onAxis(simulation.shortfalls),
       hidden
     }
   ];
 
   if (includeSurplus) {
-    datasets.push(buildIncomeSurplusDataset(simulation, suffix, hidden));
+    datasets.push(buildIncomeSurplusDataset(simulation, suffix, hidden, onAxis));
   }
 
   return datasets;
 }
 
-function buildTerminalBalanceLabel(inputs) {
-  return `End ${axisPersonLabel(inputs.primaryPension)} age ${ageAtYear(inputs.primaryPension, inputs.horizonEndYear, inputs.currentYear)}`;
+function buildTerminalBalanceLabel(inputs, axisEndYear) {
+  return `End ${axisPersonLabel(inputs.primaryPension)} age ${ageAtYear(inputs.primaryPension, axisEndYear, inputs.currentYear)}`;
 }
 
 function appendTerminalValue(values, simulation) {
@@ -1497,15 +2026,12 @@ function appendTerminalValue(values, simulation) {
   ];
 }
 
-function buildRequiredPotPathData(baseSimulation, requiredSimulation, includeTerminalPoint = false) {
-  if (!requiredSimulation || !Array.isArray(baseSimulation?.years)) {
+function buildRequiredPotPathData(requiredSimulation, axisYears, includeTerminalPoint = false) {
+  if (!requiredSimulation) {
     return [];
   }
 
-  const values = baseSimulation.years.map((year) => {
-    const index = requiredSimulation.years.findIndex((entry) => entry === year);
-    return index >= 0 ? requiredSimulation.combinedBalances[index] : null;
-  });
+  const values = alignSeriesToYears(requiredSimulation, requiredSimulation.combinedBalances, axisYears);
 
   if (includeTerminalPoint) {
     values.push(requiredSimulation.endingBalanceAfterHorizon);
@@ -1514,67 +2040,71 @@ function buildRequiredPotPathData(baseSimulation, requiredSimulation, includeTer
   return values;
 }
 
-function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, requiredSimulation = null) {
-  const balanceLabels = [...currentSimulation.labels, buildTerminalBalanceLabel(inputs)];
+function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, requiredSimulation = null, axis) {
+  const axisYears = axis.years;
+  const axisLabels = axisYears.map((year) => ageLabelForYear(inputs, year));
+  const axisAgeLabels = axisYears.map((year) => ageSummaryForYear(inputs, year));
+  const onAxis = (simulation) => (values) => alignSeriesToYears(simulation, values, axisYears);
+  const onCurrentAxis = onAxis(currentSimulation);
+  const onMaxAxis = onAxis(maxSimulation);
+  const terminalAgeLabel = inputs.isHousehold
+    ? ageSummaryForYear(inputs, axis.endYear)
+    : `${inputs.primaryPension.title} age ${ageAtYear(inputs.primaryPension, axis.endYear, inputs.currentYear)}`;
+  const balanceLabels = [...axisLabels, buildTerminalBalanceLabel(inputs, axis.endYear)];
   const xAxisTitle = `${axisPersonLabel(inputs.primaryPension)} age`;
   const balanceDatasets = [
     {
       label: 'Combined pension balance (current)',
-      data: appendTerminalValue(currentSimulation.combinedBalances, currentSimulation)
+      data: appendTerminalValue(onCurrentAxis(currentSimulation.combinedBalances), currentSimulation)
     },
     {
       label: 'Combined pension balance (max)',
-      data: appendTerminalValue(maxSimulation.combinedBalances, maxSimulation),
+      data: appendTerminalValue(onMaxAxis(maxSimulation.combinedBalances), maxSimulation),
       hidden: true
     },
     ...(requiredSimulation
       ? [{
         label: 'Required pension pot path',
-        data: buildRequiredPotPathData(currentSimulation, requiredSimulation, true)
+        data: buildRequiredPotPathData(requiredSimulation, axisYears, true)
       }]
       : [])
   ];
   const incomeDatasets = [
     {
       label: 'Required income',
-      data: currentSimulation.requiredIncome,
+      data: onCurrentAxis(currentSimulation.requiredIncome),
       borderColor: '#ffffff',
       backgroundColor: 'rgba(255, 255, 255, 0.16)',
       pointBackgroundColor: '#ffffff',
       pointBorderColor: '#ffffff'
     },
-    ...buildIncomeStackDatasets(currentSimulation, 'current', false),
-    ...buildIncomeStackDatasets(maxSimulation, 'max', true)
+    ...buildIncomeStackDatasets(currentSimulation, 'current', false, { onAxis: onCurrentAxis }),
+    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { onAxis: onMaxAxis })
   ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
   const incomeCsvDatasets = [
     {
       label: 'Required income',
-      data: currentSimulation.requiredIncome,
+      data: onCurrentAxis(currentSimulation.requiredIncome),
       borderColor: '#ffffff',
       backgroundColor: 'rgba(255, 255, 255, 0.16)',
       pointBackgroundColor: '#ffffff',
       pointBorderColor: '#ffffff'
     },
-    ...buildIncomeStackDatasets(currentSimulation, 'current', false, { includeSurplus: true }),
-    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { includeSurplus: true })
+    ...buildIncomeStackDatasets(currentSimulation, 'current', false, { includeSurplus: true, onAxis: onCurrentAxis }),
+    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { includeSurplus: true, onAxis: onMaxAxis })
   ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
 
   return {
     title: 'Retirement Income Stack and Pension Balance',
     type: 'bar',
-    labels: currentSimulation.labels,
+    labels: axisLabels,
     subtitle: inputs.isHousehold
-      ? `${xAxisTitle} shown; hover a point to see each person’s age.`
+      ? `${xAxisTitle} shown; hover a point to see each person\u2019s age.`
       : '',
     meta: {
       kind: 'pensionDrawdownComposite',
-      ageLabels: currentSimulation.years.map((year) => ageSummaryForYear(inputs, year)),
-      balanceAgeLabels: [
-        ...currentSimulation.years.map((year) => ageSummaryForYear(inputs, year)),
-        inputs.isHousehold
-          ? ageSummaryForYear(inputs, inputs.horizonEndYear)
-          : `${inputs.primaryPension.title} age ${inputs.horizonEndAge}`
-      ]
+      ageLabels: axisAgeLabels,
+      balanceAgeLabels: [...axisAgeLabels, terminalAgeLabel]
     },
     display: {
       variant: 'pension-drawdown-composite',
@@ -1586,17 +2116,17 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
     datasets: [
       {
         label: 'Combined pension balance (current)',
-        data: currentSimulation.combinedBalances
+        data: onCurrentAxis(currentSimulation.combinedBalances)
       },
       {
         label: 'Combined pension balance (max)',
-        data: maxSimulation.combinedBalances,
+        data: onMaxAxis(maxSimulation.combinedBalances),
         hidden: true
       },
       ...(requiredSimulation
         ? [{
           label: 'Required pension pot path',
-          data: buildRequiredPotPathData(currentSimulation, requiredSimulation)
+          data: buildRequiredPotPathData(requiredSimulation, axisYears)
         }]
         : []),
       ...incomeDatasets
@@ -1614,18 +2144,13 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
           showLegend: false
         },
         meta: {
-          ageLabels: [
-            ...currentSimulation.years.map((year) => ageSummaryForYear(inputs, year)),
-            inputs.isHousehold
-              ? ageSummaryForYear(inputs, inputs.horizonEndYear)
-              : `${inputs.primaryPension.title} age ${inputs.horizonEndAge}`
-          ]
+          ageLabels: [...axisAgeLabels, terminalAgeLabel]
         }
       },
       income: {
         title: 'Income sources',
         type: 'bar',
-        labels: currentSimulation.labels,
+        labels: axisLabels,
         datasets: incomeDatasets,
         csvDatasets: incomeCsvDatasets,
         display: {
@@ -1636,7 +2161,7 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
           showLegend: false
         },
         meta: {
-          ageLabels: currentSimulation.years.map((year) => ageSummaryForYear(inputs, year))
+          ageLabels: axisAgeLabels
         }
       }
     }
@@ -1681,10 +2206,14 @@ function simulationPensionBalancesAtYear(simulation, year, fallbackBalances = []
   });
 }
 
-function buildAffordableIncomeResult(inputs, startBalances, endAge, fullLabels, contributionMode) {
+function buildAffordableIncomeResult(inputs, startBalances, endAge, axisYears, contributionMode) {
   const horizonEndYear = yearForAge(inputs.primaryPension, endAge, inputs.currentYear);
   const goalSeek = goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEndYear, contributionMode);
-  const balancesPadded = padSeries(floorSeriesToZero(goalSeek.simulation.combinedBalances), fullLabels.length);
+  const balancesPadded = alignSeriesToYears(
+    goalSeek.simulation,
+    floorSeriesToZero(goalSeek.simulation.combinedBalances),
+    axisYears
+  );
 
   return {
     endAge,
@@ -1706,17 +2235,30 @@ function pensionFundedTargetAtStart(inputs) {
 }
 
 export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
-  const normalizedInputs = normalizePensionInputs(rawInputs);
-  const selectedScenario = resolvePensionScenario(normalizedInputs, scenarioId);
+  // Every case is projected as the standalone payload it describes, so the
+  // figures on a case card are the figures that case would show in a module of
+  // its own -- ages, timing, SFT year and all.
+  const caseSet = buildPensionCaseSet(rawInputs);
+  const selectedCase = resolvePensionCase(caseSet, scenarioId);
+  const caseAxis = buildPensionCaseAxis(caseSet);
   const inputs = {
-    ...normalizedInputs,
-    rentalIncomeToday: selectedScenario.rentalIncomeToday,
-    selectedScenarioId: selectedScenario.id,
-    selectedScenarioTitle: selectedScenario.title
+    ...selectedCase.inputs,
+    ...(caseSet.base.rentalIncomeScenarios
+      ? { rentalIncomeScenarios: caseSet.base.rentalIncomeScenarios }
+      : {}),
+    ...(caseSet.base.scenarios ? { scenarios: caseSet.base.scenarios } : {}),
+    ...(caseSet.base.baseScenarioId ? { baseScenarioId: caseSet.base.baseScenarioId } : {}),
+    selectedScenarioId: selectedCase.id,
+    selectedScenarioTitle: selectedCase.title,
+    selectedScenarioDescription: selectedCase.description,
+    selectedScenarioSummary: caseSet.hasAuthoredCases
+      ? buildPensionCaseSummary(selectedCase, selectedCase.inputs, caseSet.base)
+      : ''
   };
   const isAffordableMode = inputs.incomeMode === 'affordable' && !inputs.minDrawdownMode;
   const hasRentalContext = inputs.rentalIncomeToday > 0
-    || (Array.isArray(inputs.rentalIncomeScenarios) && inputs.rentalIncomeScenarios.length > 0);
+    || (Array.isArray(inputs.rentalIncomeScenarios) && inputs.rentalIncomeScenarios.length > 0)
+    || caseSet.cases.some((entry) => hasValue(entry.overrides, 'rentalIncomeToday'));
   const hasOtherIncomeContext = inputs.otherIncomeSources.length > 0;
   const hasStatePensionContext = inputs.pensions.some((member) => member.includeStatePension);
 
@@ -1813,16 +2355,13 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
 
   if (isAffordableMode) {
     const affordableEndAges = inputs.affordableEndAges;
-    const maxAffordableEndAge = affordableEndAges[affordableEndAges.length - 1];
-    const maxAffordableEndYear = yearForAge(inputs.primaryPension, maxAffordableEndAge, inputs.currentYear);
-    sustainabilityLabels = buildYearRange(inputs.incomeStartYear, maxAffordableEndYear)
-      .map((year) => ageLabelForYear(inputs, year));
+    sustainabilityLabels = caseAxis.years.map((year) => ageLabelForYear(inputs, year));
 
     affordableCurrentResults = affordableEndAges.map((endAge) => (
-      buildAffordableIncomeResult(inputs, currentIncomeStartBalances, endAge, sustainabilityLabels, 'current')
+      buildAffordableIncomeResult(inputs, currentIncomeStartBalances, endAge, caseAxis.years, 'current')
     ));
     affordableMaxResults = affordableEndAges.map((endAge) => (
-      buildAffordableIncomeResult(inputs, maxIncomeStartBalances, endAge, sustainabilityLabels, 'max')
+      buildAffordableIncomeResult(inputs, maxIncomeStartBalances, endAge, caseAxis.years, 'max')
     ));
 
     affordableChartDatasets = [
@@ -2097,7 +2636,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       return buildAccumulationChart(
         member,
         currentMemberScenarios[index],
-        maxMemberScenarios[index]
+        maxMemberScenarios[index],
+        caseAxis.accumulationEndAgeById.get(member.id)
       );
     })
     .filter(Boolean);
@@ -2114,7 +2654,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       inputs,
       retirementSimulationProjectedCurrent,
       retirementSimulationProjectedMax,
-      readiness.requiredPotIsApplicable ? requiredResult?.simulation ?? null : null
+      readiness.requiredPotIsApplicable ? requiredResult?.simulation ?? null : null,
+      caseAxis
     ));
   }
 
@@ -2166,6 +2707,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       maxGapVsRequired: readiness.maxGapVsRequired,
       requiredBalances: requiredResult?.requiredBalances ?? [],
       rentalIncomeToday: inputs.rentalIncomeToday,
+      hasRentalContext,
       rentalIncomeNominalAtRetirement,
       employmentIncomeNominalAtRetirement,
       statePensionNominalAtRetirement,
@@ -2173,6 +2715,12 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       pensionWithdrawalNominalAtRetirement,
       selectedScenarioId: inputs.selectedScenarioId,
       selectedScenarioTitle: inputs.selectedScenarioTitle,
+      selectedScenarioDescription: inputs.selectedScenarioDescription,
+      selectedScenarioSummary: inputs.selectedScenarioSummary,
+      selectedScenarioIsBase: selectedCase.isBase,
+      selectedScenarioOverrides: { ...selectedCase.overrides },
+      baseScenarioId: caseSet.baseCaseId,
+      chartAxisYears: caseAxis.years,
       retirementYear,
       targetStartYear: inputs.targetStartYear,
       incomeStartYear: inputs.incomeStartYear,
