@@ -7148,6 +7148,15 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     });
   }
 
+  shell.presenterSelectScenario = async (id) => {
+    const index = cases.findIndex(item => item.id === id);
+    if (index < 0) throw new Error(`Unknown balance sheet scenario: ${id}`);
+    if (index === selectedIndex) return;
+    closeActivePbsInfoPopover();
+    window.__setPbsScenario?.(module.id, id);
+    renderCase(index, { animate: true });
+    await new Promise(resolve => window.setTimeout(resolve, isPbsReducedMotionPreferred() ? 0 : 950));
+  };
   renderCase(selectedIndex);
   shell.appendChild(summaryHost);
   if (switcher) {
@@ -9309,6 +9318,7 @@ function renderReportChecklistBlock(block) {
   (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
     const entry = document.createElement('li');
     entry.className = 'report-checklist-item';
+    entry.dataset.reportItemId = item.id;
     entry.dataset.checked = item?.checked ? 'true' : 'false';
 
     const marker = document.createElement('span');
@@ -9427,6 +9437,7 @@ function renderReportKpiRowBlock(block) {
   items.forEach((item, index) => {
     const metric = document.createElement('article');
     metric.className = 'report-kpi-item';
+    metric.dataset.reportItemId = item.id;
     if (typeof item?.tone === 'string' && item.tone.trim()) {
       metric.dataset.tone = item.tone.trim().toLowerCase();
     }
@@ -9569,7 +9580,9 @@ function renderReportAccordionBlock(block) {
   (Array.isArray(block?.items) ? block.items : []).forEach((item, index) => {
     const details = document.createElement('details');
     details.className = 'report-accordion-item';
+    details.dataset.reportItemId = item.id;
     details.open = item?.defaultOpen === true || index === 0;
+    details.dataset.defaultOpen = String(details.open);
 
     const summary = document.createElement('summary');
     summary.className = 'report-accordion-summary';
@@ -10198,16 +10211,20 @@ function buildLiquidityHeroCard(module, assessment, {
 
   const stats = document.createElement('div');
   stats.className = 'liquidity-stat-grid';
-  stats.appendChild(buildLiquidityStat(
+  const currentCashStat = buildLiquidityStat(
     'Current cash',
     formatLiquidityCurrency(assessment.currentCash, assessment.currencySymbol),
     assessment.monthsLabel
-  ));
-  stats.appendChild(buildLiquidityStat(
+  );
+  currentCashStat.dataset.presenterMetric = 'current-cash';
+  stats.appendChild(currentCashStat);
+  const targetReserveStat = buildLiquidityStat(
     'Target reserve',
     formatLiquidityCurrency(assessment.targetCash, assessment.currencySymbol),
     assessment.targetLabel
-  ));
+  );
+  targetReserveStat.dataset.presenterMetric = 'target-reserve';
+  stats.appendChild(targetReserveStat);
   stats.appendChild(buildLiquidityStat(
     assessment.primaryActionLabel,
     formatLiquidityCurrency(assessment.actionAmount, assessment.currencySymbol),
