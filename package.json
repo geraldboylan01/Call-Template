@@ -115,6 +115,7 @@
     "check:consumer-live-value-recovery": "node ./scripts/check-consumer-live-value-recovery.mjs",
     "check:consumer-reconciliation-migration": "node ./scripts/check-consumer-reconciliation-migration.mjs",
     "check:no-stale-exports": "node ./scripts/check-no-stale-exports.mjs",
+    "check:dev-payload": "node ./scripts/check-dev-payload-input.mjs",
     "check:consumer-turn-segments": "node ./scripts/check-consumer-turn-segments.mjs",
     "verify:langfuse": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/verify-langfuse-trace.mjs",
     "measure:extraction": "node ./scripts/measure-extraction-methods.mjs",

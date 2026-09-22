@@ -75,7 +75,7 @@ import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
 import { runCollegeFundingMathTests } from './tests_college_funding_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
-import { normalizeEditorJsonInput } from './dev_payload_input.js';
+import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
 import { validateOutputsBucketedPayload } from './outputs_bucketed_contract.js';
 import {
   buildPublishedCapabilityToken,
@@ -10317,6 +10317,119 @@ async function applyModuleUpdateInternal(payload, options = {}) {
   }
 }
 
+/**
+ * A paste of several modules, added as new modules or not at all.
+ *
+ * EVERY PAYLOAD IS CHECKED BEFORE THE SESSION IS TOUCHED. A pack whose fourth
+ * module is wrong must not leave three behind for someone to delete by hand
+ * before they can try again -- the failure that makes loading a whole call by
+ * hand worse than pasting them one at a time.
+ *
+ * Applied in one pass and rendered once at the end, rather than animating each
+ * module in as it lands.
+ */
+async function applyModuleBatchInternal(payloads) {
+  if (runtimeConfig.readOnly) {
+    throw new Error('This session is read only.');
+  }
+
+  if (appState.transitionLock || getIsZoomAnimating()) {
+    throw new Error('Unable to add modules while a transition is active.');
+  }
+
+  const prepared = payloads.map((payload, index) => {
+    const title = typeof payload?.title === 'string' && payload.title.trim()
+      ? payload.title.trim()
+      : 'untitled';
+    const where = `Module ${index + 1} of ${payloads.length} (${title})`;
+
+    try {
+      const normalizedPayload = normalizePayload(payload);
+      // A moduleId means the author expected to update something that already
+      // exists. Every module in a paste is new, so honouring it is impossible
+      // and ignoring it would quietly do the wrong thing.
+      if (normalizedPayload.moduleId) {
+        throw new Error('moduleId cannot be used here; every module in a paste is a new one.');
+      }
+      preflightGeneratedPayload(normalizedPayload);
+      return normalizedPayload;
+    } catch (error) {
+      throw new Error(`${where}: ${error?.message || 'could not be applied.'}`);
+    }
+  });
+
+  const previousSession = cloneSessionValue(appState.session);
+  const previousMode = appState.mode;
+
+  try {
+    destroySortable();
+
+    const moduleIds = prepared.map((normalizedPayload) => {
+      const module = createBlankModule();
+      appState.session.modules.push(module);
+      appState.session.order.push(module.id);
+      applyNormalizedPayloadToModule(module, normalizedPayload);
+      module.updatedAt = nowIso();
+      return module.id;
+    });
+
+    appState.session.activeModuleId = moduleIds[0];
+    appState.mode = 'focused';
+    await renderFocused({ useSwipe: false, revealMode: true });
+
+    markSessionDirty();
+    saveSessionNow();
+
+    return { ok: true, moduleIds };
+  } catch (error) {
+    appState.session = previousSession;
+    await rerenderAfterPayloadRollback(previousMode);
+    throw error;
+  }
+}
+
+async function applyModuleBatchFromEditor() {
+  if (!ui.devPayloadInput) {
+    return;
+  }
+
+  let payloads;
+  try {
+    payloads = extractModulePayloadsFromEditorText(ui.devPayloadInput.value || '');
+  } catch (error) {
+    const message = error?.message || 'Invalid JSON (check quotes)';
+    renderDevPayloadWarnings([], { errorMessage: message });
+    showToast(message, 'error');
+    return;
+  }
+
+  const warnings = [];
+  const repaired = payloads.map((payload, index) => {
+    const { payload: repairedPayload, warnings: payloadWarnings } = normalizeDevPanelPayload(payload);
+    payloadWarnings.forEach((warning) => warnings.push(`Module ${index + 1}: ${warning}`));
+    return repairedPayload;
+  });
+
+  renderDevPayloadWarnings(warnings);
+  if (warnings.length > 0) {
+    console.warn('[CallCanvas][DevPayload] auto-repairs applied', warnings);
+  }
+
+  try {
+    const { moduleIds } = await applyModuleBatchInternal(repaired);
+    renderDevPayloadWarnings(warnings);
+    const moduleCount = `${moduleIds.length} module${moduleIds.length === 1 ? '' : 's'}`;
+    showToast(warnings.length > 0
+      ? `Added ${moduleCount} with ${warnings.length} auto-repair${warnings.length === 1 ? '' : 's'}.`
+      : `Added ${moduleCount}.`);
+  } catch (error) {
+    renderDevPayloadWarnings(warnings, {
+      errorMessage: error?.message || 'Failed to add modules.'
+    });
+    showToast(error?.message || 'Failed to add modules.', 'error');
+  }
+}
+
 async function applyPayloadFromEditor({ createNewModuleFirst }) {
   if (!ui.devPayloadInput) {
     return;
@@ -10990,6 +11103,12 @@ function bindEvents() {
   if (runtimeConfig.allowDevPanel && ui.devCreateApplyBtn) {
     ui.devCreateApplyBtn.addEventListener('click', async () => {
       await applyPayloadFromEditor({ createNewModuleFirst: true });
+    });
+  }
+
+  if (runtimeConfig.allowDevPanel && ui.devApplyAllBtn) {
+    ui.devApplyAllBtn.addEventListener('click', async () => {
+      await applyModuleBatchFromEditor();
     });
   }
 

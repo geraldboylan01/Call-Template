@@ -13470,6 +13470,7 @@ export function getUiElements() {
     devExampleSelect: document.getElementById('devExampleSelect'),
     devApplyBtn: document.getElementById('devApplyBtn'),
     devCreateApplyBtn: document.getElementById('devCreateApplyBtn'),
+    devApplyAllBtn: document.getElementById('devApplyAllBtn'),
     devLoadExampleBtn: document.getElementById('devLoadExampleBtn'),
     devClearBtn: document.getElementById('devClearBtn'),
     devCloseBtn: document.getElementById('devCloseBtn'),
