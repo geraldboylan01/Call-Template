@@ -1,0 +1,656 @@
+{
+  "casePackVersion": 1,
+  "clientName": "Frasier Crane",
+  "modules": [
+    {
+      "title": "Personal Balance Sheet",
+      "generated": {
+        "summaryHtml": "<p>This balance sheet shows your current position and three ways the assets could be reorganised as you prepare for retirement. Start with net worth, then compare how much wealth is held in lifestyle assets, immediately available cash, long-term retirement assets and concentrated investments. As you are being treated as retired, the cash reserve is assessed against a longer retirement buffer: your current €150,000 represents around 34 months of current spending, while the Retirement-Ready Portfolio retains two full years of spending in cash and directs the remaining available capital towards diversified long-term investments.</p>",
+        "assumptions": {
+          "columns": ["Assumption", "Value"],
+          "rows": [
+            ["Spanish property", "The €200,000 mortgage-free Spanish property is a holiday home rather than a rental or investment property and is therefore classified as a Lifestyle asset."],
+            ["UK defined-benefit pension", "Shown at €0 capital value. Expected income is approximately £24,000 per annum from age 65 and is stated to be index-linked."],
+            ["Foreign life-savings/insurance product", "Shown at €0 capital value. Expected income at maturity is approximately €12,000 per annum, although the exact figure is uncertain and is not index-linked. An accumulated-pot lump-sum option may also be available."],
+            ["Spouse DC pension", "Shown at €0 because its current capital value was not provided."],
+            ["Annual expenditure", "€53,352 comprises approximately €42,000 of household expenditure plus €11,352 of annual mortgage repayments."]
+          ]
+        },
+        "pbsInputs": {
+          "annualExpenditure": 53352,
+          "currentAge": 54,
+          "retirementStatus": "retired"
+        },
+        "outputsBucketed": {
+          "currencySymbol": "€",
+          "sections": [
+            {
+              "key": "lifestyle",
+              "title": "Lifestyle",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Family home", 800000], ["Spanish holiday home", 200000]],
+              "subtotalLabel": "Lifestyle assets",
+              "subtotalValue": 1000000
+            },
+            {
+              "key": "liquidity",
+              "title": "Liquidity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Frasier cash", 50000], ["Spouse cash", 100000]],
+              "subtotalLabel": "Liquidity assets",
+              "subtotalValue": 150000
+            },
+            {
+              "key": "longevity",
+              "title": "Longevity",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [
+                ["Previous-employer DC pension (Irish Life)", 143000],
+                ["Current-employer DC pension (New Ireland)", 124000],
+                ["Spouse DC pension - value not provided", 0],
+                ["UK DB pension - future income", 0],
+                ["Foreign life-savings/insurance product - future income", 0]
+              ],
+              "subtotalLabel": "Longevity assets",
+              "subtotalValue": 267000
+            },
+            {
+              "key": "legacy",
+              "title": "Legacy",
+              "columns": ["Asset", "Amount (€)"],
+              "rows": [["Employer/company shares", 220000]],
+              "subtotalLabel": "Legacy assets",
+              "subtotalValue": 220000
+            },
+            {
+              "key": "liabilities",
+              "title": "Liabilities",
+              "columns": ["Liability", "Amount (€)"],
+              "rows": [["Mortgage", 90000]],
+              "subtotalLabel": "Total liabilities",
+              "subtotalValue": 90000
+            },
+            {
+              "key": "summary",
+              "title": "Summary",
+              "columns": ["Metric", "Amount (€)"],
+              "rows": [["Gross assets", 1637000], ["Total liabilities", 90000], ["Net worth", 1547000]],
+              "subtotalLabel": "Net worth",
+              "subtotalValue": 1547000
+            }
+          ],
+          "scenarios": [
+            {
+              "id": "diversify-company-shares",
+              "title": "Diversify Company Shares",
+              "summaryHtml": "<p>Sell the €220,000 employer shareholding and move the proceeds into diversified long-term investments. This removes the concentrated single-company exposure while leaving overall net worth unchanged.</p>",
+              "sections": [
+                {
+                  "key": "lifestyle",
+                  "title": "Lifestyle",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Family home", 800000], ["Spanish holiday home", 200000]],
+                  "subtotalLabel": "Lifestyle assets",
+                  "subtotalValue": 1000000
+                },
+                {
+                  "key": "liquidity",
+                  "title": "Liquidity",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Frasier cash", 50000], ["Spouse cash", 100000]],
+                  "subtotalLabel": "Liquidity assets",
+                  "subtotalValue": 150000
+                },
+                {
+                  "key": "longevity",
+                  "title": "Longevity",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [
+                    ["Previous-employer DC pension (Irish Life)", 143000],
+                    ["Current-employer DC pension (New Ireland)", 124000],
+                    ["Spouse DC pension - value not provided", 0],
+                    ["UK DB pension - future income", 0],
+                    ["Foreign life-savings/insurance product - future income", 0],
+                    ["Diversified investments", 220000]
+                  ],
+                  "subtotalLabel": "Longevity assets",
+                  "subtotalValue": 487000
+                },
+                {
+                  "key": "legacy",
+                  "title": "Legacy",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [],
+                  "subtotalLabel": "Legacy assets",
+                  "subtotalValue": 0
+                },
+                {
+                  "key": "liabilities",
+                  "title": "Liabilities",
+                  "columns": ["Liability", "Amount (€)"],
+                  "rows": [["Mortgage", 90000]],
+                  "subtotalLabel": "Total liabilities",
+                  "subtotalValue": 90000
+                },
+                {
+                  "key": "summary",
+                  "title": "Summary",
+                  "columns": ["Metric", "Amount (€)"],
+                  "rows": [["Gross assets", 1637000], ["Total liabilities", 90000], ["Net worth", 1547000]],
+                  "subtotalLabel": "Net worth",
+                  "subtotalValue": 1547000
+                }
+              ],
+              "movements": [
+                {
+                  "label": "Diversify employer shares",
+                  "from": { "sectionKey": "legacy", "rowLabel": "Employer/company shares", "amount": 220000 },
+                  "to": [
+                    { "sectionKey": "longevity", "rowLabel": "Diversified investments", "amount": 220000, "action": "add" }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "sell-spanish-holiday-home",
+              "title": "Sell Foreign Property",
+              "summaryHtml": "<p>Sell the €200,000 Spanish holiday home and retain the proceeds as available capital. This reduces the amount of wealth tied up in lifestyle property and increases the funds available for retirement spending or a later investment decision.</p>",
+              "sections": [
+                {
+                  "key": "lifestyle",
+                  "title": "Lifestyle",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Family home", 800000]],
+                  "subtotalLabel": "Lifestyle assets",
+                  "subtotalValue": 800000
+                },
+                {
+                  "key": "liquidity",
+                  "title": "Liquidity",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Frasier cash", 50000], ["Spouse cash", 100000], ["Proceeds from Spanish holiday home", 200000]],
+                  "subtotalLabel": "Liquidity assets",
+                  "subtotalValue": 350000
+                },
+                {
+                  "key": "longevity",
+                  "title": "Longevity",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [
+                    ["Previous-employer DC pension (Irish Life)", 143000],
+                    ["Current-employer DC pension (New Ireland)", 124000],
+                    ["Spouse DC pension - value not provided", 0],
+                    ["UK DB pension - future income", 0],
+                    ["Foreign life-savings/insurance product - future income", 0]
+                  ],
+                  "subtotalLabel": "Longevity assets",
+                  "subtotalValue": 267000
+                },
+                {
+                  "key": "legacy",
+                  "title": "Legacy",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Employer/company shares", 220000]],
+                  "subtotalLabel": "Legacy assets",
+                  "subtotalValue": 220000
+                },
+                {
+                  "key": "liabilities",
+                  "title": "Liabilities",
+                  "columns": ["Liability", "Amount (€)"],
+                  "rows": [["Mortgage", 90000]],
+                  "subtotalLabel": "Total liabilities",
+                  "subtotalValue": 90000
+                },
+                {
+                  "key": "summary",
+                  "title": "Summary",
+                  "columns": ["Metric", "Amount (€)"],
+                  "rows": [["Gross assets", 1637000], ["Total liabilities", 90000], ["Net worth", 1547000]],
+                  "subtotalLabel": "Net worth",
+                  "subtotalValue": 1547000
+                }
+              ],
+              "movements": [
+                {
+                  "label": "Sell Spanish holiday home",
+                  "from": { "sectionKey": "lifestyle", "rowLabel": "Spanish holiday home", "amount": 200000 },
+                  "to": [
+                    { "sectionKey": "liquidity", "rowLabel": "Proceeds from Spanish holiday home", "amount": 200000, "action": "add" }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "retirement-ready-portfolio",
+              "title": "Retirement-Ready Portfolio",
+              "summaryHtml": "<p>Sell the €220,000 employer shareholding and €200,000 Spanish holiday home, retain €106,704 in cash to cover two years of current spending, and invest the remaining available capital into diversified long-term investments. This leaves a dedicated retirement cash reserve while substantially reducing concentrated and discretionary asset exposure.</p>",
+              "sections": [
+                {
+                  "key": "lifestyle",
+                  "title": "Lifestyle",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Family home", 800000]],
+                  "subtotalLabel": "Lifestyle assets",
+                  "subtotalValue": 800000
+                },
+                {
+                  "key": "liquidity",
+                  "title": "Liquidity",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [["Two-year retirement cash reserve", 106704]],
+                  "subtotalLabel": "Liquidity assets",
+                  "subtotalValue": 106704
+                },
+                {
+                  "key": "longevity",
+                  "title": "Longevity",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [
+                    ["Previous-employer DC pension (Irish Life)", 143000],
+                    ["Current-employer DC pension (New Ireland)", 124000],
+                    ["Spouse DC pension - value not provided", 0],
+                    ["UK DB pension - future income", 0],
+                    ["Foreign life-savings/insurance product - future income", 0],
+                    ["Diversified investments", 463296]
+                  ],
+                  "subtotalLabel": "Longevity assets",
+                  "subtotalValue": 730296
+                },
+                {
+                  "key": "legacy",
+                  "title": "Legacy",
+                  "columns": ["Asset", "Amount (€)"],
+                  "rows": [],
+                  "subtotalLabel": "Legacy assets",
+                  "subtotalValue": 0
+                },
+                {
+                  "key": "liabilities",
+                  "title": "Liabilities",
+                  "columns": ["Liability", "Amount (€)"],
+                  "rows": [["Mortgage", 90000]],
+                  "subtotalLabel": "Total liabilities",
+                  "subtotalValue": 90000
+                },
+                {
+                  "key": "summary",
+                  "title": "Summary",
+                  "columns": ["Metric", "Amount (€)"],
+                  "rows": [["Gross assets", 1637000], ["Total liabilities", 90000], ["Net worth", 1547000]],
+                  "subtotalLabel": "Net worth",
+                  "subtotalValue": 1547000
+                }
+              ],
+              "movements": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Liquidity Plan",
+      "generated": {
+        "summaryHtml": "<p>You currently hold €150,000 in cash against annual household outgoings of approximately €53,352, giving you around 34 months of current spending in reserve. As you are hoping soon to be retired, this analysis uses a 12-month minimum cash buffer and a 24-month target cash buffer. Your two-year target is €106,704, which is already fully covered. This leaves approximately €43,296 of cash above the target that can be considered separately for planned spending, debt repayment or longer-term investment.</p>",
+        "liquidityPlan": {
+          "currencySymbol": "€",
+          "clientStatus": "retired",
+          "annualExpenditure": 53352,
+          "currentCash": 150000,
+          "cashItems": [
+            { "label": "Frasier cash", "amount": 50000 },
+            { "label": "Spouse cash", "amount": 100000 }
+          ],
+          "minimumBufferMonths": 12,
+          "targetBufferMonths": 24,
+          "headline": "Your two-year retirement cash target is fully covered, with €43,296 above the target.",
+          "primaryActionLabel": "Cash above target",
+          "primaryActionDetail": "A 24-month cash reserve based on current spending is €106,704. Against your existing €150,000 cash balance, this leaves €43,296 above the retirement liquidity target.",
+          "nextSteps": [
+            { "label": "Retain the retirement reserve", "detail": "Keep €106,704 accessible to provide approximately two years of current household outgoings." },
+            { "label": "Allow for planned expenditure", "detail": "Check whether any of the €43,296 above the target is required for known purchases, one-off costs or other near-term commitments." },
+            { "label": "Review the remaining surplus", "detail": "Once near-term spending needs are allowed for, the remaining cash above the target can be considered alongside the mortgage and longer-term investment options." }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Mortgage - Continue or Clear",
+      "generated": {
+        "mortgageInputs": {
+          "currentBalance": 90000,
+          "annualInterestRate": 0.0235,
+          "startDateIso": "2026-09-20",
+          "endDateIso": null,
+          "remainingTermYears": 9.0833333333,
+          "repaymentType": "repayment",
+          "fixedPaymentAmount": 946,
+          "loanKind": "mortgage",
+          "overpaymentBenefit": "shorterTerm",
+          "baseScenarioId": "current-position",
+          "scenarios": [
+            { "id": "current-position", "title": "Current Position", "oneOffOverpayment": 0, "annualOverpayment": 0 },
+            { "id": "clear-mortgage", "title": "Clear Mortgage", "oneOffOverpayment": 90000, "oneOffOverpaymentMonth": 12, "annualOverpayment": 0 }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Later-Life Retirement Income",
+      "generated": {
+        "summaryHtml": "This report looks at whether your expected later-life pension income appears capable of supporting your current lifestyle, before using your existing DC pension savings. The initial picture is encouraging: once the main pensions are in payment, the illustrative gross household income is approximately €77,500 a year compared with current mortgage-free spending of approximately €42,000. Start with the later-life income picture, then focus on the more important unanswered question: how to fund the years between stopping work and your pensions beginning.",
+        "report": {
+          "title": "Your Later-Life Retirement Income",
+          "rawMarkdown": "# Your later-life retirement income looks strong\n\nOnce the main pensions are in payment, illustrative gross household pension income is approximately €77,500 a year before relying on the known €267,000 of DC pension savings or the spouse's DC pension. Current household expenditure is approximately €42,000 a year excluding the mortgage. The mortgage currently costs €11,352 a year and has 109 months remaining, so it is expected to finish before the full later-life pension picture is in place.\n\nThe later-life income estimate comprises approximately €27,840 from the UK Defined Benefit pension, €14,555 from the client's UK State Pension, €14,555 from the spouse's UK State Pension, illustrative Irish State Pensions of €4,669 and €3,891, and approximately €12,000 from the foreign life-savings or insurance product. The UK amounts use an illustrative exchange rate of £1 = €1.16.\n\nThe €77,500 figure is gross income, while €42,000 is current household spending, so the approximately €35,500 difference is not a net disposable surplus. Tax residence, particularly a possible move to Spain, will affect the eventual net-income comparison.\n\nThe household also has €267,000 of known DC pension assets, comprising €143,000 with Irish Life and €124,000 with New Ireland. The spouse also has a DC pension whose current value is not yet known.\n\nThe key planning question therefore shifts from later-life income adequacy toward the retirement bridge: how soon work can stop and how the period before the major pensions commence can be funded.",
+          "blocks": [
+            {
+              "type": "kpiRow",
+              "title": "The later-life picture at a glance",
+              "layout": "hero",
+              "items": [
+                { "label": "Illustrative gross pension income", "value": "€77,500 p.a.", "detail": "Once all of the identified later-life income sources are in payment.", "featured": true },
+                { "label": "Mortgage-free spending today", "value": "€42,000 p.a.", "detail": "Based on your stated €3,500 monthly household expenditure.", "featured": false },
+                { "label": "Known DC pensions", "value": "€267,000", "detail": "Additional retirement assets not relied upon to produce the €77,500 income figure.", "featured": false },
+                { "label": "Current age", "value": "54", "detail": "The timing gap before the main pensions begin is therefore central to the plan.", "featured": false }
+              ]
+            },
+            {
+              "type": "callout",
+              "title": "The main planning insight",
+              "tone": "positive",
+              "markdown": "Your later-life income picture appears encouraging relative to your current lifestyle. The more important question may therefore be how soon you can afford to stop working and how you fund the period before all of these pensions begin.",
+              "bullets": [
+                "The later-life income estimate does not require withdrawals from your known €267,000 of DC pensions.",
+                "Several important pension figures still need to be verified before this becomes a firm retirement-income projection."
+              ]
+            },
+            {
+              "type": "chart",
+              "chart": {
+                "title": "Where the later-life income could come from",
+                "subtitle": "Illustrative annual gross household income once all listed sources are in payment",
+                "type": "bar",
+                "labels": ["UK DB pension", "Your UK State Pension", "Spouse UK State Pension", "Your Irish State Pension", "Spouse Irish State Pension", "Foreign retirement product"],
+                "display": { "variant": "wide", "valueFormat": "currency", "yAxisTitle": "Annual income (€)" },
+                "insights": [
+                  { "label": "Largest source", "value": "€27,840", "detail": "Your index-linked UK Defined Benefit pension is the largest individual income source in this illustration." },
+                  { "label": "Important caveat", "value": "Illustrative", "detail": "The Irish State Pension amounts and foreign retirement-product income still need to be confirmed." }
+                ],
+                "datasets": [
+                  { "label": "Annual gross income", "data": [27840, 14555, 14555, 4669, 3891, 12000] }
+                ]
+              }
+            },
+            {
+              "type": "table",
+              "title": "How the €77,500 estimate is built",
+              "table": {
+                "columns": ["Income source", "Illustrative annual amount"],
+                "rows": [
+                  ["UK Defined Benefit pension from age 65", "€27,840"],
+                  ["Your UK State Pension", "€14,555"],
+                  ["Spouse UK State Pension", "€14,555"],
+                  ["Your illustrative Irish State Pension", "€4,669"],
+                  ["Spouse illustrative Irish State Pension", "€3,891"],
+                  ["Foreign retirement product", "€12,000"],
+                  ["Approximate total", "€77,500"]
+                ]
+              }
+            },
+            {
+              "type": "chart",
+              "chart": {
+                "title": "Later-life income compared with current lifestyle spending",
+                "subtitle": "This is a gross-income versus current-spending comparison, not a net-income surplus calculation",
+                "type": "bar",
+                "labels": ["Mortgage-free household spending", "Illustrative gross pension income"],
+                "display": { "variant": "wide", "valueFormat": "currency", "yAxisTitle": "Annual amount (€)" },
+                "annotations": [
+                  { "label": "Different bases", "xLabel": "Illustrative gross pension income", "yValue": 77500, "tone": "warning", "body": "Pension income is predominantly gross and will be subject to tax." }
+                ],
+                "insights": [
+                  { "label": "Headline difference", "value": "~€35,500", "detail": "The arithmetic difference is encouraging, but it should not be treated as additional spendable income because tax has not yet been allowed for." }
+                ],
+                "datasets": [
+                  { "label": "Annual amount", "data": [42000, 77500] }
+                ]
+              }
+            },
+            {
+              "type": "callout",
+              "title": "Why we use €42,000 for later retirement",
+              "tone": "info",
+              "markdown": "Your current household expenditure is approximately €42,000 a year before mortgage repayments. The mortgage adds €11,352 today, taking current total outgoings to approximately €53,352, but with 109 months remaining it is expected to be repaid around age 63. For the later-life comparison, we have therefore used your current €42,000 mortgage-free lifestyle cost.",
+              "bullets": [
+                "The analysis assumes your approximately €12,000 annual travel and holiday spending is already included within the €42,000 figure.",
+                "That assumption should be confirmed before relying on the spending figure."
+              ]
+            },
+            {
+              "type": "kpiRow",
+              "title": "There is another layer of retirement capital",
+              "layout": "hero",
+              "items": [
+                { "label": "Previous-employer DC pension", "value": "€143,000", "detail": "Irish Life", "featured": false },
+                { "label": "Current-employer DC pension", "value": "€124,000", "detail": "New Ireland", "featured": false },
+                { "label": "Known DC pension assets", "value": "€267,000", "detail": "Not required to generate the illustrated €77,500 of later-life pension income.", "featured": true },
+                { "label": "Spouse DC pension", "value": "Not yet valued", "detail": "This would provide an additional retirement resource once its current balance is confirmed.", "featured": false }
+              ]
+            },
+            {
+              "type": "callout",
+              "title": "The next question is the retirement bridge",
+              "tone": "warning",
+              "markdown": "You are 54 today, while some of the most valuable guaranteed income sources do not begin until your mid-to-late 60s. That makes the period between stopping work and those pensions starting the next part of the plan.",
+              "bullets": [
+                "How much would your household need each year if you stopped work before the main pensions begin?",
+                "How much of that gap can be met from existing cash, investments and DC pension assets?",
+                "How does the picture change if you retire now, work another two or three years, or move to part-time or contract work?"
+              ]
+            },
+            {
+              "type": "checklist",
+              "title": "What should be verified next",
+              "items": [
+                { "label": "Check both Irish PRSI Contribution Statements", "checked": false, "note": "The €4,669 and €3,891 Irish State Pension figures are illustrations rather than confirmed entitlements." },
+                { "label": "Confirm your spouse's UK State Pension commencement age", "checked": false, "note": "The exact date of birth is needed to confirm when the pension becomes payable." },
+                { "label": "Obtain the foreign retirement-product documentation", "checked": false, "note": "Confirm the exact income, commencement age, indexation terms and lump-sum alternative." },
+                { "label": "Confirm the travel budget is already within household spending", "checked": false, "note": "The analysis currently assumes the approximately €12,000 annual holiday and travel budget is included within the €42,000 spending figure." },
+                { "label": "Establish likely retirement tax residence", "checked": false, "note": "A move to Spain could materially affect the eventual net-income comparison, so the gross figures should not yet be converted into a net retirement surplus." },
+                { "label": "Value the spouse's DC pension", "checked": false, "note": "This pension is an additional retirement asset but has not yet been included in the known €267,000 DC total." }
+              ]
+            },
+            {
+              "type": "sourceList",
+              "title": "Sources and verification points",
+              "items": [
+                { "label": "UK Government - New State Pension", "kind": "official", "note": "Verify the applicable full new State Pension rate and individual entitlement." },
+                { "label": "UK Government - State Pension age", "kind": "official", "note": "Verify commencement age using each person's date of birth." },
+                { "label": "Department of Social Protection - State Pension Contributory", "kind": "official", "note": "Verify current Irish State Pension rates, eligibility and commencement options." },
+                { "label": "Department of Social Protection - Contribution Statement", "kind": "official", "note": "Use each individual contribution history before relying on the illustrative Irish pension amounts." }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Retirement Bridge - Could You Retire at 57?",
+      "generated": {
+        "summaryHtml": "<p>The model suggests there is a credible route to retiring at approximately 57 and bridging the period until your later-life pensions take over. Under the assumptions modelled, there is no unfunded shortfall, your €106,704 two-year cash reserve is never needed, and your €200,000 foreign property does not need to be sold. Start with the headline result, then follow the timeline to see how the tax-free lump sum, accessible investments and progressively commencing pension income work together through the bridge.</p>",
+        "report": {
+          "title": "Could You Afford to Retire at 57?",
+          "rawMarkdown": "# Could you afford to retire at 57?\n\nYour longer-term retirement income looks strong, but most of that income does not arrive immediately. The question is therefore whether your existing assets and pension can bridge the period from retirement at 57 until your later pensions begin. The model uses deliberately cautious assumptions and produces no unfunded shortfall. It does this without selling your €200,000 foreign property and without drawing on the protected €106,704 two-year cash reserve.",
+          "blocks": [
+            {
+              "type": "kpiRow",
+              "title": "The model successfully bridges retirement from 57",
+              "layout": "hero",
+              "items": [
+                { "label": "Modelled retirement age", "value": "57", "detail": "After three further years of work and pension contributions.", "featured": false },
+                { "label": "Unfunded shortfall", "value": "None", "detail": "The annual cash-flow model remains funded throughout the bridge.", "featured": true },
+                { "label": "Protected cash reserve", "value": "€106,704", "detail": "The full two-year reserve remains untouched.", "featured": false },
+                { "label": "Foreign property required", "value": "No", "detail": "The approximately €200,000 foreign property remains outside the bridge.", "featured": false }
+              ]
+            },
+            {
+              "type": "callout",
+              "title": "What the result means",
+              "tone": "positive",
+              "markdown": "On the assumptions modelled, retiring at approximately 57 appears financially achievable within this retirement bridge. Your early retirement is initially funded from the tax-free pension lump sum and accessible investments. As your spouse's pensions, your retirement-fund withdrawals and eventually your own major pensions begin, the amount required from accessible investments falls until pension income takes over.",
+              "bullets": [
+                "The model does not require additional employment income after age 57.",
+                "It does not rely on selling your foreign property.",
+                "It does not exhaust the protected two-year cash reserve.",
+                "The accessible investment portfolio reaches its low point before beginning to rebuild."
+              ]
+            },
+            {
+              "type": "kpiRow",
+              "title": "What you could have available at 57",
+              "layout": "hero",
+              "items": [
+                { "label": "Projected DC pension", "value": "€454,224", "detail": "After three further years of contributions and modelled 5% annual growth.", "featured": false },
+                { "label": "25% tax-free lump sum", "value": "€113,556", "detail": "Illustrative retirement lump-sum assumption.", "featured": false },
+                { "label": "Remaining retirement fund", "value": "€340,668", "detail": "Left invested after the assumed lump sum.", "featured": false },
+                { "label": "Accessible investment portfolio", "value": "€221,240", "detail": "Diversified company-share proceeds and surplus cash after three years of modelled growth.", "featured": false },
+                { "label": "Protected cash", "value": "€106,704", "detail": "Two years of today's total household expenditure.", "featured": true }
+              ]
+            },
+            {
+              "type": "timeline",
+              "title": "How the retirement bridge works",
+              "timeline": {
+                "events": [
+                  { "dateLabel": "Age 54–57", "title": "Build the pension for another three years", "body": "The model assumes no additional non-pension savings, but continues maximum modelled employee pension contributions, €7,800 annual employer contributions and 5% pension growth. The DC fund reaches approximately €454,224." },
+                  { "dateLabel": "Age 57", "title": "Retire and establish the bridge", "body": "An assumed 25% pension lump sum provides €113,556. €340,668 remains invested in the retirement fund. The accessible investment portfolio is approximately €221,240 and €106,704 remains protected in cash." },
+                  { "dateLabel": "Age 57–59", "title": "The tax-free lump sum does most of the early work", "body": "Modelled expenditure is €55,923 at 57 and €56,814 at 58. The lump sum funds these early years and is exhausted during age 59." },
+                  { "dateLabel": "Age 60", "title": "Your spouse's Irish State Pension begins", "body": "The first modelled guaranteed pension income enters the household, reducing the amount that needs to come from accessible investments." },
+                  { "dateLabel": "Age 61", "title": "More pension income enters", "body": "Your spouse's UK State Pension begins and the model takes the first 4% mandatory distribution from your retirement fund." },
+                  { "dateLabel": "Age 63", "title": "The mortgage substantially finishes", "body": "The model includes one final €946 mortgage payment at age 63. From age 64 onward, the mortgage cost disappears from household expenditure." },
+                  { "dateLabel": "Age 64", "title": "Accessible investments reach their low point", "body": "The accessible investment portfolio falls to approximately €70,182. The protected €106,704 cash reserve has still not been touched." },
+                  { "dateLabel": "Age 65", "title": "The bridge is crossed", "body": "Your UK Defined Benefit pension and the assumed €12,000 foreign retirement-product income begin. Modelled pension income and retirement-fund withdrawals are sufficient to meet expenditure, so the accessible portfolio no longer needs to fund a shortfall." },
+                  { "dateLabel": "Age 66–67", "title": "Your remaining State Pensions progressively begin", "body": "Your illustrative Irish State Pension begins at 66 and your UK State Pension at 67, further strengthening household retirement income." }
+                ]
+              }
+            },
+            {
+              "type": "chart",
+              "chart": {
+                "title": "The accessible portfolio carries the middle of the bridge",
+                "subtitle": "Year-end accessible investment balance while the €106,704 cash reserve remains untouched",
+                "type": "line",
+                "labels": ["57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67"],
+                "display": { "variant": "wide", "valueFormat": "currency", "yAxisTitle": "Accessible investment portfolio (€)" },
+                "annotations": [
+                  { "label": "Low point", "xLabel": "64", "yValue": 70182, "tone": "warning", "body": "The portfolio reaches approximately €70,182 before the major age-65 pension income begins." },
+                  { "label": "Direction changes", "xLabel": "65", "yValue": 83740, "tone": "positive", "body": "From age 65, surplus modelled retirement income begins rebuilding accessible capital." }
+                ],
+                "insights": [
+                  { "label": "Lowest balance", "value": "€70,182", "detail": "Reached at the end of age 64." },
+                  { "label": "Cash reserve used", "value": "€0", "detail": "The €106,704 protected reserve remains intact throughout the model." }
+                ],
+                "datasets": [
+                  { "label": "Accessible investment portfolio", "data": [232302, 243917, 199208, 154505, 130579, 104903, 87786, 70182, 83740, 103038, 136464] }
+                ]
+              }
+            },
+            {
+              "type": "chart",
+              "chart": {
+                "title": "Pension income progressively takes over",
+                "subtitle": "Modelled annual household spending compared with net guaranteed pension income and net mandatory retirement-fund distributions",
+                "type": "bar",
+                "labels": ["57", "58", "59", "60", "61", "62", "63", "64", "65", "66", "67"],
+                "display": { "variant": "wide", "valueFormat": "currency", "yAxisTitle": "Annual amount (€)" },
+                "annotations": [
+                  { "label": "Major turning point", "xLabel": "65", "yValue": 62270, "tone": "positive", "body": "At 65, modelled net pension income plus the retirement-fund distribution exceeds annual expenditure." }
+                ],
+                "insights": [
+                  { "label": "Age 65 expenditure", "value": "€52,222", "detail": "The mortgage has finished, materially reducing the annual funding requirement." },
+                  { "label": "Age 65 modelled net pension resources", "value": "€62,270", "detail": "Approximately €49,702 of net guaranteed income plus €12,568 of net retirement-fund distribution." }
+                ],
+                "datasets": [
+                  { "label": "Household expenditure", "data": [55923, 56814, 57723, 58651, 59597, 60562, 51140, 51198, 52222, 53266, 54331] },
+                  { "label": "Net guaranteed pension income", "data": [0, 0, 0, 3987, 15771, 16086, 16408, 16736, 49702, 55709, 69835] },
+                  { "label": "Net mandatory retirement-fund distribution", "data": [0, 0, 0, 0, 12174, 12271, 12370, 12469, 12568, 12669, 12770] }
+                ]
+              }
+            },
+            {
+              "type": "kpiRow",
+              "title": "What remains when the major pensions take over",
+              "layout": "hero",
+              "items": [
+                { "label": "Accessible investment portfolio at 65", "value": "€83,740", "detail": "The portfolio has passed its low point and begins rebuilding.", "featured": false },
+                { "label": "Protected cash reserve", "value": "€106,704", "detail": "Still completely intact.", "featured": false },
+                { "label": "Retirement fund at 65", "value": "€430,915", "detail": "After modelled growth and 4% gross annual distributions from age 61.", "featured": false },
+                { "label": "Total retirement capital at 65", "value": "€621,358", "detail": "Accessible capital plus the remaining retirement fund.", "featured": true },
+                { "label": "Total retirement capital at 67", "value": "€681,005", "detail": "After the main pension sources are in payment.", "featured": false }
+              ]
+            },
+            {
+              "type": "callout",
+              "title": "The foreign property remains outside the plan",
+              "tone": "info",
+              "markdown": "The approximately €200,000 foreign property is not sold or used to fund the retirement bridge. The model also excludes your €800,000 family home, your spouse's unvalued DC pension and any additional non-pension savings you may build over the next three years.",
+              "bullets": [
+                "No proceeds from the foreign property are required.",
+                "No additional employment income after age 57 is assumed.",
+                "No additional non-pension savings during the final three working years are relied upon."
+              ]
+            },
+            {
+              "type": "accordion",
+              "title": "Why this is deliberately a difficult test",
+              "items": [
+                { "title": "No extra non-pension savings", "markdown": "The model assumes you save nothing further outside your pension during the next three working years, even though your current finances may allow additional saving.", "defaultOpen": true },
+                { "title": "Company shares receive a severe tax haircut", "markdown": "The model assumes virtually the entire €220,000 company-share value is exposed to 33% CGT after a €1,270 exemption, leaving €147,819 of net sale proceeds. This is a stress assumption, not an estimate of your actual CGT liability. Your actual base cost needs to be established.", "defaultOpen": false },
+                { "title": "Cash earns nothing", "markdown": "The €106,704 protected cash reserve is assumed to earn 0% throughout the model.", "defaultOpen": false },
+                { "title": "Investment growth is modelled smoothly", "markdown": "The accessible portfolio and pension are modelled using 5% annual growth. Real investment returns will be uneven, and poor returns early in retirement could materially change the result.", "defaultOpen": false },
+                { "title": "Pension taxation is simplified", "markdown": "The model applies a simplified 30% effective tax rate to taxable pension income and retirement-fund withdrawals. Actual taxation will depend on your income and future tax residence, including whether you retire in Ireland or Spain.", "defaultOpen": false },
+                { "title": "Spending continues to rise", "markdown": "Non-mortgage household expenditure increases by 2% each year. Your spouse is also assumed to stop working when you retire, so there is no employment income for either of you after age 57.", "defaultOpen": false }
+              ]
+            },
+            {
+              "type": "checklist",
+              "title": "What needs to be confirmed before making the decision",
+              "items": [
+                { "label": "Confirm your pension retirement and lump-sum options", "checked": false, "note": "The model assumes the pension arrangements permit the illustrated 25% retirement lump sum at 57." },
+                { "label": "Check both Irish PRSI Contribution Statements", "checked": false, "note": "The Irish State Pension amounts are illustrative and depend on the complete contribution histories." },
+                { "label": "Confirm the foreign retirement product", "checked": false, "note": "The model assumes approximately €12,000 a year beginning when you are 65. The actual benefit, commencement age and lump-sum alternative need to be verified." },
+                { "label": "Calculate the actual company-share CGT", "checked": false, "note": "The model deliberately assumes an unusually severe tax outcome. Actual taxable gains depend on acquisition and base cost." },
+                { "label": "Establish likely retirement tax residence", "checked": false, "note": "Retirement in Ireland versus Spain could materially alter the net pension-income position." },
+                { "label": "Stress-test investment returns", "checked": false, "note": "The next iteration should test weaker and more volatile returns rather than assuming a smooth 5% every year." }
+              ]
+            },
+            {
+              "type": "callout",
+              "title": "The bigger picture",
+              "tone": "positive",
+              "markdown": "The three additional working years are doing more than simply delaying retirement. They allow your pension to grow, add three further years of substantial pension contributions and move you materially closer to the point where your spouse's and then your own pension income begins. The result is a potential retirement at 57 where your existing assets need to fund a temporary bridge rather than support the household indefinitely.",
+              "bullets": [
+                "Your later pension income takes over before the bridge assets are exhausted.",
+                "The protected cash reserve remains intact.",
+                "The foreign property is not required.",
+                "The next question is how much additional safety margin you would want before actually retiring."
+              ]
+            },
+            {
+              "type": "sourceList",
+              "title": "Model sources and items to verify",
+              "items": [
+                { "label": "Attached retirement bridge model", "kind": "model", "note": "Definitive source for the calculations, annual cash flows and headline figures used in this report." },
+                { "label": "Revenue - pension contribution relief limits", "kind": "official", "note": "Source used by the model for the age-related pension contribution limits and earnings cap." },
+                { "label": "Revenue - Capital Gains Tax", "kind": "official", "note": "Source used by the model for the CGT rate and annual exemption." },
+                { "label": "Revenue - ARF imputed distributions", "kind": "official", "note": "Source used by the model for the retirement-fund distribution assumptions." },
+                { "label": "Department of Social Protection", "kind": "official", "note": "Source used for the Irish State Pension rate and Total Contributions Approach." },
+                { "label": "GOV.UK", "kind": "official", "note": "Source used for the UK State Pension rate and State Pension age assumptions." }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
