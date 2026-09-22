@@ -1,0 +1,12 @@
+{
+  "casePackVersion": 2,
+  "clientName": "AAM: wrong version",
+  "modules": [
+    {
+      "title": "What we covered",
+      "generated": {
+        "summaryHtml": "<p>Three takeaways.</p>"
+      }
+    }
+  ]
+}

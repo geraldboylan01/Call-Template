@@ -130,14 +130,18 @@ function requirePayloadObject(entry, index) {
 }
 
 /**
- * Every module payload in one paste.
+ * Every module payload in one paste, and the case pack it came in if it was one.
  *
- * Three shapes, because all three are what someone actually pastes when they
- * mean "here are my modules": a JSON array of payloads, a `{ modules: [...] }`
- * file, or the payloads one after another with nothing between them. The last
- * is the one that used to fail quietly -- the single-payload path reads the
- * first complete object and ignores whatever follows it, so pasting six
- * modules loaded one and said nothing about the other five.
+ * Four shapes, because all four are what someone actually pastes when they mean
+ * "here are my modules": a case pack file, a JSON array of payloads, a bare
+ * `{ modules: [...] }`, or the payloads one after another with nothing between
+ * them. The last is the one that used to fail quietly -- the single-payload path
+ * reads the first complete object and ignores whatever follows it, so pasting
+ * six modules loaded one and said nothing about the other five.
+ *
+ * `pack` is the whole parsed object when it carries a `casePackVersion`, so the
+ * caller can validate it as a pack and read the client name off it. Everything
+ * else comes back as payloads with no pack.
  *
  * Throws with a message fit for the warnings area rather than returning empty,
  * because "nothing happened" is the failure this is here to end.
@@ -154,17 +158,24 @@ export function extractModulePayloadsFromEditorText(rawInput) {
       if (whole.value.length === 0) {
         throw new Error('That array has no modules in it.');
       }
-      return whole.value.map(requirePayloadObject);
+      return { pack: null, payloads: whole.value.map(requirePayloadObject) };
     }
 
     if (whole.value && typeof whole.value === 'object') {
+      if ('casePackVersion' in whole.value) {
+        // Left whole on purpose: a pack is validated as a pack, and its
+        // version and client name are part of what gets checked.
+        return { pack: whole.value, payloads: [] };
+      }
+
       if (Array.isArray(whole.value.modules)) {
         if (whole.value.modules.length === 0) {
           throw new Error('That file has no modules in it.');
         }
-        return whole.value.modules.map(requirePayloadObject);
+        return { pack: null, payloads: whole.value.modules.map(requirePayloadObject) };
       }
-      return [whole.value];
+
+      return { pack: null, payloads: [whole.value] };
     }
 
     throw new Error('That is valid JSON but not a module payload.');
@@ -191,5 +202,5 @@ export function extractModulePayloadsFromEditorText(rawInput) {
     throw new Error('No module payloads found (check quotes).');
   }
 
-  return payloads;
+  return { pack: null, payloads };
 }

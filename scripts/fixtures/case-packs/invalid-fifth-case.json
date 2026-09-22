@@ -1,0 +1,60 @@
+{
+  "casePackVersion": 1,
+  "clientName": "AAM: fifth case",
+  "modules": [
+    {
+      "title": "What we covered",
+      "generated": {
+        "summaryHtml": "<p>Three takeaways.</p>"
+      }
+    },
+    {
+      "title": "Your retirement",
+      "generated": {
+        "summaryHtml": "<p>x</p>",
+        "pensionInputs": {
+          "currentAge": 50,
+          "retirementAge": 62,
+          "currentSalary": 90000,
+          "currentPot": 400000,
+          "personalPct": 0.05,
+          "employerPct": 0.06,
+          "growthRate": 0.05,
+          "inflationRate": 0.02,
+          "wageGrowthRate": 0.02,
+          "horizonEndAge": 92,
+          "currentYear": 2026,
+          "incomeMode": "target",
+          "targetIncomeToday": 45000,
+          "baseScenarioId": "retire-62",
+          "scenarios": [
+            {
+              "id": "retire-62",
+              "title": "Retire at 62"
+            },
+            {
+              "id": "retire-58",
+              "title": "Retire at 58",
+              "retirementAge": 58
+            },
+            {
+              "id": "retire-60",
+              "title": "Retire at 60",
+              "retirementAge": 60
+            },
+            {
+              "id": "retire-64",
+              "title": "Retire at 64",
+              "retirementAge": 64
+            },
+            {
+              "id": "retire-66",
+              "title": "Retire at 66",
+              "retirementAge": 66
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "casePackVersion": 1,
+  "clientName": "AAM: module id",
+  "modules": [
+    {
+      "title": "What we covered",
+      "generated": {
+        "summaryHtml": "<p>Three takeaways.</p>"
+      }
+    },
+    {
+      "moduleId": "an-existing-module",
+      "title": "Your retirement",
+      "generated": {
+        "summaryHtml": "<p>x</p>"
+      }
+    }
+  ]
+}

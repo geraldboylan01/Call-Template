@@ -25,7 +25,8 @@ const check = (label, run) => {
   console.info(`[DevPayloadInput] PASS: ${label}`);
 };
 
-const titles = (text) => extractModulePayloadsFromEditorText(text).map((payload) => payload.title);
+const extract = (text) => extractModulePayloadsFromEditorText(text);
+const titles = (text) => extract(text).payloads.map((payload) => payload.title);
 const rejects = (label, text, expected) => check(label, () => {
   assert.throws(() => extractModulePayloadsFromEditorText(text), (error) => {
     assert.equal(error.message, expected);
@@ -44,11 +45,17 @@ check('an array of payloads is every module in it', () => {
   assert.deepEqual(titles(`[${ONE},${TWO}]`), ['Balance sheet', 'Cash reserve']);
 });
 
-check('a file with a modules list is every module in the list', () => {
-  assert.deepEqual(
-    titles(`{"casePackVersion":1,"clientName":"AAM: someone","modules":[${ONE},${TWO}]}`),
-    ['Balance sheet', 'Cash reserve']
-  );
+check('a bare modules list is every module in the list', () => {
+  assert.deepEqual(titles(`{"modules":[${ONE},${TWO}]}`), ['Balance sheet', 'Cash reserve']);
+});
+
+// A case pack comes back WHOLE. Flattening it to its modules here would throw
+// away the version and the client name before either could be checked.
+check('a case pack is handed back intact for the pack validator', () => {
+  const found = extract(`{"casePackVersion":1,"clientName":"AAM: someone","modules":[${ONE},${TWO}]}`);
+  assert.equal(found.payloads.length, 0);
+  assert.equal(found.pack.clientName, 'AAM: someone');
+  assert.equal(found.pack.modules.length, 2);
 });
 
 // THE ONE THE SINGLE-PAYLOAD PATH LOSES. Two objects with nothing between

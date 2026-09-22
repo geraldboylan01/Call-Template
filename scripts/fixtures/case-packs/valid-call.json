@@ -1,0 +1,150 @@
+{
+  "casePackVersion": 1,
+  "clientName": "AAM: threekids",
+  "modules": [
+    {
+      "title": "Your balance sheet",
+      "generated": {
+        "summaryHtml": "<p>Where the money sits today, and what is owed against it.</p>",
+        "outputsBucketed": {
+          "currencySymbol": "€",
+          "sections": [
+            { "key": "lifestyle", "title": "Lifestyle", "columns": ["Item", "Value"], "subtotalValue": 520000,
+              "rows": [["Family home", 495000], ["Cars", 25000]] },
+            { "key": "liquidity", "title": "Liquidity", "columns": ["Item", "Value"], "subtotalValue": 48000,
+              "rows": [["Current account", 8000], ["Savings", 40000]] },
+            { "key": "longevity", "title": "Longevity", "columns": ["Item", "Value"], "subtotalValue": 412000,
+              "rows": [["Her pension", 260000], ["His pension", 152000]] },
+            { "key": "legacy", "title": "Legacy", "columns": ["Item", "Value"], "subtotalValue": 60000,
+              "rows": [["Shares", 60000]] },
+            { "key": "liabilities", "title": "Liabilities", "columns": ["Item", "Value"], "subtotalValue": 295000,
+              "rows": [["Mortgage", 280000], ["Credit union loan", 15000]] },
+            { "key": "summary", "title": "Summary", "columns": ["Item", "Value"],
+              "rows": [["Gross assets", 1040000], ["Total liabilities", 295000], ["Net worth", 745000]] }
+          ],
+          "scenarios": [
+            {
+              "id": "clear-the-loan",
+              "title": "Clear the credit union loan",
+              "summaryHtml": "<p>Savings pay off the smaller debt.</p>",
+              "sections": [
+                { "key": "lifestyle", "title": "Lifestyle", "columns": ["Item", "Value"], "subtotalValue": 520000,
+                  "rows": [["Family home", 495000], ["Cars", 25000]] },
+                { "key": "liquidity", "title": "Liquidity", "columns": ["Item", "Value"], "subtotalValue": 33000,
+                  "rows": [["Current account", 8000], ["Savings", 25000]] },
+                { "key": "longevity", "title": "Longevity", "columns": ["Item", "Value"], "subtotalValue": 412000,
+                  "rows": [["Her pension", 260000], ["His pension", 152000]] },
+                { "key": "legacy", "title": "Legacy", "columns": ["Item", "Value"], "subtotalValue": 60000,
+                  "rows": [["Shares", 60000]] },
+                { "key": "liabilities", "title": "Liabilities", "columns": ["Item", "Value"], "subtotalValue": 280000,
+                  "rows": [["Mortgage", 280000]] },
+                { "key": "summary", "title": "Summary", "columns": ["Item", "Value"],
+                  "rows": [["Gross assets", 1025000], ["Total liabilities", 280000], ["Net worth", 745000]] }
+              ]
+            },
+            {
+              "id": "sell-the-shares",
+              "title": "Sell the shares into cash",
+              "summaryHtml": "<p>The concentrated holding becomes reserve.</p>",
+              "sections": [
+                { "key": "lifestyle", "title": "Lifestyle", "columns": ["Item", "Value"], "subtotalValue": 520000,
+                  "rows": [["Family home", 495000], ["Cars", 25000]] },
+                { "key": "liquidity", "title": "Liquidity", "columns": ["Item", "Value"], "subtotalValue": 108000,
+                  "rows": [["Current account", 8000], ["Savings", 100000]] },
+                { "key": "longevity", "title": "Longevity", "columns": ["Item", "Value"], "subtotalValue": 412000,
+                  "rows": [["Her pension", 260000], ["His pension", 152000]] },
+                { "key": "legacy", "title": "Legacy", "columns": ["Item", "Value"], "subtotalValue": 0, "rows": [] },
+                { "key": "liabilities", "title": "Liabilities", "columns": ["Item", "Value"], "subtotalValue": 295000,
+                  "rows": [["Mortgage", 280000], ["Credit union loan", 15000]] },
+                { "key": "summary", "title": "Summary", "columns": ["Item", "Value"],
+                  "rows": [["Gross assets", 1040000], ["Total liabilities", 295000], ["Net worth", 745000]] }
+              ]
+            },
+            {
+              "id": "both",
+              "title": "Do both",
+              "summaryHtml": "<p>Sell the shares and clear the loan.</p>",
+              "sections": [
+                { "key": "lifestyle", "title": "Lifestyle", "columns": ["Item", "Value"], "subtotalValue": 520000,
+                  "rows": [["Family home", 495000], ["Cars", 25000]] },
+                { "key": "liquidity", "title": "Liquidity", "columns": ["Item", "Value"], "subtotalValue": 93000,
+                  "rows": [["Current account", 8000], ["Savings", 85000]] },
+                { "key": "longevity", "title": "Longevity", "columns": ["Item", "Value"], "subtotalValue": 412000,
+                  "rows": [["Her pension", 260000], ["His pension", 152000]] },
+                { "key": "legacy", "title": "Legacy", "columns": ["Item", "Value"], "subtotalValue": 0, "rows": [] },
+                { "key": "liabilities", "title": "Liabilities", "columns": ["Item", "Value"], "subtotalValue": 280000,
+                  "rows": [["Mortgage", 280000]] },
+                { "key": "summary", "title": "Summary", "columns": ["Item", "Value"],
+                  "rows": [["Gross assets", 1025000], ["Total liabilities", 280000], ["Net worth", 745000]] }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Your cash reserve",
+      "generated": {
+        "summaryHtml": "<p>How long the savings would last if the income stopped.</p>",
+        "liquidityPlan": {
+          "currencySymbol": "€",
+          "currentCash": 48000,
+          "monthlyExpenditure": 6200,
+          "clientStatus": "not-retired"
+        }
+      }
+    },
+    {
+      "title": "Your retirement",
+      "generated": {
+        "summaryHtml": "<p>Retiring at 58, 62 or 66, side by side.</p>",
+        "pensionInputs": {
+          "currentAge": 50, "retirementAge": 62, "currentSalary": 90000, "currentPot": 400000,
+          "personalPct": 0.05, "employerPct": 0.06, "growthRate": 0.05, "inflationRate": 0.02,
+          "wageGrowthRate": 0.02, "horizonEndAge": 92, "currentYear": 2026,
+          "incomeMode": "target", "targetIncomeToday": 45000,
+          "baseScenarioId": "retire-62",
+          "scenarios": [
+            { "id": "retire-62", "title": "Retire at 62" },
+            { "id": "retire-58", "title": "Retire at 58", "retirementAge": 58 },
+            { "id": "keep-going", "title": "Keep going to 66", "retirementAge": 66, "personalPct": 0.10 }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Your mortgage",
+      "generated": {
+        "summaryHtml": "<p>What overpaying would buy.</p>",
+        "mortgageInputs": {
+          "loanKind": "mortgage",
+          "currentBalance": 280000,
+          "annualInterestRate": 0.0395,
+          "startDateIso": "2026-01-01",
+          "endDateIso": "2048-12-01",
+          "repaymentType": "repayment",
+          "baseScenarioId": "as-is",
+          "scenarios": [
+            { "id": "as-is", "title": "As things stand" },
+            { "id": "pay-300", "title": "Pay €300 more a month", "annualOverpayment": 3600 },
+            { "id": "lump-20k", "title": "Put €20,000 against it", "oneOffOverpayment": 20000 }
+          ]
+        }
+      }
+    },
+    {
+      "title": "What we covered",
+      "generated": {
+        "summaryHtml": "<p>The three things worth acting on.</p>",
+        "report": {
+          "blocks": [
+            { "type": "heading", "text": "What we covered" },
+            { "type": "paragraph", "text": "Retiring at 58 costs about €51,000 more of pension pot than 62." },
+            { "type": "paragraph", "text": "Clearing the credit union loan changes nothing about net worth." },
+            { "type": "paragraph", "text": "Seven months of cover is above the five-month floor." }
+          ]
+        }
+      }
+    }
+  ]
+}
