@@ -29,10 +29,28 @@ import {
   getMortgageScenarioCases
 } from './mortgage_math.js';
 import {
-  computeLiquidityReserve,
   resolveLiquidityReservePolicy
 } from './liquidity_reserve.js';
 import { buildRepaymentCaseModule } from './repayment_case_module.js';
+import {
+  PBS_ASSET_SECTION_KEYS,
+  resolveLiquidityReserveForPlan,
+  findOutputsBucketedSection,
+  findOutputsBucketedSectionByKey,
+  findOutputsBucketedSummarySection,
+  getFiniteNumber,
+  getLiquidityClientStatus,
+  getLiquidityMonthlyExpenditure,
+  getOptionalFiniteNumber,
+  getOutputsBucketedSubtotal,
+  getPbsBalanceMetrics,
+  getPbsSummaryNetWorthValue,
+  getPositiveFiniteNumber,
+  isOutputsBucketedSummarySection,
+  isPbsNetWorthSummaryLabel,
+  normalizeSectionToken,
+  sanitizeSectionRows
+} from './module_pipeline.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -100,7 +118,7 @@ const HFCS_DECILE_BANDS = Object.freeze([
   { upperKey: 'd8Upper', lowerBoundPercent: 70, upperBoundPercent: 80 },
   { upperKey: 'd9Upper', lowerBoundPercent: 80, upperBoundPercent: 90 }
 ]);
-const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
+
 const PBS_CURRENT_SCENARIO_ID = 'current';
 /** How long a flow chip lives, matching its transition in styles/base.css. */
 const PBS_FLOW_CHIP_LIFETIME_MS = 820;
@@ -109,8 +127,8 @@ const PBS_FLOW_MINIMUM_AMOUNT = 1;
 /** More chips than this at once is a swarm rather than an explanation. */
 const PBS_MAX_FLOW_CHIPS = 6;
 const PBS_SCENARIO_CHARTS_UPDATED_EVENT = 'callcanvas:pbs-scenario-charts-updated';
-const PBS_NET_WORTH_TOKENS = new Set(['networth', 'netassets', 'netwealth']);
-const PBS_BALANCE_CHANGE_WORDS = /\b(change|difference|increase|decrease|movement|delta|gap|variance)\b/i;
+
+
 const activePbsScenarioChartsByModuleId = new Map();
 const PBS_BUCKET_DEFINITIONS = Object.freeze({
   lifestyle: 'Assets that support day-to-day living, usually not treated as spendable reserves.',
@@ -4633,90 +4651,21 @@ function isOutputsBucketedPresent(outputsBucketed) {
   );
 }
 
-function normalizeSectionToken(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-}
 
-function normalizeReadableLabelText(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
-function isPbsNetWorthSummaryLabel(value) {
-  const token = normalizeSectionToken(value);
-  if (PBS_NET_WORTH_TOKENS.has(token)) {
-    return true;
-  }
 
-  const text = normalizeReadableLabelText(value);
-  if (!/\bnet\s+(worth|assets|wealth)\b/i.test(text)) {
-    return false;
-  }
 
-  return !PBS_BALANCE_CHANGE_WORDS.test(text);
-}
 
-function findOutputsBucketedSection(sections, targetKey) {
-  const targetToken = normalizeSectionToken(targetKey);
-  return sections.find((section) => (
-    normalizeSectionToken(section?.key) === targetToken
-    || normalizeSectionToken(section?.title) === targetToken
-  )) || null;
-}
 
-function findOutputsBucketedSectionByKey(sections, targetKey) {
-  const targetToken = normalizeSectionToken(targetKey);
-  return (Array.isArray(sections) ? sections : []).find((section) => (
-    normalizeSectionToken(section?.key) === targetToken
-  )) || null;
-}
 
-function isOutputsBucketedSummarySection(section) {
-  const keyToken = normalizeSectionToken(section?.key);
-  const titleToken = normalizeSectionToken(section?.title);
-  if (keyToken === 'summary' || titleToken === 'summary') {
-    return true;
-  }
 
-  if (keyToken.endsWith('summary') || titleToken.endsWith('summary')) {
-    return true;
-  }
 
-  const rows = sanitizeSectionRows(section?.rows);
-  const hasNetWorth = rows.some(([label]) => isPbsNetWorthSummaryLabel(label));
-  const hasBalanceMetric = rows.some(([label]) => (
-    ['grossassets', 'totalassets', 'totalliabilities', 'grossliabilities', 'liabilities']
-      .includes(normalizeSectionToken(label))
-  ));
 
-  return hasNetWorth && hasBalanceMetric;
-}
 
-function findOutputsBucketedSummarySection(sections) {
-  const list = Array.isArray(sections) ? sections : [];
-  return findOutputsBucketedSectionByKey(list, 'summary')
-    || findOutputsBucketedSection(list, 'summary')
-    || list.find((section) => isOutputsBucketedSummarySection(section))
-    || null;
-}
 
-function sanitizeSectionRows(rows) {
-  if (!Array.isArray(rows)) {
-    return [];
-  }
 
-  return rows
-    .filter((row) => Array.isArray(row) && row.length >= 2)
-    .map((row) => [String(row[0] ?? ''), Number(row[1])])
-    .filter((row) => Number.isFinite(row[1]));
-}
+
+
 
 function hasPersonalBalanceSheetBucketShape(outputsBucketed) {
   if (!hasOutputsBucketed(outputsBucketed)) {
@@ -4743,23 +4692,11 @@ function isPersonalBalanceSheetModule(module) {
   return title.includes('personal balance sheet');
 }
 
-function getPositiveFiniteNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
-}
 
-function getFiniteNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
-}
 
-function getOptionalFiniteNumber(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
 
-  return getFiniteNumber(value);
-}
+
+
 
 function formatBucketedCurrency(value, currencySymbol = '€') {
   const numericValue = getFiniteNumber(value);
@@ -4771,15 +4708,7 @@ function formatBucketedCurrency(value, currencySymbol = '€') {
   return `${numericValue < 0 ? '-' : ''}${symbol}${formatBucketedAmount(Math.abs(numericValue))}`;
 }
 
-function getOutputsBucketedSubtotal(section) {
-  const subtotalValue = getOptionalFiniteNumber(section?.subtotalValue);
-  if (subtotalValue !== null) {
-    return subtotalValue;
-  }
 
-  return sanitizeSectionRows(section?.rows)
-    .reduce((sum, row) => sum + row[1], 0);
-}
 
 function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
   warningThreshold = 3,
@@ -4978,36 +4907,11 @@ function getHfcsAgeBandMeta(currentAge) {
   return HFCS_AGE_BAND_META.find((band) => normalizedCurrentAge < band.maxAgeExclusive) || null;
 }
 
-function getOutputsBucketedRowValue(section, targetLabel) {
-  const targetToken = normalizeSectionToken(targetLabel);
-  const row = sanitizeSectionRows(section?.rows)
-    .find(([label]) => normalizeSectionToken(label) === targetToken);
-  return row ? row[1] : null;
-}
 
-function getFirstOutputsBucketedRowValueByPredicate(section, predicate) {
-  const row = sanitizeSectionRows(section?.rows)
-    .find(([label]) => predicate(label));
-  return row ? row[1] : null;
-}
 
-function getPbsSummaryNetWorthValue(summarySection) {
-  const exactValue = getFirstOutputsBucketedRowValue(summarySection, ['net worth', 'net assets', 'net wealth']);
-  if (exactValue !== null) {
-    return exactValue;
-  }
 
-  const flexibleValue = getFirstOutputsBucketedRowValueByPredicate(summarySection, isPbsNetWorthSummaryLabel);
-  if (flexibleValue !== null) {
-    return flexibleValue;
-  }
 
-  if (isPbsNetWorthSummaryLabel(summarySection?.subtotalLabel)) {
-    return getOptionalFiniteNumber(summarySection?.subtotalValue);
-  }
 
-  return null;
-}
 
 function getOutputsBucketedCurrencySymbol(outputsBucketed) {
   return normalizeDisplayCurrencySymbol(outputsBucketed?.currencySymbol, '€');
@@ -5252,16 +5156,7 @@ function updatePbsScenarioChartsCard(module, outputsBucketed, pbsCase, contentHo
   requestAnimationFrame(() => notifyPbsScenarioChartsUpdated(module, pbsCase));
 }
 
-function getFirstOutputsBucketedRowValue(section, targetLabels) {
-  for (const targetLabel of targetLabels) {
-    const value = getOutputsBucketedRowValue(section, targetLabel);
-    if (value !== null) {
-      return value;
-    }
-  }
 
-  return null;
-}
 
 function closeActivePbsInfoPopover({ restoreFocus = false } = {}) {
   if (!activePbsInfoButton) {
@@ -5708,44 +5603,7 @@ function buildPbsLeadCopy(summaryHtml) {
   return lead;
 }
 
-function getPbsBalanceMetrics(outputsBucketed) {
-  const sections = outputsBucketed.sections;
-  const summarySection = findOutputsBucketedSummarySection(sections);
-  const assetSections = PBS_ASSET_SECTION_KEYS
-    .map((key) => findOutputsBucketedSectionByKey(sections, key) || findOutputsBucketedSection(sections, key))
-    .filter(Boolean);
-  const grossAssetsFallback = assetSections.length > 0
-    ? assetSections.reduce((sum, section) => sum + getOutputsBucketedSubtotal(section), 0)
-    : null;
-  const liabilitiesSection = findOutputsBucketedSectionByKey(sections, 'liabilities')
-    || findOutputsBucketedSection(sections, 'liabilities');
-  const liabilitiesFallback = liabilitiesSection
-    ? Math.abs(getOutputsBucketedSubtotal(liabilitiesSection))
-    : null;
 
-  const grossAssets = getFirstOutputsBucketedRowValue(summarySection, ['gross assets', 'total assets'])
-    ?? grossAssetsFallback;
-  const grossLiabilities = getFirstOutputsBucketedRowValue(summarySection, [
-    'gross liabilities',
-    'total liabilities',
-    'liabilities'
-  ])
-    ?? liabilitiesFallback;
-  const normalizedGrossAssets = getOptionalFiniteNumber(grossAssets);
-  const normalizedGrossLiabilities = getOptionalFiniteNumber(grossLiabilities);
-  const netAssets = getPbsSummaryNetWorthValue(summarySection)
-    ?? (
-      normalizedGrossAssets !== null && normalizedGrossLiabilities !== null
-        ? normalizedGrossAssets - Math.abs(normalizedGrossLiabilities)
-        : null
-    );
-
-  return {
-    netAssets: getOptionalFiniteNumber(netAssets),
-    grossAssets: normalizedGrossAssets,
-    grossLiabilities: normalizedGrossLiabilities === null ? null : Math.abs(normalizedGrossLiabilities)
-  };
-}
 
 function setPbsValueDataset(element, options = {}) {
   setScenarioValueDataset(element, { ...options, prefix: 'pbs' });
@@ -10014,15 +9872,7 @@ function getLiquidityCashItems(plan = {}) {
     : [];
 }
 
-function getLiquidityClientStatus(plan = {}) {
-  const status = typeof plan.clientStatus === 'string'
-    ? plan.clientStatus.trim().toLowerCase()
-    : '';
-  if (status === 'retired') {
-    return 'retired';
-  }
-  return 'not-retired';
-}
+
 
 function formatLiquidityMonths(value, { suffix = 'months' } = {}) {
   const parsed = Number(value);
@@ -10057,19 +9907,10 @@ function clampLiquidityRatio(value) {
   return Math.min(1, Math.max(0, parsed));
 }
 
-function getLiquidityMonthlyExpenditure(plan = {}) {
-  const monthlyExpenditure = getPositiveFiniteNumber(plan.monthlyExpenditure);
-  if (monthlyExpenditure !== null) {
-    return monthlyExpenditure;
-  }
 
-  const annualExpenditure = getPositiveFiniteNumber(plan.annualExpenditure);
-  return annualExpenditure !== null ? annualExpenditure / 12 : null;
-}
 
 function computeLiquidityAssessment(plan = {}) {
   const currencySymbol = normalizeDisplayCurrencySymbol(plan.currencySymbol, '€');
-  const clientStatus = getLiquidityClientStatus(plan);
   // RETIREMENT IS A STATUS, NOT A FIELD. Two labels below read a bare
   // `retired` that nothing ever declared, so every Liquidity render threw
   // `retired is not defined` before it drew anything -- including payloads
@@ -10077,22 +9918,15 @@ function computeLiquidityAssessment(plan = {}) {
   // unconditionally. The payload contract has no `retired` field and is not
   // gaining one: the cohort is derived from `clientStatus`, the same value the
   // policy lookup already uses.
-  const isRetired = clientStatus === 'retired';
-  const policy = resolveLiquidityReservePolicy(clientStatus);
-  const minimumBufferMonths = getPositiveFiniteNumber(plan.minimumBufferMonths)
-    ?? policy.minimumBufferMonths;
-  const rawTargetMonths = getPositiveFiniteNumber(plan.targetBufferMonths)
-    ?? policy.targetBufferMonths;
-  const targetBufferMonths = Math.max(rawTargetMonths, minimumBufferMonths);
-  const currentCash = getFiniteNumber(plan.currentCash);
-  const monthlyExpenditure = getLiquidityMonthlyExpenditure(plan);
-  const reserve = computeLiquidityReserve({
-    currentCash,
-    monthlyExpenditure,
+  const {
     clientStatus,
     minimumBufferMonths,
-    targetBufferMonths
-  });
+    targetBufferMonths,
+    currentCash,
+    monthlyExpenditure,
+    reserve
+  } = resolveLiquidityReserveForPlan(plan);
+  const isRetired = clientStatus === 'retired';
   const annualExpenditure = reserve.annualExpenditure;
   const targetCash = reserve.targetCash;
   const minimumCash = reserve.minimumCash;
@@ -13471,6 +13305,9 @@ export function getUiElements() {
     devApplyBtn: document.getElementById('devApplyBtn'),
     devCreateApplyBtn: document.getElementById('devCreateApplyBtn'),
     devApplyAllBtn: document.getElementById('devApplyAllBtn'),
+    devNewCallFromPackBtn: document.getElementById('devNewCallFromPackBtn'),
+    devLoadPackFileBtn: document.getElementById('devLoadPackFileBtn'),
+    devPackFileInput: document.getElementById('devPackFileInput'),
     devLoadExampleBtn: document.getElementById('devLoadExampleBtn'),
     devClearBtn: document.getElementById('devClearBtn'),
     devCloseBtn: document.getElementById('devCloseBtn'),
