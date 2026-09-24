@@ -1,17 +1,14 @@
 /**
  * CONFIRMING AN APPLICATION AN ASSISTANT SENT.
  *
- * The emailed link carries a token after "#t=". It is read once and removed
- * from the address bar, and it is only ever sent in a request body. Opening
- * the page changes nothing: the application is filed only when the person
- * presses Confirm, so a mail scanner that follows the link cannot confirm it.
+ * The person went through their answers with their assistant before it sent
+ * them, so the email Planeir sends is one button, and this page is its result:
+ * it confirms as it opens and says so. Pressing the button again later shows
+ * the same thank-you, not an error.
+ *
+ * The token arrives after "#t=". It is read once, removed from the address
+ * bar, and only ever sent in a request body.
  */
-
-import {
-  applicationToSections,
-  countAnswers,
-  topicLabels
-} from './case_application/index.js';
 
 const WORKER_BASE_URL = (() => {
   const host = window.location.hostname;
@@ -23,180 +20,98 @@ const WORKER_BASE_URL = (() => {
 })();
 
 const ui = {
+  result: document.getElementById('confirmResult'),
+  eyebrow: document.getElementById('confirmEyebrow'),
   title: document.getElementById('confirmTitle'),
-  lede: document.getElementById('confirmLede'),
-  review: document.getElementById('confirmReview'),
-  preview: document.getElementById('confirmPreview'),
-  count: document.getElementById('confirmCount'),
-  status: document.getElementById('confirmStatus'),
-  send: document.getElementById('confirmSend'),
-  cancel: document.getElementById('confirmCancel'),
-  done: document.getElementById('confirmDone'),
-  doneEyebrow: document.getElementById('confirmDoneEyebrow'),
-  doneTitle: document.getElementById('confirmDoneTitle'),
-  doneBody: document.getElementById('confirmDoneBody')
+  body: document.getElementById('confirmBody'),
+  note: document.getElementById('confirmNote'),
+  action: document.getElementById('confirmAction')
 };
 
-let token = '';
-let busy = false;
-
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
+function show({ eyebrow, title, body, note = '', action = null }) {
+  ui.eyebrow.textContent = eyebrow;
+  ui.title.textContent = title;
+  ui.body.textContent = body;
+  ui.note.textContent = note;
+  ui.note.hidden = !note;
+  if (action) {
+    ui.action.textContent = action.label;
+    ui.action.href = action.href;
+    ui.action.hidden = false;
+  } else {
+    ui.action.hidden = true;
+  }
+  ui.result.focus({ preventScroll: true });
 }
 
-async function post(path) {
-  const response = await fetch(`${WORKER_BASE_URL}/api/agent/applications/${path}`, {
+function showConfirmed(name) {
+  show({
+    eyebrow: 'Confirmed',
+    title: name ? `Thank you, ${name}.` : 'Thank you.',
+    body: 'Your application is confirmed and with Gerry. He reads every application. If yours is picked, he will email you when the video is live.',
+    note: 'If you change your mind, email hello@planeir.ie and we will delete it.',
+    action: { label: 'Watch the cases', href: '../../cases/' }
+  });
+}
+
+function showExpired() {
+  show({
+    eyebrow: 'Link expired',
+    title: 'This link has expired.',
+    body: 'Confirmation links work for 7 days. You can still apply yourself on the application page.',
+    action: { label: 'Go to the application page', href: '../' }
+  });
+}
+
+async function confirm(token) {
+  const response = await fetch(`${WORKER_BASE_URL}/api/agent/applications/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token })
   });
   const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error(data?.error || 'Something went wrong. Please try again shortly.');
-    error.status = response.status;
-    throw error;
-  }
-  return data;
-}
-
-function showMessage(title, lede) {
-  ui.title.textContent = title;
-  ui.lede.textContent = lede;
-  ui.review.hidden = true;
-}
-
-function renderPreview(application) {
-  const blocks = [];
-  const topics = topicLabels(application);
-  if (topics.length > 0) {
-    const line = el('p', 'apply-preview-topics');
-    line.append(el('strong', '', 'Help wanted with: '), topics.join(', '));
-    blocks.push(line);
-  }
-  applicationToSections(application).forEach((section) => {
-    const block = el('div', 'apply-preview-section');
-    block.append(el('h3', '', section.title));
-    const list = el('ul', 'apply-preview-lines');
-    section.lines.forEach((line) => {
-      const item = el('li');
-      if (section.id === 'question' && line.label === 'Question') {
-        item.className = 'apply-preview-question';
-        item.textContent = line.value;
-      } else if (Array.isArray(line.items)) {
-        item.append(el('span', 'apply-preview-label', line.label));
-        const sub = el('ul', 'apply-preview-sub');
-        line.items.forEach((entry) => {
-          const subItem = el('li');
-          subItem.append(el('span', 'apply-preview-label', `${entry.label}: `), entry.value);
-          sub.append(subItem);
-        });
-        item.append(sub);
-      } else {
-        item.append(el('span', 'apply-preview-label', `${line.label}: `), line.value);
-      }
-      list.append(item);
-    });
-    block.append(list);
-    blocks.push(block);
-  });
-  ui.preview.replaceChildren(...blocks);
-  const { answered, total } = countAnswers(application);
-  ui.count.textContent = `${answered} of ${total} answered`;
-}
-
-function finish(eyebrow, title, body) {
-  ui.review.hidden = true;
-  ui.title.textContent = eyebrow === 'Deleted' ? 'Deleted.' : 'Done.';
-  ui.lede.textContent = '';
-  ui.doneEyebrow.textContent = eyebrow;
-  ui.doneTitle.textContent = title;
-  ui.doneBody.textContent = body;
-  ui.done.hidden = false;
-  ui.done.focus();
-}
-
-function setBusy(value, label) {
-  busy = value;
-  ui.send.disabled = value;
-  ui.cancel.disabled = value;
-  ui.send.textContent = value && label ? label : 'Confirm and send to Gerry';
-}
-
-async function onConfirm() {
-  if (busy) return;
-  ui.status.textContent = '';
-  setBusy(true, 'Sending...');
-  try {
-    await post('confirm');
-    finish(
-      'Application sent',
-      'Thanks, your application is in.',
-      'Gerry reads every application. If yours is picked, he will email you when the video is live.'
-    );
-  } catch (error) {
-    if (error.status === 404) {
-      showMessage('This link has expired or has already been used.', 'Nothing more needs doing. You can also apply yourself on the application page.');
-    } else {
-      ui.status.textContent = error.message;
-      ui.status.classList.add('is-error');
-    }
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function onCancel() {
-  if (busy) return;
-  if (!window.confirm('Delete this application? Nothing will be sent to Gerry.')) return;
-  setBusy(true);
-  try {
-    await post('cancel');
-    finish('Deleted', 'Your application was deleted.', 'Nothing was sent to Gerry.');
-  } catch (error) {
-    if (error.status === 404) {
-      showMessage('This link has expired or has already been used.', 'Nothing more needs doing.');
-    } else {
-      ui.status.textContent = error.message;
-      ui.status.classList.add('is-error');
-    }
-  } finally {
-    setBusy(false);
-  }
+  return { status: response.status, data };
 }
 
 async function start() {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  token = params.get('t') || '';
+  const token = params.get('t') || '';
   if (token) {
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
-    showMessage('This link is not complete.', 'Open the link from the email again. If it still does not work, email hello@planeir.ie.');
+    show({
+      eyebrow: 'Link not complete',
+      title: 'This link is not complete.',
+      body: 'Press the button in the email from Planeir again. If it still does not work, email hello@planeir.ie.'
+    });
     return;
   }
   if (!WORKER_BASE_URL) {
-    showMessage('This page cannot check links on this copy of the site.', '');
+    show({ eyebrow: 'Not available', title: 'This copy of the site cannot confirm applications.', body: '' });
     return;
   }
 
   try {
-    const data = await post('preview');
-    ui.title.textContent = `Hi ${data.name}, check your application.`;
-    ui.lede.textContent = 'An AI assistant sent this to Planeir for you. Nothing has gone to Gerry yet. Check it, then confirm it or delete it.';
-    renderPreview(data.application || {});
-    ui.review.hidden = false;
-  } catch (error) {
-    if (error.status === 404) {
-      showMessage('This link has expired or has already been used.', 'Links work for 7 days. You can apply yourself on the application page.');
+    const { status, data } = await confirm(token);
+    if (status === 200) {
+      showConfirmed(data?.name || '');
+    } else if (status === 404) {
+      showExpired();
     } else {
-      showMessage('This application cannot be shown right now.', error.message);
+      show({
+        eyebrow: 'Not confirmed yet',
+        title: 'We could not confirm it just now.',
+        body: data?.error || 'Please press the button in the email again in a few minutes.'
+      });
     }
+  } catch (_error) {
+    show({
+      eyebrow: 'Not confirmed yet',
+      title: 'We could not confirm it just now.',
+      body: 'Check your connection, then press the button in the email again.'
+    });
   }
 }
 
-ui.send.addEventListener('click', onConfirm);
-ui.cancel.addEventListener('click', onCancel);
 start();

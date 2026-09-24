@@ -139,9 +139,9 @@
             <h2 id="consentTitle">Asking for agreement</h2>
             <ul>
               <li>Only send an application if the person asks you to, after you have told them two things: their situation may be used in a published video, with their name removed and figures rounded; and Planeir is education only, not financial advice.</li>
-              <li>Use their own email address. With the API, Planeir emails them a link to check and confirm, and nothing reaches Gerry until they do. With a link, they send the page themselves.</li>
+              <li>Use their own email address. With the API, Planeir emails them a Confirm button, and nothing reaches Gerry until they press it. With a link, they send the page themselves.</li>
               <li>Leave out PPS numbers, account and card numbers, addresses, documents, and details about other people that the question does not need.</li>
-              <li>Show them what you will send first. The check endpoint returns it as Gerry will read it.</li>
+              <li>Show them what you will send first, using the summary from the check endpoint. It is the only review they get: the email from Planeir only asks them to confirm.</li>
             </ul>
           </section>
 
@@ -734,7 +734,7 @@
               <li>
                 Show the person the summary. If they agree, <code>POST https://api.planeir.ie/api/agent/applications</code>
                 with <code>person</code>, <code>consent</code>, <code>application</code> and, if you like,
-                <code>assistant</code>. The answer is <code>202</code>: Planeir has emailed them a link.
+                <code>assistant</code>. The answer is <code>202</code>: Planeir has emailed them a Confirm button.
               </li>
               <li>Tell them to open the email from Planeir and press Confirm within 7 days. Nothing reaches Gerry until they do.</li>
             </ol>

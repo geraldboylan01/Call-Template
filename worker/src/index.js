@@ -107,7 +107,7 @@ const AGENT_SEND_EMAIL_RATE_LIMIT_MAX = 3;
 const AGENT_SEND_DAILY_LIMIT = 300;
 const AGENT_TOKEN_RATE_LIMIT_MAX = 60;
 const AGENT_CLOSED_MESSAGE = 'Applications from assistants are not open right now. The person can apply at https://planeir.ie/apply/ instead.';
-const AGENT_LINK_GONE_MESSAGE = 'This link has expired or has already been used.';
+const AGENT_LINK_GONE_MESSAGE = 'This link has expired.';
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
 const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Zoom meeting link to be created automatically';
 const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 30;
@@ -338,7 +338,7 @@ function getRouteConfig(pathname) {
     };
   }
 
-  if (pathname === '/api/agent/applications' || /^\/api\/agent\/applications\/(check|preview|confirm|cancel)$/.test(pathname)) {
+  if (pathname === '/api/agent/applications' || /^\/api\/agent\/applications\/(check|confirm)$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -1736,13 +1736,15 @@ function formatIrishDate(iso) {
   return new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'long', year: 'numeric', timeZone: DEFAULT_LEAD_SCHEDULE_TIMEZONE }).format(date);
 }
 
-// The person did not fill this in themselves, so the email says so plainly,
-// carries none of the figures, and does not repeat anything an assistant wrote.
+// The person went through the answers with their assistant before it sent
+// them, so this is one button, not a second review. It says plainly where the
+// application came from, carries none of the figures, and repeats nothing an
+// assistant wrote.
 function agentConfirmationParagraphs(expiresAt) {
   return {
     opening: 'An AI assistant sent an application to Planeir for you, using this email address. Nothing has gone to Gerry yet.',
-    action: 'Check what was sent, and confirm it if it is right:',
-    expiry: `The link works until ${formatIrishDate(expiresAt)}. If you did not ask for this, ignore this email and the application will be deleted.`,
+    action: 'Press the button to confirm it:',
+    expiry: `The button works until ${formatIrishDate(expiresAt)}. If you did not ask for this, ignore this email and the application will be deleted.`,
     about: 'Gerry reads every application and picks some to explain in a short video, using the figures you sent. Your name is not shown and the figures are rounded.',
     education: 'Planeir is financial education only. It is not financial advice and does not recommend products.'
   };
@@ -1778,13 +1780,13 @@ function buildAgentConfirmationHtml({ fullName, link, expiresAt }) {
   <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
     <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
       <div style="padding:24px;background:#0f2233;color:#ffffff;">
-        <h1 style="margin:0;font-size:24px;line-height:1.25;">Check and confirm your application</h1>
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Confirm your application</h1>
       </div>
       <div style="padding:24px;font-size:15px;line-height:1.7;">
         <p style="margin:0 0 16px;">Hi ${escapeHtml(firstNameOf(fullName))},</p>
         <p style="margin:0 0 16px;">${escapeHtml(copy.opening)}</p>
         <p style="margin:0 0 12px;">${escapeHtml(copy.action)}</p>
-        <p style="margin:0 0 20px;"><a href="${safeLink}" style="display:inline-block;padding:12px 20px;border-radius:999px;background:#0f2233;color:#ffffff;text-decoration:none;font-weight:600;">Check and confirm</a></p>
+        <p style="margin:0 0 20px;"><a href="${safeLink}" style="display:inline-block;padding:12px 20px;border-radius:999px;background:#0f2233;color:#ffffff;text-decoration:none;font-weight:600;">Confirm my application</a></p>
         <p style="margin:0 0 16px;">${escapeHtml(copy.expiry)}</p>
         <p style="margin:0 0 16px;">${escapeHtml(copy.about)}</p>
         <p style="margin:0 0 16px;">${escapeHtml(copy.education)}</p>
@@ -1801,9 +1803,8 @@ async function sendAgentConfirmationEmail(env, { fullName, email, token, expires
   if (!config.apiKey || !config.from) {
     throw new Error('Email is not configured.');
   }
-  // The token rides in the fragment: it never reaches a server log, and a mail
-  // scanner that fetches the page cannot confirm anything, because confirming
-  // takes a press of the button on the page.
+  // The token rides in the fragment, so it never reaches a server log. The
+  // page confirms as it opens: pressing the button in the email is the yes.
   const link = `${AGENT_CONFIRM_PAGE_URL}#t=${token}`;
   await sendEmailWithResend(config, {
     from: config.from,
@@ -7535,7 +7536,7 @@ async function handleAgentApplicationSend(request, env, origin) {
   return jsonResponse({
     ok: true,
     status: 'waiting_for_confirmation',
-    message: `Planeir has emailed ${maskEmail(contact.email)}. Ask the person to open the email from Planeir, check the answers and press Confirm. Nothing reaches Gerry until they do. The link works for 7 days.`,
+    message: `Planeir has emailed ${maskEmail(contact.email)}. Ask the person to open the email from Planeir and press Confirm. Nothing reaches Gerry until they do. The button works for 7 days.`,
     confirmBy: expiresAt,
     warnings: prepared.warnings
   }, 202, origin, methods, null, noStoreHeaders());
@@ -7558,7 +7559,8 @@ async function findAgentApplicationRequest(env, token) {
       assistant_name,
       created_at,
       expires_at,
-      claimed_at
+      claimed_at,
+      confirmed_at
     FROM agent_application_requests
     WHERE token_hash = ?
     LIMIT 1
@@ -7591,50 +7593,35 @@ async function readAgentToken(request, env, origin, methods) {
   return { row };
 }
 
-/** POST /api/agent/applications/preview — what the person is being asked to confirm. */
-async function handleAgentApplicationPreview(request, env, origin) {
-  const methods = 'POST,OPTIONS';
-  const found = await readAgentToken(request, env, origin, methods);
-  if (found.response) return found.response;
-  const { row } = found;
-  try {
-    const application = await decryptApplicationPayload(env, row.application_id, row.application_payload_encrypted);
-    return jsonResponse({
-      ok: true,
-      name: firstNameOf(row.full_name),
-      email: maskEmail(row.email),
-      assistant: row.assistant_name || '',
-      createdAt: row.created_at,
-      expiresAt: row.expires_at,
-      application
-    }, 200, origin, methods, null, noStoreHeaders());
-  } catch (error) {
-    console.error('Agent application preview could not be decrypted', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    return jsonResponse({ error: 'This application cannot be shown right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
-  }
-}
-
 /**
  * POST /api/agent/applications/confirm — the person's own yes.
  *
+ * The person already went through the answers with their assistant, so the
+ * email is one button and this is the whole of the step: no second review.
+ *
  * The request is claimed first so a double click cannot file it twice, and a
  * claim older than two minutes is treated as abandoned. Storing is idempotent
- * on application_id: a retry after a failed delete finds the lead already made.
+ * on application_id. Once filed, the figures are cleared from the request and
+ * confirmed_at is set, so pressing the button again answers "confirmed" instead
+ * of an error, until the cron deletes the row when the link would have expired.
  */
 async function handleAgentApplicationConfirm(request, env, origin, ctx) {
   const methods = 'POST,OPTIONS';
   const found = await readAgentToken(request, env, origin, methods);
   if (found.response) return found.response;
   const { row } = found;
+  const name = firstNameOf(row.full_name);
+  if (row.confirmed_at) {
+    return jsonResponse({ ok: true, name, alreadyConfirmed: true }, 200, origin, methods, null, noStoreHeaders());
+  }
+
   const db = getPublishedSessionsDb(env);
   const claimedAt = nowIso();
   const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString();
   const claim = await db.prepare(`
     UPDATE agent_application_requests
     SET claimed_at = ?
-    WHERE id = ? AND (claimed_at IS NULL OR claimed_at < ?)
+    WHERE id = ? AND confirmed_at IS NULL AND (claimed_at IS NULL OR claimed_at < ?)
   `).bind(claimedAt, row.id, staleBefore).run();
   if (Number(claim.meta?.changes || 0) !== 1) {
     return jsonResponse({ error: 'This application is already being confirmed.' }, 409, origin, methods, null, noStoreHeaders());
@@ -7657,27 +7644,22 @@ async function handleAgentApplicationConfirm(request, env, origin, ctx) {
         replyToApplicant: false
       });
     }
-    await db.prepare('DELETE FROM agent_application_requests WHERE id = ?').bind(row.id).run();
-    return jsonResponse({ ok: true }, 200, origin, methods, null, noStoreHeaders());
+    await db.prepare(`
+      UPDATE agent_application_requests
+      SET confirmed_at = ?, application_payload_encrypted = NULL, claimed_at = NULL
+      WHERE id = ?
+    `).bind(nowIso(), row.id).run();
+    return jsonResponse({ ok: true, name }, 200, origin, methods, null, noStoreHeaders());
   } catch (error) {
     console.error('Agent application confirmation failed', {
       error: error instanceof Error ? error.message : String(error)
     });
     await db.prepare('UPDATE agent_application_requests SET claimed_at = NULL WHERE id = ?').bind(row.id).run().catch(() => {});
-    return jsonResponse({ error: 'Your application could not be saved right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
+    return jsonResponse({ error: 'Your application could not be confirmed right now. Please try the button again in a few minutes.' }, 500, origin, methods, null, noStoreHeaders());
   }
 }
 
-/** POST /api/agent/applications/cancel — "don't send it": delete it now. */
-async function handleAgentApplicationCancel(request, env, origin) {
-  const methods = 'POST,OPTIONS';
-  const found = await readAgentToken(request, env, origin, methods);
-  if (found.response) return found.response;
-  await getPublishedSessionsDb(env).prepare('DELETE FROM agent_application_requests WHERE id = ?').bind(found.row.id).run();
-  return jsonResponse({ ok: true }, 200, origin, methods, null, noStoreHeaders());
-}
-
-/** Unconfirmed requests are deleted, figures and all, once their link expires. */
+/** Requests are deleted when their link expires: unconfirmed ones with their figures, confirmed ones as the empty marker left behind. */
 async function purgeExpiredAgentApplicationRequests(env) {
   const result = await getPublishedSessionsDb(env).prepare(`
     DELETE FROM agent_application_requests
@@ -9078,18 +9060,11 @@ export default {
       return handleAgentApplicationSend(request, env, origin);
     }
 
-    const agentApplicationMatch = /^\/api\/agent\/applications\/(check|preview|confirm|cancel)$/.exec(pathname);
+    const agentApplicationMatch = /^\/api\/agent\/applications\/(check|confirm)$/.exec(pathname);
     if (request.method === 'POST' && agentApplicationMatch) {
-      switch (agentApplicationMatch[1]) {
-        case 'check':
-          return handleAgentApplicationCheck(request, env, origin);
-        case 'preview':
-          return handleAgentApplicationPreview(request, env, origin);
-        case 'confirm':
-          return handleAgentApplicationConfirm(request, env, origin, ctx);
-        default:
-          return handleAgentApplicationCancel(request, env, origin);
-      }
+      return agentApplicationMatch[1] === 'check'
+        ? handleAgentApplicationCheck(request, env, origin)
+        : handleAgentApplicationConfirm(request, env, origin, ctx);
     }
 
     if (request.method === 'GET' && pathname === '/api/leads/schedule-response') {

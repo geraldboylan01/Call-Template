@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="description" content="Check and confirm an application an AI assistant sent to Planeir for you." />
+    <meta name="description" content="Confirm an application an AI assistant sent to Planeir for you." />
     <title>Confirm your application | Planeir</title>
     <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
@@ -37,72 +37,20 @@
       </header>
 
       <main class="apply-main">
-        <section class="apply-intro">
-          <p class="section-eyebrow">Confirm your application</p>
-          <h1 id="confirmTitle" class="apply-title">Checking your link.</h1>
-          <p id="confirmLede" class="apply-lede" aria-live="polite"></p>
+        <section id="confirmResult" class="apply-card apply-done" tabindex="-1" aria-live="polite">
+          <p id="confirmEyebrow" class="section-eyebrow">Your application</p>
+          <h1 id="confirmTitle" class="apply-title">Confirming your application.</h1>
+          <p id="confirmBody" class="apply-lede"></p>
+          <p id="confirmNote" class="apply-card-intro" hidden></p>
+          <a id="confirmAction" class="button button-primary" href="../../cases/" hidden>Watch the cases</a>
         </section>
 
         <noscript>
           <p class="apply-noscript">
-            This page needs JavaScript. You can also email
+            This page needs JavaScript to confirm your application. You can also email
             <a class="inline-link" href="mailto:hello@planeir.ie">hello@planeir.ie</a>.
           </p>
         </noscript>
-
-        <div id="confirmReview" class="apply-form" hidden>
-          <section class="apply-card apply-preview" aria-labelledby="confirmPreviewTitle">
-            <div class="apply-section-head">
-              <h2 id="confirmPreviewTitle" class="apply-card-title">What your assistant sent</h2>
-              <span id="confirmCount" class="apply-section-count"></span>
-            </div>
-            <p class="apply-card-intro">This is what Gerry will read if you confirm. Totals are worked out from the figures.</p>
-            <div id="confirmPreview" class="apply-preview-body"></div>
-          </section>
-
-          <section class="apply-card" aria-labelledby="confirmAgreeTitle">
-            <h2 id="confirmAgreeTitle" class="apply-card-title">Before you confirm</h2>
-            <ul class="apply-tohand-list">
-              <li>
-                <strong>Gerry may use your situation in a video published online</strong>
-                <span>Your name is removed and the figures are rounded. You will be emailed when it is live.</span>
-              </li>
-              <li>
-                <strong>Planeir is education only</strong>
-                <span>It is not financial advice and does not recommend products.</span>
-              </li>
-              <li>
-                <strong>Something wrong?</strong>
-                <span>
-                  Delete this and fill in the <a class="inline-link" href="../">application page</a> yourself, or
-                  ask your assistant to send it again.
-                </span>
-              </li>
-            </ul>
-            <p class="form-privacy">
-              Read how your application is handled in the
-              <a class="inline-link" href="../../privacy/">privacy notice</a>.
-            </p>
-          </section>
-
-          <div id="confirmStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
-
-          <button id="confirmSend" class="button button-primary button-submit" type="button">
-            Confirm and send to Gerry
-          </button>
-          <p class="apply-saved-note">
-            <button id="confirmCancel" class="apply-link-button" type="button">Don't send it, delete it</button>
-          </p>
-        </div>
-
-        <section id="confirmDone" class="apply-card apply-done" tabindex="-1" hidden>
-          <p id="confirmDoneEyebrow" class="section-eyebrow">Application sent</p>
-          <h2 id="confirmDoneTitle" class="apply-title">Thanks, your application is in.</h2>
-          <p id="confirmDoneBody" class="apply-lede">
-            Gerry reads every application. If yours is picked, he will email you when the video is live.
-          </p>
-          <a class="button button-primary" href="../../cases/">Watch the cases</a>
-        </section>
       </main>
 
       <footer class="site-footer">

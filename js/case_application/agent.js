@@ -465,7 +465,7 @@ function personSchema() {
         type: 'string',
         format: 'email',
         maxLength: 160,
-        description: 'The person’s own email address. Planeir emails them a link to check and confirm the application.'
+        description: 'The person’s own email address. Planeir emails them a button to confirm the application.'
       }
     }
   };
@@ -476,7 +476,7 @@ function consentSchema() {
     type: 'object',
     additionalProperties: false,
     required: ['videoPublication', 'educationOnly'],
-    description: 'Set both only after asking the person and hearing a clear yes. They confirm again by email.',
+    description: 'Set both only after asking the person and hearing a clear yes. They confirm again with one button in an email.',
     properties: {
       videoPublication: {
         type: 'boolean',
@@ -538,7 +538,7 @@ export function buildOpenApiDocument() {
         post: {
           operationId: 'checkCaseApplication',
           summary: 'Check an application before sending it',
-          description: 'Returns how the application will read to Gerry, anything that could not be used, and questions that would still help. Stores nothing and sends no email.',
+          description: 'Returns the application as Gerry will read it, what could not be used, and questions that would still help. Stores nothing. Show the person the summary before sending: it is the only review they see.',
           'x-openai-isConsequential': false,
           requestBody: {
             required: true,
@@ -558,7 +558,7 @@ export function buildOpenApiDocument() {
         post: {
           operationId: 'sendCaseApplication',
           summary: 'Send an application for the person to confirm',
-          description: 'Only after the person has agreed. Planeir emails them a link to check and confirm; nothing reaches Gerry until they do. The link lasts 7 days.',
+          description: 'Only after the person has seen the summary and agreed. Planeir emails them a Confirm button; nothing reaches Gerry until they press it. The button works for 7 days.',
           'x-openai-isConsequential': true,
           requestBody: {
             required: true,
@@ -607,7 +607,7 @@ export function buildOpenApiDocument() {
           properties: {
             ok: { type: 'boolean' },
             ready: { type: 'boolean', description: 'True when the application has a question and can be sent.' },
-            summary: { type: 'string', description: 'The application as Gerry will read it. Show it to the person before sending.' },
+            summary: { type: 'string', description: 'The application as Gerry will read it. Show it to the person before sending: the email only asks them to confirm.' },
             answered: { type: 'integer' },
             total: { type: 'integer' },
             warnings: { type: 'array', items: WARNING_SCHEMA },

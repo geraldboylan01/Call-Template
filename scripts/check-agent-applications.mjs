@@ -10,8 +10,9 @@
  *   - checking an application stores nothing and emails nobody;
  *   - sending one needs the person's email and both consents, and only files
  *     a request: nothing reaches the pipeline until the person confirms;
- *   - the confirmation email carries a link and none of the figures;
- *   - confirming files exactly one lead, once; cancelling deletes everything;
+ *   - the confirmation email is one button, and carries none of the figures;
+ *   - confirming files exactly one lead, once, and pressing again just says
+ *     "confirmed" (the person already reviewed it with their assistant);
  *   - limits per email address stop the endpoint being used to email people;
  *   - expired requests are deleted by the hourly cron;
  *   - with no email or no encryption key, nothing is accepted.
@@ -209,6 +210,8 @@ await check('sending files a request and emails the person a link, with no figur
   const [email] = emails;
   assert.deepEqual(email.to, ['aoife@example.com']);
   assert.equal(email.subject, 'Confirm your Planeir application');
+  assert.match(email.html, />Confirm my application<\/a>/, 'one button');
+  assert.ok(!/Check and confirm/.test(email.html), 'no second review');
   const link = /https:\/\/planeir\.ie\/apply\/confirm\/#t=([A-Za-z0-9_-]{43})/.exec(email.text);
   assert.ok(link, 'the email carries the confirmation link');
   token = link[1];
@@ -217,21 +220,19 @@ await check('sending files a request and emails the person a link, with no figur
   }
 });
 
-await check('the confirmation page can read the request with the token, and nothing without it', async () => {
-  const preview = await call(env, '/api/agent/applications/preview', { token }, { origin: 'https://planeir.ie' });
-  assert.equal(preview.status, 200);
-  assert.equal(preview.json.name, 'Aoife');
-  assert.equal(preview.json.application.mortgage.balance, 281234);
-  const wrong = await call(env, '/api/agent/applications/preview', { token: 'A'.repeat(43) }, { origin: 'https://planeir.ie' });
+await check('a wrong or incomplete token confirms nothing', async () => {
+  const wrong = await call(env, '/api/agent/applications/confirm', { token: 'A'.repeat(43) }, { origin: 'https://planeir.ie' });
   assert.equal(wrong.status, 404);
-  const malformed = await call(env, '/api/agent/applications/preview', { token: 'short' }, { origin: 'https://planeir.ie' });
+  const malformed = await call(env, '/api/agent/applications/confirm', { token: 'short' }, { origin: 'https://planeir.ie' });
   assert.equal(malformed.status, 404);
+  assert.equal(database.rows('SELECT COUNT(*) AS n FROM leads')[0].n, 0);
 });
 
-await check('confirming files one lead, tells Gerry, and uses up the link', async () => {
+await check('one press confirms: one lead, Gerry told, and a second press just says confirmed', async () => {
   emails.length = 0;
   const confirm = await call(env, '/api/agent/applications/confirm', { token }, { origin: 'https://planeir.ie' });
   assert.equal(confirm.status, 200);
+  assert.deepEqual(confirm.json, { ok: true, name: 'Aoife' });
   const leads = database.rows('SELECT * FROM leads');
   assert.equal(leads.length, 1);
   assert.equal(leads[0].source, 'agent-api');
@@ -242,16 +243,21 @@ await check('confirming files one lead, tells Gerry, and uses up the link', asyn
   const clients = database.rows('SELECT * FROM clients');
   assert.equal(clients.length, 1);
   assert.equal(clients[0].source, 'case_application');
-  assert.equal(database.rows('SELECT COUNT(*) AS n FROM agent_application_requests')[0].n, 0);
 
-  assert.equal(emails.length, 1, 'Gerry is told; the person has just confirmed on the page');
+  const [marker] = database.rows('SELECT confirmed_at, application_payload_encrypted FROM agent_application_requests');
+  assert.ok(marker.confirmed_at, 'the request is marked confirmed');
+  assert.equal(marker.application_payload_encrypted, null, 'and its copy of the figures is gone');
+
+  assert.equal(emails.length, 1, 'Gerry is told; the person sees the thank-you on the page');
   assert.deepEqual(emails[0].to, ['gerry@example.com']);
   assert.match(emails[0].text, /Sent by an AI assistant and confirmed by the person by email \(ChatGPT script\)/);
-  assert.ok(!emails[0].text.includes('281,234'), 'Gerry’s email carries no figures');
+  assert.ok(!emails[0].text.includes('281,234'), 'Gerry\u2019s email carries no figures');
 
   const again = await call(env, '/api/agent/applications/confirm', { token }, { origin: 'https://planeir.ie' });
-  assert.equal(again.status, 404);
+  assert.equal(again.status, 200);
+  assert.deepEqual(again.json, { ok: true, name: 'Aoife', alreadyConfirmed: true });
   assert.equal(database.rows('SELECT COUNT(*) AS n FROM leads')[0].n, 1, 'never filed twice');
+  assert.equal(emails.length, 1, 'and Gerry is not told twice');
 });
 
 await check('the admin reads the confirmed application like any other', async () => {
@@ -266,17 +272,6 @@ await check('the admin reads the confirmed application like any other', async ()
   assert.equal(json.application.mortgage.balance, 281234);
 });
 
-await check('cancelling deletes the request and everything in it', async () => {
-  const sent = await call(env, '/api/agent/applications', { person: { name: 'Tom', email: 'tom@example.com' }, consent, application });
-  assert.equal(sent.status, 202);
-  const cancelToken = /#t=([A-Za-z0-9_-]{43})/.exec(emails.at(-1).text)[1];
-  const cancel = await call(env, '/api/agent/applications/cancel', { token: cancelToken }, { origin: 'https://planeir.ie' });
-  assert.equal(cancel.status, 200);
-  assert.equal(database.rows('SELECT COUNT(*) AS n FROM agent_application_requests')[0].n, 0);
-  const preview = await call(env, '/api/agent/applications/preview', { token: cancelToken }, { origin: 'https://planeir.ie' });
-  assert.equal(preview.status, 404);
-});
-
 await check('one email address can only be sent 3 requests a day', async () => {
   const target = { name: 'Nora', email: 'nora@example.com' };
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -288,7 +283,9 @@ await check('one email address can only be sent 3 requests a day', async () => {
   assert.match(fourth.json.error, /already has applications waiting/);
 });
 
-await check('the hourly cron deletes requests whose link has expired', async () => {
+await check('the hourly cron deletes requests whose link has expired, confirmed or not', async () => {
+  assert.ok(database.rows('SELECT COUNT(*) AS n FROM agent_application_requests WHERE confirmed_at IS NOT NULL')[0].n >= 1);
+  assert.ok(database.rows('SELECT COUNT(*) AS n FROM agent_application_requests WHERE confirmed_at IS NULL')[0].n >= 1);
   database.database.exec("UPDATE agent_application_requests SET expires_at = '2000-01-01T00:00:00.000Z'");
   const pending = [];
   await worker.scheduled({}, env, { waitUntil: (promise) => pending.push(promise) });
