@@ -1,5 +1,51 @@
 const COLOR_PALETTE = ['#6aa7c8', '#66b89e', '#d4a64f', '#c96f62', '#8ca36a', '#9aa9b8'];
 const chartRegistry = new Map();
+
+// Operate on the existing chart (including its overlay canvas), never a copy.
+export function focusPresenterChartPoint(block, datasetIndex, index, expected = null) {
+  const canvas = block.querySelector('canvas[data-chart-key]');
+  const chart = chartRegistry.get(canvas?.dataset.chartKey)?.chart;
+  if (!chart || !Number.isFinite(chart.data.datasets[datasetIndex]?.data[index])) {
+    throw new Error('The requested chart point is not available in the rendered chart.');
+  }
+  if (expected && (chart.data.datasets[datasetIndex].data[index] !== expected.value || String(chart.data.labels[index]) !== expected.xLabel)) throw new Error('The rendered chart value differs from the discovered source.');
+  const point = chart.getDatasetMeta(datasetIndex).data[index];
+  chart.setActiveElements([{ datasetIndex, index }]);
+  chart.tooltip?.setActiveElements([{ datasetIndex, index }], { x: point.x, y: point.y });
+  chart.update('none');
+  const cleanup = () => {
+    if (!chart.ctx) return;
+    chart.setActiveElements([]);
+    chart.tooltip?.setActiveElements([], { x: 0, y: 0 });
+    chart.update('none');
+  };
+  // Screen coordinates from the real chart, including its overlay canvas when
+  // used. The director can mark a point without drawing another data series.
+  cleanup.anchor = () => {
+    const rect = chart.canvas.getBoundingClientRect();
+    const current = chart.getDatasetMeta(datasetIndex).data[index];
+    return { x: rect.left + current.x * rect.width / chart.width, y: rect.top + current.y * rect.height / chart.height, bottom: rect.top + chart.chartArea.bottom * rect.height / chart.height };
+  };
+  return cleanup;
+}
+// Wait for the rendered chart's own animated elements; a layout-stable pane
+// alone does not mean a chart has reached its final values.
+export async function waitForPresenterCharts(root) {
+  const deadline = performance.now() + 5000;
+  let settled = 0;
+  while (settled < 3) {
+    const entries = [...root.querySelectorAll('canvas[data-chart-key]')].map(c => chartRegistry.get(c.dataset.chartKey)).filter(Boolean);
+    const animated = entries.some(entry => {
+      const chart = entry.chart;
+      if (!chart) return false;
+      const elements = [chart.tooltip, ...chart.data.datasets.flatMap((_, i) => { const meta = chart.getDatasetMeta(i); return [meta.dataset, ...meta.data]; })].filter(Boolean);
+      return entry.reflowRafId || elements.some(el => Object.values(el.$animations || {}).some(a => a.active()));
+    });
+    settled = animated ? 0 : settled + 1;
+    if (performance.now() > deadline) throw new Error('The live chart did not finish animating.');
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+}
 const OVERLAY_LAYER_ID = 'chart-overlay-layer';
 const SCALE_EPSILON = 0.01;
 const PENSION_DATASET_LABELS = {
@@ -33,13 +79,26 @@ const PENSION_DATASET_LABELS = {
   shortfallCurrent: 'Shortfall (current)',
   shortfallMax: 'Shortfall (max)',
   surplusCurrent: 'Surplus (current)',
-  surplusMax: 'Surplus (max)'
+  surplusMax: 'Surplus (max)',
+  requiredNetIncome: 'Required net income',
+  netIncomeCurrent: 'Net income (current)',
+  netIncomeMax: 'Net income (max)',
+  incomeTaxCurrent: 'Income tax (current)',
+  incomeTaxMax: 'Income tax (max)',
+  uscCurrent: 'USC (current)',
+  uscMax: 'USC (max)',
+  prsiCurrent: 'PRSI (current)',
+  prsiMax: 'PRSI (max)'
 };
 const PENSION_LINE_COLORS = {
   current: '#38bdf8',
   max: '#a78bfa',
   required: '#f5c542',
-  requiredIncome: '#f8fafc'
+  requiredIncome: '#f8fafc',
+  netIncome: '#6fcf97',
+  incomeTax: '#e0a458',
+  usc: '#d98c8c',
+  prsi: '#b39ddb'
 };
 const PENSION_BAR_COLORS = {
   personal: '#5d7284',
@@ -895,8 +954,13 @@ function isPensionSustainabilityChart(chartData) {
   const title = String(chartData?.title || '').toLowerCase();
   return title.includes('retirement sustainability')
     || title.includes('retirement income stack')
+    // A panel of the composite chart keeps the composite's kind; with an
+    // after-tax target the income panel has no "Required income" line to be
+    // recognised by, and would otherwise be drawn as plain stacked bars.
+    || chartData?.meta?.kind === 'pensionDrawdownComposite'
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.requiredReference)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.requiredIncome)
+    || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.requiredNetIncome)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityCurrent)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.sustainabilityMax)
     || chartHasDatasetLabel(chartData, PENSION_DATASET_LABELS.combinedBalanceCurrent)
@@ -911,7 +975,42 @@ function isRequiredReferenceLabel(label) {
 }
 
 function isRequiredIncomeLabel(label) {
-  return normalizeLabel(label).toLowerCase() === normalizeLabel(PENSION_DATASET_LABELS.requiredIncome).toLowerCase();
+  const normalized = normalizeLabel(label).toLowerCase();
+  return normalized === normalizeLabel(PENSION_DATASET_LABELS.requiredIncome).toLowerCase()
+    || normalized === normalizeLabel(PENSION_DATASET_LABELS.requiredNetIncome).toLowerCase();
+}
+
+function isPensionNetIncomeLabel(label) {
+  const normalized = normalizeLabel(label);
+  return normalized === PENSION_DATASET_LABELS.netIncomeCurrent
+    || normalized === PENSION_DATASET_LABELS.netIncomeMax;
+}
+
+/**
+ * Income tax, USC and PRSI in the retirement income panel. They are there to
+ * be switched on, and start hidden so the default view stays uncluttered.
+ */
+function isPensionTaxLabel(label) {
+  const normalized = normalizeLabel(label);
+  return [
+    PENSION_DATASET_LABELS.incomeTaxCurrent,
+    PENSION_DATASET_LABELS.incomeTaxMax,
+    PENSION_DATASET_LABELS.uscCurrent,
+    PENSION_DATASET_LABELS.uscMax,
+    PENSION_DATASET_LABELS.prsiCurrent,
+    PENSION_DATASET_LABELS.prsiMax
+  ].includes(normalized);
+}
+
+function pensionTaxLineColor(label) {
+  const normalized = normalizeLabel(label);
+  if (normalized.startsWith('Income tax')) {
+    return PENSION_LINE_COLORS.incomeTax;
+  }
+  if (normalized.startsWith('USC')) {
+    return PENSION_LINE_COLORS.usc;
+  }
+  return PENSION_LINE_COLORS.prsi;
 }
 
 function isCombinedPensionBalanceLabel(label) {
@@ -1049,6 +1148,9 @@ function applyPensionShowMaxToChart(chart, showMax) {
 
     if (isRequiredReferenceLabel(label) || isRequiredIncomeLabel(label)) {
       nextHidden = false;
+    } else if (isPensionTaxLabel(label)) {
+      // Switching between current and max starts the tax lines hidden again.
+      nextHidden = true;
     } else if (isMaxScenarioLabel(label)) {
       nextHidden = !showMax;
     } else if (isCurrentScenarioLabel(label)) {
@@ -1090,6 +1192,9 @@ function pensionLegendGroupForLabel(label) {
   ) {
     return 'Alerts';
   }
+  if (isPensionNetIncomeLabel(label) || isPensionTaxLabel(label)) {
+    return 'Net income and tax';
+  }
   return 'Income sources';
 }
 
@@ -1112,8 +1217,14 @@ function pensionLegendColorForLabel(label) {
     [PENSION_DATASET_LABELS.electedWithdrawalsCurrent]: PENSION_BAR_COLORS.electedWithdrawals,
     [PENSION_DATASET_LABELS.electedWithdrawalsMax]: PENSION_BAR_COLORS.electedWithdrawals,
     [PENSION_DATASET_LABELS.shortfallCurrent]: PENSION_BAR_COLORS.shortfall,
-    [PENSION_DATASET_LABELS.shortfallMax]: PENSION_BAR_COLORS.shortfall
+    [PENSION_DATASET_LABELS.shortfallMax]: PENSION_BAR_COLORS.shortfall,
+    [PENSION_DATASET_LABELS.requiredNetIncome]: PENSION_LINE_COLORS.requiredIncome,
+    [PENSION_DATASET_LABELS.netIncomeCurrent]: PENSION_LINE_COLORS.netIncome,
+    [PENSION_DATASET_LABELS.netIncomeMax]: PENSION_LINE_COLORS.netIncome
   };
+  if (isPensionTaxLabel(label)) {
+    return pensionTaxLineColor(label);
+  }
   return map[label] || PENSION_BAR_COLORS.other;
 }
 
@@ -1144,7 +1255,8 @@ function visibleCompositeLegendDatasets(chartData, moduleId) {
       items.push({
         label,
         group: pensionLegendGroupForLabel(label),
-        color: pensionLegendColorForLabel(label)
+        color: pensionLegendColorForLabel(label),
+        startsHidden: dataset?.hiddenByDefault === true || isPensionTaxLabel(label)
       });
     });
   });
@@ -1199,7 +1311,8 @@ function buildPensionCompositeLegend(blockEl, chartData, moduleId) {
       button.type = 'button';
       button.className = 'pension-drawdown-legend-chip';
       button.dataset.seriesLabel = item.label;
-      button.setAttribute('aria-pressed', 'true');
+      button.setAttribute('aria-pressed', item.startsHidden ? 'false' : 'true');
+      button.classList.toggle('is-muted', Boolean(item.startsHidden));
       button.title = item.label;
 
       const swatch = document.createElement('span');
@@ -1396,6 +1509,28 @@ function buildPensionSustainabilityDataset(dataset, index, showMax) {
       backgroundColor: hexToRgba(color, 0.5),
       borderWidth: 1,
       hidden: false
+    };
+  }
+
+  if (isPensionNetIncomeLabel(label) || isPensionTaxLabel(label)) {
+    const isTax = isPensionTaxLabel(label);
+    const color = isTax ? pensionTaxLineColor(label) : PENSION_LINE_COLORS.netIncome;
+    const scenarioHidden = isMaxScenarioLabel(label) ? !showMax : showMax;
+    return {
+      ...buildDatasetStyle(dataset, index, 'line'),
+      type: 'line',
+      yAxisID: dataset?.forceYAxisID === 'y' ? 'y' : 'y1',
+      // Its own stack, so a line is never added on top of another on the
+      // stacked income axis.
+      stack: `line-${normalizeLabel(label)}`,
+      order: 0,
+      borderColor: color,
+      backgroundColor: hexToRgba(color, 0.16),
+      pointBackgroundColor: color,
+      pointBorderColor: color,
+      borderDash: isTax ? [3, 4] : [],
+      borderWidth: isTax ? 1.6 : 2.2,
+      hidden: isTax ? true : scenarioHidden
     };
   }
 

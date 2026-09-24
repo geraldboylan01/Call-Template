@@ -536,25 +536,34 @@ const memberFor = (input, ownerId) => {
 }
 
 {
-  // THE ARF RULES NOW LIVE IN THE RULES CATALOGUE, not as constants inside the
-  // engine. The move changed no value: the rates and the threshold are exactly
-  // what the engine applied before, and the projection below is pinned to a
-  // figure computed when they were still hardcoded.
+  // THE ARF RULES LIVE IN THE RULES CATALOGUE, and were corrected by the Irish
+  // tax engine brief (4.9, compatibility reason 2). The statute charges an
+  // imputed distribution only where the holder is 60 or over for the WHOLE
+  // tax year, and 5% only where they are 70 or over for the whole year, so the
+  // bands start at attained ages 61 and 71. Before the correction the engine
+  // charged 4% from retirement at any age and 5% from attained age 70.
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.baseRate, 0.04);
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRate, 0.05);
-  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRateFromAge, 70);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.minimumWholeYearAge, 60);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRateWholeYearAge, 70);
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.highValueRate, 0.06);
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.highValueThresholdEur, 2_000_000);
 
-  // The bands, including that a high-value fund outranks the age band.
-  assert.equal(irishArfMinimumRate(65, 500_000), 0.04, 'under 70, ordinary fund');
-  assert.equal(irishArfMinimumRate(70, 500_000), 0.05, 'from 70, ordinary fund');
-  assert.equal(irishArfMinimumRate(65, 2_500_000), 0.06, 'a high-value fund at any age');
+  // The bands by attained age. The age test comes first; once it is met, a
+  // high-value fund outranks the age band.
+  assert.equal(irishArfMinimumRate(60, 500_000), 0, 'no imputed distribution in the year the holder turns 60');
+  assert.equal(irishArfMinimumRate(61, 500_000), 0.04, 'from the year the holder turns 61');
+  assert.equal(irishArfMinimumRate(70, 500_000), 0.04, 'still 4% in the year the holder turns 70');
+  assert.equal(irishArfMinimumRate(71, 500_000), 0.05, 'from the year the holder turns 71');
+  assert.equal(irishArfMinimumRate(65, 2_500_000), 0.06, 'a high-value fund once the age test is met');
   assert.equal(irishArfMinimumRate(75, 2_500_000), 0.06);
+  assert.equal(irishArfMinimumRate(58, 2_500_000), 0, 'but not before it');
   assert.equal(irishArfMinimumRate(65, 2_000_000), 0.04, 'the threshold is exclusive');
 
-  // And the projection is unchanged. This figure was recorded from a run made
-  // while the rates were still hardcoded in pension_math.js.
+  // The staggered projection pinned here was 240,545.38 while the engine drew
+  // 4% from the primary's retirement at 52. Neither member is 61 before the
+  // 2031 reference year, so nothing is drawn and both pots simply grow for five
+  // years: 2 x 100,000 x 1.05^5 = 255,256.31.
   const staggered = computePensionProjection({
     ...ENGINE_BASE, targetIncomeToday: 0,
     pensions: [
@@ -564,11 +573,12 @@ const memberFor = (input, ownerId) => {
   });
   close(
     staggered.debug.projectedPotCurrent,
-    240_545.38,
+    2 * referencePot({ currentPot: 100_000, growthRate: 0.05, years: 5 }),
     CENT,
-    'the drawdown result is identical to the pre-move run'
+    'both pots grow undrawn until the holders are 61'
   );
-  pass('the ARF drawdown rules moved to the versioned catalogue without changing a single output');
+  close(staggered.debug.projectedPotCurrent, 255_256.31, CENT, 'the corrected figure');
+  pass('ARF imputed distributions start in the year the holder turns 61, as the statute’s whole-year test requires');
 }
 
 /* ---------------------------------------------------- 7. the input contract */

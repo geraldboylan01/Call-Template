@@ -2,6 +2,14 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://planeir.ie/</loc>
-    <lastmod>2026-05-04</lastmod>
+  </url>
+  <url>
+    <loc>https://planeir.ie/apply/</loc>
+  </url>
+  <url>
+    <loc>https://planeir.ie/cases/</loc>
+  </url>
+  <url>
+    <loc>https://planeir.ie/privacy/</loc>
   </url>
 </urlset>

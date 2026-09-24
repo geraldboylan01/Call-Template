@@ -365,11 +365,20 @@ function formatDisplayCurrency(value, currencySymbol = '€') {
 
 function formatCurrencyMarkedText(value) {
   const raw = String(value ?? '');
-  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?(?:\\s*[km])?';
+  // A k or m suffix counts only as a whole token: the "m" of "€2.8 million"
+  // is the start of a word, not a multiplier.
+  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?(?:\\s*[km](?![a-z]))?';
   const markerPattern = '(€|£|\\$|\\bEUR|\\bEUROS?\\b|\\bGBP\\b|\\bUSD\\b)';
   const regex = new RegExp(`${markerPattern}\\s*(${amountPattern})`, 'gi');
 
-  return normalizeCurrencyLabelText(raw.replace(regex, (match, marker, amountText) => {
+  return normalizeCurrencyLabelText(raw.replace(regex, (match, marker, amountText, ...rest) => {
+    // An amount already written out in words ("€2.8 million") is left as it
+    // is, rather than rounded to "€3" in front of the word.
+    const source = rest[rest.length - 1];
+    const offset = rest[rest.length - 2];
+    if (/^\s*(?:thousand|million|billion)\b/i.test(source.slice(offset + match.length))) {
+      return match;
+    }
     const parsed = parseDisplayNumber(amountText);
     if (parsed === null) {
       return match;
@@ -678,7 +687,9 @@ function normalizeReportTimelineContent(svgSpec) {
       || toTrimmedString(event.when)
       || toTrimmedString(event.date);
     const orderValue = Number(event.order);
-    const parsedDate = Date.parse(dateLabel);
+    // Ages are labels, not calendar dates (Date.parse('Age 57') can mean 1957).
+    // Preserve the supplied order, including age ranges, unless order is explicit.
+    const parsedDate = /^age\b/i.test(dateLabel) ? NaN : Date.parse(dateLabel);
 
     let sortOrder = index;
     if (Number.isFinite(orderValue)) {
@@ -9486,6 +9497,7 @@ function renderReportInsightGridBlock(block) {
   (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
     const insight = document.createElement('article');
     insight.className = 'report-insight-card';
+    insight.dataset.reportItemId = item.id;
     if (item?.tone) {
       insight.dataset.tone = item.tone;
     }

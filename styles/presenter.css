@@ -1,0 +1,82 @@
+/* Scope all director styling to its active session. Keep the app's live layouts. */
+.presenter-setup { width: min(760px, 92vw); max-height: 90vh; overflow: auto; background: #111c23; color: #f7f4ee; border: 1px solid #5e7988; border-radius: 14px; padding: 26px; font: 16px/1.5 system-ui; }
+.presenter-setup::backdrop { background: #020608b8; }
+.presenter-actions, .video-capture-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.presenter-setup button, .presenter-hud button, .video-capture-controls button, .video-capture-controls select { font: inherit; border: 1px solid #6e8896; color: #f7f4ee; background: #20333f; border-radius: 7px; padding: 8px 12px; cursor: pointer; }
+.presenter-setup input[type=file] { display: block; padding: 12px 0; }
+.presenter-edit-recording { border-top: 1px solid #567; margin-top: 24px; padding-top: 12px; }
+.presenter-edit-recording a { color: #b0dcf5; }
+.presenter-take-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.presenter-setup button:disabled { opacity: .45; cursor: default; }
+.presenter-browser-recording { margin-top: 24px; }
+.presenter-clean-recording .presenter-hud, .presenter-clean-recording .presenter-camera, .presenter-clean-recording .presenter-emergency-stop { display: none !important; }
+.presenter-clean-recording, .presenter-clean-recording #swipeStage * { cursor: none !important; }
+.presenter-clean-recording .presenter-setup, .presenter-clean-recording .presenter-setup * { cursor: auto !important; }
+.presenter-sync-slate { position: fixed; inset: 0; z-index: 90000; background: #0e1a24; color: #f4f0e8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; font: 24px/1.5 system-ui; }
+.presenter-sync-slate strong { font-size: clamp(70px, 12vw, 180px); font-weight: 500; letter-spacing: .06em; }
+.presenter-sync-slate[hidden] { display: none; }
+.video-capture-controls { margin-top: 22px; border-top: 1px solid #567; padding: 18px; }
+.video-capture-controls strong, .video-capture-controls p { flex-basis: 100%; }
+.video-capture-controls a { color: #86d4f5; padding: 10px; }
+.presenter-hud { display: none; position: fixed; z-index: 30000; left: 20px; right: 20px; bottom: 12px; padding: 9px 16px; background: #071016eb; color: #ecf4f5; border: 1px solid #688793; border-radius: 10px; font: 14px system-ui; align-items: center; justify-content: space-between; gap: 16px; }
+.presenter-active .presenter-hud { display: flex; }
+.presenter-hud-hidden .presenter-hud, .video-recording .presenter-hud, .video-recording .presenter-setup, .video-recording .video-capture-controls { visibility: hidden; }
+.presenter-active { --topbar-height: 0px; }
+.presenter-active .topbar, .presenter-active .mobile-action-bar, .presenter-active .focused-module-notes, .presenter-active .module-header-actions, .presenter-active .module-toolbar, .presenter-active .dev-panel { display: none !important; }
+.presenter-active .focused-view { padding-bottom: 0; }
+.presenter-active .focused-module-card { scroll-padding: 30px; padding-bottom: 85px; }
+.presenter-active .presenter-focus { scroll-margin: 32px; }
+.presenter-camera { position: fixed; z-index: 20000; bottom: 24px; right: 24px; width: min(23vw, 390px); height: min(34vh, 350px); object-fit: cover; transform: scaleX(-1); border-radius: 14px; border: 1px solid #6e8896; background: #091016; }
+.presenter-camera[hidden] { display: none; }
+.presenter-active:has(.presenter-camera:not([hidden])) #focusLayer { padding-right: 26vw; }
+.presenter-active:has(.presenter-camera:not([hidden])) #swipeStage { width: calc(74vw - 16px); }
+.presenter-emergency-stop { display: none; position: fixed; z-index: 40000; top: 8px; right: 8px; opacity: 0; }
+.video-recording .presenter-emergency-stop { display: block; }
+.video-recording .presenter-emergency-stop:hover, .video-recording .presenter-emergency-stop:focus { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .presenter-active * { scroll-behavior: auto !important; } }
+
+.presenter-active .nav-arrow, .presenter-active [data-chart-download] { display: none !important; }
+/* Keep a storyboard's chart point selected when the presenter moves the mouse. */
+.presenter-active #swipeStage canvas, .presenter-active .callcanvas-chart-overlay-wrapper { pointer-events: none !important; }
+/* FRAME reflows the existing timeline nodes; FOCUS restores their detailed view. */
+.presenter-active .presenter-timeline-overview .report-timeline-items { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important; padding: 0 !important; }
+.presenter-active .presenter-timeline-overview .report-timeline-items::before,
+.presenter-active .presenter-timeline-overview .report-timeline-event::before,
+.presenter-active .presenter-timeline-overview .report-timeline-event::after { display: none !important; }
+.presenter-active .presenter-timeline-overview .report-timeline-event { padding: 0 !important; min-width: 0; }
+.presenter-active .presenter-timeline-overview .report-timeline-event-card { height: 100%; }
+.presenter-active .presenter-timeline-compact .report-timeline-event-body { display: none; }
+
+/* One light, one idea. The original pixels remain untouched inside the light. */
+.presenter-attention { position: fixed; inset: 0; z-index: 15000; pointer-events: none; opacity: 0; transition: opacity 340ms ease; contain: layout style; }
+.presenter-active .presenter-attention.is-visible { opacity: 1; }
+.presenter-wide .presenter-attention { opacity: 0 !important; }
+.presenter-light { position: absolute; border-radius: 14px; box-shadow: 0 0 0 300vmax rgba(3, 9, 16, .57), 0 0 0 1px rgba(220, 231, 241, .26), 0 12px 45px rgba(0, 0, 0, .18); }
+.presenter-light::before { content: ''; position: absolute; left: 20px; right: 20px; top: -1px; height: 1px; background: linear-gradient(90deg, transparent, rgba(224, 198, 143, .85), transparent); }
+.presenter-underline { display: none; position: absolute; height: 2px; border-radius: 2px; background: linear-gradient(90deg, #e0c68f, #e0c68f80); transform: scaleX(0); transform-origin: left; transition: transform 420ms cubic-bezier(.22, 1, .36, 1); }
+.presenter-attention[data-treatment="underline"] .presenter-light { box-shadow: 0 0 0 300vmax rgba(3, 9, 16, .32); border-radius: 10px; }
+.presenter-attention[data-treatment="underline"] .presenter-light::before { display: none; }
+.presenter-attention[data-treatment="underline"] .presenter-underline { display: block; }
+.presenter-attention.is-visible .presenter-underline { transform: scaleX(1); }
+.presenter-point-halo, .presenter-point-guide { display: none; position: absolute; }
+.presenter-attention[data-treatment="point"] .presenter-light { box-shadow: 0 0 0 300vmax rgba(3, 9, 16, .3); }
+.presenter-attention[data-treatment="point"] .presenter-light::before { display: none; }
+.presenter-attention[data-treatment="point"] .presenter-point-halo { display: block; border-radius: 50%; border: 1.5px solid #e0c68f; box-shadow: 0 0 0 7px #e0c68f10, 0 0 24px #e0c68f18; }
+.presenter-attention[data-treatment="point"] .presenter-point-guide { display: block; background: linear-gradient(#e0c68f90, #e0c68f10); }
+
+/* Only these existing app surfaces participate in the dissolve. Live camera,
+   presenter controls and the document itself are not frozen by a transition. */
+:root:has(.presenter-active) { view-transition-name: none; }
+.presenter-active #swipeStage { view-transition-name: presenter-stage; }
+.presenter-active #chart-overlay-layer { view-transition-name: presenter-charts; }
+::view-transition-group(presenter-stage), ::view-transition-group(presenter-charts) { animation-duration: 520ms; animation-timing-function: cubic-bezier(.22, 1, .36, 1); }
+::view-transition-old(presenter-stage), ::view-transition-old(presenter-charts) { animation: presenter-scene-out 240ms ease both; }
+::view-transition-new(presenter-stage), ::view-transition-new(presenter-charts) { animation: presenter-scene-in 520ms cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes presenter-scene-out { to { opacity: 0; } }
+@keyframes presenter-scene-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .presenter-attention, .presenter-underline { transition: none; }
+  ::view-transition-group(presenter-stage), ::view-transition-group(presenter-charts),
+  ::view-transition-old(presenter-stage), ::view-transition-new(presenter-stage),
+  ::view-transition-old(presenter-charts), ::view-transition-new(presenter-charts) { animation: none; }
+}

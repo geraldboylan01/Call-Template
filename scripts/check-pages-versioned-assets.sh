@@ -36,6 +36,9 @@ PLAN_URL="${SITE_ORIGIN}/plan/"
 PLAN_PRIVACY_URL="${SITE_ORIGIN}/plan/privacy.html"
 ROBOTS_URL="${SITE_ORIGIN}/robots.txt"
 SITEMAP_URL="${SITE_ORIGIN}/sitemap.xml"
+APPLY_URL="${SITE_ORIGIN}/apply/"
+CASES_URL="${SITE_ORIGIN}/cases/"
+PRIVACY_URL="${SITE_ORIGIN}/privacy/"
 
 fetch_html() {
   local url="$1"
@@ -73,6 +76,10 @@ plan_html="$(fetch_html "$PLAN_URL")"
 plan_privacy_html="$(fetch_html "$PLAN_PRIVACY_URL")"
 robots_txt="$(fetch_html "$ROBOTS_URL")"
 sitemap_xml="$(fetch_html "$SITEMAP_URL")"
+apply_html="$(fetch_html "$APPLY_URL")"
+cases_html="$(fetch_html "$CASES_URL")"
+privacy_html="$(fetch_html "$PRIVACY_URL")"
+apply_js="$(fetch_html "${SITE_ORIGIN}/js/apply.js?v=${EXPECTED_VERSION}")"
 app_entry_js="$(fetch_html "${SITE_ORIGIN}/js/app_entry.js?v=${EXPECTED_VERSION}")"
 app_js="$(fetch_html "${SITE_ORIGIN}/js/app.js?v=${EXPECTED_VERSION}")"
 landing_js="$(fetch_html "${SITE_ORIGIN}/js/landing.js?v=${EXPECTED_VERSION}")"
@@ -80,7 +87,8 @@ render_js="$(fetch_html "${SITE_ORIGIN}/js/render.js?v=${EXPECTED_VERSION}")"
 session_viewer_js="$(fetch_html "${SITE_ORIGIN}/js/session_viewer.js?v=${EXPECTED_VERSION}")"
 plan_entry_js="$(fetch_html "${SITE_ORIGIN}/js/plan/app.js?v=${EXPECTED_VERSION}")"
 
-assert_contains "$landing_html" "<title>Planeir | Irish Financial Education Calls with Gerry Boylan</title>" "landing title"
+assert_contains "$landing_html" "<title>Planeir | Irish Financial Education Videos with Gerry Boylan</title>" "landing title"
+assert_contains "$landing_html" 'href="./apply/"' "landing apply link"
 assert_contains "$landing_html" '<link rel="canonical" href="https://planeir.ie/"' "landing canonical"
 assert_contains "$landing_html" 'application/ld+json' "landing structured data"
 assert_contains "$landing_html" 'og:image' "landing Open Graph image"
@@ -90,6 +98,14 @@ assert_contains "$landing_html" "./assets/brand/planeir-lockup-light.svg?v=${EXP
 
 assert_contains "$robots_txt" "Sitemap: https://planeir.ie/sitemap.xml" "robots sitemap declaration"
 assert_contains "$sitemap_xml" "<loc>https://planeir.ie/</loc>" "sitemap canonical URL"
+assert_contains "$sitemap_xml" "<loc>https://planeir.ie/apply/</loc>" "sitemap apply URL"
+
+assert_contains "$apply_html" '<link rel="canonical" href="https://planeir.ie/apply/"' "apply canonical"
+assert_contains "$apply_html" "../styles/apply.css?v=${EXPECTED_VERSION}" "apply stylesheet"
+assert_contains "$apply_html" "../js/apply.js?v=${EXPECTED_VERSION}" "apply script"
+assert_contains "$apply_js" "./case_application/index.js?v=${EXPECTED_VERSION}" "apply -> application schema import"
+assert_contains "$cases_html" "../styles/cases.css?v=${EXPECTED_VERSION}" "cases stylesheet"
+assert_contains "$privacy_html" '<link rel="canonical" href="https://planeir.ie/privacy/"' "privacy canonical"
 
 assert_contains "$app_html" '<meta name="robots" content="noindex, nofollow"' "app noindex"
 assert_contains "$app_html" "../styles/base.css?v=${EXPECTED_VERSION}" "app stylesheet"
@@ -118,14 +134,14 @@ assert_contains "$plan_entry_js" "./views.js?v=${EXPECTED_VERSION}" "consumer pl
 
 
 # Include every deployed document, including legacy redirect entry points.
-for page in index.html session.html app/index.html app/session.html app/clients.html app/analytics.html app/modules.html app/access.html app/leads.html app/video.html plan/index.html plan/privacy.html; do
+for page in index.html session.html app/index.html app/session.html app/clients.html app/analytics.html app/modules.html app/access.html app/leads.html app/video.html plan/index.html plan/privacy.html apply/index.html privacy/index.html cases/index.html; do
   page_html="$(fetch_html "${SITE_ORIGIN}/${page}")"
   for icon in favicon.svg favicon-32.png favicon.ico apple-touch-icon.png; do
     assert_contains "$page_html" "${icon}?v=${EXPECTED_VERSION}" "${page} ${icon}"
   done
   assert_not_contains "$page_html" "planeir-wordmark-light.svg" "${page} legacy internal logo URL"
   case "$page" in
-    index.html|app/index.html|app/session.html|app/clients.html|app/analytics.html|app/modules.html|app/access.html|plan/index.html|plan/privacy.html)
+    index.html|app/index.html|app/session.html|app/clients.html|app/analytics.html|app/modules.html|app/access.html|plan/index.html|plan/privacy.html|apply/index.html|privacy/index.html|cases/index.html)
       assert_contains "$page_html" "assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "${page} canonical logo" ;;
   esac
   case "$page" in

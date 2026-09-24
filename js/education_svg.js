@@ -801,7 +801,9 @@ function normalizeTimelineEvents(spec) {
       || toNonEmptyString(event.date);
     const lane = toNonEmptyString(event.lane, DEFAULT_TIMELINE_LANE_ID);
     const orderValue = Number(event.order);
-    const parsedDate = Date.parse(dateLabel);
+    // Ages are labels, not calendar dates (Date.parse('Age 57') can mean 1957).
+    // Preserve the supplied order, including age ranges, unless order is explicit.
+    const parsedDate = /^age\b/i.test(dateLabel) ? NaN : Date.parse(dateLabel);
     const contentMode = toNonEmptyString(event.title)
       || toNonEmptyString(event.dateLabel)
       || body

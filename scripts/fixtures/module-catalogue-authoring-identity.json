@@ -957,12 +957,12 @@
             {
               "key": "investmentGrowthRate",
               "value": 0.05,
-              "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.1.0)"
+              "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.2.0)"
             },
             {
               "key": "inflationRate",
               "value": 0.02,
-              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.1.0)"
+              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.2.0)"
             },
             {
               "key": "statePensionContributory",
@@ -1005,7 +1005,7 @@
             {
               "key": "inflationRate",
               "value": 0.02,
-              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.1.0)"
+              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.2.0)"
             },
             {
               "key": "presentValueRate",

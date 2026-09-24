@@ -1,3 +1,4 @@
+import { mountVideoCapture } from './video_capture.js';
 import { readVideoSceneManifest } from './video_scene.js';
 
 const ui = {
@@ -29,6 +30,7 @@ let manifest = null;
 let reviewComplete = false;
 let presenterPosition = 'right';
 let sequenceTimers = [];
+let capture;
 
 function asText(value, fallback = '') {
   const text = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -400,7 +402,7 @@ function bindEvents() {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
       } else {
-        await ui.stageFrame.requestFullscreen();
+        await document.documentElement.requestFullscreen();
       }
     } catch (_error) {
       setText(ui.reviewStatus, 'Full-screen preview is unavailable in this browser.');
@@ -408,6 +410,10 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (event) => {
+    if (['s', 'Escape'].includes(event.key) && capture?.recorder.recording) {
+      event.preventDefault();
+      void capture.recorder.stop().then(() => setCaptureMode(false));
+    }
     if (event.key === 'Escape' && document.body.classList.contains('is-capture-mode')) {
       event.preventDefault();
       setCaptureMode(false);
@@ -428,6 +434,13 @@ function init() {
   ui.sceneShell?.classList.remove('is-hidden');
   renderManifest(manifest);
   bindEvents();
+  const recordingPanel = document.createElement('section');
+  recordingPanel.setAttribute('aria-label', 'Video recording');
+  ui.sceneShell.append(recordingPanel);
+  capture = mountVideoCapture(recordingPanel, {
+    beforeStart() { if (!reviewComplete) throw new Error('Complete the source review first.'); },
+    onRecordingChange(state) { if (state.recording) setCaptureMode(true); else if (!state.starting) setCaptureMode(false); }
+  });
 }
 
 init();

@@ -1090,6 +1090,44 @@ export function normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs) 
   return normalizePbsInputs(personalBalanceSheetInputs);
 }
 
+const PENSION_TAX_STATUSES = Object.freeze([
+  'single',
+  'married_or_civil_partners',
+  'widowed_or_surviving_civil_partner'
+]);
+
+const PENSION_OTHER_INCOME_TAX_TREATMENTS = Object.freeze([
+  'occupational_pension',
+  'rental',
+  'employment',
+  'social_welfare',
+  'non_taxable'
+]);
+
+/**
+ * A member's tax inputs: how the lump sum is taken, and the lifetime limits
+ * already used. Read from a member, or from the top level of a single-person
+ * payload, which is where that shape keeps them.
+ */
+function normalizeImportedMemberTaxFields(source) {
+  const fields = {};
+  const lumpSum = source?.lumpSum;
+  if (lumpSum && typeof lumpSum === 'object' && !Array.isArray(lumpSum)) {
+    const mode = typeof lumpSum.mode === 'string' ? lumpSum.mode.trim().toLowerCase() : '';
+    if (mode === 'none' || mode === 'max') {
+      fields.lumpSum = { mode };
+    } else if (mode === 'amount' && typeof lumpSum.amount === 'number' && Number.isFinite(lumpSum.amount) && lumpSum.amount >= 0) {
+      fields.lumpSum = { mode, amount: lumpSum.amount };
+    }
+  }
+  ['priorLumpSumsSince2005', 'sftAlreadyUsed', 'unrelievedLumpSumTax'].forEach((key) => {
+    if (typeof source?.[key] === 'number' && Number.isFinite(source[key]) && source[key] >= 0) {
+      fields[key] = source[key];
+    }
+  });
+  return fields;
+}
+
 function normalizePensionInputs(pensionInputs) {
   if (!pensionInputs || typeof pensionInputs !== 'object' || Array.isArray(pensionInputs)) {
     return null;
@@ -1126,6 +1164,19 @@ function normalizePensionInputs(pensionInputs) {
   if (typeof pensionInputs.includeStatePension === 'boolean') {
     normalized.includeStatePension = pensionInputs.includeStatePension;
   }
+
+  // Tax inputs (Irish tax engine brief, 7.1). The engine refuses a bad value
+  // with a message; the importer only keeps the ones it could use.
+  if (PENSION_TAX_STATUSES.includes(pensionInputs.householdTaxStatus)) {
+    normalized.householdTaxStatus = pensionInputs.householdTaxStatus;
+  }
+  if (pensionInputs.targetIncomeBasis === 'gross' || pensionInputs.targetIncomeBasis === 'net') {
+    normalized.targetIncomeBasis = pensionInputs.targetIncomeBasis;
+  }
+  if (typeof pensionInputs.rentalIncomeOwnerId === 'string' && pensionInputs.rentalIncomeOwnerId.trim()) {
+    normalized.rentalIncomeOwnerId = pensionInputs.rentalIncomeOwnerId.trim();
+  }
+  Object.assign(normalized, normalizeImportedMemberTaxFields(pensionInputs));
 
   if (typeof pensionInputs.includeEmploymentIncomeDuringBridge === 'boolean') {
     normalized.includeEmploymentIncomeDuringBridge = pensionInputs.includeEmploymentIncomeDuringBridge;
@@ -1218,6 +1269,7 @@ function normalizePensionInputs(pensionInputs) {
         if (typeof member.includeStatePension === 'boolean') {
           normalizedMember.includeStatePension = member.includeStatePension;
         }
+        Object.assign(normalizedMember, normalizeImportedMemberTaxFields(member));
         return normalizedMember;
       })
       .filter((member) => typeof member.currentAge === 'number'
@@ -1292,6 +1344,9 @@ function normalizeImportedIncomeSources(rawSources) {
       });
       if (typeof source.inflationIndexed === 'boolean') {
         normalizedSource.inflationIndexed = source.inflationIndexed;
+      }
+      if (PENSION_OTHER_INCOME_TAX_TREATMENTS.includes(source.taxTreatment)) {
+        normalizedSource.taxTreatment = source.taxTreatment;
       }
       return normalizedSource;
     })

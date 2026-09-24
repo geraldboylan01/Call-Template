@@ -428,6 +428,9 @@ function resetFieldValidity() {
   });
 }
 
+// Requests now arrive through /apply/ (js/apply.js). The homepage no longer
+// has #leadForm, so this returns straight away; it is kept because a cached
+// copy of the old page still posts to /api/leads, which keeps working.
 function bindLeadForm() {
   if (!leadForm) {
     return;

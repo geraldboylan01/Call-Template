@@ -2,10 +2,29 @@ import {
   IRELAND_RULES_CATALOGUE_VERSION,
   IRISH_ARF_MINIMUM_DRAWDOWN,
   IRISH_STATE_PENSION_CONTRIBUTORY,
+  irishArfFirstAttainedAge,
   irishArfMinimumRate,
   normalizeStatePensionFraction
 } from './planning/ireland_rules.js';
 import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
+import {
+  TAX_STATUSES,
+  computeTaxYear,
+  marginalTax,
+  mergeDisclosures,
+  solveForNet
+} from './planning/tax/engine.js';
+import { crystallise } from './planning/tax/heads/sft.js';
+import { resolveSft, resolveTaxRules } from './planning/tax/resolve.js';
+import { IE_TAX_FIRST_YEAR } from './planning/tax/rules_ie.js';
+import {
+  TAX_NOT_INCLUDED,
+  formatTaxEuro,
+  renderTaxDisclosure,
+  renderTaxDisclosures,
+  taxNotIncludedLine
+} from './planning/tax/disclosures.js';
+import { assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
 
 const DEFAULT_INFLATION_RATE = 0.02;
 const DEFAULT_WAGE_GROWTH_RATE = 0.02;
@@ -295,35 +314,24 @@ function maxRelievablePersonalContribution(age, salaryAtAge) {
   return ageBandPct(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
 }
 
+/**
+ * The Standard Fund Threshold for a retirement year.
+ *
+ * A thin wrapper over the tax catalogue, kept so existing imports still work.
+ * The amounts live in `js/planning/tax/rules_ie.js`: fixed in law to 2029 and
+ * held at the last known figure after that, never projected (Irish tax engine
+ * brief, 4.8). A year before the catalogue starts reads the first threshold,
+ * as it always has.
+ */
 export function computeSft(retirementYear) {
-  if (retirementYear <= 2026) {
-    return {
-      sftValue: 2200000,
-      sftYearUsed: 2026,
-      heldConstantBeyond2029: false
-    };
-  }
-
-  if (retirementYear === 2027) {
-    return {
-      sftValue: 2400000,
-      sftYearUsed: 2027,
-      heldConstantBeyond2029: false
-    };
-  }
-
-  if (retirementYear === 2028) {
-    return {
-      sftValue: 2600000,
-      sftYearUsed: 2028,
-      heldConstantBeyond2029: false
-    };
-  }
-
+  const sft = resolveSft(Math.max(retirementYear, IE_TAX_FIRST_YEAR));
   return {
-    sftValue: 2800000,
-    sftYearUsed: 2029,
-    heldConstantBeyond2029: retirementYear > 2029
+    sftValue: sft.amount,
+    sftYearUsed: sft.recordedYear,
+    heldConstantBeyond2029: sft.basis === 'held',
+    sftBasis: sft.basis,
+    testedYear: retirementYear,
+    lastKnownYear: sft.lastKnownYear
   };
 }
 
@@ -345,15 +353,28 @@ export function computeSftBreaches({
   };
 }
 
+/** The SFT_HELD sentence for a threshold held at the last known figure. */
+function sftHeldText(sftMeta) {
+  return renderTaxDisclosure({
+    code: 'SFT_HELD',
+    params: {
+      heldAmount: sftMeta.sftValue,
+      years: [sftMeta.testedYear ?? sftMeta.sftYearUsed]
+    }
+  }, { rules: resolveTaxRules(IE_TAX_FIRST_YEAR) }).text;
+}
+
 export function buildSftSummarySentence(flags, sftMeta) {
   if (!flags?.any) {
     return '';
   }
 
   const sftText = formatCurrencyEUR(sftMeta.sftValue);
-  const yearText = sftMeta.sftYearUsed;
+  const yearText = sftMeta.heldConstantBeyond2029
+    ? (sftMeta.testedYear ?? sftMeta.sftYearUsed)
+    : sftMeta.sftYearUsed;
   const suffix = sftMeta.heldConstantBeyond2029
-    ? ' (held at the 2029 level; future indexation isn’t modelled).'
+    ? ' (held at the last known figure).'
     : '.';
 
   let baseSentence = '';
@@ -382,7 +403,70 @@ export function buildSftSummarySentence(flags, sftMeta) {
     return baseSentence;
   }
 
-  return `${baseSentence} Future SFT increases may apply but aren’t predictable, so we’ve held the threshold constant beyond 2029.`;
+  // The law raises the threshold with average weekly earnings from 2030 and it
+  // can never fall, but the size of those rises cannot be known, so the figure
+  // is held and any tax shown against it may be overstated.
+  return `${baseSentence} ${sftHeldText(sftMeta)}`;
+}
+
+/** The year a member's pension is first drawn, and so crystallised, on a projected path. */
+function memberCrystallisationYear(inputs, member) {
+  return Math.max(member.retirementYear, inputs.incomeStartYear);
+}
+
+/** What the current path's chargeable excess tax is, in words (brief, 7.7). */
+function buildChargeableExcessSentence(inputs, records) {
+  const breaches = (records || []).filter((record) => record.chargeableExcess > 0);
+  if (breaches.length === 0) {
+    return '';
+  }
+  const sentences = breaches.map((record) => {
+    const member = inputs.pensions.find((candidate) => candidate.id === record.memberId);
+    const whose = inputs.isHousehold && member ? `${axisPersonLabel(member)}'s fund` : 'the fund';
+    const opening = `On the current path, ${whose} at retirement in ${record.year} is above the Standard Fund Threshold of ${formatTaxEuro(record.sft)}`;
+    if (record.netCet <= 0) {
+      return `${opening}. The estimated ${toEuroText(record.grossCet)} of chargeable excess tax is covered by the tax already paid on the lump sum.`;
+    }
+    const credit = record.creditApplied > 0
+      ? `, after a ${toEuroText(record.creditApplied)} credit for tax on the lump sum,`
+      : '';
+    return `${opening}, so an estimated ${toEuroText(record.netCet)} of chargeable excess tax${credit} is paid from the fund before drawdown.`;
+  });
+  const held = breaches.find((record) => record.sftBasis === 'held');
+  if (held) {
+    sentences.push(sftHeldText({ sftValue: held.sft, testedYear: held.year }));
+  }
+  return sentences.join(' ');
+}
+
+/**
+ * The threshold row. One threshold reads as it always has; members tested in
+ * different years at different thresholds are each named with their year.
+ */
+function describeSftThresholdUsed(inputs, sftByMember, memberHasPot, sftMeta) {
+  if (!inputs.taxSetup.available) {
+    return `${formatCurrencyEUR(sftMeta.sftValue)}${sftMeta.heldConstantBeyond2029 ? ` (held beyond ${sftMeta.lastKnownYear})` : ''}`;
+  }
+  const shown = sftByMember.filter((_entry, index) => memberHasPot[index]);
+  const entries = shown.length > 0 ? shown : sftByMember;
+  const distinct = new Set(entries.map((entry) => `${entry.sftValue}|${entry.heldConstantBeyond2029}`));
+  if (distinct.size === 1) {
+    const entry = entries[0];
+    return `${formatCurrencyEUR(entry.sftValue)}${entry.heldConstantBeyond2029 ? ` (held beyond ${entry.lastKnownYear})` : ''}`;
+  }
+  return entries.map((entry) => {
+    const member = inputs.pensions.find((candidate) => candidate.id === entry.id);
+    return `${axisPersonLabel(member)} ${formatCurrencyEUR(entry.sftValue)} (${entry.year}${entry.heldConstantBeyond2029 ? ', held' : ''})`;
+  }).join('; ');
+}
+
+/** The ARF imputed distribution rule, from the catalogue (brief, 4.9). */
+function describeArfMinimumRule() {
+  const rule = IRISH_ARF_MINIMUM_DRAWDOWN;
+  return `None until the year you turn ${irishArfFirstAttainedAge('base')}; `
+    + `then ${toPercentText(rule.baseRate, 0)} a year, ${toPercentText(rule.higherRate, 0)} from the year you turn ${irishArfFirstAttainedAge('higher')}, `
+    + `and ${toPercentText(rule.highValueRate, 0)} while an individual fund exceeds €${rule.highValueThresholdEur / 1_000_000}m; `
+    + 'valued at the start of each year';
 }
 
 function buildPensionReadiness({
@@ -469,6 +553,29 @@ function yearForAge(person, age, currentYear) {
   return currentYear + (age - person.currentAge);
 }
 
+/** How a member takes a retirement lump sum (Irish tax engine brief, 7.1). */
+const LUMP_SUM_MODES = Object.freeze(['none', 'max', 'amount']);
+
+function normalizeLumpSumOption(rawValue, fieldName) {
+  if (typeof rawValue === 'undefined' || rawValue === null) {
+    return { mode: 'none' };
+  }
+  if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+    throw new Error(`generated.pensionInputs.${fieldName} must be an object such as { "mode": "max" }.`);
+  }
+  const mode = typeof rawValue.mode === 'string' ? rawValue.mode.trim().toLowerCase() : '';
+  if (!LUMP_SUM_MODES.includes(mode)) {
+    throw new Error(`generated.pensionInputs.${fieldName}.mode must be "none", "max" or "amount".`);
+  }
+  if (mode !== 'amount') {
+    return { mode };
+  }
+  return {
+    mode,
+    amount: requireNonNegativeNumber(rawValue.amount, `${fieldName}.amount`)
+  };
+}
+
 function normalizePensionMember(rawMember, index, defaults, prefix) {
   if (!rawMember || typeof rawMember !== 'object' || Array.isArray(rawMember)) {
     throw new Error(`generated.pensionInputs.${prefix} must be an object.`);
@@ -501,6 +608,20 @@ function normalizePensionMember(rawMember, index, defaults, prefix) {
       rawMember.statePensionEscalationRate,
       IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate,
       `${prefix}.statePensionEscalationRate`
+    ),
+    // What the tax engine carries for this person (brief, 7.1): how the lump
+    // sum is taken at retirement, and the lifetime limits already used.
+    lumpSum: normalizeLumpSumOption(rawMember.lumpSum, `${prefix}.lumpSum`),
+    priorLumpSumsSince2005: optionalNonNegativeNumber(
+      rawMember.priorLumpSumsSince2005,
+      0,
+      `${prefix}.priorLumpSumsSince2005`
+    ),
+    sftAlreadyUsed: optionalNonNegativeNumber(rawMember.sftAlreadyUsed, 0, `${prefix}.sftAlreadyUsed`),
+    unrelievedLumpSumTax: optionalNonNegativeNumber(
+      rawMember.unrelievedLumpSumTax,
+      0,
+      `${prefix}.unrelievedLumpSumTax`
     )
   };
 
@@ -555,7 +676,11 @@ function normalizePensionMembers(raw, defaults) {
     includeStatePension: raw.includeStatePension,
     statePensionFraction: raw.statePensionFraction,
     statePensionStartAge: raw.statePensionStartAge,
-    statePensionEscalationRate: raw.statePensionEscalationRate
+    statePensionEscalationRate: raw.statePensionEscalationRate,
+    lumpSum: raw.lumpSum,
+    priorLumpSumsSince2005: raw.priorLumpSumsSince2005,
+    sftAlreadyUsed: raw.sftAlreadyUsed,
+    unrelievedLumpSumTax: raw.unrelievedLumpSumTax
   }, 0, defaults, 'legacy');
 
   return [member];
@@ -643,6 +768,15 @@ function resolveYearFromAgeSource(source, pensions, currentYear, ageKey, yearKey
   return yearForAge(owner, requireFiniteInteger(source[ageKey], `${fieldName}.${ageKey}`), currentYear);
 }
 
+/** How a piece of other income is taxed (brief, 7.1). */
+const OTHER_INCOME_TAX_TREATMENTS = Object.freeze([
+  'occupational_pension',
+  'rental',
+  'employment',
+  'social_welfare',
+  'non_taxable'
+]);
+
 function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
   if (typeof rawValue === 'undefined') {
     return [];
@@ -689,6 +823,15 @@ function normalizeOtherIncomeSources(rawValue, pensions, currentYear) {
       startYear,
       inflationIndexed: source.inflationIndexed
     };
+
+    if (typeof source.taxTreatment !== 'undefined') {
+      if (!OTHER_INCOME_TAX_TREATMENTS.includes(source.taxTreatment)) {
+        throw new Error(
+          `generated.pensionInputs.${fieldName}.taxTreatment must be one of: ${OTHER_INCOME_TAX_TREATMENTS.join(', ')}.`
+        );
+      }
+      normalizedSource.taxTreatment = source.taxTreatment;
+    }
 
     if (typeof source.inflationRate !== 'undefined') {
       normalizedSource.inflationRate = optionalFiniteNumber(source.inflationRate, null, `${fieldName}.inflationRate`);
@@ -932,11 +1075,223 @@ function balanceFromMemberScenarioAtYear(scenario, year) {
   return Number.isFinite(scenario?.retirementPot) ? scenario.retirementPot : 0;
 }
 
+/* ------------------------------------------------------------------- tax ---
+ *
+ * The retirement engine never calculates tax itself. It builds each year's
+ * income and events in the tax engine's shape, calls `computeTaxYear` (or
+ * `solveForNet` when the target is after tax), and carries the tax state from
+ * one year to the next (Irish tax engine brief, 7.2 to 7.4).
+ */
+
+/** The tax engine item each treatment becomes. Non-taxable income becomes none. */
+const TAX_ITEM_FOR_TREATMENT = Object.freeze({
+  occupational_pension: 'occupationalPension',
+  rental: 'rentalProfit',
+  employment: 'employment',
+  // The State Pension item is the engine's Social Protection income: taxed,
+  // earning the employee credit, and outside USC and PRSI.
+  social_welfare: 'statePension',
+  non_taxable: null
+});
+
+/**
+ * The treatment an income gets when none is given (brief, 7.1): DB pensions and
+ * annuities are occupational pensions, rent is rent, and anything else is taxed
+ * as an occupational pension with a disclosure that says so.
+ */
+function defaultTaxTreatment(type) {
+  if (type === 'db' || type === 'annuity') {
+    return { treatment: 'occupational_pension', assumed: false };
+  }
+  if (type === 'rental') {
+    return { treatment: 'rental', assumed: false };
+  }
+  return { treatment: 'occupational_pension', assumed: true };
+}
+
+/**
+ * Whose income it is for tax. A member id is that member. Household, joint or
+ * family income, or income naming nobody the payload has, is split equally
+ * between two members, or belongs to the only one.
+ */
+function taxOwnerFor(ownerId, pensions) {
+  const id = typeof ownerId === 'string' ? ownerId.trim() : '';
+  const member = pensions.find((candidate) => candidate.id === id);
+  if (member) {
+    return member.id;
+  }
+  return pensions.length === 1 ? pensions[0].id : 'joint';
+}
+
+function buildPensionTaxSetup(inputs) {
+  const onlyMemberOrJoint = inputs.pensions.length === 1 ? inputs.pensions[0].id : 'joint';
+  return {
+    // The tax catalogue starts in 2026. A projection that starts earlier (a
+    // session saved before then) is shown without tax rather than refused.
+    available: inputs.currentYear >= IE_TAX_FIRST_YEAR,
+    status: inputs.householdTaxStatus || 'single',
+    statusDefaulted: !inputs.householdTaxStatus,
+    basis: inputs.targetIncomeBasis === 'net' ? 'net' : 'gross',
+    rentalOwnerId: inputs.rentalIncomeOwnerId || onlyMemberOrJoint,
+    sources: inputs.otherIncomeSources.map((source) => {
+      const fallback = defaultTaxTreatment(source.type);
+      const treatment = source.taxTreatment || fallback.treatment;
+      return {
+        id: source.id,
+        title: source.title,
+        ownerId: taxOwnerFor(source.ownerId, inputs.pensions),
+        treatment,
+        itemType: TAX_ITEM_FOR_TREATMENT[treatment],
+        assumedAsPension: !source.taxTreatment && fallback.assumed
+      };
+    })
+  };
+}
+
+/** The tax state the projection starts from, seeded from what each member has already used. */
+function initialTaxState(inputs) {
+  const people = {};
+  inputs.pensions.forEach((member) => {
+    people[member.id] = {
+      lumpSumsSince2005: member.priorLumpSumsSince2005 || 0,
+      sftUsed: member.sftAlreadyUsed || 0,
+      unrelievedLumpSumTax: member.unrelievedLumpSumTax || 0
+    };
+  });
+  return { people };
+}
+
+function taxPeopleAtYear(inputs, year) {
+  return inputs.pensions.map((member) => {
+    const age = ageAtYear(member, year, inputs.currentYear);
+    return {
+      id: member.id,
+      age,
+      receivingStatePensionContributory: member.includeStatePension && age >= member.statePensionStartAge
+    };
+  });
+}
+
+function statePensionForMemberAtYear(inputs, member, year) {
+  const age = ageAtYear(member, year, inputs.currentYear);
+  if (!member.includeStatePension || age < member.statePensionStartAge) {
+    return 0;
+  }
+  const amount = STATE_PENSION_ANNUAL_TODAY
+    * member.statePensionFraction
+    * Math.pow(1 + member.statePensionEscalationRate, year - inputs.currentYear);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
+ * Everything the household receives in a year other than pension withdrawals,
+ * as tax engine items, from the same figures the simulation adds up. Income
+ * the payload marks non-taxable is returned separately: it is still income,
+ * but no tax is estimated on it.
+ */
+function taxItemsAtYear(inputs, year, contributionMode) {
+  const setup = inputs.taxSetup;
+  const items = [];
+
+  inputs.pensions.forEach((member) => {
+    const statePension = statePensionForMemberAtYear(inputs, member, year);
+    if (statePension > 0) {
+      items.push({ personId: member.id, type: 'statePension', amount: statePension });
+    }
+
+    const bridgeYear = inputs.includeEmploymentIncomeDuringBridge
+      && year >= inputs.incomeStartYear
+      && year < member.retirementYear;
+    if (bridgeYear) {
+      const salary = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
+      if (Number.isFinite(salary) && salary > 0) {
+        items.push({ personId: member.id, type: 'employment', amount: salary });
+        const contribution = contributionForMemberAtYear(member, inputs, year, contributionMode).personal;
+        if (contribution > 0) {
+          items.push({
+            personId: member.id,
+            type: 'employmentPensionContribution',
+            amount: Math.min(contribution, salary)
+          });
+        }
+      }
+    }
+  });
+
+  const rent = year >= inputs.incomeStartYear
+    ? inputs.rentalIncomeToday * inflationFactorForYear(inputs, year)
+    : 0;
+  if (Number.isFinite(rent) && rent > 0) {
+    items.push({ personId: setup.rentalOwnerId, type: 'rentalProfit', amount: rent });
+  }
+
+  let nonTaxable = 0;
+  inputs.otherIncomeSources.forEach((source, index) => {
+    const amount = incomeSourceAmountAtYear(inputs, source, year);
+    if (!(amount > 0)) {
+      return;
+    }
+    const treatment = setup.sources[index];
+    if (!treatment.itemType) {
+      nonTaxable += amount;
+      return;
+    }
+    items.push({ personId: treatment.ownerId, type: treatment.itemType, amount });
+  });
+
+  return { items, nonTaxable };
+}
+
+/** Each member's withdrawals as one ARF item, saying how much of it was the statutory minimum. */
+function arfTaxItems(inputs, mandatoryByPension, electedByPension) {
+  const items = [];
+  inputs.pensions.forEach((member, index) => {
+    const mandatory = mandatoryByPension[index] || 0;
+    const amount = mandatory + (electedByPension[index] || 0);
+    if (!(amount > 0)) {
+      return;
+    }
+    const item = { personId: member.id, type: 'arfDistribution', amount };
+    if (mandatory > 0) {
+      item.imputedMinimum = Math.min(mandatory, amount);
+    }
+    items.push(item);
+  });
+  return items;
+}
+
+/** The lump sum a member takes from a fund of this size (brief, 7.1). */
+function lumpSumForMember(member, fundValue) {
+  const option = member.lumpSum || { mode: 'none' };
+  if (option.mode === 'max') {
+    return fundValue * resolveTaxRules(IE_TAX_FIRST_YEAR).lumpSum.maxShareOfFund;
+  }
+  if (option.mode === 'amount') {
+    if (option.amount > fundValue) {
+      throw new Error(
+        `generated.pensionInputs: the lump sum of ${toEuroText(option.amount)} for ${member.title} `
+        + `is more than the projected fund of ${toEuroText(fundValue)} at retirement.`
+      );
+    }
+    return option.amount;
+  }
+  return 0;
+}
+
 function simulateHouseholdRetirement(inputs, startingBalances, {
   targetIncomeToday = inputs.targetIncomeToday,
   horizonEndYear = inputs.horizonEndYear,
   contributionMode = 'current',
-  startYear = inputs.incomeStartYear
+  startYear = inputs.incomeStartYear,
+  // Crystallise each member once, in the first year their pension is drawn.
+  // Projected paths do; the required-pot search never does (brief, 7.5).
+  crystallise: shouldCrystallise = false,
+  // 'none' skips tax (the searches in a gross-mode projection), 'report'
+  // works tax out on what was drawn, and 'net' solves each year's withdrawal
+  // for an after-tax target.
+  taxMode = 'none',
+  // Keep disclosures and lump sum detail. Only the paths a client sees need it.
+  detail = false
 } = {}) {
   const years = buildYearRange(startYear, horizonEndYear);
   const labels = years.map((year) => ageLabelForYear(inputs, year));
@@ -960,7 +1315,69 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
   const perPensionMandatory = inputs.pensions.map(() => []);
   const perPensionElected = inputs.pensions.map(() => []);
 
+  const setup = inputs.taxSetup;
+  const taxAvailable = Boolean(setup?.available);
+  const taxActive = taxAvailable && taxMode !== 'none';
+  const solveNet = taxActive && taxMode === 'net';
+  let taxState = taxAvailable ? initialTaxState(inputs) : null;
+  const crystallised = inputs.pensions.map(() => false);
+  const crystallisations = [];
+  const taxSeries = {
+    incomeTax: [],
+    usc: [],
+    prsi: [],
+    totalTax: [],
+    netIncome: [],
+    grossIncome: []
+  };
+  const taxDisclosures = [];
+
   years.forEach((year) => {
+    // Benefit crystallisation comes first: the lump sum is paid and the net
+    // chargeable excess tax taken before any of the year's withdrawals, so the
+    // year opens on the drawdown fund (brief, 7.2 and 7.5).
+    const yearEvents = [];
+    const yearCrystallisations = [];
+    if (shouldCrystallise && taxAvailable) {
+      inputs.pensions.forEach((member, index) => {
+        if (crystallised[index] || year < member.retirementYear) {
+          return;
+        }
+        crystallised[index] = true;
+        const fundValue = clampToZero(balances[index]);
+        if (!(fundValue > 0)) {
+          return;
+        }
+        const lumpSum = lumpSumForMember(member, fundValue);
+        const record = crystallise({
+          year,
+          fundValue,
+          lumpSum,
+          personState: taxState.people[member.id],
+          rules: resolveTaxRules(year)
+        });
+        balances[index] = record.drawdownFund;
+        const event = { type: 'benefitCrystallisation', personId: member.id, fundValue, lumpSum };
+        yearEvents.push(event);
+        const entry = {
+          memberId: member.id,
+          memberTitle: member.title,
+          lumpSumMode: member.lumpSum?.mode || 'none',
+          lumpSumAbove25: lumpSum > fundValue * resolveTaxRules(year).lumpSum.maxShareOfFund + 1e-6,
+          ...record,
+          scheduleETax: 0,
+          netLumpSum: record.lumpSum - record.lumpSumTax - record.cetPaidFromLumpSum,
+          event
+        };
+        delete entry.nextPersonState;
+        crystallisations.push(entry);
+        yearCrystallisations.push(entry);
+        if (!taxActive) {
+          taxState.people[member.id] = { ...taxState.people[member.id], ...record.nextPersonState };
+        }
+      });
+    }
+
     const openingBalances = balances.map((value) => clampToZero(value));
     const availableIndexes = inputs.pensions
       .map((member, index) => (year >= member.retirementYear ? index : null))
@@ -990,15 +1407,97 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     });
 
     const mandatoryTotal = sum(mandatoryByPension);
-    const desiredElectedWithdrawal = clampToZero(target - external.total - mandatoryTotal);
-    const elected = withdrawProRata(balances, desiredElectedWithdrawal, availableIndexes);
+    const taxStateBeforeYear = taxState;
+    let taxInput = null;
+    let taxOutcome = null;
+    let elected;
+    let shortfall;
+    let surplus;
+
+    if (solveNet) {
+      // The target is income after tax: find the elected withdrawal, split pro
+      // rata across the pensions exactly as the gross path splits it, that
+      // brings net income to the target (brief, 7.4).
+      const base = taxItemsAtYear(inputs, year, contributionMode);
+      taxInput = {
+        year,
+        status: setup.status,
+        people: taxPeopleAtYear(inputs, year),
+        items: base.items,
+        events: yearEvents
+      };
+      const splitFor = (amount) => (amount > 0
+        ? withdrawProRata([...balances], amount, availableIndexes).withdrawn
+        : inputs.pensions.map(() => 0));
+      const solved = solveForNet({
+        state: taxState,
+        input: taxInput,
+        adjustable: (amount) => arfTaxItems(inputs, mandatoryByPension, splitFor(amount)),
+        targetNet: target - base.nonTaxable,
+        maxAmount: sum(availableIndexes.map((index) => balances[index]))
+      });
+      elected = withdrawProRata(balances, solved.amount, availableIndexes);
+      taxInput = { ...taxInput, items: [...base.items, ...arfTaxItems(inputs, mandatoryByPension, elected.withdrawn)] };
+      taxOutcome = { result: solved.result, nextState: solved.nextState };
+      shortfall = solved.met ? 0 : solved.gap;
+      surplus = solved.met ? solved.surplus : 0;
+    } else {
+      const desiredElectedWithdrawal = clampToZero(target - external.total - mandatoryTotal);
+      elected = withdrawProRata(balances, desiredElectedWithdrawal, availableIndexes);
+    }
+
     elected.withdrawn.forEach((amount, index) => {
       perPensionElected[index].push(amount);
     });
 
     const incomeBeforeShortfall = external.total + mandatoryTotal + elected.total;
-    const shortfall = clampToZero(target - incomeBeforeShortfall);
-    const surplus = clampToZero(incomeBeforeShortfall - target);
+    if (!solveNet) {
+      shortfall = clampToZero(target - incomeBeforeShortfall);
+      surplus = clampToZero(incomeBeforeShortfall - target);
+    }
+
+    if (taxActive && !taxOutcome) {
+      const base = taxItemsAtYear(inputs, year, contributionMode);
+      taxInput = {
+        year,
+        status: setup.status,
+        people: taxPeopleAtYear(inputs, year),
+        items: [...base.items, ...arfTaxItems(inputs, mandatoryByPension, elected.withdrawn)],
+        events: yearEvents
+      };
+      taxOutcome = computeTaxYear({ state: taxState, input: taxInput });
+    }
+
+    if (taxOutcome) {
+      const totals = taxOutcome.result.totals;
+      taxSeries.incomeTax.push(totals.recurring.incomeTax);
+      taxSeries.usc.push(totals.recurring.usc);
+      taxSeries.prsi.push(totals.recurring.prsi);
+      taxSeries.totalTax.push(totals.recurringTax);
+      taxSeries.grossIncome.push(incomeBeforeShortfall);
+      // Everything received, less the tax on it. Non-taxable income is in the
+      // first figure and not the second, which is the point of it.
+      taxSeries.netIncome.push(incomeBeforeShortfall - totals.recurringTax);
+      taxState = taxOutcome.nextState;
+      if (detail) {
+        taxDisclosures.push(...taxOutcome.result.disclosures);
+        // The tax the Schedule E part of a lump sum causes comes out of the
+        // lump sum (brief, 7.2 step 5), measured as the marginal tax of that
+        // crystallisation on the rest of the year.
+        yearCrystallisations.forEach((entry) => {
+          if (!(entry.scheduleE > 0)) {
+            return;
+          }
+          const marginal = marginalTax({
+            state: taxStateBeforeYear,
+            input: { ...taxInput, events: taxInput.events.filter((event) => event !== entry.event) },
+            delta: entry.event
+          });
+          entry.scheduleETax = marginal.byHead.incomeTax + marginal.byHead.usc + marginal.byHead.prsi;
+          entry.netLumpSum = entry.lumpSum - entry.lumpSumTax - entry.scheduleETax - entry.cetPaidFromLumpSum;
+        });
+      }
+    }
 
     requiredIncome.push(target);
     employmentIncome.push(external.employmentIncome);
@@ -1028,6 +1527,10 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     totalClosingPensionBalances.push(sum(closingBalances));
   });
 
+  crystallisations.forEach((entry) => {
+    delete entry.event;
+  });
+
   return {
     years,
     labels,
@@ -1055,7 +1558,12 @@ function simulateHouseholdRetirement(inputs, startingBalances, {
     maxShortfall: Math.max(0, ...shortfalls),
     totalSurplus: sum(surpluses),
     firstYearMandatoryWithdrawal: mandatoryWithdrawals[0] || 0,
-    firstYearElectedWithdrawal: electedWithdrawals[0] || 0
+    firstYearElectedWithdrawal: electedWithdrawals[0] || 0,
+    taxMode: taxActive ? taxMode : 'none',
+    tax: taxActive ? taxSeries : null,
+    crystallisations,
+    taxDisclosures: detail ? mergeDisclosures(taxDisclosures) : [],
+    endingTaxState: taxState
   };
 }
 
@@ -1068,10 +1576,15 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
   const shares = referenceTotal > 0
     ? referenceBalances.map((value) => clampToZero(value) / referenceTotal)
     : inputs.pensions.map(() => 1 / inputs.pensions.length);
+  // The search itself needs tax only when the target is after tax; the path
+  // it settles on is always taxed, so its figures can be shown.
+  const searchTaxMode = inputs.taxSetup?.basis === 'net' ? 'net' : 'none';
+  const finalTaxMode = inputs.taxSetup?.basis === 'net' ? 'net' : 'report';
   const isSustainable = (total) => {
     const simulation = simulateHouseholdRetirement(inputs, splitTotalByShares(total, shares), {
       contributionMode: 'current',
-      startYear: inputs.requiredPotReferenceYear
+      startYear: inputs.requiredPotReferenceYear,
+      taxMode: searchTaxMode
     });
     return simulation.maxShortfall <= REQUIRED_POT_TOLERANCE_EUR;
   };
@@ -1114,7 +1627,9 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
   const requiredBalances = splitTotalByShares(upper, shares);
   const simulation = simulateHouseholdRetirement(inputs, requiredBalances, {
     contributionMode: 'current',
-    startYear: inputs.requiredPotReferenceYear
+    startYear: inputs.requiredPotReferenceYear,
+    taxMode: finalTaxMode,
+    detail: true
   });
   const depletionResidual = simulation.endingBalanceAfterHorizon;
 
@@ -1130,11 +1645,16 @@ function findRequiredStartingBalances(inputs, referenceBalances) {
 }
 
 function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEndYear, contributionMode) {
+  // A projected path: each member crystallises at retirement. With an after-
+  // tax target the income found is the sustainable net income (brief, 7.4).
+  const netTarget = inputs.taxSetup?.basis === 'net';
   const isSustainable = (targetIncomeToday) => {
     const simulation = simulateHouseholdRetirement(inputs, startBalances, {
       targetIncomeToday,
       horizonEndYear,
-      contributionMode
+      contributionMode,
+      crystallise: true,
+      taxMode: netTarget ? 'net' : 'none'
     });
     return simulation.maxShortfall <= REQUIRED_POT_TOLERANCE_EUR;
   };
@@ -1158,7 +1678,10 @@ function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEn
   const simulation = simulateHouseholdRetirement(inputs, startBalances, {
     targetIncomeToday: low,
     horizonEndYear,
-    contributionMode
+    contributionMode,
+    crystallise: true,
+    taxMode: netTarget ? 'net' : 'report',
+    detail: true
   });
   const firstYearFactor = inflationFactorForYear(inputs, inputs.incomeStartYear);
   const pensionFundedAtStart = (simulation.mandatoryWithdrawals[0] || 0) + (simulation.electedWithdrawals[0] || 0);
@@ -1172,6 +1695,59 @@ function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEn
     gap: simulation.maxShortfall,
     simulation
   };
+}
+
+const TARGET_INCOME_BASES = Object.freeze(['gross', 'net']);
+
+function normalizeHouseholdTaxStatus(rawValue, pensions) {
+  if (typeof rawValue === 'undefined' || rawValue === null) {
+    return null;
+  }
+  if (!TAX_STATUSES.includes(rawValue)) {
+    throw new Error(`generated.pensionInputs.householdTaxStatus must be one of: ${TAX_STATUSES.join(', ')}.`);
+  }
+  if (rawValue === 'widowed_or_surviving_civil_partner' && pensions.length !== 1) {
+    throw new Error(
+      'generated.pensionInputs.householdTaxStatus widowed_or_surviving_civil_partner describes one person, '
+      + `but the payload has ${pensions.length} pensions.`
+    );
+  }
+  return rawValue;
+}
+
+function normalizeTargetIncomeBasis(rawValue, currentYear) {
+  if (typeof rawValue === 'undefined' || rawValue === null) {
+    return 'gross';
+  }
+  const basis = typeof rawValue === 'string' ? rawValue.trim().toLowerCase() : '';
+  if (!TARGET_INCOME_BASES.includes(basis)) {
+    throw new Error('generated.pensionInputs.targetIncomeBasis must be "gross" or "net".');
+  }
+  if (basis === 'net' && currentYear < IE_TAX_FIRST_YEAR) {
+    throw new Error(
+      `generated.pensionInputs.targetIncomeBasis "net" needs currentYear ${IE_TAX_FIRST_YEAR} or later, `
+      + `because tax is only estimated from ${IE_TAX_FIRST_YEAR}.`
+    );
+  }
+  return basis;
+}
+
+/** Whose rent it is for tax: one member, or "joint" to split it equally between two. */
+function normalizeRentalIncomeOwnerId(rawValue, pensions) {
+  if (typeof rawValue === 'undefined' || rawValue === null) {
+    return null;
+  }
+  const ownerId = typeof rawValue === 'string' ? rawValue.trim() : '';
+  if (ownerId === 'joint') {
+    if (pensions.length !== 2) {
+      throw new Error('generated.pensionInputs.rentalIncomeOwnerId "joint" splits rent between two people, but the payload has one pension.');
+    }
+    return ownerId;
+  }
+  if (!pensions.some((member) => member.id === ownerId)) {
+    throw new Error('generated.pensionInputs.rentalIncomeOwnerId must match a pension id, or be "joint".');
+  }
+  return ownerId;
 }
 
 function normalizePensionInputsInternal(raw, { validateCases = true } = {}) {
@@ -1302,6 +1878,19 @@ function normalizePensionInputsInternal(raw, { validateCases = true } = {}) {
   }
 
   normalized.otherIncomeSources = normalizeOtherIncomeSources(raw.otherIncomeSources, pensions, currentYear);
+
+  // Tax inputs (Irish tax engine brief, 7.1). A status or rent owner that was
+  // not given is left unset rather than stored as its default, so a stored
+  // payload read back still knows the status was assumed and says so.
+  const householdTaxStatus = normalizeHouseholdTaxStatus(raw.householdTaxStatus, pensions);
+  if (householdTaxStatus) {
+    normalized.householdTaxStatus = householdTaxStatus;
+  }
+  normalized.targetIncomeBasis = normalizeTargetIncomeBasis(raw.targetIncomeBasis, currentYear);
+  const rentalIncomeOwnerId = normalizeRentalIncomeOwnerId(raw.rentalIncomeOwnerId, pensions);
+  if (rentalIncomeOwnerId) {
+    normalized.rentalIncomeOwnerId = rentalIncomeOwnerId;
+  }
 
   const cases = normalizePensionCases(
     raw,
@@ -2015,6 +2604,23 @@ function buildIncomeStackDatasets(simulation, suffix, hidden = false, {
   return datasets;
 }
 
+/**
+ * Net income and the tax behind it, for the income panel. Net income is a
+ * visible line; income tax, USC and PRSI are there for the client to switch
+ * on, and hidden until they do, so the default view stays as it was.
+ */
+function buildIncomeTaxDatasets(simulation, suffix, hidden, onAxis) {
+  if (!simulation?.tax) {
+    return [];
+  }
+  return [
+    { label: `Net income (${suffix})`, data: onAxis(simulation.tax.netIncome), hidden },
+    { label: `Income tax (${suffix})`, data: onAxis(simulation.tax.incomeTax), hidden: true, hiddenByDefault: true },
+    { label: `USC (${suffix})`, data: onAxis(simulation.tax.usc), hidden: true, hiddenByDefault: true },
+    { label: `PRSI (${suffix})`, data: onAxis(simulation.tax.prsi), hidden: true, hiddenByDefault: true }
+  ];
+}
+
 function buildTerminalBalanceLabel(inputs, axisEndYear) {
   return `End ${axisPersonLabel(inputs.primaryPension)} age ${ageAtYear(inputs.primaryPension, axisEndYear, inputs.currentYear)}`;
 }
@@ -2069,29 +2675,29 @@ function buildHouseholdIncomeChart(inputs, currentSimulation, maxSimulation, req
       }]
       : [])
   ];
+  // With an after-tax target the white line is net income, and says so.
+  const requiredIncomeLabel = inputs.taxSetup?.basis === 'net' ? 'Required net income' : 'Required income';
+  const requiredIncomeDataset = {
+    label: requiredIncomeLabel,
+    data: onCurrentAxis(currentSimulation.requiredIncome),
+    borderColor: '#ffffff',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    pointBackgroundColor: '#ffffff',
+    pointBorderColor: '#ffffff'
+  };
   const incomeDatasets = [
-    {
-      label: 'Required income',
-      data: onCurrentAxis(currentSimulation.requiredIncome),
-      borderColor: '#ffffff',
-      backgroundColor: 'rgba(255, 255, 255, 0.16)',
-      pointBackgroundColor: '#ffffff',
-      pointBorderColor: '#ffffff'
-    },
+    requiredIncomeDataset,
     ...buildIncomeStackDatasets(currentSimulation, 'current', false, { onAxis: onCurrentAxis }),
-    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { onAxis: onMaxAxis })
+    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { onAxis: onMaxAxis }),
+    ...buildIncomeTaxDatasets(currentSimulation, 'current', false, onCurrentAxis),
+    ...buildIncomeTaxDatasets(maxSimulation, 'max', true, onMaxAxis)
   ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
   const incomeCsvDatasets = [
-    {
-      label: 'Required income',
-      data: onCurrentAxis(currentSimulation.requiredIncome),
-      borderColor: '#ffffff',
-      backgroundColor: 'rgba(255, 255, 255, 0.16)',
-      pointBackgroundColor: '#ffffff',
-      pointBorderColor: '#ffffff'
-    },
+    requiredIncomeDataset,
     ...buildIncomeStackDatasets(currentSimulation, 'current', false, { includeSurplus: true, onAxis: onCurrentAxis }),
-    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { includeSurplus: true, onAxis: onMaxAxis })
+    ...buildIncomeStackDatasets(maxSimulation, 'max', true, { includeSurplus: true, onAxis: onMaxAxis }),
+    ...buildIncomeTaxDatasets(currentSimulation, 'current', false, onCurrentAxis),
+    ...buildIncomeTaxDatasets(maxSimulation, 'max', true, onMaxAxis)
   ].map((dataset) => ({ ...dataset, forceYAxisID: 'y' }));
 
   return {
@@ -2224,7 +2830,8 @@ function buildAffordableIncomeResult(inputs, startBalances, endAge, axisYears, c
     requiredPotAtRetirement: goalSeek.requiredPotAtRetirementBest,
     gap: goalSeek.gap,
     endingBalanceAfterHorizon: goalSeek.simulation.endingBalanceAfterHorizon,
-    balancesPadded
+    balancesPadded,
+    simulation: goalSeek.simulation
   };
 }
 
@@ -2232,6 +2839,378 @@ function pensionFundedTargetAtStart(inputs) {
   const targetAtStart = targetIncomeNominalAtYear(inputs, inputs.incomeStartYear);
   const externalAtStart = buildIncomeBreakdownAtYear(inputs, inputs.incomeStartYear);
   return clampToZero(targetAtStart - externalAtStart.total);
+}
+
+/* ----------------------------------------------------- tax presentation ---
+ *
+ * What the module shows about tax (Irish tax engine brief, 7.6 to 8). Every
+ * figure here was worked out by the tax engine; this only reads it back and
+ * puts the disclosures that go with it beside it.
+ */
+
+/** One year of a taxed path, read back from its series. */
+function taxSummaryAtYear(inputs, simulation, year) {
+  if (!simulation?.tax) {
+    return null;
+  }
+  const index = simulationIndexForYear(simulation, year);
+  if (index < 0) {
+    return null;
+  }
+  const tax = simulation.tax;
+  const grossIncome = tax.grossIncome[index];
+  const factor = inflationFactorForYear(inputs, year);
+  return {
+    year,
+    grossIncome,
+    incomeTax: tax.incomeTax[index],
+    usc: tax.usc[index],
+    prsi: tax.prsi[index],
+    totalTax: tax.totalTax[index],
+    netIncome: tax.netIncome[index],
+    netIncomeToday: tax.netIncome[index] / Math.max(factor, 0.000001),
+    effectiveRate: grossIncome > 0 ? tax.totalTax[index] / grossIncome : 0
+  };
+}
+
+/** The first year every member who has a State Pension is receiving it. */
+function statePensionFullYear(inputs, simulation) {
+  const members = inputs.pensions.filter((member) => member.includeStatePension);
+  if (members.length === 0 || !Array.isArray(simulation?.years) || simulation.years.length === 0) {
+    return null;
+  }
+  const year = Math.max(
+    simulation.years[0],
+    ...members.map((member) => yearForAge(member, member.statePensionStartAge, inputs.currentYear))
+  );
+  return simulation.years.includes(year) ? year : null;
+}
+
+/**
+ * What each earner's personal contribution costs this year after income tax
+ * relief (brief, 7.6): the contribution plus the (negative) marginal tax of
+ * adding it, against the household's income this year. USC and PRSI are not
+ * relieved, and the engine knows that.
+ */
+function buildContributionNetCosts(inputs) {
+  const setup = inputs.taxSetup;
+  const year = inputs.currentYear;
+  if (!setup.available) {
+    return { entries: [], disclosures: [] };
+  }
+  const earners = inputs.pensions.filter((member) => member.currentSalary > 0 && year < member.retirementYear);
+  if (earners.length === 0) {
+    return { entries: [], disclosures: [] };
+  }
+
+  const items = [];
+  inputs.pensions.forEach((member) => {
+    const statePension = statePensionForMemberAtYear(inputs, member, year);
+    if (statePension > 0) {
+      items.push({ personId: member.id, type: 'statePension', amount: statePension });
+    }
+  });
+  earners.forEach((member) => {
+    items.push({ personId: member.id, type: 'employment', amount: member.currentSalary });
+  });
+  const rent = year >= inputs.incomeStartYear ? inputs.rentalIncomeToday * inflationFactorForYear(inputs, year) : 0;
+  if (rent > 0) {
+    items.push({ personId: setup.rentalOwnerId, type: 'rentalProfit', amount: rent });
+  }
+  inputs.otherIncomeSources.forEach((source, index) => {
+    const amount = incomeSourceAmountAtYear(inputs, source, year);
+    const treatment = setup.sources[index];
+    if (amount > 0 && treatment.itemType) {
+      items.push({ personId: treatment.ownerId, type: treatment.itemType, amount });
+    }
+  });
+
+  const contributions = earners.map((member) => {
+    const age = ageAtYear(member, year, inputs.currentYear);
+    return {
+      member,
+      current: contributionForMemberAtYear(member, inputs, year, 'current').personal,
+      max: maxRelievablePersonalContribution(age, member.currentSalary)
+    };
+  });
+  const people = taxPeopleAtYear(inputs, year);
+  const state = initialTaxState(inputs);
+  const disclosures = [];
+
+  const entries = contributions.map(({ member, current, max }) => {
+    // Everyone else keeps paying what they pay now; only this person's
+    // contribution is the thing being costed.
+    const others = contributions
+      .filter((entry) => entry.member !== member && entry.current > 0)
+      .map((entry) => ({ personId: entry.member.id, type: 'employmentPensionContribution', amount: entry.current }));
+    const input = { year, status: setup.status, people, items: [...items, ...others] };
+    const cost = (amount) => {
+      if (!(amount > 0)) {
+        return { contribution: 0, relief: 0, annual: 0, monthly: 0 };
+      }
+      const marginal = marginalTax({
+        state,
+        input,
+        delta: { personId: member.id, type: 'employmentPensionContribution', amount }
+      });
+      disclosures.push(...marginal.withDelta.disclosures);
+      return {
+        contribution: amount,
+        relief: -marginal.total,
+        annual: amount + marginal.total,
+        monthly: (amount + marginal.total) / 12,
+        byHead: marginal.byHead
+      };
+    };
+    return {
+      memberId: member.id,
+      memberTitle: member.title,
+      year,
+      current: cost(current),
+      max: cost(max)
+    };
+  });
+
+  return { entries, disclosures };
+}
+
+function householdTaxStatusText(inputs) {
+  const setup = inputs.taxSetup;
+  if (setup.statusDefaulted) {
+    return inputs.pensions.length > 1
+      ? 'Not given, so each person is assessed as single'
+      : 'Not given, so assessed as single';
+  }
+  if (setup.status === 'married_or_civil_partners') {
+    return 'Married or civil partners, assessed jointly';
+  }
+  if (setup.status === 'widowed_or_surviving_civil_partner') {
+    return 'Widowed or surviving civil partner';
+  }
+  return 'Single';
+}
+
+function lumpSumOptionText(option) {
+  if (option?.mode === 'max') {
+    return `The most usually allowed (${toPercentText(resolveTaxRules(IE_TAX_FIRST_YEAR).lumpSum.maxShareOfFund, 0)} of the fund)`;
+  }
+  if (option?.mode === 'amount') {
+    return toEuroText(option.amount);
+  }
+  return 'None';
+}
+
+/**
+ * Tax rows for the outputs table, tax rows for the assumptions table, and the
+ * disclosures behind both.
+ */
+function buildPensionTaxPresentation({
+  inputs,
+  displaySimulation,
+  otherSimulations,
+  sftByMember,
+  memberHasPot
+}) {
+  const setup = inputs.taxSetup;
+  if (!setup.available) {
+    return {
+      outputRows: [],
+      assumptionRows: [[
+        'Tax estimates',
+        `Tax is estimated from ${IE_TAX_FIRST_YEAR}. This projection starts in ${inputs.currentYear}, so it shows no tax figures.`
+      ]],
+      debug: { available: false }
+    };
+  }
+
+  const memberById = new Map(inputs.pensions.map((member) => [member.id, member]));
+  const labelFor = (memberId, text) => (inputs.isHousehold
+    ? `${memberById.get(memberId)?.title || memberId} ${text}`
+    : `${text.charAt(0).toUpperCase()}${text.slice(1)}`);
+  const outputRows = [];
+
+  const firstYear = taxSummaryAtYear(inputs, displaySimulation, inputs.incomeStartYear);
+  if (firstYear) {
+    const tag = `first year of income (${firstYear.year})`;
+    outputRows.push(
+      [`Estimated income tax, ${tag}`, toEuroText(firstYear.incomeTax)],
+      [`Estimated USC, ${tag}`, toEuroText(firstYear.usc)],
+      [`Estimated PRSI, ${tag}`, toEuroText(firstYear.prsi)],
+      [`Estimated net income, ${tag}, nominal`, toEuroText(firstYear.netIncome)],
+      [`Estimated net income, ${tag}, today's money`, toEuroText(firstYear.netIncomeToday)],
+      [`Estimated effective tax rate, ${tag}`, toPercentText(firstYear.effectiveRate)]
+    );
+  }
+
+  const spYear = statePensionFullYear(inputs, displaySimulation);
+  const spSummary = spYear === null ? null : taxSummaryAtYear(inputs, displaySimulation, spYear);
+  if (spSummary) {
+    const tag = `once the State Pension is fully in payment (${spYear})`;
+    outputRows.push(
+      [`Estimated net income ${tag}, nominal`, toEuroText(spSummary.netIncome)],
+      [`Estimated net income ${tag}, today's money`, toEuroText(spSummary.netIncomeToday)]
+    );
+  }
+
+  const records = displaySimulation?.crystallisations || [];
+  records.forEach((record) => {
+    if (!(record.lumpSum > 0)) {
+      return;
+    }
+    outputRows.push(
+      [labelFor(record.memberId, 'retirement lump sum (gross)'), toEuroText(record.lumpSum)],
+      [labelFor(record.memberId, 'estimated tax on the retirement lump sum'), toEuroText(record.lumpSum - record.netLumpSum)],
+      [labelFor(record.memberId, 'retirement lump sum after tax'), toEuroText(record.netLumpSum)]
+    );
+  });
+  records.forEach((record) => {
+    outputRows.push(
+      [labelFor(record.memberId, `fund at retirement (${record.year})`), toEuroText(record.fundValue)],
+      [
+        labelFor(record.memberId, 'Standard Fund Threshold at retirement'),
+        `${toEuroText(record.sft)} (${record.year}${record.sftBasis === 'held' ? ', held at the last known figure' : ''})`
+      ]
+    );
+    if (record.chargeableExcess > 0) {
+      outputRows.push(
+        [labelFor(record.memberId, 'chargeable excess'), toEuroText(record.chargeableExcess)],
+        [labelFor(record.memberId, 'estimated chargeable excess tax before credit'), toEuroText(record.grossCet)],
+        [labelFor(record.memberId, 'lump sum tax credit applied'), toEuroText(record.creditApplied)],
+        [labelFor(record.memberId, 'estimated chargeable excess tax after credit'), toEuroText(record.netCet)],
+        [labelFor(record.memberId, 'lump sum tax credit carried forward'), toEuroText(record.creditCarriedForward)]
+      );
+    } else if (record.creditCarriedForward > 0) {
+      outputRows.push([labelFor(record.memberId, 'lump sum tax credit carried forward'), toEuroText(record.creditCarriedForward)]);
+    }
+    if (record.drawdownFund !== record.fundValue) {
+      outputRows.push([labelFor(record.memberId, 'drawdown fund after lump sum and tax'), toEuroText(record.drawdownFund)]);
+    }
+  });
+
+  const netCosts = buildContributionNetCosts(inputs);
+  netCosts.entries.forEach((entry) => {
+    const describe = (cost) => `${toEuroText(cost.annual)} a year (${toEuroText(cost.monthly)} a month)`;
+    outputRows.push(
+      [labelFor(entry.memberId, 'net cost of current personal contribution'), describe(entry.current)],
+      [labelFor(entry.memberId, 'net cost of maximum personal contribution'), describe(entry.max)]
+    );
+  });
+
+  // Disclosures. Everything the path on screen raised, plus anything the other
+  // paths raised that is not tied to particular years, plus what the module
+  // itself decided on the client's behalf.
+  const withoutYears = (list) => (list || []).filter((entry) => !Array.isArray(entry.params?.years));
+  const allRecords = [records, ...otherSimulations.map((simulation) => simulation?.crystallisations || [])].flat();
+  const moduleDisclosures = [
+    { code: 'TAX_ESTIMATE' },
+    { code: 'TAX_RULES_HELD' },
+    { code: 'TAX_LEGISLATED_CHANGES' },
+    { code: 'TAX_RESIDENCE' },
+    { code: 'TAX_CREDITS_INCLUDED' },
+    { code: 'TAX_AGE_RULE' }
+  ];
+  if (memberHasPot.filter(Boolean).length > 1) {
+    moduleDisclosures.push({ code: 'WITHDRAWAL_SPLIT' });
+  }
+  if (allRecords.some((record) => record.lumpSum > 0)) {
+    moduleDisclosures.push({ code: 'LUMP_SUM_AS_CASH' });
+  }
+  if (allRecords.some((record) => record.lumpSumAbove25)) {
+    moduleDisclosures.push({ code: 'LUMP_SUM_ABOVE_25' });
+  }
+  setup.sources
+    .filter((source) => source.assumedAsPension)
+    .forEach((source) => moduleDisclosures.push({ code: 'OTHER_INCOME_AS_PENSION', params: { title: source.title } }));
+  if (setup.basis === 'net') {
+    moduleDisclosures.push({ code: 'NET_TARGET' });
+  }
+  if (netCosts.entries.length > 0) {
+    moduleDisclosures.push({ code: 'NET_COST_CONTRIBUTIONS' });
+  }
+  // Wherever a threshold for 2030 or later is shown, SFT_HELD goes with it.
+  sftByMember
+    .filter((entry, index) => memberHasPot[index] || !memberHasPot.some(Boolean))
+    .forEach((entry) => {
+      moduleDisclosures.push({ code: 'SFT_THRESHOLD', params: { amount: entry.sftValue, years: [entry.year] } });
+      if (entry.sftBasis === 'held') {
+        moduleDisclosures.push({ code: 'SFT_HELD', params: { heldAmount: entry.sftValue, years: [entry.year] } });
+      }
+    });
+
+  let disclosures = mergeDisclosures([
+    ...moduleDisclosures,
+    ...(displaySimulation?.taxDisclosures || []),
+    ...otherSimulations.flatMap((simulation) => withoutYears(simulation?.taxDisclosures)),
+    ...withoutYears(netCosts.disclosures)
+  ]);
+  const hasStatusLine = disclosures.some((entry) => entry.code.startsWith('STATUS_') && entry.code !== 'STATUS_SPOUSE_NO_INCOME');
+  if (!hasStatusLine) {
+    disclosures = mergeDisclosures([...disclosures, { code: setup.status === 'married_or_civil_partners' ? 'STATUS_JOINT' : (setup.status === 'widowed_or_surviving_civil_partner' ? 'STATUS_WIDOWED' : 'STATUS_SINGLE') }]);
+  }
+  if (setup.statusDefaulted && inputs.pensions.length > 1) {
+    disclosures = mergeDisclosures(disclosures.map((entry) => (
+      entry.code === 'STATUS_SINGLE' ? { code: 'STATUS_DEFAULT_SINGLE' } : entry
+    )));
+  }
+  const rules = resolveTaxRules(Math.max(IE_TAX_FIRST_YEAR, displaySimulation?.years?.[0] ?? inputs.currentYear));
+  const rendered = renderTaxDisclosures(disclosures, { rules });
+
+  const assumptionRows = [
+    ['Target income basis', setup.basis === 'net' ? 'After tax (net of income tax, USC and PRSI)' : 'Before tax (gross)'],
+    ['Household tax status', householdTaxStatusText(inputs)]
+  ];
+  inputs.pensions.forEach((member) => {
+    if (member.lumpSum?.mode && member.lumpSum.mode !== 'none') {
+      assumptionRows.push([labelFor(member.id, 'retirement lump sum'), lumpSumOptionText(member.lumpSum)]);
+    }
+    if (member.priorLumpSumsSince2005 > 0) {
+      assumptionRows.push([labelFor(member.id, 'earlier retirement lump sums'), toEuroText(member.priorLumpSumsSince2005)]);
+    }
+    if (member.sftAlreadyUsed > 0) {
+      assumptionRows.push([labelFor(member.id, 'Standard Fund Threshold already used'), toEuroText(member.sftAlreadyUsed)]);
+    }
+    if (member.unrelievedLumpSumTax > 0) {
+      assumptionRows.push([labelFor(member.id, 'lump sum tax not yet credited'), toEuroText(member.unrelievedLumpSumTax)]);
+    }
+  });
+  if (inputs.isHousehold && inputs.rentalIncomeToday > 0) {
+    assumptionRows.push([
+      'Rental income for tax',
+      setup.rentalOwnerId === 'joint' ? 'Split equally between you' : (memberById.get(setup.rentalOwnerId)?.title || setup.rentalOwnerId)
+    ]);
+  }
+  const projectionRecord = assumptionRecord('taxProjection');
+  assumptionRows.push([assumptionLabel(projectionRecord.key), projectionRecord.reason]);
+  // One row per disclosure code, so every label in the table is its own. Two
+  // entries under one code (two thresholds) read as one row.
+  const renderedByCode = new Map();
+  rendered.forEach((entry) => {
+    const existing = renderedByCode.get(entry.code);
+    renderedByCode.set(entry.code, existing ? { ...existing, text: `${existing.text} ${entry.text}` } : entry);
+  });
+  renderedByCode.forEach((entry) => {
+    assumptionRows.push([entry.label, entry.text]);
+  });
+  assumptionRows.push(['Not included in tax estimates', taxNotIncludedLine()]);
+
+  return {
+    outputRows,
+    assumptionRows,
+    debug: {
+      available: true,
+      status: setup.status,
+      statusDefaulted: setup.statusDefaulted,
+      targetIncomeBasis: setup.basis,
+      rentalOwnerId: setup.rentalOwnerId,
+      incomeTreatments: setup.sources,
+      firstYear,
+      statePensionFullYear: spSummary,
+      contributionNetCosts: netCosts.entries,
+      disclosureCodes: disclosures.map((entry) => entry.code),
+      disclosures: rendered,
+      notIncluded: TAX_NOT_INCLUDED.map((entry) => entry.text)
+    }
+  };
 }
 
 export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
@@ -2253,9 +3232,16 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     selectedScenarioDescription: selectedCase.description,
     selectedScenarioSummary: caseSet.hasAuthoredCases
       ? buildPensionCaseSummary(selectedCase, selectedCase.inputs, caseSet.base)
-      : ''
+      : '',
+    taxSetup: buildPensionTaxSetup(selectedCase.inputs)
   };
   const isAffordableMode = inputs.incomeMode === 'affordable' && !inputs.minDrawdownMode;
+  const isNetTarget = inputs.taxSetup.basis === 'net';
+  const projectedPathOptions = {
+    crystallise: true,
+    taxMode: isNetTarget ? 'net' : 'report',
+    detail: true
+  };
   const hasRentalContext = inputs.rentalIncomeToday > 0
     || (Array.isArray(inputs.rentalIncomeScenarios) && inputs.rentalIncomeScenarios.length > 0)
     || caseSet.cases.some((entry) => hasValue(entry.overrides, 'rentalIncomeToday'));
@@ -2303,10 +3289,12 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   const maxScenario = aggregateScenario(maxMemberScenarios);
 
   const retirementSimulationProjectedCurrent = simulateHouseholdRetirement(inputs, currentIncomeStartBalances, {
-    contributionMode: 'current'
+    contributionMode: 'current',
+    ...projectedPathOptions
   });
   const retirementSimulationProjectedMax = simulateHouseholdRetirement(inputs, maxIncomeStartBalances, {
-    contributionMode: 'max'
+    contributionMode: 'max',
+    ...projectedPathOptions
   });
   const projectedAvailablePotAtIncomeStartCurrent = simulationSeriesValueAtYear(
     retirementSimulationProjectedCurrent,
@@ -2377,24 +3365,55 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   }
 
   const retirementYear = inputs.incomeStartYear;
-  const sftMeta = computeSft(inputs.requiredPotReferenceYear);
-  const sftBreaches = isAffordableMode
-    ? {
-      current: currentReferenceBalances.some((value) => value > sftMeta.sftValue),
-      max: maxReferenceBalances.some((value) => value > sftMeta.sftValue),
-      required: false,
-      any: currentReferenceBalances.some((value) => value > sftMeta.sftValue)
-        || maxReferenceBalances.some((value) => value > sftMeta.sftValue)
-    }
-    : {
-      current: currentReferenceBalances.some((value) => value > sftMeta.sftValue),
-      max: maxReferenceBalances.some((value) => value > sftMeta.sftValue),
-      required: (requiredResult?.requiredBalances || []).some((value) => value > sftMeta.sftValue),
-      any: currentReferenceBalances.some((value) => value > sftMeta.sftValue)
-        || maxReferenceBalances.some((value) => value > sftMeta.sftValue)
-        || (requiredResult?.requiredBalances || []).some((value) => value > sftMeta.sftValue)
+  // The SFT is tested per person, at their own crystallisation (Irish tax
+  // engine brief, 4.8), not at the household's reference year.
+  const sftByMember = inputs.pensions.map((member) => {
+    const year = memberCrystallisationYear(inputs, member);
+    return { id: member.id, title: member.title, year, ...computeSft(year) };
+  });
+  const memberHasPot = inputs.pensions.map((member) => memberHasPrivatePensionPosition(member));
+  const representativeIndex = Math.max(0, memberHasPot.indexOf(true));
+  let sftMeta = sftByMember[representativeIndex];
+  let sftBreaches;
+  if (inputs.taxSetup.available) {
+    const breachedMembers = (simulation) => simulation.crystallisations
+      .filter((record) => record.chargeableExcess > 0)
+      .map((record) => record.memberId);
+    const currentBreached = breachedMembers(retirementSimulationProjectedCurrent);
+    const maxBreached = breachedMembers(retirementSimulationProjectedMax);
+    const requiredBreached = isAffordableMode
+      ? []
+      : inputs.pensions
+        .filter((member, index) => (requiredResult?.requiredBalances?.[index] ?? 0) > sftByMember[index].sftValue)
+        .map((member) => member.id);
+    sftBreaches = {
+      current: currentBreached.length > 0,
+      max: maxBreached.length > 0,
+      required: requiredBreached.length > 0,
+      any: currentBreached.length + maxBreached.length + requiredBreached.length > 0
     };
-  const sftSentence = buildSftSummarySentence(sftBreaches, sftMeta);
+    const firstBreachedId = [...currentBreached, ...maxBreached, ...requiredBreached][0];
+    if (firstBreachedId) {
+      sftMeta = sftByMember.find((entry) => entry.id === firstBreachedId) || sftMeta;
+    }
+  } else {
+    // A projection that starts before the tax catalogue does keeps the old
+    // test: no crystallisation, one threshold at the reference year.
+    sftMeta = { ...computeSft(inputs.requiredPotReferenceYear), year: inputs.requiredPotReferenceYear };
+    const above = (values) => values.some((value) => value > sftMeta.sftValue);
+    sftBreaches = {
+      current: above(currentReferenceBalances),
+      max: above(maxReferenceBalances),
+      required: isAffordableMode ? false : above(requiredResult?.requiredBalances || []),
+      any: false
+    };
+    sftBreaches.any = sftBreaches.current || sftBreaches.max || sftBreaches.required;
+  }
+  // Once chargeable excess tax is actually worked out on the current path,
+  // say what it is rather than that the threshold "may" be exceeded.
+  const sftSentence = sftBreaches.current && inputs.taxSetup.available
+    ? buildChargeableExcessSentence(inputs, retirementSimulationProjectedCurrent.crystallisations)
+    : buildSftSummarySentence(sftBreaches, sftMeta);
 
   const targetIncomeNominalAtRetirement = targetIncomeNominalAtYear(inputs, inputs.incomeStartYear);
   const externalAtTargetStart = buildIncomeBreakdownAtYear(inputs, inputs.incomeStartYear);
@@ -2402,7 +3421,12 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
   const statePensionNominalAtRetirement = externalAtTargetStart.statePension;
   const otherIncomeNominalAtRetirement = externalAtTargetStart.otherIncome;
   const employmentIncomeNominalAtRetirement = externalAtTargetStart.employmentIncome;
-  const pensionWithdrawalNominalAtRetirement = pensionFundedTargetAtStart(inputs);
+  // With an after-tax target, "target less other income" mixes a net figure
+  // with gross ones; what the pensions fund is what the first year draws.
+  const pensionWithdrawalNominalAtRetirement = isNetTarget
+    ? retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal
+      + retirementSimulationProjectedCurrent.firstYearElectedWithdrawal
+    : pensionFundedTargetAtStart(inputs);
   const expectedFactor = inflationFactorForYear(inputs, inputs.incomeStartYear);
   const expectedNominal = inputs.targetIncomeToday * expectedFactor;
   const nominalDiff = Math.abs(targetIncomeNominalAtRetirement - expectedNominal);
@@ -2457,6 +3481,22 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         : 'Excluded']
     ];
 
+  // In affordable mode the path on screen is the affordable one, so its tax is
+  // the tax to show.
+  const displaySimulation = isAffordableMode
+    ? (affordableCurrentResults[0]?.simulation || retirementSimulationProjectedCurrent)
+    : retirementSimulationProjectedCurrent;
+  const taxPresentation = buildPensionTaxPresentation({
+    inputs,
+    displaySimulation,
+    otherSimulations: [
+      isAffordableMode ? affordableMaxResults[0]?.simulation : retirementSimulationProjectedMax,
+      isAffordableMode ? null : requiredResult?.simulation
+    ].filter(Boolean),
+    sftByMember,
+    memberHasPot
+  });
+
   const assumptionsTable = {
     columns: ['Assumption', 'Value'],
     rows: [
@@ -2490,7 +3530,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         ? ['Affordable income mode', 'Goal-seek (see outputs)']
         : ['Target retirement income', toEuroText(inputs.targetIncomeToday)],
       ['Earnings cap for max-relief maths', toEuroText(115000)],
-      ['ARF minimum withdrawals', '4% under 70, 5% from 70, 6% where an individual fund exceeds €2m'],
+      ['ARF minimum withdrawals', describeArfMinimumRule()],
       ...(currentPersonalWasCapped && Number.isInteger(firstCappedAge)
         ? [[
           'Current personal contributions capped?',
@@ -2503,20 +3543,29 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         isAffordableMode
           ? inputs.affordableEndAges.join(', ')
           : `${inputs.horizonEndYear} (${ageSummaryForYear(inputs, inputs.horizonEndYear)})`
-      ]
+      ],
+      // Tax (Irish tax engine brief, 8): the inputs, the projection policy,
+      // every disclosure the figures need, and what is not included.
+      ...taxPresentation.assumptionRows
     ]
   };
 
+  // Pots are compared as drawdown funds after crystallisation (brief, 7.5).
+  // Where a lump sum or chargeable excess tax made that different from the
+  // pot itself, the rows say so.
+  const crystallisationChangedFund = [retirementSimulationProjectedCurrent, retirementSimulationProjectedMax]
+    .some((simulation) => simulation.crystallisations.some((record) => record.drawdownFund !== record.fundValue));
+  const afterCrystallisation = crystallisationChangedFund ? ', after lump sum and tax at retirement' : '';
   const outputsRows = inputs.isHousehold
     ? [
-      ['Projected available pension pot at income start (current)', toEuroText(projectedAvailablePotAtIncomeStartCurrent)],
-      ['Projected available pension pot at income start (max personal)', toEuroText(projectedAvailablePotAtIncomeStartMaxPersonal)],
-      ['Projected combined pot at required reference (current)', toEuroText(projectedPotCurrent)],
-      ['Projected combined pot at required reference (max personal)', toEuroText(projectedPotMaxPersonal)]
+      [`Projected available pension pot at income start (current${afterCrystallisation})`, toEuroText(projectedAvailablePotAtIncomeStartCurrent)],
+      [`Projected available pension pot at income start (max personal${afterCrystallisation})`, toEuroText(projectedAvailablePotAtIncomeStartMaxPersonal)],
+      [`Projected combined pot at required reference (current${afterCrystallisation})`, toEuroText(projectedPotCurrent)],
+      [`Projected combined pot at required reference (max personal${afterCrystallisation})`, toEuroText(projectedPotMaxPersonal)]
     ]
     : [
-      ['Projected pot at target start (current)', toEuroText(projectedPotCurrent)],
-      ['Projected pot at target start (max personal)', toEuroText(projectedPotMaxPersonal)]
+      [`Projected pot at target start (current${afterCrystallisation})`, toEuroText(projectedPotCurrent)],
+      [`Projected pot at target start (max personal${afterCrystallisation})`, toEuroText(projectedPotMaxPersonal)]
     ];
 
   if (isAffordableMode) {
@@ -2526,7 +3575,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         `${toEuroText(entry.incomeToday)} p.a.`
       ]);
       outputsRows.push([
-        `Affordable income (current, deplete by ${entry.endAge})`,
+        `${isNetTarget ? 'Affordable net income' : 'Affordable income'} (current, deplete by ${entry.endAge})`,
         `${toEuroText(entry.totalIncomeToday)} p.a.`
       ]);
     });
@@ -2536,7 +3585,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         `${toEuroText(entry.incomeToday)} p.a.`
       ]);
       outputsRows.push([
-        `Affordable income (max, deplete by ${entry.endAge})`,
+        `${isNetTarget ? 'Affordable net income' : 'Affordable income'} (max, deplete by ${entry.endAge})`,
         `${toEuroText(entry.totalIncomeToday)} p.a.`
       ]);
     });
@@ -2544,9 +3593,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     outputsRows.push(['Retirement income position', readiness.readinessSentence]);
     if (readiness.requiredPotIsApplicable) {
       outputsRows.push([
-        inputs.isHousehold
+        (inputs.isHousehold
           ? `Required pension pot at reference year, depleting by ${inputs.horizonEndYear}`
-          : `Required pension pot at target start, depleting by age ${inputs.horizonEndAge}`,
+          : `Required pension pot at target start, depleting by age ${inputs.horizonEndAge}`) + afterCrystallisation,
         toEuroText(requiredPot)
       ]);
       if (readiness.currentGapVsRequired > 0) {
@@ -2571,8 +3620,9 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         outputsRows.push(['Max-contribution surplus vs required', toEuroText(readiness.maxSurplusVsRequired)]);
       }
     }
-    outputsRows.push(['Target income (today\'s money)', toEuroText(inputs.targetIncomeToday)]);
-    outputsRows.push(['Target income (nominal at target start)', toEuroText(targetIncomeNominalAtRetirement)]);
+    const targetLabel = isNetTarget ? 'Target net income' : 'Target income';
+    outputsRows.push([`${targetLabel} (today's money)`, toEuroText(inputs.targetIncomeToday)]);
+    outputsRows.push([`${targetLabel} (nominal at target start)`, toEuroText(targetIncomeNominalAtRetirement)]);
     if (inputs.includeEmploymentIncomeDuringBridge) {
       outputsRows.push(['Gross employment income at target start', toEuroText(employmentIncomeNominalAtRetirement)]);
     }
@@ -2607,10 +3657,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     outputsRows.push(['Total shortfall on current path', toEuroText(retirementSimulationProjectedCurrent.totalShortfall)]);
   }
 
-  outputsRows.push([
-    'SFT threshold used',
-    `${formatCurrencyEUR(sftMeta.sftValue)}${sftMeta.heldConstantBeyond2029 ? ' (held beyond 2029)' : ''}`
-  ]);
+  outputsRows.push(['SFT threshold used', describeSftThresholdUsed(inputs, sftByMember, memberHasPot, sftMeta)]);
   outputsRows.push([
     'SFT breach?',
     sftBreaches.any
@@ -2621,6 +3668,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ].filter(Boolean).join(', ')})`
       : 'No'
   ]);
+
+  outputsRows.push(...taxPresentation.outputRows);
 
   const outputsTable = {
     columns: ['Output', 'Value'],
@@ -2729,8 +3778,22 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       sftValue: sftMeta.sftValue,
       sftYearUsed: sftMeta.sftYearUsed,
       sftHeldConstantBeyond2029: sftMeta.heldConstantBeyond2029,
+      sftBasis: sftMeta.sftBasis,
+      sftByMember,
       sftBreaches,
       sftSentence,
+      tax: {
+        ...taxPresentation.debug,
+        perYear: {
+          current: displaySimulation.tax,
+          max: (isAffordableMode ? affordableMaxResults[0]?.simulation : retirementSimulationProjectedMax)?.tax ?? null,
+          required: requiredResult?.simulation?.tax ?? null
+        },
+        crystallisations: {
+          current: displaySimulation.crystallisations,
+          max: (isAffordableMode ? affordableMaxResults[0]?.simulation : retirementSimulationProjectedMax)?.crystallisations ?? []
+        }
+      },
       currentPersonalWasCapped,
       firstCappedAge,
       maxRelievableAtFirstCap,

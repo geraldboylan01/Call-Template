@@ -776,7 +776,7 @@ export function buildRepaymentCaseModule({
       `${eur(set.openingBalance)} outstanding`,
       `${(rate * 100).toFixed(2).replace(/\.?0+$/, '')}%`,
       `to ${termEndLabel()}`,
-      `${eur2(set.contractualPayment)} a month in every case`
+      `${eur2(set.contractualPayment)} a month until cleared`
     ].join(' · ');
 
     // Row two of each card is a commitment rail, filled to this case's share
@@ -810,10 +810,10 @@ export function buildRepaymentCaseModule({
     refs.premise.replaceChildren();
     withFigure(
       refs.premise,
-      'In all of these cases your monthly repayment stays at ',
+      'While a balance remains, your regular monthly repayment stays at ',
       eur2(set.contractualPayment),
-      `. A lump sum or a yearly amount is paid on top of it, and the term shortens instead — so nothing here `
-        + `changes what leaves your account each month.`
+      `. A lump sum or a yearly amount is paid on top and shortens the term. `
+        + `Repayments stop when the mortgage is cleared; a final payment may be smaller.`
     );
     if (set.repaymentReduction) {
       refs.premise.append(' The last section shows what happens if you keep the term and lower the repayment '
@@ -1084,7 +1084,7 @@ export function buildRepaymentCaseModule({
       : termEndLabel();
     refs.heroDate.style.opacity = (0.4 + (0.6 * Math.abs(t - 0.5) * 2)).toFixed(3);
     refs.heroDateSub.textContent = shown.monthsSaved > 0
-      ? `${formatMonthsDurationLong(shown.monthsSaved)} sooner than ${termEndLabelLong()}.`
+      ? `${formatMonthsDurationLong(shown.monthsSaved)} shorter than the projected current position.`
       : 'The last payment on your current terms, with nothing added.';
 
     refs.heroPct.textContent = `${Math.max(0, Math.round((savedNow / baseInterest) * 100))}%`;
@@ -1346,5 +1346,11 @@ export function buildRepaymentCaseModule({
   renderStatic();
   paint();
 
+  root.presenterSelectScenario = async (id) => {
+    const index = set.cases.findIndex(item => item.id === id);
+    if (index < 0) throw new Error(`Unknown repayment scenario: ${id}`);
+    selectCase(index);
+    await new Promise(resolve => window.setTimeout(resolve, isReducedMotion() ? 0 : CLICK_MS + SETTLE_GRACE_MS));
+  };
   return root;
 }

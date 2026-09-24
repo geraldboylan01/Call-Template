@@ -19,47 +19,67 @@ export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
 });
 
 /**
- * Approved Retirement Fund minimum drawdown.
+ * Approved Retirement Fund imputed distributions (s.790D TCA).
  *
- * These are dated Irish rules, so they belong beside the State Pension figures
- * in this catalogue rather than as constants inside a calculation engine.
- * Moving them changed no value: the rates and the high-value threshold are
- * exactly what `pension_math.js` applied before, and the pension projection is
- * pinned against unchanged output.
+ * The statute tests age "for the whole of the tax year": the charge applies
+ * only where the holder is 60 or over for the whole year, and the 5% rate only
+ * where they are 70 or over for the whole year. Someone who turns 61 during a
+ * year was 60 on 1 January, so ages here are stored as the statute writes them
+ * and the attained-age test adds one (Irish tax engine brief, 4.1 and 4.9).
+ *
+ * Before this correction the engine charged 4% from retirement at any age and
+ * 5% from attained age 70. That was earlier than the law in both places.
  */
 export const IRISH_ARF_MINIMUM_DRAWDOWN = Object.freeze({
-  ruleId: 'ie.arf.minimum_drawdown',
+  ruleId: 'ie.arf.imputed_distribution',
   jurisdiction: 'IE',
   effectiveFrom: '2026-01-01',
-  /** Standard minimum drawdown before the higher-age band. */
+  /** The holder must be at least this age for the whole of the year. */
+  minimumWholeYearAge: 60,
   baseRate: 0.04,
-  /** From this age the higher standard rate applies. */
-  higherRateFromAge: 70,
+  /** From this age, held for the whole of the year, the higher rate applies. */
+  higherRateWholeYearAge: 70,
   higherRate: 0.05,
-  /** A fund above this value draws the high-value rate at any age. */
+  /** A fund above this value draws the high-value rate, once the age test is met. */
   highValueThresholdEur: 2_000_000,
   highValueRate: 0.06,
+  /** Revenue values the fund on 30 November; the engine uses the opening balance. */
+  valuationDate: '30 November',
   source: Object.freeze({
-    title: 'Revenue — Approved Retirement Funds (ARFs)',
-    url: 'https://www.revenue.ie/en/jobs-and-pensions/pensions/approved-retirement-funds.aspx'
+    title: 'Revenue Pensions Manual, Chapter 28 (imputed distributions)',
+    url: 'https://www.revenue.ie/en/tax-professionals/tdm/pensions/chapter-28.pdf'
   }),
   grossAmountNotice: 'ARF withdrawals are gross and subject to income tax, USC and PRSI; they must not be described as net income unless a module explicitly applies a tax conversion.'
 });
 
+/** Whether someone of this attained age was at least `wholeYearAge` for all of the year. */
+function agedForWholeYear(attainedAge, wholeYearAge) {
+  return attainedAge - 1 >= wholeYearAge;
+}
+
 /**
- * The minimum a fund of this size must draw down at this age.
+ * The imputed distribution rate for a fund of this size at this attained age.
  *
- * The high-value band wins over the age band, which is the order the rules
- * apply in: a fund above the threshold draws the higher rate whatever the
- * holder's age.
+ * The age test comes first: below it there is no imputed distribution, however
+ * large the fund. Once it is met, the high-value band wins over the age band.
  */
 export function irishArfMinimumRate(age, openingBalance) {
-  if (openingBalance > IRISH_ARF_MINIMUM_DRAWDOWN.highValueThresholdEur) {
-    return IRISH_ARF_MINIMUM_DRAWDOWN.highValueRate;
+  const rule = IRISH_ARF_MINIMUM_DRAWDOWN;
+  if (!agedForWholeYear(age, rule.minimumWholeYearAge)) {
+    return 0;
   }
-  return age >= IRISH_ARF_MINIMUM_DRAWDOWN.higherRateFromAge
-    ? IRISH_ARF_MINIMUM_DRAWDOWN.higherRate
-    : IRISH_ARF_MINIMUM_DRAWDOWN.baseRate;
+  if (openingBalance > rule.highValueThresholdEur) {
+    return rule.highValueRate;
+  }
+  return agedForWholeYear(age, rule.higherRateWholeYearAge)
+    ? rule.higherRate
+    : rule.baseRate;
+}
+
+/** The first attained age at which an imputed distribution, or its higher rate, applies. */
+export function irishArfFirstAttainedAge(band = 'base') {
+  const rule = IRISH_ARF_MINIMUM_DRAWDOWN;
+  return (band === 'higher' ? rule.higherRateWholeYearAge : rule.minimumWholeYearAge) + 1;
 }
 
 export function normalizeStatePensionFraction(value, fallback = 1) {

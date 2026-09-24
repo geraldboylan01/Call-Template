@@ -1,3 +1,4 @@
+import { installPresenter } from './presenter.js';
 import {
   loadSession,
   hasStoredSession,
@@ -73,6 +74,7 @@ import {
 } from './mortgage_math.js';
 import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
+import { runIeTaxTests } from './tests_ie_tax.js';
 import { runCollegeFundingMathTests } from './tests_college_funding_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
@@ -273,7 +275,8 @@ const appState = {
   assetAccess: null,
   mediaObjectUrls: new Map(),
   pipelineContext: null,
-  codexVideoBrief: null
+  codexVideoBrief: null,
+  presenterSnapshot: null
 };
 
 const advisorAuthState = {
@@ -3684,7 +3687,7 @@ function showToast(message, type = 'success') {
 }
 
 function saveSessionNow() {
-  if (!runtimeConfig.persistLocalSession) {
+  if (appState.presenterSnapshot || !runtimeConfig.persistLocalSession) {
     return;
   }
 
@@ -3692,7 +3695,7 @@ function saveSessionNow() {
 }
 
 function scheduleSessionSave() {
-  if (!runtimeConfig.persistLocalSession) {
+  if (appState.presenterSnapshot || !runtimeConfig.persistLocalSession) {
     return;
   }
 
@@ -3700,7 +3703,7 @@ function scheduleSessionSave() {
 }
 
 function markSessionDirty() {
-  if (!runtimeConfig.persistLocalSession) {
+  if (appState.presenterSnapshot || !runtimeConfig.persistLocalSession) {
     return;
   }
 
@@ -3708,7 +3711,7 @@ function markSessionDirty() {
 }
 
 function markSessionClean() {
-  if (!runtimeConfig.persistLocalSession) {
+  if (appState.presenterSnapshot || !runtimeConfig.persistLocalSession) {
     return;
   }
 
@@ -9309,6 +9312,7 @@ function bindEvents() {
   });
 
   window.addEventListener('keydown', async (event) => {
+    if (window.planeirPresenter?.handleKey(event)) return;
     setOverviewMultiSelectArmed(isMultiSelectModifier(event));
 
     const target = event.target;
@@ -9459,6 +9463,65 @@ function bindEvents() {
 
   window.addEventListener('beforeunload', () => {
     saveSessionNow();
+  });
+}
+
+// Presentation runs against a disposable session and disposable scenario maps.
+// Pending autosaves still refer to the original session, never this copy.
+function installLivePresenter() {
+  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
+  window.planeirPresenter = installPresenter({
+    session: () => appState.presenterSnapshot?.session || appState.session,
+    root: () => ui.swipeStage.querySelector('.focused-module-card'),
+    async begin() {
+      if (appState.transitionLock || getIsZoomAnimating()) throw new Error('Wait for the current navigation to finish.');
+      if (appState.mode === 'compare') throw new Error('Close the comparison view before starting Presenter Mode.');
+      const snapshot = { session: appState.session, mode: appState.mode, readOnly: runtimeConfig.readOnly, scroll: ui.swipeStage.querySelector('.focused-module-card')?.scrollTop || 0, overviewScroll: getOverviewScrollPosition(), maps: {} };
+      mapKeys.forEach(key => { snapshot.maps[key] = appState[key]; appState[key] = structuredClone(appState[key]); });
+      appState.presenterSnapshot = snapshot;
+      appState.session = structuredClone(snapshot.session);
+      // Undeclared local calculator toggles are not part of an authored package.
+      appState.pensionShowMaxByModuleId.clear();
+      appState.housePurchaseScenarioByModuleId.clear();
+      runtimeConfig.readOnly = true;
+      setDevPanelOpen(false);
+    },
+    async showModule(moduleId) {
+      if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
+      appState.session.activeModuleId = moduleId;
+      // Only mount/paint inside the native dissolve. Awaiting rAF-based chart
+      // hydration there deadlocks while the browser suppresses rendering.
+      await renderFocused({ useSwipe: false, revealMode: true, deferCharts: true });
+      hydrateChartsForActivePane();
+    },
+    async setScenario(module, scenarioId) {
+      if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
+      const root = ui.swipeStage.querySelector('.focused-module-card');
+      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan') {
+        const control = [...root.querySelectorAll('*')].find(el => typeof el.presenterSelectScenario === 'function');
+        if (!control) throw new Error(`Scenario control is unavailable in ${module.label}.`);
+        await control.presenterSelectScenario(scenarioId);
+      } else if (module.kind === 'pension') await setPensionScenarioForModule(module.moduleId, scenarioId);
+      else if (module.kind === 'net-retirement') await setNetRetirementScenarioForModule(module.moduleId, scenarioId);
+      else throw new Error(`Scenario selection is unsupported in ${module.label}.`);
+      await hydrateChartsWhenStable({ reason: 'presenter-scenario' });
+    },
+    async end() {
+      const snapshot = appState.presenterSnapshot;
+      if (!snapshot) return;
+      appState.session = snapshot.session; runtimeConfig.readOnly = snapshot.readOnly;
+      mapKeys.forEach(key => { appState[key] = snapshot.maps[key]; });
+      appState.mode = snapshot.mode;
+      if (snapshot.mode === 'focused') {
+        await renderFocused({ useSwipe: false });
+        ui.swipeStage.querySelector('.focused-module-card').scrollTop = snapshot.scroll;
+      } else {
+        setMode(ui, snapshot.mode);
+        if (snapshot.mode === 'overview') { refreshOverview({ enableSortable: !runtimeConfig.readOnly }); restoreOverviewScrollPosition(snapshot.overviewScroll); }
+        updateUiChrome();
+      }
+      appState.presenterSnapshot = null;
+    }
   });
 }
 
@@ -9632,8 +9695,10 @@ export async function initApp(options = {}) {
     window.__getMortgageScenarioForModule = (moduleId) => getMortgageScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
+    window.__runIeTaxTests = () => runIeTaxTests();
     window.__runCollegeFundingMathTests = () => runCollegeFundingMathTests();
     window.__runNetRetirementMathTests = () => runNetRetirementMathTests();
+    if (!runtimeConfig.readOnly || options.enablePresenter === true) installLivePresenter();
 
     if (appState.mode === 'focused') {
       await renderFocused({ useSwipe: false, revealMode: true });

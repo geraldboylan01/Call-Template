@@ -1,7 +1,7 @@
 // Shared by the live app and the local director tools. No DOM, storage or AI.
 import { getPensionScenarioCases } from './pension_math.js';
 import { getNetRetirementScenarioCases } from './net_retirement_math.js';
-import { getMortgageScenarioCases } from './mortgage_math.js';
+import { getMortgageScenarioCases, computeMortgageComparison } from './mortgage_math.js';
 import { resolveLiquidityReserveForPlan, normalizeSectionToken } from './module_pipeline.js';
 
 export const CATALOGUE_VERSION = 1;
@@ -11,7 +11,7 @@ export function canonical(value) {
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])]));
   return value;
 }
-// A revision token, not a security hash. Full source equality is checked at runtime too.
+// A revision token, not a security hash; rebuilt from source on load and start.
 export function fingerprint(value) {
   let a = 2166136261, b = 5381;
   for (const c of JSON.stringify(canonical(value))) {
@@ -53,18 +53,35 @@ export function buildPresentationCatalogue(session) {
     const meta = { key, moduleId: module.id, label: module.title, kind, sourceRevision: fingerprint(source),
       outputOrigin: g.report ? 'authored-report' : (cases.length || g.liquidityPlan ? 'existing-module-calculation' : 'authored-content'),
       scenarioScope: 'this-module-only', updatesOtherModules: false,
+      assumptions: (g.assumptions?.rows || []).map(row => row.map(plainText)),
+      capabilities: { wholeModule: true, scenarioSelection: cases.length > 0, calculatorChartPoints: false, authoredReportSubtargets: Boolean(g.report) },
       defaultScenarioId: g.mortgageInputs?.baseScenarioId || g.loanInputs?.baseScenarioId || g.pensionInputs?.baseScenarioId || g.netRetirementInputs?.baseScenarioId || cases[0]?.id || null,
       scenarios: cases.map(s => ({ id: s.id, label: s.title, description: plainText(s.description || s.summaryHtml), supportedActions: ['state'] })) };
+    if (kind === 'mortgage' || kind === 'loan') {
+      try {
+        const computed = computeMortgageComparison(g.loanInputs || g.mortgageInputs, { defaultLoanKind: kind });
+        meta.scenarios.forEach(s => {
+          const result = computed.cases.find(c => c.id === s.id);
+          s.facts = { interestSaved: result.interestSaved, totalInterestLifetime: result.totalInterestLifetime, payoffDateIso: result.payoffDateIso };
+          s.description ||= `Existing repayment calculation: payoff ${result.payoffDateIso}, lifetime interest ${money(result.totalInterestLifetime)}, interest saved ${money(result.interestSaved)}.`;
+        });
+      } catch(e) { errors.push(`${module.title}: ${e.message}`); }
+    }
     modules.push(meta);
     const add = (localId, targetKind, label, ref, extra = {}) => {
       const target = { id: `${key}/${localId}`, moduleKey: key, moduleLabel: module.title, kind: targetKind, label: plainText(label),
         description: '', supportedActions: ['frame', 'focus', 'reset'], source: { moduleKey: key, ...ref }, ref,
         outputOrigin: meta.outputOrigin, available: !hidden.has(ref.cardId), ...extra };
+      target.supportedEmphasis = target.supportedActions.includes('focus') ? ['spotlight', 'underline', ...(ref.type === 'chart-point' ? ['point'] : [])] : [];
+      target.suggestedEmphasis = ref.type === 'chart-point' ? 'point' : ['holding', 'metric'].includes(targetKind) ? 'underline' : 'spotlight';
       targets.push(target); return target;
     };
     add('module', 'module', module.title, { type: 'module' }, { description: plainText(g.summaryHtml || g.report?.title), supportedActions: ['frame', 'focus', 'reset', ...(cases.length ? ['state'] : [])] });
     for (const [id, label, exists] of [['summary', 'Summary', g.summaryHtml && !g.report && !g.liquidityPlan], ['assumptions', 'Assumptions', g.assumptions?.rows?.length], ['outputs', 'Calculated outputs', g.outputs?.rows?.length]]) {
-      if (exists) add(id, 'card', label, { type: 'card', cardId: id });
+      if (exists) {
+        const parent = add(id, 'card', label, { type: 'card', cardId: id });
+        if (id === 'outputs') g.outputs.rows.forEach((row, index) => add(`outputs/row/${index}`, 'table-row', row[0], { type: 'output-row', cardId: id, row: index }, { parentId: parent.id, cells: row, columns: g.outputs.columns, description: 'Existing base output; scenario selection uses the live calculator output.' }));
+      }
     }
     if (g.outputsBucketed) {
       const bucketCases = [{ id: 'current', sections: g.outputsBucketed.sections }, ...(g.outputsBucketed.scenarios || [])];
@@ -95,7 +112,7 @@ export function buildPresentationCatalogue(session) {
       const parent = add(`report/${block.id}`, block.type, block.title || block.chart?.title || block.type, ref, { description: plainText(block.subtitle || block.markdown || block.bodyHtml), error: block.errorMessage || null });
       for (const item of block.items || []) {
         if (!['kpiRow', 'accordion', 'checklist', 'insightGrid'].includes(block.type)) continue;
-        add(`report/${block.id}/item/${item.id}`, block.type === 'accordion' ? 'disclosure' : 'item', item.label || item.title, { ...ref, type: 'report-item', itemId: item.id }, { parentId: parent.id, value: item.value ?? null, displayValue: item.value ?? null, description: plainText(item.detail || item.markdown || item.bodyHtml) });
+        add(`report/${block.id}/item/${item.id}`, block.type === 'accordion' ? 'disclosure' : 'item', item.label || item.title, { ...ref, type: 'report-item', itemId: item.id }, { parentId: parent.id, value: item.value ?? null, displayValue: item.value ?? null, description: plainText(item.detail || item.note || item.markdown || item.bodyHtml) });
       }
       if (block.type === 'table') (block.table?.rows || []).forEach((row, index) => add(`report/${block.id}/row/${index}`, 'table-row', row[0], { ...ref, type: 'table-row', row: index }, { parentId: parent.id, cells: row, columns: block.table.columns }));
       if (block.type === 'timeline') {
@@ -126,9 +143,11 @@ export function buildLivePresenterBrief(catalogue) {
   return { kind: 'planeir.live-presenter-brief', version: 1, catalogue,
     workflow: [
       'Read the forum and all module JSON. Write a source-grounded case understanding first.',
-      'Write the complete spoken script before directing visuals. Use the supplied Frasier script as the style reference: friendly, explanatory, educational, with a brief introduction. Let the financial question determine structure.',
+      'Write the complete spoken script before directing visuals. Use the supplied script/style reference: friendly, explanatory, educational, with a brief introduction. Let the financial question determine structure.',
       'Reread the completed script with this catalogue. Direct only beats that materially improve comprehension. Staying on a whole module for 30–60 seconds is valid; a spoken number does not require FOCUS.',
       'Create presentation.json using real target IDs. One step is one visual beat; navigation, scenario selection and focus may be operations inside that step. Never invent missing targets or financial results.',
+      'Direct attention from the meaning of the completed script. FOCUS accepts emphasis: spotlight for an area, underline for a specific holding/figure, or point for an existing chart-point target. Use one treatment at a time; FRAME leaves the full context undimmed. Prefer a sustained quiet view over extra cues. Native scene dissolves and eased scrolling are handled by the controller, not by timed narration.',
+      'For separate iPhone and screen recordings, a beat may include edit: {shot: "screen" | "presenter" | "hold", reason: "script-grounded reason"}. This is post-production advice only: it never switches cameras or adds cues. Prefer sustained views; do not turn every beat into a cut. Actual take logs retain request/arrival times and repeats relative to the visible SYNC slate. They are not speech transcripts.',
       'Validate the package and execute validateLive in the loaded app. Review spoken claims against source references, assumptions and module-local scenario boundaries. Report uncertain mappings.',
       'Generate script-presenter.md from script.md and the validated cue map. Every [→ LABEL] has exactly one step. Include [MANUAL ACTION — ...] only for unavoidable setup. Preview before recording.'
     ], requiredFiles: ['script.md', 'presentation.json', 'script-presenter.md', 'validation.json'],

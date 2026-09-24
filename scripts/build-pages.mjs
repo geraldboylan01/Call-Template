@@ -36,8 +36,12 @@ const HTML_FILES = [
   'app/access.html',
   'app/leads.html',
   'app/video.html',
+  'app/recording.html',
   'plan/index.html',
-  'plan/privacy.html'
+  'plan/privacy.html',
+  'apply/index.html',
+  'privacy/index.html',
+  'cases/index.html'
 ];
 const COPY_ENTRIES = [
   'styles',
@@ -187,6 +191,21 @@ async function listFiles(rootDir) {
   return files.flat();
 }
 
+async function listGeneratedCasePages() {
+  const casesDir = path.join(ROOT_DIR, 'cases');
+  let entries = [];
+  try {
+    entries = await readdir(casesDir, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `cases/${entry.name}/index.html`)
+    .sort();
+}
+
 async function build() {
   await rm(DIST_DIR, { recursive: true, force: true });
   await mkdir(DIST_DIR, { recursive: true });
@@ -195,7 +214,9 @@ async function build() {
     await cp(path.join(ROOT_DIR, entry), path.join(DIST_DIR, entry), { recursive: true });
   }
 
-  for (const htmlFile of HTML_FILES) {
+  // One page per published case video, written by scripts/generate-case-pages.mjs.
+  const casePages = await listGeneratedCasePages();
+  for (const htmlFile of [...HTML_FILES, ...casePages]) {
     const inputPath = path.join(ROOT_DIR, htmlFile);
     const outputPath = path.join(DIST_DIR, htmlFile);
     await mkdir(path.dirname(outputPath), { recursive: true });
