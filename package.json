@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:cases && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
+    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:cases && npm run generate:agent-docs && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
+    "generate:agent-docs": "node ./scripts/generate-agent-docs.mjs",
+    "check:agent-docs": "node ./scripts/generate-agent-docs.mjs --check",
+    "check:agent-applications": "node ./scripts/check-agent-applications.mjs",
     "generate:cases": "node ./scripts/generate-case-pages.mjs",
     "check:cases": "node ./scripts/generate-case-pages.mjs --check",
     "check:case-application": "node ./scripts/check-case-application.mjs",

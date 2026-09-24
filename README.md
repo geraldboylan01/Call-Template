@@ -161,6 +161,17 @@ The homepage points to `/apply/`, a one-page application for a case video. It re
 - Privacy notice: `/privacy/`.
 - Checks: `npm run check:case-application` (parsing, validation, write-up and public-case snapshots).
 
+### Applications from AI assistants
+
+People talk their finances through with ChatGPT and Claude, so an assistant can fill in the whole application for its user, with their agreement. Everything is generated from the same schema as `/apply/` (`js/case_application/agent.js`).
+
+- Guide for assistants and their users: `/for-ai-assistants/` (when Planeir fits and when it does not, suggested wording, what Gerry does, consent, the question guide, and both ways to apply). Short version: `/llms.txt`. Machine-readable: `/agents/openapi.json` (OpenAPI 3.1, usable as ChatGPT GPT actions) and `/agents/application.schema.json`.
+- Way 1, a link: an assistant writes `https://planeir.ie/apply/#topics=...&household.age=41&...`. The page fills in every answer, removes them from the address bar, shows a note saying an assistant filled them in, and the person adds their name and email and sends it themselves. Stored with `application_channel = 'assistant-link'`.
+- Way 2, the API: `POST https://api.planeir.ie/api/agent/applications/check` returns the write-up, precise warnings and questions still worth asking, and stores nothing. `POST /api/agent/applications` needs `person`, both `consent` flags and `application`; it files a request (`agent_application_requests`, migration 0018) and emails the person a link to `/apply/confirm/#t=...`. Only when they press Confirm is a lead and client created (`source = 'agent-api'`). Unconfirmed requests are deleted after 7 days by the hourly cron.
+- Limits: 3 requests per email address a day, 300 a day in total, 30 an hour per connection (assistants share addresses). Without email (`RESEND_API_KEY`, `LEAD_EMAIL_FROM`) or the application key, the API answers 503.
+- Checks: `npm run check:agent-applications` runs the real Worker against SQLite with email captured; `npm run check:agent-docs` fails when the guide or the JSON files are stale (`npm run generate:agent-docs` rewrites them).
+- `robots.txt` names the AI search and assistant crawlers explicitly. Training crawlers (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended) are allowed too, as they already were under `*`; remove them there to opt out of training while staying in AI search.
+
 ## Lead Capture
 
 The original request-a-call route still works for any cached copy of the old homepage. The homepage no longer carries this form.

@@ -298,6 +298,130 @@
   font-size: 0.85rem;
 }
 
+/* For AI assistants */
+.guide-sections {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 62rem;
+}
+
+.guide-sections code {
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.35rem;
+  background: rgba(143, 208, 255, 0.1);
+  color: #d9f1ff;
+  font-size: 0.86em;
+  overflow-wrap: anywhere;
+}
+
+.guide-quote {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-left: 3px solid var(--landing-accent);
+  border-radius: 0 0.8rem 0.8rem 0;
+  background: rgba(5, 11, 21, 0.55);
+  color: var(--landing-text);
+  line-height: 1.7;
+}
+
+.guide-section {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(128, 168, 214, 0.14);
+}
+
+.guide-section h3 {
+  color: var(--landing-accent);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.guide-meta {
+  font-size: 0.88rem;
+}
+
+.guide-table-wrap {
+  overflow-x: auto;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(128, 168, 214, 0.16);
+}
+
+.guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.guide-table th,
+.guide-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid rgba(128, 168, 214, 0.12);
+  color: var(--landing-muted);
+  text-align: left;
+  vertical-align: top;
+}
+
+.guide-table th {
+  color: var(--landing-text);
+  font-weight: 700;
+  background: rgba(5, 11, 21, 0.55);
+}
+
+.guide-table td:first-child {
+  color: var(--landing-text);
+  min-width: 11rem;
+}
+
+.guide-code {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(128, 168, 214, 0.16);
+  background: rgba(5, 11, 21, 0.7);
+  color: #d9f1ff;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.guide-code code {
+  padding: 0;
+  background: none;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* Questions people ask, on the homepage */
+.faq-list {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 50rem;
+}
+
+.faq-item {
+  padding: 0.95rem 1.1rem;
+  border-radius: var(--landing-radius-sm);
+  border: 1px solid var(--landing-border);
+  background: rgba(9, 17, 31, 0.7);
+}
+
+.faq-item summary {
+  color: var(--landing-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.faq-item p {
+  margin: 0.6rem 0 0;
+  color: var(--landing-muted);
+  line-height: 1.7;
+}
+
 /* Privacy notice */
 .privacy-sections {
   display: grid;

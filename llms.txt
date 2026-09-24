@@ -1,0 +1,30 @@
+# Planéir
+
+> Planéir (also written Planeir) is free Irish financial education from Gerry Boylan, a Qualified Financial Adviser (QFA) in Ireland. People in Ireland apply with their situation and their own figures. Gerry reads every application and picks some to explain in short videos, with the figures on screen, the name left out and the figures rounded. It is education, not regulated financial advice.
+
+Key facts:
+
+- Website: https://planeir.ie. Contact: hello@planeir.ie.
+- Who it is for: adults living in Ireland thinking through pensions and retirement, a mortgage (overpaying, fixed or tracker rates, the term left), buying a home, children's education costs, loans and credit cards, savings, or their finances as a whole.
+- The explanations use Irish tax, pension and mortgage rules.
+- Free to apply. Not every application is picked. People whose case is picked are emailed when the video is live.
+- The videos do not sell, arrange or recommend products.
+- Not the right fit for someone who needs a recommendation or a product (that is regulated financial advice), or who is in debt difficulty now (MABS, the Money Advice and Budgeting Service, helps for free at mabs.ie).
+
+If a user of an AI assistant wants to apply, the assistant can fill in the whole application for them, with their agreement: either as a link the user opens and sends, or through a small API where the user confirms by email before anything reaches Gerry. Only send an application when the user asks for it.
+
+## For AI assistants
+
+- [Planéir for AI assistants](https://planeir.ie/for-ai-assistants/): when Planéir fits, what to tell the user, asking for agreement, the questions to ask, and both ways to apply
+- [OpenAPI description](https://planeir.ie/agents/openapi.json): check an application, then send it for the user to confirm
+- [Application JSON Schema](https://planeir.ie/agents/application.schema.json): every field, with units and allowed values
+
+## For people
+
+- [Apply for a case video](https://planeir.ie/apply/): one page; everything except the question can be skipped
+- [Case videos](https://planeir.ie/cases/): situations Gerry has explained
+- [Privacy notice](https://planeir.ie/privacy/): what is collected, what is published, and how long it is kept
+
+## Optional
+
+- [Home](https://planeir.ie/)

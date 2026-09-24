@@ -31,10 +31,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check case applications and generated case pages
+      - name: Check case applications, assistant access and generated pages
         run: |
           npm run check:case-application
+          npm run check:agent-applications
           npm run check:cases
+          npm run check:agent-docs
 
       - name: Build dist artifact
         run: npm run build

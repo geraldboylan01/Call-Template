@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="description" content="Check and confirm an application an AI assistant sent to Planeir for you." />
+    <title>Confirm your application | Planeir</title>
+    <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../../favicon-32.png" />
+    <link rel="shortcut icon" href="../../favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../../styles/landing.css" />
+    <link rel="stylesheet" href="../../styles/apply.css" />
+  </head>
+  <body>
+    <div class="landing-shell">
+      <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+      <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
+      <div class="landing-grid" aria-hidden="true"></div>
+
+      <header class="site-header">
+        <a class="site-brand" href="../../" aria-label="Planeir home">
+          <span class="site-brand-logo-wrap" aria-hidden="true">
+            <img
+              class="site-brand-logo"
+              src="../../assets/brand/planeir-lockup-light.svg"
+              alt="Planeir logo"
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+          </span>
+        </a>
+      </header>
+
+      <main class="apply-main">
+        <section class="apply-intro">
+          <p class="section-eyebrow">Confirm your application</p>
+          <h1 id="confirmTitle" class="apply-title">Checking your link.</h1>
+          <p id="confirmLede" class="apply-lede" aria-live="polite"></p>
+        </section>
+
+        <noscript>
+          <p class="apply-noscript">
+            This page needs JavaScript. You can also email
+            <a class="inline-link" href="mailto:hello@planeir.ie">hello@planeir.ie</a>.
+          </p>
+        </noscript>
+
+        <div id="confirmReview" class="apply-form" hidden>
+          <section class="apply-card apply-preview" aria-labelledby="confirmPreviewTitle">
+            <div class="apply-section-head">
+              <h2 id="confirmPreviewTitle" class="apply-card-title">What your assistant sent</h2>
+              <span id="confirmCount" class="apply-section-count"></span>
+            </div>
+            <p class="apply-card-intro">This is what Gerry will read if you confirm. Totals are worked out from the figures.</p>
+            <div id="confirmPreview" class="apply-preview-body"></div>
+          </section>
+
+          <section class="apply-card" aria-labelledby="confirmAgreeTitle">
+            <h2 id="confirmAgreeTitle" class="apply-card-title">Before you confirm</h2>
+            <ul class="apply-tohand-list">
+              <li>
+                <strong>Gerry may use your situation in a video published online</strong>
+                <span>Your name is removed and the figures are rounded. You will be emailed when it is live.</span>
+              </li>
+              <li>
+                <strong>Planeir is education only</strong>
+                <span>It is not financial advice and does not recommend products.</span>
+              </li>
+              <li>
+                <strong>Something wrong?</strong>
+                <span>
+                  Delete this and fill in the <a class="inline-link" href="../">application page</a> yourself, or
+                  ask your assistant to send it again.
+                </span>
+              </li>
+            </ul>
+            <p class="form-privacy">
+              Read how your application is handled in the
+              <a class="inline-link" href="../../privacy/">privacy notice</a>.
+            </p>
+          </section>
+
+          <div id="confirmStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
+
+          <button id="confirmSend" class="button button-primary button-submit" type="button">
+            Confirm and send to Gerry
+          </button>
+          <p class="apply-saved-note">
+            <button id="confirmCancel" class="apply-link-button" type="button">Don't send it, delete it</button>
+          </p>
+        </div>
+
+        <section id="confirmDone" class="apply-card apply-done" tabindex="-1" hidden>
+          <p id="confirmDoneEyebrow" class="section-eyebrow">Application sent</p>
+          <h2 id="confirmDoneTitle" class="apply-title">Thanks, your application is in.</h2>
+          <p id="confirmDoneBody" class="apply-lede">
+            Gerry reads every application. If yours is picked, he will email you when the video is live.
+          </p>
+          <a class="button button-primary" href="../../cases/">Watch the cases</a>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p class="site-footer-note">
+          Planeir is educational only, not regulated financial advice.
+          <a href="../../privacy/">Privacy</a> ·
+          <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      window.__WORKER_BASE_URL = "https://api.planeir.ie";
+    </script>
+    <script type="module" src="../../js/apply_confirm.js"></script>
+  </body>
+</html>

@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="For AI assistants such as ChatGPT and Claude, and the people using them: what Planeir is, when it may help someone in Ireland, and how an assistant can fill in a Planeir case video application for its user, with their agreement."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://planeir.ie/for-ai-assistants/" />
+    <link rel="alternate" type="text/markdown" href="https://planeir.ie/llms.txt" title="llms.txt" />
+    <link rel="alternate" type="application/json" href="https://planeir.ie/agents/openapi.json" title="OpenAPI description" />
+    <meta property="og:site_name" content="Planeir" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://planeir.ie/for-ai-assistants/" />
+    <meta property="og:title" content="Planeir for AI assistants" />
+    <meta
+      property="og:description"
+      content="How an AI assistant can help someone in Ireland apply for a free Planeir case video, with their agreement."
+    />
+    <meta property="og:locale" content="en_IE" />
+    <title>Planeir for AI assistants | Irish financial education case videos</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles/landing.css" />
+    <link rel="stylesheet" href="../styles/cases.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "@id": "https://planeir.ie/for-ai-assistants/#page",
+        "url": "https://planeir.ie/for-ai-assistants/",
+        "name": "Planeir for AI assistants",
+        "inLanguage": "en-IE",
+        "description": "How an AI assistant can help someone in Ireland apply for a free Planeir case video, with their agreement.",
+        "about": { "@id": "https://planeir.ie/#organization" },
+        "isPartOf": { "@id": "https://planeir.ie/#website" }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="landing-shell">
+      <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+      <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
+      <div class="landing-grid" aria-hidden="true"></div>
+
+      <header class="site-header">
+        <a class="site-brand" href="../" aria-label="Planeir home">
+          <span class="site-brand-logo-wrap" aria-hidden="true">
+            <img
+              class="site-brand-logo"
+              src="../assets/brand/planeir-lockup-light.svg"
+              alt="Planeir logo"
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+          </span>
+        </a>
+        <nav class="site-header-actions" aria-label="Site">
+          <a class="site-nav-admin-login" href="../cases/">Watch the cases</a>
+          <a class="button button-primary button-sm" href="../apply/">Apply</a>
+        </nav>
+      </header>
+
+      <main class="page-main">
+        <section class="page-intro">
+          <p class="section-eyebrow">For AI assistants</p>
+          <h1 class="page-title">Helping someone in Ireland apply for a Planeir case video</h1>
+          <p class="page-lede">
+            This page is for AI assistants such as ChatGPT and Claude, and for the people who use them.
+            It explains what Planeir is, when it may help, and how an assistant can fill in an application
+            for its user, with their agreement. A short version is at
+            <a class="inline-link" href="../llms.txt">planeir.ie/llms.txt</a>.
+          </p>
+        </section>
+
+        <div class="guide-sections">
+          <section class="page-card" id="about" aria-labelledby="aboutTitle">
+            <h2 id="aboutTitle">Planeir in brief</h2>
+            <ul>
+              <li>Planeir (also written Planéir) at planeir.ie is free Irish financial education from Gerry Boylan, a Qualified Financial Adviser (QFA) in Ireland.</li>
+              <li>People in Ireland apply with their situation and their figures. Gerry reads every application and picks some to explain in a short video, with the figures on screen.</li>
+              <li>Topics: pensions and retirement, mortgages (overpaying, fixed and tracker rates, the term left), buying a home (deposit, approval in principle, first-time buyers), children's education costs, loans and credit cards, savings and a rainy day fund, and the whole financial picture.</li>
+              <li>The explanations use Irish tax, pension and mortgage rules.</li>
+              <li>It is free to apply. In a video the person's name is not shown and the figures are rounded.</li>
+              <li>The videos are education, not regulated financial advice. They do not sell, arrange or recommend products.</li>
+              <li>Not every application is picked.</li>
+            </ul>
+          </section>
+
+          <section class="page-card" id="when" aria-labelledby="whenTitle">
+            <h2 id="whenTitle">When it may help</h2>
+            <p>Planeir may suit someone who:</p>
+            <ul>
+              <li>is an adult living in Ireland;</li>
+              <li>is thinking through a pension, retirement, a mortgage, buying a home, college costs, loans, savings or their finances as a whole;</li>
+              <li>would find it useful to see their own situation explained, with their own figures;</li>
+              <li>is comfortable with their situation appearing in a published video, with their name left out and the figures rounded.</li>
+            </ul>
+            <h3>When something else fits better</h3>
+            <ul>
+              <li>They want a recommendation or a product: that is regulated financial advice, which a regulated financial adviser provides. The Central Bank of Ireland keeps registers of regulated firms.</li>
+              <li>They are struggling with debt or arrears now: MABS, the Money Advice and Budgeting Service, gives free and confidential help at mabs.ie.</li>
+              <li>They need an answer by a date: a case may not be picked, and a video takes time.</li>
+              <li>They do not want their situation published in any form.</li>
+            </ul>
+          </section>
+
+          <section class="page-card" id="wording" aria-labelledby="wordingTitle">
+            <h2 id="wordingTitle">What to tell them</h2>
+            <p>Suggested wording, to adapt:</p>
+            <blockquote class="guide-quote">
+              Planeir is free Irish financial education from Gerry Boylan, a Qualified Financial Adviser.
+              You can apply to have your situation explained in a short video. He reads every application
+              and picks some. If yours is picked, your name is left out, the figures are rounded, and you
+              get an email when it is live. It is education, not financial advice. Would you like me to
+              fill in the application for you?
+            </blockquote>
+          </section>
+
+          <section class="page-card" id="gerry" aria-labelledby="gerryTitle">
+            <h2 id="gerryTitle">What happens on Gerry's side</h2>
+            <ol>
+              <li>Gerry reads every application himself.</li>
+              <li>He picks cases that would make a clear and useful explanation.</li>
+              <li>He works through the figures with visual tools that use Irish tax, pension and mortgage rules. For example, overpaying the mortgage against paying more into a pension, or retiring at 60 against 65.</li>
+              <li>He records a short video with the figures on screen, rounded, and the name left out.</li>
+              <li>The video goes on planeir.ie and YouTube, and the person is emailed when it is live.</li>
+              <li>Applications that are not picked have their figures deleted 12 months after they arrive.</li>
+            </ol>
+          </section>
+
+          <section class="page-card" id="consent" aria-labelledby="consentTitle">
+            <h2 id="consentTitle">Asking for agreement</h2>
+            <ul>
+              <li>Only send an application if the person asks you to, after you have told them two things: their situation may be used in a published video, with their name removed and figures rounded; and Planeir is education only, not financial advice.</li>
+              <li>Use their own email address. With the API, Planeir emails them a link to check and confirm, and nothing reaches Gerry until they do. With a link, they send the page themselves.</li>
+              <li>Leave out PPS numbers, account and card numbers, addresses, documents, and details about other people that the question does not need.</li>
+              <li>Show them what you will send first. The check endpoint returns it as Gerry will read it.</li>
+            </ul>
+          </section>
+
+          <section class="page-card" id="questions" aria-labelledby="questionsTitle">
+            <h2 id="questionsTitle">Which questions to ask</h2>
+            <p>
+              Ask about the topics they care about. Only their question is required. Everything else can be
+              skipped, round figures are fine, and "not sure" is a fine answer: list the path in
+              <code>unsure</code>. Sections show for the topics chosen, and for any section you fill in.
+            </p>
+            <!-- agent-field-guide:start -->
+            <div class="guide-section">
+              <h3>Your question</h3>
+              <p class="guide-meta">Shown for every application.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>What do you want to understand?</td>
+                    <td><code>question</code></td>
+                    <td>Text, up to 2000 characters. Never published.</td>
+                  </tr>
+                  <tr>
+                    <td>Is anything coming up, and when?</td>
+                    <td><code>upcoming</code></td>
+                    <td>Text, up to 600 characters. Never published.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>About you</h3>
+              <p class="guide-meta">Shown for every application. Ages set the timelines for pensions, mortgages and college.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Your age</td>
+                    <td><code>household.age</code></td>
+                    <td>A whole number from 16 to 100.</td>
+                  </tr>
+                  <tr>
+                    <td>Are you planning with a partner?</td>
+                    <td><code>household.partner</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No).</td>
+                  </tr>
+                  <tr>
+                    <td>Your partner’s age</td>
+                    <td><code>household.partnerAge</code></td>
+                    <td>A whole number from 16 to 100. Only when household.partner is &quot;yes&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Are you married or in a civil partnership?</td>
+                    <td><code>household.married</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No). Only when household.partner is &quot;yes&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Do you have children?</td>
+                    <td><code>household.children</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No).</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Children</h3>
+              <p class="guide-meta">Shown for when household.children is &quot;yes&quot;. Their ages show when college costs start and how long they depend on you.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Age</td>
+                    <td><code>children[].age</code></td>
+                    <td>A whole number from 0 to 30.</td>
+                  </tr>
+                  <tr>
+                    <td>College plans</td>
+                    <td><code>children[].collegePlan</code></td>
+                    <td>One of: &quot;away&quot; (Away from home), &quot;home&quot; (From home), &quot;unsure&quot; (Not sure yet). Only when topics include &quot;education&quot; or &quot;whole&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Saved for them so far</td>
+                    <td><code>children[].saved</code></td>
+                    <td>A number in euro, like 35000. Only when topics include &quot;education&quot; or &quot;whole&quot;.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Income</h3>
+              <p class="guide-meta">Shown for every application. Income sets your tax, your pension relief and what a lender will offer.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Your gross pay a year, before tax</td>
+                    <td><code>income.gross</code></td>
+                    <td>A number in euro a year, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Your partner’s gross pay a year</td>
+                    <td><code>income.partnerGross</code></td>
+                    <td>A number in euro a year, like 35000. Only when household.partner is &quot;yes&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Your work</td>
+                    <td><code>income.work</code></td>
+                    <td>One of: &quot;employee&quot; (Employee), &quot;self_employed&quot; (Self-employed), &quot;director&quot; (Company director), &quot;not_working&quot; (Not working), &quot;retired&quot; (Retired).</td>
+                  </tr>
+                  <tr>
+                    <td>Your partner’s work</td>
+                    <td><code>income.partnerWork</code></td>
+                    <td>One of: &quot;employee&quot; (Employee), &quot;self_employed&quot; (Self-employed), &quot;director&quot; (Company director), &quot;not_working&quot; (Not working), &quot;retired&quot; (Retired). Only when household.partner is &quot;yes&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Your sector</td>
+                    <td><code>income.sector</code></td>
+                    <td>One of: &quot;public&quot; (Public sector), &quot;private&quot; (Private sector). Only when income.work is &quot;employee&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Your partner’s sector</td>
+                    <td><code>income.partnerSector</code></td>
+                    <td>One of: &quot;public&quot; (Public sector), &quot;private&quot; (Private sector). Only when household.partner is &quot;yes&quot; and income.partnerWork is &quot;employee&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Household take-home pay a month, after tax</td>
+                    <td><code>income.takeHome</code></td>
+                    <td>A number in euro a month, like 35000.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Spending and saving</h3>
+              <p class="guide-meta">Shown for every application. This shows how much room there is each month.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Most months, do you</td>
+                    <td><code>spending.pattern</code></td>
+                    <td>One of: &quot;save&quot; (Save some), &quot;even&quot; (Break even), &quot;more&quot; (Spend more than you earn).</td>
+                  </tr>
+                  <tr>
+                    <td>Roughly how much you save a month</td>
+                    <td><code>spending.saved</code></td>
+                    <td>A number in euro a month, like 35000. Only when spending.pattern is not &quot;even&quot; or &quot;more&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>What you spend a month, not counting rent or mortgage</td>
+                    <td><code>spending.spend</code></td>
+                    <td>A number in euro a month, like 35000.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Your home</h3>
+              <p class="guide-meta">Shown for every application. Your home and what it costs are part of the full picture.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Your home</td>
+                    <td><code>home.status</code></td>
+                    <td>One of: &quot;mortgage&quot; (Own with a mortgage), &quot;owned&quot; (Own outright), &quot;rent&quot; (Rent), &quot;family&quot; (Live with family).</td>
+                  </tr>
+                  <tr>
+                    <td>What it would sell for today</td>
+                    <td><code>home.value</code></td>
+                    <td>A number in euro, like 35000. Only when home.status is &quot;mortgage&quot; or &quot;owned&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Rent a month</td>
+                    <td><code>home.rent</code></td>
+                    <td>A number in euro a month, like 35000. Only when home.status is &quot;rent&quot;.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Mortgage</h3>
+              <p class="guide-meta">Shown for when home.status is &quot;mortgage&quot;. Your rate and years left decide what overpaying would save.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Balance left</td>
+                    <td><code>mortgage.balance</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Interest rate</td>
+                    <td><code>mortgage.rate</code></td>
+                    <td>A percentage as a number, like 4.2 (up to 30).</td>
+                  </tr>
+                  <tr>
+                    <td>Rate type</td>
+                    <td><code>mortgage.rateType</code></td>
+                    <td>One of: &quot;tracker&quot; (Tracker), &quot;variable&quot; (Variable), &quot;fixed&quot; (Fixed).</td>
+                  </tr>
+                  <tr>
+                    <td>When the fixed rate ends</td>
+                    <td><code>mortgage.fixedEnds</code></td>
+                    <td>Year and month, like 2027-03. Only when mortgage.rateType is &quot;fixed&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Margin above the ECB rate</td>
+                    <td><code>mortgage.trackerMargin</code></td>
+                    <td>A percentage as a number, like 4.2 (up to 10). Only when mortgage.rateType is &quot;tracker&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Years left</td>
+                    <td><code>mortgage.yearsLeft</code></td>
+                    <td>A number of years, like 22 or 22.5.</td>
+                  </tr>
+                  <tr>
+                    <td>Repayment a month</td>
+                    <td><code>mortgage.repayment</code></td>
+                    <td>A number in euro a month, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Are you overpaying now?</td>
+                    <td><code>mortgage.overpaying</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No).</td>
+                  </tr>
+                  <tr>
+                    <td>Overpayment a month</td>
+                    <td><code>mortgage.overpayment</code></td>
+                    <td>A number in euro a month, like 35000. Only when mortgage.overpaying is &quot;yes&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Lender</td>
+                    <td><code>mortgage.lender</code></td>
+                    <td>Text, up to 60 characters. Never published.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Buying a home</h3>
+              <p class="guide-meta">Shown for topics: buying (or any answers given). A lender looks at the price, your deposit and your income.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Price you are looking at</td>
+                    <td><code>buying.price</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>First-time buyer?</td>
+                    <td><code>buying.firstTime</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No).</td>
+                  </tr>
+                  <tr>
+                    <td>Deposit saved so far</td>
+                    <td><code>buying.deposit</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Approval in principle, if you have one</td>
+                    <td><code>buying.approval</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Using Help to Buy or the First Home scheme?</td>
+                    <td><code>buying.scheme</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No), &quot;unsure&quot; (Not sure).</td>
+                  </tr>
+                  <tr>
+                    <td>When would you like to buy?</td>
+                    <td><code>buying.when</code></td>
+                    <td>One of: &quot;6m&quot; (Within 6 months), &quot;12m&quot; (6 to 12 months), &quot;24m&quot; (1 to 2 years), &quot;later&quot; (Later).</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Savings and investments</h3>
+              <p class="guide-meta">Shown for every application. Savings show what is there for goals and emergencies.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Cash in the bank, all accounts</td>
+                    <td><code>savings.cash</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Investments and shares</td>
+                    <td><code>savings.investments</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Shares in your employer</td>
+                    <td><code>savings.employerShares</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Other property</h3>
+              <p class="guide-meta">Shown for topics: whole (or any answers given). Rental or holiday property you own apart from your home. If none apply, put "properties" in <code>none</code>.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Value</td>
+                    <td><code>properties[].value</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Mortgage on it</td>
+                    <td><code>properties[].mortgage</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Rent a year</td>
+                    <td><code>properties[].rent</code></td>
+                    <td>A number in euro a year, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Costs a year, not counting mortgage interest</td>
+                    <td><code>properties[].costs</code></td>
+                    <td>A number in euro a year, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Mortgage interest rate</td>
+                    <td><code>properties[].rate</code></td>
+                    <td>A percentage as a number, like 4.2 (up to 30).</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Pensions</h3>
+              <p class="guide-meta">Shown for topics: retirement, mortgage, whole (or any answers given). Your pension statement has most of these. If none apply, put "pensions" in <code>none</code>.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Whose pension</td>
+                    <td><code>pensions[].owner</code></td>
+                    <td>One of: &quot;you&quot; (Yours), &quot;partner&quot; (Your partner’s). Only when household.partner is &quot;yes&quot; (otherwise the pension is the applicant&#39;s).</td>
+                  </tr>
+                  <tr>
+                    <td>Type</td>
+                    <td><code>pensions[].type</code></td>
+                    <td>One of: &quot;company&quot; (Company pension), &quot;public&quot; (Public service or defined benefit), &quot;prsa&quot; (PRSA), &quot;personal&quot; (Personal pension), &quot;bond&quot; (Buy-out bond from an old job), &quot;unsure&quot; (Not sure).</td>
+                  </tr>
+                  <tr>
+                    <td>Value today</td>
+                    <td><code>pensions[].value</code></td>
+                    <td>A number in euro, like 35000. Only when type is not &quot;public&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Personal contribution</td>
+                    <td><code>pensions[].youPay</code></td>
+                    <td>A number: a percentage of salary like 5, or euro a month with youPayUnit set to &quot;eur&quot;. Only when type is &quot;company&quot;, &quot;prsa&quot;, &quot;personal&quot; or &quot;unsure&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Employer contribution</td>
+                    <td><code>pensions[].employerPays</code></td>
+                    <td>A number: a percentage of salary like 5, or euro a month with employerPaysUnit set to &quot;eur&quot;. Only when type is &quot;company&quot;, &quot;prsa&quot; or &quot;unsure&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Still paying in?</td>
+                    <td><code>pensions[].contributing</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No). Only when type is &quot;company&quot;, &quot;prsa&quot;, &quot;personal&quot; or &quot;unsure&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Expected pension a year</td>
+                    <td><code>pensions[].dbPension</code></td>
+                    <td>A number in euro a year, like 35000. Only when type is &quot;public&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Expected lump sum</td>
+                    <td><code>pensions[].dbLumpSum</code></td>
+                    <td>A number in euro, like 35000. Only when type is &quot;public&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>From what age</td>
+                    <td><code>pensions[].dbAge</code></td>
+                    <td>A whole number from 50 to 75. Only when type is &quot;public&quot;.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Retirement</h3>
+              <p class="guide-meta">Shown for topics: retirement, whole (or any answers given). These set the target the projection works towards.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Age you would like to stop working</td>
+                    <td><code>retirement.age</code></td>
+                    <td>A whole number from 40 to 80.</td>
+                  </tr>
+                  <tr>
+                    <td>Age your partner would like to stop working</td>
+                    <td><code>retirement.partnerAge</code></td>
+                    <td>A whole number from 40 to 80. Only when household.partner is &quot;yes&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Income you would like a year in retirement, in today’s money</td>
+                    <td><code>retirement.income</code></td>
+                    <td>A number in euro a year, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Do you expect the full State Pension?</td>
+                    <td><code>retirement.statePension</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;partly&quot; (Partly), &quot;unsure&quot; (Not sure).</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Loans and credit cards</h3>
+              <p class="guide-meta">Shown for topics: loans, buying, whole (or any answers given). Repayments affect what you can save and what you can borrow. If none apply, put "loans" in <code>none</code>.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Do you clear your credit card in full each month?</td>
+                    <td><code>creditCard.clears</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No), &quot;none&quot; (No credit card).</td>
+                  </tr>
+                  <tr>
+                    <td>Credit card balance</td>
+                    <td><code>creditCard.balance</code></td>
+                    <td>A number in euro, like 35000. Only when creditCard.clears is &quot;no&quot;.</td>
+                  </tr>
+                  <tr>
+                    <td>Type</td>
+                    <td><code>loans[].type</code></td>
+                    <td>One of: &quot;car&quot; (Car), &quot;personal&quot; (Personal), &quot;credit_union&quot; (Credit union), &quot;student&quot; (Student), &quot;other&quot; (Other).</td>
+                  </tr>
+                  <tr>
+                    <td>Balance</td>
+                    <td><code>loans[].balance</code></td>
+                    <td>A number in euro, like 35000.</td>
+                  </tr>
+                  <tr>
+                    <td>Interest rate</td>
+                    <td><code>loans[].rate</code></td>
+                    <td>A percentage as a number, like 4.2 (up to 60).</td>
+                  </tr>
+                  <tr>
+                    <td>Years left</td>
+                    <td><code>loans[].yearsLeft</code></td>
+                    <td>A number of years, like 22 or 22.5.</td>
+                  </tr>
+                  <tr>
+                    <td>Payment a month</td>
+                    <td><code>loans[].payment</code></td>
+                    <td>A number in euro a month, like 35000.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Cover</h3>
+              <p class="guide-meta">Shown for topics: whole (or any answers given). Cover that pays out if someone dies or cannot work.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Life cover</td>
+                    <td><code>cover.life</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No), &quot;unsure&quot; (Not sure).</td>
+                  </tr>
+                  <tr>
+                    <td>Income protection</td>
+                    <td><code>cover.incomeProtection</code></td>
+                    <td>One of: &quot;yes&quot; (Yes), &quot;no&quot; (No), &quot;unsure&quot; (Not sure).</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="guide-section">
+              <h3>Anything else</h3>
+              <p class="guide-meta">Shown for every application.</p>
+              <div class="guide-table-wrap">
+                <table class="guide-table">
+                  <thead>
+                    <tr><th scope="col">Question</th><th scope="col">Field</th><th scope="col">Answer</th></tr>
+                  </thead>
+                  <tbody>
+                  <tr>
+                    <td>Anything else Gerry should know?</td>
+                    <td><code>anythingElse</code></td>
+                    <td>Text, up to 2000 characters. Never published.</td>
+                  </tr>
+                  <tr>
+                    <td>Name to use in the video</td>
+                    <td><code>videoName</code></td>
+                    <td>Text, up to 60 characters. Never published.</td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <!-- agent-field-guide:end -->
+          </section>
+
+          <section class="page-card" id="link" aria-labelledby="linkTitle">
+            <h2 id="linkTitle">Way 1: a link your user opens</h2>
+            <p>
+              This works in any chat. Write a link to <code>https://planeir.ie/apply/</code> with the answers
+              after <code>#</code>, as <code>path=value</code> pairs joined by <code>&amp;</code>. Lists such
+              as <code>topics</code> and <code>unsure</code> are comma separated. Use plain numbers, and
+              URL-encode text. The page fills in every answer; the person checks them, adds their name and
+              email, ticks two boxes and presses Send. Their name and email are not part of the link, and the
+              answers are removed from the address bar as the page opens.
+            </p>
+            <!-- agent-example-link:start -->
+            <p>For example, for a made-up household:</p>
+            <pre class="guide-code"><code>https://planeir.ie/apply/#topics=mortgage%2Cretirement&amp;unsure=mortgage.repayment%2Cpensions.1.dbPension&amp;question=Should+we+overpay+the+mortgage+or+pay+more+into+our+pensions%3F&amp;upcoming=Our+fixed+rate+ends+in+June+2027.&amp;household.age=41&amp;household.partner=yes&amp;household.partnerAge=39&amp;household.married=yes&amp;household.children=yes&amp;children.0.age=9&amp;children.1.age=6&amp;income.gross=62000&amp;income.partnerGross=48000&amp;income.work=employee&amp;income.partnerWork=employee&amp;income.sector=private&amp;income.partnerSector=public&amp;income.takeHome=6100&amp;spending.pattern=save&amp;spending.saved=700&amp;home.status=mortgage&amp;home.value=420000&amp;mortgage.balance=240000&amp;mortgage.rate=3.9&amp;mortgage.rateType=fixed&amp;mortgage.fixedEnds=2027-06&amp;mortgage.yearsLeft=23&amp;savings.cash=18000&amp;pensions.0.owner=you&amp;pensions.0.type=company&amp;pensions.0.value=85000&amp;pensions.0.youPay=5&amp;pensions.0.youPayUnit=pct&amp;pensions.0.employerPays=5&amp;pensions.0.employerPaysUnit=pct&amp;pensions.0.contributing=yes&amp;pensions.1.owner=partner&amp;pensions.1.type=public&amp;retirement.age=65&amp;retirement.partnerAge=63</code></pre>
+            <!-- agent-example-link:end -->
+          </section>
+
+          <section class="page-card" id="api" aria-labelledby="apiTitle">
+            <h2 id="apiTitle">Way 2: the API, for assistants that can call web APIs</h2>
+            <ol>
+              <li>
+                <code>POST https://api.planeir.ie/api/agent/applications/check</code> with
+                <code>{"application": {...}}</code>. It returns the application as Gerry will read it
+                (<code>summary</code>), anything that could not be used and why (<code>warnings</code>), and
+                questions that would still help (<code>stillUseful</code>). It stores nothing.
+              </li>
+              <li>
+                Show the person the summary. If they agree, <code>POST https://api.planeir.ie/api/agent/applications</code>
+                with <code>person</code>, <code>consent</code>, <code>application</code> and, if you like,
+                <code>assistant</code>. The answer is <code>202</code>: Planeir has emailed them a link.
+              </li>
+              <li>Tell them to open the email from Planeir and press Confirm within 7 days. Nothing reaches Gerry until they do.</li>
+            </ol>
+            <p>
+              No key is needed. Call it from a server. There is a limit of 3 applications per email address a
+              day. The format is described in
+              <a class="inline-link" href="../agents/openapi.json">agents/openapi.json</a> (OpenAPI 3.1) and
+              <a class="inline-link" href="../agents/application.schema.json">agents/application.schema.json</a>
+              (JSON Schema).
+            </p>
+            <!-- agent-example-request:start -->
+            <p>A request to send, for the same made-up household:</p>
+            <pre class="guide-code"><code>{
+  &quot;format&quot;: &quot;planeir.agent-application.v1&quot;,
+  &quot;person&quot;: {
+    &quot;name&quot;: &quot;Aoife&quot;,
+    &quot;email&quot;: &quot;aoife@example.com&quot;
+  },
+  &quot;consent&quot;: {
+    &quot;videoPublication&quot;: true,
+    &quot;educationOnly&quot;: true
+  },
+  &quot;application&quot;: {
+    &quot;topics&quot;: [
+      &quot;mortgage&quot;,
+      &quot;retirement&quot;
+    ],
+    &quot;question&quot;: &quot;Should we overpay the mortgage or pay more into our pensions?&quot;,
+    &quot;upcoming&quot;: &quot;Our fixed rate ends in June 2027.&quot;,
+    &quot;household&quot;: {
+      &quot;age&quot;: 41,
+      &quot;partner&quot;: &quot;yes&quot;,
+      &quot;partnerAge&quot;: 39,
+      &quot;married&quot;: &quot;yes&quot;,
+      &quot;children&quot;: &quot;yes&quot;
+    },
+    &quot;children&quot;: [
+      {
+        &quot;age&quot;: 9
+      },
+      {
+        &quot;age&quot;: 6
+      }
+    ],
+    &quot;income&quot;: {
+      &quot;gross&quot;: 62000,
+      &quot;work&quot;: &quot;employee&quot;,
+      &quot;sector&quot;: &quot;private&quot;,
+      &quot;partnerGross&quot;: 48000,
+      &quot;partnerWork&quot;: &quot;employee&quot;,
+      &quot;partnerSector&quot;: &quot;public&quot;,
+      &quot;takeHome&quot;: 6100
+    },
+    &quot;spending&quot;: {
+      &quot;pattern&quot;: &quot;save&quot;,
+      &quot;saved&quot;: 700
+    },
+    &quot;home&quot;: {
+      &quot;status&quot;: &quot;mortgage&quot;,
+      &quot;value&quot;: 420000
+    },
+    &quot;mortgage&quot;: {
+      &quot;balance&quot;: 240000,
+      &quot;rate&quot;: 3.9,
+      &quot;rateType&quot;: &quot;fixed&quot;,
+      &quot;fixedEnds&quot;: &quot;2027-06&quot;,
+      &quot;yearsLeft&quot;: 23
+    },
+    &quot;savings&quot;: {
+      &quot;cash&quot;: 18000
+    },
+    &quot;pensions&quot;: [
+      {
+        &quot;owner&quot;: &quot;you&quot;,
+        &quot;type&quot;: &quot;company&quot;,
+        &quot;value&quot;: 85000,
+        &quot;youPay&quot;: 5,
+        &quot;youPayUnit&quot;: &quot;pct&quot;,
+        &quot;employerPays&quot;: 5,
+        &quot;employerPaysUnit&quot;: &quot;pct&quot;,
+        &quot;contributing&quot;: &quot;yes&quot;
+      },
+      {
+        &quot;owner&quot;: &quot;partner&quot;,
+        &quot;type&quot;: &quot;public&quot;
+      }
+    ],
+    &quot;retirement&quot;: {
+      &quot;age&quot;: 65,
+      &quot;partnerAge&quot;: 63
+    },
+    &quot;unsure&quot;: [
+      &quot;mortgage.repayment&quot;,
+      &quot;pensions.1.dbPension&quot;
+    ]
+  },
+  &quot;assistant&quot;: {
+    &quot;name&quot;: &quot;ChatGPT&quot;
+  }
+}</code></pre>
+            <!-- agent-example-request:end -->
+          </section>
+
+          <section class="page-card" id="privacy" aria-labelledby="privacyTitle">
+            <h2 id="privacyTitle">Privacy</h2>
+            <p>
+              Figures are encrypted when stored and never sent by email. A published video leaves out the
+              name, email, employer and lender. The full notice is at
+              <a class="inline-link" href="../privacy/">planeir.ie/privacy/</a>. Questions:
+              <a class="inline-link" href="mailto:hello@planeir.ie">hello@planeir.ie</a>.
+            </p>
+          </section>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <p class="site-footer-note">
+          Planeir is educational only, not regulated financial advice.
+          <a href="../privacy/">Privacy</a> ·
+          <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

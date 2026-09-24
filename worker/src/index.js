@@ -82,6 +82,7 @@ const LEAD_SOURCE_LABEL = 'Planeir landing page';
 // Case applications from /apply/. The figures are encrypted at rest with their
 // own key (not the consumer journey's), bound to the application id.
 const APPLICATION_SOURCE = 'apply-page';
+const AGENT_APPLICATION_SOURCE = 'agent-api';
 const APPLICATION_SOURCE_LABEL = 'Planeir application page';
 const APPLICATION_AAD_PREFIX = 'lead/application/';
 const APPLICATION_DEFAULT_KEY_ID = 'application-v1';
@@ -94,6 +95,19 @@ const APPLICATION_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
 const APPLICATION_RETAINED_STATUSES = ['picked', 'video-live'];
 const APPLICATION_PURGE_BATCH = 100;
 const VIDEO_LINK_HOSTS = new Set(['planeir.ie', 'www.planeir.ie', 'youtube.com', 'www.youtube.com', 'youtu.be']);
+// Applications sent by AI assistants wait for the person to confirm by email.
+// Assistants share a small number of addresses, so the per-connection limits
+// are loose and the real limits are per email address and per day.
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const AGENT_CONFIRMATION_TTL_MS = 7 * DAY_MS;
+const AGENT_CHECK_RATE_LIMIT_MAX = 120;
+const AGENT_SEND_IP_RATE_LIMIT_MAX = 30;
+const AGENT_SEND_EMAIL_RATE_LIMIT_MAX = 3;
+const AGENT_SEND_DAILY_LIMIT = 300;
+const AGENT_TOKEN_RATE_LIMIT_MAX = 60;
+const AGENT_CLOSED_MESSAGE = 'Applications from assistants are not open right now. The person can apply at https://planeir.ie/apply/ instead.';
+const AGENT_LINK_GONE_MESSAGE = 'This link has expired or has already been used.';
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
 const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Zoom meeting link to be created automatically';
 const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 30;
@@ -319,6 +333,12 @@ function getRouteConfig(pathname) {
   }
 
   if (pathname === '/api/applications') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (pathname === '/api/agent/applications' || /^\/api\/agent\/applications\/(check|preview|confirm|cancel)$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -1508,7 +1528,7 @@ function buildApplicationNotificationRows(application, leadId) {
     ['Help wanted with', formatApplicationTopics(application.topics)],
     ['Questions answered', `${application.answered} of ${application.total}`],
     ['Submitted at', formatOptionalText(application.createdAt)],
-    ['Source', APPLICATION_SOURCE_LABEL]
+    ['How it arrived', application.channelLabel || APPLICATION_SOURCE_LABEL]
   ];
 }
 
@@ -1679,8 +1699,14 @@ async function sendApplicationEmails(env, application, leadId) {
     console.warn('Application notification email skipped because LEAD_NOTIFICATION_TO is not configured.');
   }
 
-  // The applicant always gets the automatic reply. It says what happens next,
-  // and carries none of their figures back to an address nobody has verified.
+  // The applicant gets the automatic reply. It says what happens next, and
+  // carries none of their figures back to an address nobody has verified.
+  // A person who confirmed an assistant's request has just read the same
+  // words on the confirmation page, so they are not emailed twice.
+  if (application.replyToApplicant === false) {
+    return;
+  }
+
   try {
     const result = await sendEmailWithResend(config, {
       from: config.from,
@@ -1700,6 +1726,93 @@ async function sendApplicationEmails(env, application, leadId) {
       error: error instanceof Error ? error.message : String(error)
     });
   }
+}
+
+const AGENT_CONFIRM_PAGE_URL = `${PLANEIR_SITE_URL}/apply/confirm/`;
+
+function formatIrishDate(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'in 7 days';
+  return new Intl.DateTimeFormat('en-IE', { day: 'numeric', month: 'long', year: 'numeric', timeZone: DEFAULT_LEAD_SCHEDULE_TIMEZONE }).format(date);
+}
+
+// The person did not fill this in themselves, so the email says so plainly,
+// carries none of the figures, and does not repeat anything an assistant wrote.
+function agentConfirmationParagraphs(expiresAt) {
+  return {
+    opening: 'An AI assistant sent an application to Planeir for you, using this email address. Nothing has gone to Gerry yet.',
+    action: 'Check what was sent, and confirm it if it is right:',
+    expiry: `The link works until ${formatIrishDate(expiresAt)}. If you did not ask for this, ignore this email and the application will be deleted.`,
+    about: 'Gerry reads every application and picks some to explain in a short video, using the figures you sent. Your name is not shown and the figures are rounded.',
+    education: 'Planeir is financial education only. It is not financial advice and does not recommend products.'
+  };
+}
+
+function buildAgentConfirmationText({ fullName, link, expiresAt }) {
+  const copy = agentConfirmationParagraphs(expiresAt);
+  return [
+    `Hi ${firstNameOf(fullName)},`,
+    '',
+    copy.opening,
+    '',
+    copy.action,
+    link,
+    '',
+    copy.expiry,
+    '',
+    copy.about,
+    '',
+    copy.education,
+    '',
+    'Best,',
+    'Planeir',
+    buildPlaneirEmailCardText()
+  ].join('\n');
+}
+
+function buildAgentConfirmationHtml({ fullName, link, expiresAt }) {
+  const copy = agentConfirmationParagraphs(expiresAt);
+  const safeLink = escapeHtml(link);
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Check and confirm your application</h1>
+      </div>
+      <div style="padding:24px;font-size:15px;line-height:1.7;">
+        <p style="margin:0 0 16px;">Hi ${escapeHtml(firstNameOf(fullName))},</p>
+        <p style="margin:0 0 16px;">${escapeHtml(copy.opening)}</p>
+        <p style="margin:0 0 12px;">${escapeHtml(copy.action)}</p>
+        <p style="margin:0 0 20px;"><a href="${safeLink}" style="display:inline-block;padding:12px 20px;border-radius:999px;background:#0f2233;color:#ffffff;text-decoration:none;font-weight:600;">Check and confirm</a></p>
+        <p style="margin:0 0 16px;">${escapeHtml(copy.expiry)}</p>
+        <p style="margin:0 0 16px;">${escapeHtml(copy.about)}</p>
+        <p style="margin:0 0 16px;">${escapeHtml(copy.education)}</p>
+        <p style="margin:0;">Best,<br />Planeir</p>
+        ${buildPlaneirEmailCardHtml()}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+async function sendAgentConfirmationEmail(env, { fullName, email, token, expiresAt }) {
+  const config = getLeadEmailConfig(env);
+  if (!config.apiKey || !config.from) {
+    throw new Error('Email is not configured.');
+  }
+  // The token rides in the fragment: it never reaches a server log, and a mail
+  // scanner that fetches the page cannot confirm anything, because confirming
+  // takes a press of the button on the page.
+  const link = `${AGENT_CONFIRM_PAGE_URL}#t=${token}`;
+  await sendEmailWithResend(config, {
+    from: config.from,
+    to: [email],
+    subject: 'Confirm your Planeir application',
+    html: buildAgentConfirmationHtml({ fullName, link, expiresAt }),
+    text: buildAgentConfirmationText({ fullName, link, expiresAt }),
+    reply_to: config.replyTo || undefined
+  }, `agent-confirm-${shortTextHash(token)}`);
 }
 
 function getLeadEmailConfig(env) {
@@ -2041,6 +2154,8 @@ function normalizeLeadRow(row) {
     applicationTopics: String(row.application_topics || '').split(',').map((value) => value.trim()).filter(Boolean),
     applicationAnsweredCount: Number(row.application_answered_count || 0),
     applicationDeletedAt: row.application_deleted_at || '',
+    applicationChannel: row.application_channel || (row.application_id ? 'page' : ''),
+    applicationAssistant: row.application_assistant || '',
     hasApplication: Boolean(Number(row.application_present || 0))
   };
 }
@@ -2083,6 +2198,8 @@ function buildLeadManagerSummary(lead) {
     applicationTopics: lead.applicationTopics,
     applicationAnsweredCount: lead.applicationAnsweredCount,
     applicationDeletedAt: lead.applicationDeletedAt,
+    applicationChannel: lead.applicationChannel,
+    applicationAssistant: lead.applicationAssistant,
     hasApplication: lead.hasApplication
   };
 }
@@ -3175,6 +3292,8 @@ async function getLeadRow(env, leadId) {
       application_topics,
       application_answered_count,
       application_deleted_at,
+      application_channel,
+      application_assistant,
       CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
@@ -3254,6 +3373,8 @@ async function listLeadRows(env, options = {}) {
       application_topics,
       application_answered_count,
       application_deleted_at,
+      application_channel,
+      application_assistant,
       CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
@@ -3373,6 +3494,8 @@ async function listClientLeadRows(env, clientId) {
       application_topics,
       application_answered_count,
       application_deleted_at,
+      application_channel,
+      application_assistant,
       CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
@@ -3721,6 +3844,8 @@ async function listExpiredLeadScheduleRowsForCleanup(env, limit = 25) {
       application_topics,
       application_answered_count,
       application_deleted_at,
+      application_channel,
+      application_assistant,
       CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
@@ -7009,8 +7134,13 @@ async function handleApplicationSubmit(request, env, origin, ctx) {
     return jsonResponse({ error: error.message || 'Invalid application.' }, 400, origin, methods, null, noStoreHeaders());
   }
 
-  const { normalizeApplication, countAnswers, APPLICATION_SCHEMA_VERSION } = await loadCaseApplicationModule();
-  const application = normalizeApplication(body.application);
+  const {
+    normalizeApplication,
+    includeAnsweredSections,
+    countAnswers,
+    APPLICATION_SCHEMA_VERSION
+  } = await loadCaseApplicationModule();
+  const application = includeAnsweredSections(normalizeApplication(body.application));
   if (!application.question) {
     return jsonResponse({ error: 'Add your question so Gerry knows what you want to understand.' }, 400, origin, methods, null, noStoreHeaders());
   }
@@ -7032,99 +7162,20 @@ async function handleApplicationSubmit(request, env, origin, ctx) {
     return jsonResponse({ error: 'Applications are not open right now. Please try again later.' }, 503, origin, methods, null, noStoreHeaders());
   }
 
-  const createdAt = new Date().toISOString();
-  const counts = countAnswers(application);
-  const topics = application.topics.join(',');
-
   try {
-    const client = await findOrCreateClientForProfile(env, {
-      fullName: contact.fullName,
-      email: contact.email,
-      phone: null,
-      pipelineStage: 'new_lead',
-      timestamp: createdAt,
-      source: 'case_application'
-    });
-    const result = await env.LEADS_DB.prepare(`
-      INSERT INTO leads (
-        client_id,
-        created_at,
-        updated_at,
-        full_name,
-        email,
-        phone,
-        help_reason,
-        stage,
-        call_outcome,
-        availability_notes,
-        status,
-        consent_free_call,
-        consent_education_only,
-        consent_recording,
-        source,
-        application_id,
-        application_payload_encrypted,
-        application_schema_version,
-        application_topics,
-        application_answered_count
-      ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 'new', 0, 1, 1, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      client?.id || null,
-      createdAt,
-      createdAt,
-      contact.fullName,
-      contact.email,
-      application.question,
-      APPLICATION_SOURCE,
+    await storeApplicationLead(env, ctx, {
+      contact,
+      application,
+      counts: countAnswers(application),
       applicationId,
       encrypted,
-      APPLICATION_SCHEMA_VERSION,
-      topics || null,
-      counts.answered
-    ).run();
-
-    if (!result.success) {
-      throw new Error('Application insert did not succeed.');
-    }
-
-    const leadId = result.meta?.last_row_id ?? null;
-    if (leadId) {
-      await insertLeadEvent(env, leadId, 'client', 'application-submitted', {
-        source: APPLICATION_SOURCE,
-        clientId: client?.id || null,
-        topics: application.topics,
-        answered: counts.answered,
-        total: counts.total
-      }).catch((error) => {
-        console.error('Failed to record application submitted event', {
-          leadId,
-          error: error instanceof Error ? error.message : String(error)
-        });
-      });
-    }
-
-    const emailTask = sendApplicationEmails(env, {
-      fullName: contact.fullName,
-      email: contact.email,
-      question: application.question,
-      topics: application.topics,
-      answered: counts.answered,
-      total: counts.total,
-      createdAt,
-      clientId: client?.id || null
-    }, leadId).catch((error) => {
-      console.error('Application email failed', {
-        leadId,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      schemaVersion: APPLICATION_SCHEMA_VERSION,
+      // A person who opened /apply/ from a link their assistant wrote still
+      // read, completed and sent it themselves; it is only marked so Gerry
+      // knows how it began.
+      channel: body.via === 'assistant-link' ? 'assistant-link' : 'page',
+      replyToApplicant: true
     });
-
-    if (ctx && typeof ctx.waitUntil === 'function') {
-      ctx.waitUntil(emailTask);
-    } else {
-      await emailTask;
-    }
-
     return jsonResponse({ ok: true }, 201, origin, methods, null, noStoreHeaders());
   } catch (error) {
     console.error('Failed to store application', {
@@ -7132,6 +7183,507 @@ async function handleApplicationSubmit(request, env, origin, ctx) {
     });
     return jsonResponse({ error: 'Could not save your application right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
   }
+}
+
+const APPLICATION_CHANNEL_LABELS = {
+  page: 'Application page',
+  'assistant-link': 'Application page, filled in from a link an AI assistant wrote',
+  'agent-api': 'Sent by an AI assistant and confirmed by the person by email'
+};
+
+/**
+ * Store an application as a lead and client, and tell Gerry. Shared by the
+ * /apply/ page and by an assistant's request once the person confirms it, so
+ * both reach the client pipeline in exactly the same shape.
+ */
+async function storeApplicationLead(env, ctx, {
+  contact,
+  application,
+  counts,
+  applicationId,
+  encrypted,
+  schemaVersion,
+  channel = 'page',
+  assistant = '',
+  replyToApplicant = true
+}) {
+  const createdAt = new Date().toISOString();
+  const topics = application.topics.join(',');
+  const client = await findOrCreateClientForProfile(env, {
+    fullName: contact.fullName,
+    email: contact.email,
+    phone: null,
+    pipelineStage: 'new_lead',
+    timestamp: createdAt,
+    source: 'case_application'
+  });
+  const result = await env.LEADS_DB.prepare(`
+    INSERT INTO leads (
+      client_id,
+      created_at,
+      updated_at,
+      full_name,
+      email,
+      phone,
+      help_reason,
+      stage,
+      call_outcome,
+      availability_notes,
+      status,
+      consent_free_call,
+      consent_education_only,
+      consent_recording,
+      source,
+      application_id,
+      application_payload_encrypted,
+      application_schema_version,
+      application_topics,
+      application_answered_count,
+      application_channel,
+      application_assistant
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 'new', 0, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    client?.id || null,
+    createdAt,
+    createdAt,
+    contact.fullName,
+    contact.email,
+    application.question,
+    channel === 'agent-api' ? AGENT_APPLICATION_SOURCE : APPLICATION_SOURCE,
+    applicationId,
+    encrypted,
+    schemaVersion,
+    topics || null,
+    counts.answered,
+    channel,
+    assistant || null
+  ).run();
+
+  if (!result.success) {
+    throw new Error('Application insert did not succeed.');
+  }
+
+  const leadId = result.meta?.last_row_id ?? null;
+  if (leadId) {
+    await insertLeadEvent(env, leadId, 'client', 'application-submitted', {
+      source: channel === 'agent-api' ? AGENT_APPLICATION_SOURCE : APPLICATION_SOURCE,
+      channel,
+      assistant: assistant || null,
+      clientId: client?.id || null,
+      topics: application.topics,
+      answered: counts.answered,
+      total: counts.total
+    }).catch((error) => {
+      console.error('Failed to record application submitted event', {
+        leadId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+  }
+
+  const emailTask = sendApplicationEmails(env, {
+    fullName: contact.fullName,
+    email: contact.email,
+    question: application.question,
+    topics: application.topics,
+    answered: counts.answered,
+    total: counts.total,
+    createdAt,
+    clientId: client?.id || null,
+    channelLabel: [APPLICATION_CHANNEL_LABELS[channel] || APPLICATION_CHANNEL_LABELS.page, assistant ? `(${assistant})` : '']
+      .filter(Boolean)
+      .join(' '),
+    replyToApplicant
+  }, leadId).catch((error) => {
+    console.error('Application email failed', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  });
+
+  if (ctx && typeof ctx.waitUntil === 'function') {
+    ctx.waitUntil(emailTask);
+  } else {
+    await emailTask;
+  }
+
+  return { leadId, clientId: client?.id || null };
+}
+
+/* ---------- applications sent by AI assistants ---------- */
+
+function maskEmail(email) {
+  const [local, domain] = String(email || '').split('@');
+  if (!local || !domain) return 'the email address given';
+  return `${local.slice(0, 1)}***@${domain}`;
+}
+
+function normalizeAssistantName(value) {
+  return normalizeLeadValue(typeof value === 'string' ? value : '')
+    .replace(/[^A-Za-z0-9 .+-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+}
+
+/**
+ * The person and their consent, as an assistant sends them. Each message names
+ * the field, because an assistant reads these and fixes the request itself.
+ */
+function validateAgentPerson(body) {
+  const person = body?.person && typeof body.person === 'object' && !Array.isArray(body.person) ? body.person : {};
+  const consent = body?.consent && typeof body.consent === 'object' && !Array.isArray(body.consent) ? body.consent : {};
+  const fullName = normalizeLeadValue(person.name).replace(/\s+/g, ' ');
+  const email = normalizeLeadValue(person.email).toLowerCase();
+
+  if (!fullName) {
+    throw new Error('person.name is required. A first name is fine.');
+  }
+  if (fullName.length > MAX_LEAD_NAME_LENGTH) {
+    throw new Error('person.name is too long.');
+  }
+  if (!email || email.length > MAX_LEAD_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('person.email must be the person’s own email address. Planeir emails them to confirm.');
+  }
+  if (consent.videoPublication !== true) {
+    throw new Error('consent.videoPublication must be true, and only after asking the person: Gerry may use their situation in a published video, with their name removed.');
+  }
+  if (consent.educationOnly !== true) {
+    throw new Error('consent.educationOnly must be true, and only after telling the person: Planeir is education only, not financial advice, and does not recommend products.');
+  }
+  return { fullName, email };
+}
+
+async function agentRateLimited(env, scope, key, windowMs, max) {
+  return !(await checkPersistentRateLimit(env, scope, key, windowMs, max).catch((error) => {
+    console.error('Agent application rate limit check failed', {
+      scope,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return true;
+  }));
+}
+
+async function readAgentJson(request, maxBytes, origin, methods) {
+  try {
+    const read = await readBoundedJsonBody(request, maxBytes);
+    if (read.tooLarge) {
+      return { response: jsonResponse({ error: 'The request is too large.' }, 413, origin, methods, null, noStoreHeaders()) };
+    }
+    if (!read.body || typeof read.body !== 'object' || Array.isArray(read.body)) {
+      return { response: jsonResponse({ error: 'Send a JSON object.' }, 400, origin, methods, null, noStoreHeaders()) };
+    }
+    return { body: read.body };
+  } catch (_error) {
+    return { response: jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, methods, null, noStoreHeaders()) };
+  }
+}
+
+/**
+ * POST /api/agent/applications/check
+ *
+ * How an application will read to Gerry, what could not be used and why, and
+ * what would still help. Stores nothing and sends nothing, so an assistant can
+ * show its user exactly what would be sent before asking to send it.
+ */
+async function handleAgentApplicationCheck(request, env, origin) {
+  const methods = 'POST,OPTIONS';
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+  const read = await readAgentJson(request, MAX_APPLICATION_BODY_BYTES, origin, methods);
+  if (read.response) return read.response;
+  if (env.LEADS_DB && await agentRateLimited(env, 'agent-check', clientIp, HOUR_MS, AGENT_CHECK_RATE_LIMIT_MAX)) {
+    return jsonResponse({ error: 'Too many checks from this connection. Try again in an hour.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+
+  const { prepareAgentApplication, applicationToText } = await loadCaseApplicationModule();
+  const raw = read.body.application && typeof read.body.application === 'object' ? read.body.application : read.body;
+  const prepared = prepareAgentApplication(raw);
+  return jsonResponse({
+    ok: true,
+    ready: Boolean(prepared.application.question),
+    summary: applicationToText(prepared.application),
+    answered: prepared.counts.answered,
+    total: prepared.counts.total,
+    warnings: prepared.warnings,
+    stillUseful: prepared.stillUseful
+  }, 200, origin, methods, null, noStoreHeaders());
+}
+
+/**
+ * POST /api/agent/applications
+ *
+ * An assistant files an application for its user. It is only a request: the
+ * figures are encrypted and held, and the person is emailed a link to check
+ * and confirm it. Nothing reaches Gerry, and no client record exists, until
+ * they do. Limits are per email address as well as per connection, because
+ * many people's assistants share a few addresses, and a request that emails a
+ * stranger must not be repeatable.
+ */
+async function handleAgentApplicationSend(request, env, origin) {
+  const methods = 'POST,OPTIONS';
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+  if (!env.LEADS_DB) {
+    return jsonResponse({ error: AGENT_CLOSED_MESSAGE }, 503, origin, methods, null, noStoreHeaders());
+  }
+  const read = await readAgentJson(request, MAX_APPLICATION_BODY_BYTES, origin, methods);
+  if (read.response) return read.response;
+  const body = read.body;
+
+  if (await agentRateLimited(env, 'agent-send-ip', clientIp, HOUR_MS, AGENT_SEND_IP_RATE_LIMIT_MAX)) {
+    return jsonResponse({ error: 'Too many applications from this connection. Try again in an hour.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+
+  let contact;
+  try {
+    contact = validateAgentPerson(body);
+  } catch (error) {
+    return jsonResponse({ error: error.message }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  const { prepareAgentApplication, APPLICATION_SCHEMA_VERSION } = await loadCaseApplicationModule();
+  const prepared = prepareAgentApplication(body.application);
+  if (!prepared.application.question) {
+    return jsonResponse({
+      error: 'application.question is required: what the person wants to understand, in their own words.',
+      warnings: prepared.warnings
+    }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  const emailConfig = getLeadEmailConfig(env);
+  if (!emailConfig.apiKey || !emailConfig.from || !isApplicationEncryptionConfigured(env)) {
+    console.error('Agent applications refused: email or application encryption is not configured.');
+    return jsonResponse({ error: AGENT_CLOSED_MESSAGE }, 503, origin, methods, null, noStoreHeaders());
+  }
+
+  if (await agentRateLimited(env, 'agent-send-email', contact.email, DAY_MS, AGENT_SEND_EMAIL_RATE_LIMIT_MAX)) {
+    return jsonResponse({
+      error: 'This email address already has applications waiting to be confirmed. Ask the person to check their email from Planeir.'
+    }, 429, origin, methods, null, noStoreHeaders());
+  }
+  if (await agentRateLimited(env, 'agent-send-all', 'all', DAY_MS, AGENT_SEND_DAILY_LIMIT)) {
+    return jsonResponse({
+      error: `Planeir cannot take more applications from assistants today. The person can apply at ${PLANEIR_SITE_URL}/apply/.`
+    }, 429, origin, methods, null, noStoreHeaders());
+  }
+
+  const { randomId, sha256Base64Url, toBase64Url } = await import('./consumer/crypto.js');
+  const token = toBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const tokenHash = await sha256Base64Url(token);
+  const applicationId = randomId('app');
+  let encrypted;
+  try {
+    encrypted = await encryptApplicationPayload(env, applicationId, prepared.application);
+  } catch (error) {
+    console.error('Agent application encryption failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: AGENT_CLOSED_MESSAGE }, 503, origin, methods, null, noStoreHeaders());
+  }
+
+  const now = Date.now();
+  const createdAt = new Date(now).toISOString();
+  const expiresAt = new Date(now + AGENT_CONFIRMATION_TTL_MS).toISOString();
+  const assistant = normalizeAssistantName(body.assistant?.name);
+  const db = getPublishedSessionsDb(env);
+  const insert = await db.prepare(`
+    INSERT INTO agent_application_requests (
+      token_hash,
+      application_id,
+      full_name,
+      email,
+      application_payload_encrypted,
+      application_schema_version,
+      application_topics,
+      application_answered_count,
+      assistant_name,
+      created_at,
+      expires_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    tokenHash,
+    applicationId,
+    contact.fullName,
+    contact.email,
+    encrypted,
+    APPLICATION_SCHEMA_VERSION,
+    prepared.application.topics.join(',') || null,
+    prepared.counts.answered,
+    assistant || null,
+    createdAt,
+    expiresAt
+  ).run();
+  const requestId = insert.meta?.last_row_id ?? null;
+
+  try {
+    await sendAgentConfirmationEmail(env, { fullName: contact.fullName, email: contact.email, token, expiresAt });
+  } catch (error) {
+    console.error('Agent confirmation email failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    if (requestId) {
+      await db.prepare('DELETE FROM agent_application_requests WHERE id = ?').bind(requestId).run().catch(() => {});
+    }
+    return jsonResponse({ error: 'The confirmation email could not be sent. Try again shortly.' }, 502, origin, methods, null, noStoreHeaders());
+  }
+
+  return jsonResponse({
+    ok: true,
+    status: 'waiting_for_confirmation',
+    message: `Planeir has emailed ${maskEmail(contact.email)}. Ask the person to open the email from Planeir, check the answers and press Confirm. Nothing reaches Gerry until they do. The link works for 7 days.`,
+    confirmBy: expiresAt,
+    warnings: prepared.warnings
+  }, 202, origin, methods, null, noStoreHeaders());
+}
+
+async function findAgentApplicationRequest(env, token) {
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    return null;
+  }
+  const { sha256Base64Url } = await import('./consumer/crypto.js');
+  const db = getPublishedSessionsDb(env);
+  const row = await db.prepare(`
+    SELECT
+      id,
+      application_id,
+      full_name,
+      email,
+      application_payload_encrypted,
+      application_schema_version,
+      assistant_name,
+      created_at,
+      expires_at,
+      claimed_at
+    FROM agent_application_requests
+    WHERE token_hash = ?
+    LIMIT 1
+  `).bind(await sha256Base64Url(token)).first();
+  if (!row) return null;
+  if (Date.parse(row.expires_at) <= Date.now()) {
+    await db.prepare('DELETE FROM agent_application_requests WHERE id = ?').bind(row.id).run().catch(() => {});
+    return null;
+  }
+  return row;
+}
+
+async function readAgentToken(request, env, origin, methods) {
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return { response: jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders()) };
+  }
+  if (!env.LEADS_DB) {
+    return { response: jsonResponse({ error: 'This link cannot be checked right now.' }, 503, origin, methods, null, noStoreHeaders()) };
+  }
+  const read = await readAgentJson(request, 4 * 1024, origin, methods);
+  if (read.response) return read;
+  if (await agentRateLimited(env, 'agent-token', clientIp, HOUR_MS, AGENT_TOKEN_RATE_LIMIT_MAX)) {
+    return { response: jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders()) };
+  }
+  const row = await findAgentApplicationRequest(env, read.body.token);
+  if (!row) {
+    return { response: jsonResponse({ error: AGENT_LINK_GONE_MESSAGE }, 404, origin, methods, null, noStoreHeaders()) };
+  }
+  return { row };
+}
+
+/** POST /api/agent/applications/preview — what the person is being asked to confirm. */
+async function handleAgentApplicationPreview(request, env, origin) {
+  const methods = 'POST,OPTIONS';
+  const found = await readAgentToken(request, env, origin, methods);
+  if (found.response) return found.response;
+  const { row } = found;
+  try {
+    const application = await decryptApplicationPayload(env, row.application_id, row.application_payload_encrypted);
+    return jsonResponse({
+      ok: true,
+      name: firstNameOf(row.full_name),
+      email: maskEmail(row.email),
+      assistant: row.assistant_name || '',
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      application
+    }, 200, origin, methods, null, noStoreHeaders());
+  } catch (error) {
+    console.error('Agent application preview could not be decrypted', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'This application cannot be shown right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
+  }
+}
+
+/**
+ * POST /api/agent/applications/confirm — the person's own yes.
+ *
+ * The request is claimed first so a double click cannot file it twice, and a
+ * claim older than two minutes is treated as abandoned. Storing is idempotent
+ * on application_id: a retry after a failed delete finds the lead already made.
+ */
+async function handleAgentApplicationConfirm(request, env, origin, ctx) {
+  const methods = 'POST,OPTIONS';
+  const found = await readAgentToken(request, env, origin, methods);
+  if (found.response) return found.response;
+  const { row } = found;
+  const db = getPublishedSessionsDb(env);
+  const claimedAt = nowIso();
+  const staleBefore = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const claim = await db.prepare(`
+    UPDATE agent_application_requests
+    SET claimed_at = ?
+    WHERE id = ? AND (claimed_at IS NULL OR claimed_at < ?)
+  `).bind(claimedAt, row.id, staleBefore).run();
+  if (Number(claim.meta?.changes || 0) !== 1) {
+    return jsonResponse({ error: 'This application is already being confirmed.' }, 409, origin, methods, null, noStoreHeaders());
+  }
+
+  try {
+    const existing = await db.prepare('SELECT id FROM leads WHERE application_id = ? LIMIT 1').bind(row.application_id).first();
+    if (!existing) {
+      const application = await decryptApplicationPayload(env, row.application_id, row.application_payload_encrypted);
+      const { countAnswers } = await loadCaseApplicationModule();
+      await storeApplicationLead(env, ctx, {
+        contact: { fullName: row.full_name, email: row.email },
+        application,
+        counts: countAnswers(application),
+        applicationId: row.application_id,
+        encrypted: row.application_payload_encrypted,
+        schemaVersion: row.application_schema_version,
+        channel: 'agent-api',
+        assistant: row.assistant_name || '',
+        replyToApplicant: false
+      });
+    }
+    await db.prepare('DELETE FROM agent_application_requests WHERE id = ?').bind(row.id).run();
+    return jsonResponse({ ok: true }, 200, origin, methods, null, noStoreHeaders());
+  } catch (error) {
+    console.error('Agent application confirmation failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    await db.prepare('UPDATE agent_application_requests SET claimed_at = NULL WHERE id = ?').bind(row.id).run().catch(() => {});
+    return jsonResponse({ error: 'Your application could not be saved right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
+  }
+}
+
+/** POST /api/agent/applications/cancel — "don't send it": delete it now. */
+async function handleAgentApplicationCancel(request, env, origin) {
+  const methods = 'POST,OPTIONS';
+  const found = await readAgentToken(request, env, origin, methods);
+  if (found.response) return found.response;
+  await getPublishedSessionsDb(env).prepare('DELETE FROM agent_application_requests WHERE id = ?').bind(found.row.id).run();
+  return jsonResponse({ ok: true }, 200, origin, methods, null, noStoreHeaders());
+}
+
+/** Unconfirmed requests are deleted, figures and all, once their link expires. */
+async function purgeExpiredAgentApplicationRequests(env) {
+  const result = await getPublishedSessionsDb(env).prepare(`
+    DELETE FROM agent_application_requests
+    WHERE expires_at <= ?
+  `).bind(nowIso()).run();
+  return { deleted: Number(result.meta?.changes || 0) };
 }
 
 async function getLeadApplicationRow(env, leadId) {
@@ -7146,7 +7698,9 @@ async function getLeadApplicationRow(env, leadId) {
       application_schema_version,
       application_topics,
       application_answered_count,
-      application_deleted_at
+      application_deleted_at,
+      application_channel,
+      application_assistant
     FROM leads
     WHERE id = ?
     LIMIT 1
@@ -7177,7 +7731,9 @@ async function handleAdvisorLeadApplication(request, env, origin, leadId) {
     status: normalizeLeadStatus(row.status, 'new'),
     topics: String(row.application_topics || '').split(',').filter(Boolean),
     answeredCount: Number(row.application_answered_count || 0),
-    deletedAt: row.application_deleted_at || ''
+    deletedAt: row.application_deleted_at || '',
+    channel: row.application_channel || 'page',
+    assistant: row.application_assistant || ''
   };
 
   if (!row.application_payload_encrypted) {
@@ -8326,6 +8882,17 @@ export default {
       })
     );
     ctx.waitUntil(
+      purgeExpiredAgentApplicationRequests(env).then((result) => {
+        if (result.deleted > 0) {
+          console.log('Unconfirmed assistant applications removed', result);
+        }
+      }).catch((error) => {
+        console.error('Assistant application cleanup failed', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      })
+    );
+    ctx.waitUntil(
       purgeExpiredApplicationPayloads(env).then((result) => {
         if (result.purged > 0) {
           console.log('Expired application figures removed', result);
@@ -8505,6 +9072,24 @@ export default {
 
     if (request.method === 'POST' && pathname === '/api/applications') {
       return handleApplicationSubmit(request, env, origin, ctx);
+    }
+
+    if (request.method === 'POST' && pathname === '/api/agent/applications') {
+      return handleAgentApplicationSend(request, env, origin);
+    }
+
+    const agentApplicationMatch = /^\/api\/agent\/applications\/(check|preview|confirm|cancel)$/.exec(pathname);
+    if (request.method === 'POST' && agentApplicationMatch) {
+      switch (agentApplicationMatch[1]) {
+        case 'check':
+          return handleAgentApplicationCheck(request, env, origin);
+        case 'preview':
+          return handleAgentApplicationPreview(request, env, origin);
+        case 'confirm':
+          return handleAgentApplicationConfirm(request, env, origin, ctx);
+        default:
+          return handleAgentApplicationCancel(request, env, origin);
+      }
     }
 
     if (request.method === 'GET' && pathname === '/api/leads/schedule-response') {

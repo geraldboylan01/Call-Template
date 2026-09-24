@@ -39,6 +39,10 @@ SITEMAP_URL="${SITE_ORIGIN}/sitemap.xml"
 APPLY_URL="${SITE_ORIGIN}/apply/"
 CASES_URL="${SITE_ORIGIN}/cases/"
 PRIVACY_URL="${SITE_ORIGIN}/privacy/"
+AI_GUIDE_URL="${SITE_ORIGIN}/for-ai-assistants/"
+LLMS_URL="${SITE_ORIGIN}/llms.txt"
+OPENAPI_URL="${SITE_ORIGIN}/agents/openapi.json"
+AGENT_SCHEMA_URL="${SITE_ORIGIN}/agents/application.schema.json"
 
 fetch_html() {
   local url="$1"
@@ -80,6 +84,10 @@ apply_html="$(fetch_html "$APPLY_URL")"
 cases_html="$(fetch_html "$CASES_URL")"
 privacy_html="$(fetch_html "$PRIVACY_URL")"
 apply_js="$(fetch_html "${SITE_ORIGIN}/js/apply.js?v=${EXPECTED_VERSION}")"
+ai_guide_html="$(fetch_html "$AI_GUIDE_URL")"
+llms_txt="$(fetch_html "$LLMS_URL")"
+openapi_json="$(fetch_html "$OPENAPI_URL")"
+agent_schema_json="$(fetch_html "$AGENT_SCHEMA_URL")"
 app_entry_js="$(fetch_html "${SITE_ORIGIN}/js/app_entry.js?v=${EXPECTED_VERSION}")"
 app_js="$(fetch_html "${SITE_ORIGIN}/js/app.js?v=${EXPECTED_VERSION}")"
 landing_js="$(fetch_html "${SITE_ORIGIN}/js/landing.js?v=${EXPECTED_VERSION}")"
@@ -106,6 +114,11 @@ assert_contains "$apply_html" "../js/apply.js?v=${EXPECTED_VERSION}" "apply scri
 assert_contains "$apply_js" "./case_application/index.js?v=${EXPECTED_VERSION}" "apply -> application schema import"
 assert_contains "$cases_html" "../styles/cases.css?v=${EXPECTED_VERSION}" "cases stylesheet"
 assert_contains "$privacy_html" '<link rel="canonical" href="https://planeir.ie/privacy/"' "privacy canonical"
+assert_contains "$ai_guide_html" '<link rel="canonical" href="https://planeir.ie/for-ai-assistants/"' "AI guide canonical"
+assert_contains "$ai_guide_html" 'api.planeir.ie/api/agent/applications' "AI guide API section"
+assert_contains "$llms_txt" '# Planéir' "llms.txt title"
+assert_contains "$openapi_json" '"sendCaseApplication"' "OpenAPI send operation"
+assert_contains "$agent_schema_json" 'planeir.application.v1' "application JSON Schema"
 
 assert_contains "$app_html" '<meta name="robots" content="noindex, nofollow"' "app noindex"
 assert_contains "$app_html" "../styles/base.css?v=${EXPECTED_VERSION}" "app stylesheet"
@@ -134,14 +147,14 @@ assert_contains "$plan_entry_js" "./views.js?v=${EXPECTED_VERSION}" "consumer pl
 
 
 # Include every deployed document, including legacy redirect entry points.
-for page in index.html session.html app/index.html app/session.html app/clients.html app/analytics.html app/modules.html app/access.html app/leads.html app/video.html plan/index.html plan/privacy.html apply/index.html privacy/index.html cases/index.html; do
+for page in index.html session.html app/index.html app/session.html app/clients.html app/analytics.html app/modules.html app/access.html app/leads.html app/video.html plan/index.html plan/privacy.html apply/index.html apply/confirm/index.html privacy/index.html cases/index.html for-ai-assistants/index.html; do
   page_html="$(fetch_html "${SITE_ORIGIN}/${page}")"
   for icon in favicon.svg favicon-32.png favicon.ico apple-touch-icon.png; do
     assert_contains "$page_html" "${icon}?v=${EXPECTED_VERSION}" "${page} ${icon}"
   done
   assert_not_contains "$page_html" "planeir-wordmark-light.svg" "${page} legacy internal logo URL"
   case "$page" in
-    index.html|app/index.html|app/session.html|app/clients.html|app/analytics.html|app/modules.html|app/access.html|plan/index.html|plan/privacy.html|apply/index.html|privacy/index.html|cases/index.html)
+    index.html|app/index.html|app/session.html|app/clients.html|app/analytics.html|app/modules.html|app/access.html|plan/index.html|plan/privacy.html|apply/index.html|apply/confirm/index.html|privacy/index.html|cases/index.html|for-ai-assistants/index.html)
       assert_contains "$page_html" "assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "${page} canonical logo" ;;
   esac
   case "$page" in

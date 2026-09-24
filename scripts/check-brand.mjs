@@ -12,7 +12,10 @@ const DEPLOYED_HTML = [
 ];
 // The video-first public pages. Each carries the site header, as does every
 // generated case page under cases/<slug>/.
-const PUBLIC_PAGES = ['apply/index.html', 'privacy/index.html', 'cases/index.html'];
+const PUBLIC_PAGES = [
+  'apply/index.html', 'apply/confirm/index.html', 'privacy/index.html',
+  'cases/index.html', 'for-ai-assistants/index.html'
+];
 const BASE_HEADER_COUNT = 9;
 
 async function generatedCasePages(base) {
@@ -84,7 +87,7 @@ async function verifyBrand({ dist = false } = {}) {
   if (!dist) {
     const worker = await readFile(resolve(ROOT, 'worker/src/index.js'), 'utf8');
     assert.ok(worker.includes('/assets/brand/planeir-social-card-newgrange.png'));
-    assert.equal((worker.match(/\$\{buildPlaneirEmailCardHtml\(\)\}/g) || []).length, 8, 'All eight email variants must retain shared branding.');
+    assert.equal((worker.match(/\$\{buildPlaneirEmailCardHtml\(\)\}/g) || []).length, 9, 'All nine email variants must retain shared branding.');
   }
   console.log(`Verified ${dist ? 'deployed' : 'source'} branding across ${deployed.length} pages, ${headerCount} headers, and all exports.`);
 }
