@@ -37,6 +37,27 @@ const pensionInputs = {
   baseScenarioId: 'keep-rent'
 };
 
+const retirementCaseInputs = {
+  currentAge: 50,
+  retirementAge: 62,
+  currentSalary: 90000,
+  currentPot: 400000,
+  personalPct: 0.05,
+  employerPct: 0.06,
+  growthRate: 0.05,
+  inflationRate: 0.02,
+  wageGrowthRate: 0.02,
+  horizonEndAge: 92,
+  currentYear: 2026,
+  incomeMode: 'target',
+  targetIncomeToday: 45000,
+  baseScenarioId: 'retire-62',
+  scenarios: [
+    { id: 'retire-62', title: 'Retire at 62' },
+    { id: 'retire-58', title: 'Retire at 58', retirementAge: 58 }
+  ]
+};
+
 const netRetirementInputs = {
   currentYear: 2026,
   currentAge: 60,
@@ -204,6 +225,33 @@ const cases = [
       assert(manifest.source.calculationStatus === 'resolved', 'Expected pension projection to resolve');
       assert(manifest.story.charts.length > 0, 'Expected pension charts');
       assert(manifest.source.activeScenario.id === 'sell-rent', 'Expected selected pension scenario');
+    }
+  },
+  {
+    // A video of "Retire at 58" has to be made of that case's ages and
+    // figures. Resolving the case but narrating the base's retirement year
+    // would be the same mistake, told out loud.
+    name: 'Pension resolves a retirement-age case with its own ages and timing',
+    module: baseModule('pension-2', 'Retirement projection', {
+      summaryHtml: '<p>Retirement case.</p>',
+      pensionInputs: retirementCaseInputs,
+      charts: []
+    }),
+    activeScenario: { pensionScenarioId: 'retire-58' },
+    verify(manifest) {
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected the retirement case to resolve');
+      assert(manifest.source.activeScenario.id === 'retire-58', 'Expected the selected retirement case');
+      assert(manifest.source.activeScenario.title === 'Retire at 58', 'Expected the case title');
+      assert(
+        manifest.source.activeScenario.description === 'Retires at 58, income from 2034',
+        `Expected the case to say what it changes, got "${manifest.source.activeScenario.description}"`
+      );
+      // Retiring four years earlier is four fewer years of contributions and
+      // growth, so the headline figure has to be the case's own.
+      assert(
+        manifest.story.metrics[0]?.value === '€696,941',
+        `Expected the case's own projected pot, got ${manifest.story.metrics[0]?.value}`
+      );
     }
   },
   {

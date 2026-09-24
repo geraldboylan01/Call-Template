@@ -1,0 +1,120 @@
+{
+  "topics": [
+    "retirement",
+    "mortgage",
+    "whole"
+  ],
+  "question": "Should we overpay the mortgage or put more into our pensions?\nWe have about €600 spare most months.",
+  "upcoming": "Our fixed rate ends in March.",
+  "household": {
+    "age": 34,
+    "partner": "yes",
+    "partnerAge": 35,
+    "married": "yes",
+    "children": "yes"
+  },
+  "children": [
+    {
+      "age": 4,
+      "collegePlan": "away",
+      "saved": 2500
+    },
+    {
+      "age": 1,
+      "collegePlan": "unsure"
+    }
+  ],
+  "income": {
+    "gross": "35k",
+    "partnerGross": "€30,000",
+    "work": "employee",
+    "sector": "private",
+    "partnerWork": "employee",
+    "partnerSector": "public",
+    "takeHome": "4,100"
+  },
+  "spending": {
+    "pattern": "save",
+    "saved": 600,
+    "spend": "2,380"
+  },
+  "home": {
+    "status": "mortgage",
+    "value": "305k"
+  },
+  "mortgage": {
+    "balance": 281234,
+    "rate": "3,95",
+    "rateType": "fixed",
+    "fixedEnds": "2027-03",
+    "yearsLeft": 29,
+    "repayment": 1452,
+    "overpaying": "yes",
+    "overpayment": 120,
+    "lender": "Example Bank"
+  },
+  "savings": {
+    "cash": 15250,
+    "investments": 8200,
+    "employerShares": 3100
+  },
+  "properties": [
+    {
+      "value": 212000,
+      "mortgage": 143500,
+      "rent": 16800,
+      "costs": 2400,
+      "rate": 4.5
+    }
+  ],
+  "pensions": [
+    {
+      "owner": "you",
+      "type": "personal",
+      "value": 12345,
+      "youPay": 265,
+      "youPayUnit": "eur",
+      "contributing": "yes"
+    },
+    {
+      "owner": "partner",
+      "type": "public",
+      "dbPension": 14200,
+      "dbLumpSum": 42600,
+      "dbAge": 65
+    }
+  ],
+  "retirement": {
+    "age": 65,
+    "partnerAge": 63,
+    "income": "40k",
+    "statePension": "partly"
+  },
+  "loans": [
+    {
+      "type": "car",
+      "balance": 9400,
+      "rate": 7.9,
+      "yearsLeft": 2.5,
+      "payment": 385
+    }
+  ],
+  "creditCard": {
+    "clears": "no",
+    "balance": 1240
+  },
+  "cover": {
+    "life": "yes",
+    "incomeProtection": "unsure"
+  },
+  "anythingElse": "My partner may go part-time when the youngest starts school.",
+  "videoName": "Aoife",
+  "unsure": [
+    "savings.employerShares",
+    "retirement.income",
+    "pensions.0.value",
+    "children.1.saved",
+    "buying.price",
+    "pensions.1.value"
+  ]
+}

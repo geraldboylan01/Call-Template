@@ -13,7 +13,7 @@
  * rebuilding the calculation engines.
  */
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.1.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.2.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-07-30';
 
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
@@ -73,6 +73,18 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
       basis: 'For a retired household, Planéir uses twelve months of spending as the minimum cash-reserve floor and twenty-four months as the target.'
     }),
     disclosure: 'These are Planéir planning guides for resilience, not a personal recommendation or a guarantee that a particular reserve will meet every emergency.'
+  }),
+
+  /**
+   * How tax rules are carried into years that have no rules yet. The rules
+   * themselves are law and live in the tax catalogue
+   * (`js/planning/tax/rules_ie.js`); this is Planéir's policy for the years
+   * ahead, and `resolveTaxRules` is its only implementation.
+   */
+  taxProjection: Object.freeze({
+    policy: 'freeze_budget_parameters_apply_fixed_law_hold_unknowns',
+    basis: 'Tax bands, credits and thresholds that each Budget sets are kept at their latest enacted values in euro terms and never increased with inflation, because Budgets often leave them unchanged. Changes the law has already fixed by date and amount, such as the scheduled PRSI rises and the Standard Fund Threshold steps, are applied on their dates. Where the law ties a future figure to data that does not exist yet, such as the Standard Fund Threshold from 2030, the last known figure is held rather than forecast.',
+    disclosure: 'If future Budgets raise bands and credits, tax in later years would be lower than shown. A held Standard Fund Threshold is its lowest possible level, so any tax shown on a fund above it may be overstated.'
   })
 });
 
@@ -126,6 +138,11 @@ export function assumptionRecord(key) {
       value: collegeFunding.durationYears,
       reason: `Four years of college for each child (${version}).`
     },
+    taxProjection: {
+      key: 'taxProjectionPolicy',
+      value: PLANEIR_ASSUMPTIONS.taxProjection.policy,
+      reason: `${PLANEIR_ASSUMPTIONS.taxProjection.basis} ${PLANEIR_ASSUMPTIONS.taxProjection.disclosure} (${version})`
+    },
     collegeCosts: {
       key: 'collegeAnnualCostsToday',
       value: collegeFunding.scenarios.map((scenario) => (
@@ -158,6 +175,7 @@ const ASSUMPTION_LABELS = Object.freeze({
   collegeStartAge: 'College starting age',
   collegeDurationYears: 'Number of years of college',
   collegeAnnualCostsToday: 'Standard college costs in today’s money',
+  taxProjectionPolicy: 'How tax rules are carried into future years',
   // Adapter-owned engine defaults.
   purchaseCosts: 'Home-buying cost estimates',
   mortgageIllustration: 'Illustrative mortgage rate and term',

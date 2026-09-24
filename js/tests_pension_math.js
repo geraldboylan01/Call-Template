@@ -1,4 +1,8 @@
-import { computePensionProjection } from './pension_math.js';
+import {
+  computePensionProjection,
+  getPensionScenarioCases,
+  normalizePensionInputs
+} from './pension_math.js';
 
 function assert(condition, message) {
   if (!condition) {
@@ -72,6 +76,34 @@ const COUPLE_INPUTS = Object.freeze({
     }
   ]
 });
+
+/** The couple, with one piece of income a case can take away. */
+const COUPLE_WITH_DB_INPUTS = Object.freeze({
+  ...COUPLE_INPUTS,
+  otherIncomeSources: [
+    {
+      id: 'mary-db',
+      title: 'Mary DB pension',
+      type: 'db',
+      ownerId: 'mary',
+      annualAmountToday: 12000,
+      startAge: 66,
+      inflationIndexed: true
+    }
+  ]
+});
+
+const withoutTargetStartYear = (payload) => {
+  const next = { ...payload };
+  delete next.targetStartYear;
+  return next;
+};
+
+const withoutOtherIncome = (payload) => {
+  const next = { ...payload };
+  delete next.otherIncomeSources;
+  return next;
+};
 
 const USER_SPOUSE_PAYLOAD = Object.freeze({
   currentYear: 2026,
@@ -150,6 +182,56 @@ const STAGGERED_RETIREMENT_INPUTS = Object.freeze({
       personalPct: 0.1,
       employerPct: 0,
       includeStatePension: false
+    }
+  ]
+});
+
+/** A married couple using every tax input the retirement module takes. */
+const TAXED_COUPLE_INPUTS = Object.freeze({
+  currentYear: 2026,
+  inflationRate: 0.02,
+  growthRate: 0.05,
+  wageGrowthRate: 0.02,
+  incomeMode: 'target',
+  targetIncomeToday: 60000,
+  targetIncomeBasis: 'net',
+  householdTaxStatus: 'married_or_civil_partners',
+  horizonEndAge: 92,
+  rentalIncomeToday: 12000,
+  rentalIncomeOwnerId: 'joint',
+  pensions: [
+    {
+      id: 'john',
+      title: 'John',
+      currentAge: 55,
+      retirementAge: 65,
+      currentSalary: 90000,
+      currentPot: 450000,
+      personalPct: 0.1,
+      employerPct: 0.06,
+      lumpSum: { mode: 'max' },
+      priorLumpSumsSince2005: 50000
+    },
+    {
+      id: 'mary',
+      title: 'Mary',
+      currentAge: 53,
+      retirementAge: 63,
+      currentSalary: 60000,
+      currentPot: 250000,
+      personalPct: 0.08,
+      employerPct: 0.05
+    }
+  ],
+  otherIncomeSources: [
+    {
+      id: 'mary-db',
+      title: 'Mary DB pension',
+      type: 'db',
+      ownerId: 'mary',
+      annualAmountToday: 8000,
+      startAge: 63,
+      inflationIndexed: true
     }
   ]
 });
@@ -701,7 +783,13 @@ export function runPensionMathTests() {
     );
   }));
 
-  cases.push(runCase('ARF minimum withdrawals apply at 4, 5 and 6 percent', () => {
+  cases.push(runCase('ARF minimum withdrawals follow the whole-year age test at 4, 5 and 6 percent', () => {
+    // Corrected by the Irish tax engine brief (4.9, compatibility reason 2).
+    // The statute charges an imputed distribution only where the holder is 60
+    // or over for the WHOLE year, and 5% only where they are 70 or over for
+    // the whole year. Before the correction this test expected 4% at attained
+    // age 60 (now nothing), 5% at 70 (now 4%) and 6% on a €2.1m fund at 60
+    // (now nothing, because the age test comes first).
     const base = {
       currentYear: 2026,
       inflationRate: 0,
@@ -709,43 +797,37 @@ export function runPensionMathTests() {
       wageGrowthRate: 0,
       incomeMode: 'target',
       targetIncomeToday: 1,
-      horizonEndAge: 61,
       includeStatePension: false,
       currentSalary: 0,
       personalPct: 0,
       employerPct: 0
     };
-    const under70 = computePensionProjection({
+    const firstYearMinimum = (age, currentPot) => computePensionProjection({
       ...base,
-      currentAge: 60,
-      retirementAge: 60,
-      currentPot: 100000
-    });
-    const over70 = computePensionProjection({
-      ...base,
-      currentAge: 70,
-      retirementAge: 70,
-      horizonEndAge: 71,
-      currentPot: 100000
-    });
-    const overThreshold = computePensionProjection({
-      ...base,
-      currentAge: 60,
-      retirementAge: 60,
-      currentPot: 2100000
-    });
+      currentAge: age,
+      retirementAge: age,
+      horizonEndAge: age + 1,
+      currentPot
+    }).debug.retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal;
 
-    assertApprox(under70.debug.retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal, 4000, 0.01, 'Under-70 ARF minimum should be 4%');
-    assertApprox(over70.debug.retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal, 5000, 0.01, 'Age-70 ARF minimum should be 5%');
-    assertApprox(overThreshold.debug.retirementSimulationProjectedCurrent.firstYearMandatoryWithdrawal, 126000, 0.01, 'Over-€2m ARF minimum should be 6%');
+    assertApprox(firstYearMinimum(60, 500000), 0, 0.01, 'No imputed distribution in the year the holder turns 60');
+    assertApprox(firstYearMinimum(61, 500000), 20000, 0.01, '4% from the year the holder turns 61');
+    assertApprox(firstYearMinimum(70, 500000), 20000, 0.01, 'Still 4% in the year the holder turns 70');
+    assertApprox(firstYearMinimum(71, 500000), 25000, 0.01, '5% from the year the holder turns 71');
+    assertApprox(firstYearMinimum(61, 2100000), 126000, 0.01, '6% on a fund above €2m once the age test is met');
+    assertApprox(firstYearMinimum(58, 2100000), 0, 0.01, 'Nothing on a fund above €2m before the age test is met');
   }));
 
   cases.push(runCase('Mandatory withdrawal surplus is calculated and exported without charting', () => {
+    // Moved from age 60 to 61 by the ARF correction (brief 4.9, compatibility
+    // reason 2): at 60 there is no longer a minimum withdrawal to overshoot
+    // with. The €2.5m fund is also above the 2026 threshold, so it now pays
+    // chargeable excess tax at retirement first (reason 1).
     const projection = computePensionProjection({
       ...BASE_TARGET_INPUTS,
-      currentAge: 60,
-      retirementAge: 60,
-      horizonEndAge: 62,
+      currentAge: 61,
+      retirementAge: 61,
+      horizonEndAge: 63,
       currentSalary: 0,
       currentPot: 2500000,
       personalPct: 0,
@@ -817,6 +899,680 @@ export function runPensionMathTests() {
 
     assert(Number.isFinite(result.totalIncomeToday) && result.totalIncomeToday > 0, 'Affordable total income should be finite');
     assert(result.totalIncomeToday > result.incomeToday, 'Affordable total should include non-pension income');
+  }));
+
+  /* --------------------------------------------------------------- cases ---
+   *
+   * A case is only worth showing on a card if it means the same thing as a
+   * module of its own would. Every fixture below is proved against a standalone
+   * payload written out by hand -- not against the merge that produced it --
+   * because a merge that is wrong in the same way twice would otherwise agree
+   * with itself.
+   */
+
+  /** What a case changes about the payload is not itself an output figure. */
+  function stripCaseIdentity(projection) {
+    const debug = JSON.parse(JSON.stringify(projection.debug));
+    [
+      'selectedScenarioId',
+      'selectedScenarioTitle',
+      'selectedScenarioDescription',
+      'selectedScenarioSummary',
+      'selectedScenarioIsBase',
+      'selectedScenarioOverrides',
+      'baseScenarioId',
+      'chartAxisYears',
+      // Whether the module is showing a rent comparison at all is a fact about
+      // the case set, not about this case's arithmetic.
+      'hasRentalContext'
+    ].forEach((key) => {
+      delete debug[key];
+    });
+    [
+      'scenarios',
+      'rentalIncomeScenarios',
+      'baseScenarioId',
+      'selectedScenarioId',
+      'selectedScenarioTitle',
+      'selectedScenarioDescription',
+      'selectedScenarioSummary'
+    ].forEach((key) => {
+      delete debug.inputs[key];
+    });
+    return debug;
+  }
+
+  /** The values a chart draws, with the shared axis's leading and trailing gaps removed. */
+  function chartValues(projection) {
+    return projection.charts.map((chart) => ({
+      title: chart.title,
+      datasets: (chart.datasets || []).map((dataset) => ({
+        label: dataset.label,
+        data: (dataset.data || []).filter((value) => value !== null)
+      }))
+    }));
+  }
+
+  /**
+   * Every row the two projections both report, so a case row cannot hide a
+   * wrong figure. The row naming the case is the one exception: saying which
+   * case is on screen is the point of it.
+   */
+  function sharedTableRows(projection, standalone, table) {
+    const standaloneByLabel = new Map(standalone[table].rows.map((row) => [row[0], row[1]]));
+    return projection[table].rows
+      .filter((row) => row[0] !== 'Retirement income case' && standaloneByLabel.has(row[0]))
+      .map((row) => [row[0], row[1], standaloneByLabel.get(row[0])]);
+  }
+
+  function assertCaseEqualsStandalone(fixtureName, base, caseId, standalone) {
+    const fromCase = computePensionProjection(base, { scenarioId: caseId });
+    const fromPayload = computePensionProjection(standalone);
+
+    assert(
+      JSON.stringify(stripCaseIdentity(fromCase)) === JSON.stringify(stripCaseIdentity(fromPayload)),
+      `${fixtureName}: case "${caseId}" should compute the same figures as its standalone payload`
+    );
+    assert(
+      JSON.stringify(chartValues(fromCase)) === JSON.stringify(chartValues(fromPayload)),
+      `${fixtureName}: case "${caseId}" should chart the same values as its standalone payload`
+    );
+    sharedTableRows(fromCase, fromPayload, 'outputsTable').forEach(([label, actual, expected]) => {
+      assert(actual === expected, `${fixtureName}: case "${caseId}" output "${label}" should read ${expected}, got ${actual}`);
+    });
+    sharedTableRows(fromCase, fromPayload, 'assumptionsTable').forEach(([label, actual, expected]) => {
+      assert(actual === expected, `${fixtureName}: case "${caseId}" assumption "${label}" should read ${expected}, got ${actual}`);
+    });
+  }
+
+  const RETIREMENT_AGE_BASE = {
+    currentAge: 50,
+    retirementAge: 62,
+    currentSalary: 90000,
+    currentPot: 400000,
+    personalPct: 0.05,
+    employerPct: 0.06,
+    growthRate: 0.05,
+    inflationRate: 0.02,
+    wageGrowthRate: 0.02,
+    horizonEndAge: 92,
+    currentYear: 2026,
+    incomeMode: 'target',
+    targetIncomeToday: 45000,
+    includeStatePension: true
+  };
+
+  /**
+   * Every fixture, and the standalone payload each of its cases claims to be.
+   *
+   * Rule 5 is checked here for every case in every fixture at once, so a new
+   * fixture cannot be added without its equality being proved too.
+   */
+  const CASE_FIXTURES = [
+    {
+      name: 'Single person retiring at 58, 62 or 66',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        baseScenarioId: 'retire-62',
+        scenarios: [
+          { id: 'retire-62', title: 'Retire at 62' },
+          { id: 'retire-58', title: 'Retire at 58', retirementAge: 58 },
+          { id: 'retire-66', title: 'Retire at 66', retirementAge: 66 }
+        ]
+      },
+      standalone: {
+        'retire-62': { ...RETIREMENT_AGE_BASE },
+        'retire-58': { ...RETIREMENT_AGE_BASE, retirementAge: 58 },
+        'retire-66': { ...RETIREMENT_AGE_BASE, retirementAge: 66 }
+      }
+    },
+    {
+      name: 'Single person paying in more, topping up, or working part-time',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        baseScenarioId: 'as-is',
+        scenarios: [
+          { id: 'as-is', title: 'As things stand' },
+          { id: 'pay-10', title: 'Pay in 10%', personalPct: 0.1 },
+          { id: 'top-up', title: 'Top up the pot', currentPot: 475000 },
+          {
+            id: 'part-time',
+            title: 'Part-time to 65',
+            retirementAge: 60,
+            additionalIncomeSources: [
+              {
+                id: 'part-time-work',
+                title: 'Part-time income',
+                type: 'employment',
+                annualAmountToday: 25000,
+                startAge: 60,
+                endAge: 65,
+                inflationIndexed: true
+              }
+            ]
+          }
+        ]
+      },
+      standalone: {
+        'as-is': { ...RETIREMENT_AGE_BASE },
+        'pay-10': { ...RETIREMENT_AGE_BASE, personalPct: 0.1 },
+        'top-up': { ...RETIREMENT_AGE_BASE, currentPot: 475000 },
+        'part-time': {
+          ...RETIREMENT_AGE_BASE,
+          retirementAge: 60,
+          otherIncomeSources: [
+            {
+              id: 'part-time-work',
+              title: 'Part-time income',
+              type: 'employment',
+              annualAmountToday: 25000,
+              startAge: 60,
+              endAge: 65,
+              inflationIndexed: true
+            }
+          ]
+        }
+      }
+    },
+    {
+      name: 'Single person changing rent and retirement age together',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        rentalIncomeToday: 18000,
+        baseScenarioId: 'keep-letting',
+        scenarios: [
+          { id: 'keep-letting', title: 'Keep letting, retire at 62' },
+          { id: 'sell-and-go', title: 'Sell up and retire at 58', retirementAge: 58, rentalIncomeToday: 0 }
+        ]
+      },
+      standalone: {
+        'keep-letting': { ...RETIREMENT_AGE_BASE, rentalIncomeToday: 18000 },
+        'sell-and-go': { ...RETIREMENT_AGE_BASE, retirementAge: 58, rentalIncomeToday: 0 }
+      }
+    },
+    {
+      name: 'Couple with staggered retirement, one member moving',
+      base: {
+        ...COUPLE_INPUTS,
+        baseScenarioId: 'as-planned',
+        scenarios: [
+          { id: 'as-planned', title: 'As planned' },
+          {
+            id: 'mary-earlier',
+            title: 'Mary retires at 62',
+            pensionOverrides: [{ id: 'mary', retirementAge: 62 }]
+          },
+          {
+            id: 'mary-no-state-pension',
+            title: 'Mary without the State Pension',
+            pensionOverrides: [{ id: 'mary', includeStatePension: false }]
+          }
+        ]
+      },
+      standalone: {
+        'as-planned': { ...COUPLE_INPUTS },
+        // targetStartYear was written for the plan as it stood; a case that
+        // moves a retirement age derives its own, so the standalone drops it.
+        'mary-earlier': {
+          ...withoutTargetStartYear(COUPLE_INPUTS),
+          pensions: [
+            COUPLE_INPUTS.pensions[0],
+            { ...COUPLE_INPUTS.pensions[1], retirementAge: 62 }
+          ]
+        },
+        'mary-no-state-pension': {
+          ...COUPLE_INPUTS,
+          pensions: [
+            COUPLE_INPUTS.pensions[0],
+            { ...COUPLE_INPUTS.pensions[1], includeStatePension: false }
+          ]
+        }
+      }
+    },
+    {
+      name: 'Couple dropping a DB pension and lowering the target',
+      base: {
+        ...COUPLE_WITH_DB_INPUTS,
+        baseScenarioId: 'as-planned',
+        scenarios: [
+          { id: 'as-planned', title: 'As planned' },
+          { id: 'no-db', title: 'Without the DB pension', excludedIncomeSourceIds: ['mary-db'] },
+          { id: 'spend-less', title: 'Spend €60,000', targetIncomeToday: 60000 }
+        ]
+      },
+      standalone: {
+        'as-planned': { ...COUPLE_WITH_DB_INPUTS },
+        'no-db': withoutOtherIncome(COUPLE_WITH_DB_INPUTS),
+        'spend-less': { ...COUPLE_WITH_DB_INPUTS, targetIncomeToday: 60000 }
+      }
+    },
+    {
+      // Irish tax engine brief, 7.8: the tax keys are payload-level, so every
+      // case inherits them and still equals its standalone payload.
+      name: 'Married couple with an after-tax target and a lump sum, retiring earlier or later',
+      base: {
+        ...TAXED_COUPLE_INPUTS,
+        baseScenarioId: 'as-planned',
+        scenarios: [
+          { id: 'as-planned', title: 'As planned' },
+          { id: 'mary-earlier', title: 'Mary retires at 60', pensionOverrides: [{ id: 'mary', retirementAge: 60 }] },
+          { id: 'pay-more', title: 'John pays in 15%', pensionOverrides: [{ id: 'john', personalPct: 0.15 }] }
+        ]
+      },
+      standalone: {
+        'as-planned': { ...TAXED_COUPLE_INPUTS },
+        'mary-earlier': {
+          ...TAXED_COUPLE_INPUTS,
+          pensions: [TAXED_COUPLE_INPUTS.pensions[0], { ...TAXED_COUPLE_INPUTS.pensions[1], retirementAge: 60 }]
+        },
+        'pay-more': {
+          ...TAXED_COUPLE_INPUTS,
+          pensions: [{ ...TAXED_COUPLE_INPUTS.pensions[0], personalPct: 0.15 }, TAXED_COUPLE_INPUTS.pensions[1]]
+        }
+      }
+    },
+    {
+      name: 'Affordable mode, cases retiring at 60 or 66',
+      base: {
+        ...RETIREMENT_AGE_BASE,
+        incomeMode: 'affordable',
+        affordableEndAges: [90, 95],
+        targetIncomeToday: undefined,
+        baseScenarioId: 'retire-62',
+        scenarios: [
+          { id: 'retire-62', title: 'Retire at 62' },
+          { id: 'retire-60', title: 'Retire at 60', retirementAge: 60 },
+          { id: 'retire-66', title: 'Retire at 66', retirementAge: 66 }
+        ]
+      },
+      standalone: {
+        'retire-62': { ...RETIREMENT_AGE_BASE, incomeMode: 'affordable', affordableEndAges: [90, 95], targetIncomeToday: undefined },
+        'retire-60': { ...RETIREMENT_AGE_BASE, incomeMode: 'affordable', affordableEndAges: [90, 95], targetIncomeToday: undefined, retirementAge: 60 },
+        'retire-66': { ...RETIREMENT_AGE_BASE, incomeMode: 'affordable', affordableEndAges: [90, 95], targetIncomeToday: undefined, retirementAge: 66 }
+      }
+    }
+  ];
+
+  CASE_FIXTURES.forEach((fixture) => {
+    cases.push(runCase(`${fixture.name}: every case equals its standalone payload`, () => {
+      const caseIds = getPensionScenarioCases(fixture.base).map((entry) => entry.id);
+      assert(
+        caseIds.length === Object.keys(fixture.standalone).length,
+        `${fixture.name}: every case needs a standalone payload to be measured against`
+      );
+      caseIds.forEach((caseId) => {
+        assertCaseEqualsStandalone(fixture.name, fixture.base, caseId, fixture.standalone[caseId]);
+      });
+    }));
+  });
+
+  cases.push(runCase('A retirement-age case re-derives its own timing', () => {
+    const base = CASE_FIXTURES[0].base;
+    const earlier = computePensionProjection(base, { scenarioId: 'retire-58' });
+    const later = computePensionProjection(base, { scenarioId: 'retire-66' });
+
+    assert(earlier.debug.incomeStartYear === 2034, `Retiring at 58 should start income in 2034, got ${earlier.debug.incomeStartYear}`);
+    assert(later.debug.incomeStartYear === 2042, `Retiring at 66 should start income in 2042, got ${later.debug.incomeStartYear}`);
+    assert(earlier.debug.requiredPotReferenceYear === 2034, 'The required pot reference year should follow the case');
+    assert(earlier.debug.retirementYear === 2034, 'The retirement year should follow the case');
+  }));
+
+  cases.push(runCase('A base timing year does not carry into a case that moves a retirement age', () => {
+    const base = CASE_FIXTURES[3].base;
+    const asPlanned = computePensionProjection(base, { scenarioId: 'as-planned' });
+    const maryEarlier = computePensionProjection(base, { scenarioId: 'mary-earlier' });
+
+    assert(asPlanned.debug.incomeStartYear === 2052, 'The base keeps the income start year it states');
+    assert(maryEarlier.debug.incomeStartYear === 2048, `Mary retiring at 62 should start household income in 2048, got ${maryEarlier.debug.incomeStartYear}`);
+    assert(maryEarlier.debug.requiredPotReferenceYear === 2051, 'The reference year should be the later retirement');
+    assert(maryEarlier.debug.inputs.includeEmploymentIncomeDuringBridge === true, 'Staggered retirement should bring bridge employment income back');
+    assert(maryEarlier.debug.employmentIncomeNominalAtRetirement > 0, 'John should still be earning through the bridge years');
+  }));
+
+  cases.push(runCase('A case restating timing keeps it even when it moves a retirement age', () => {
+    const projection = computePensionProjection({
+      ...RETIREMENT_AGE_BASE,
+      baseScenarioId: 'as-is',
+      scenarios: [
+        { id: 'as-is', title: 'As things stand' },
+        { id: 'bridge', title: 'Stop at 58, draw from 62', retirementAge: 58, incomeStartYear: 2038 }
+      ]
+    }, { scenarioId: 'bridge' });
+
+    assert(projection.debug.incomeStartYear === 2038, 'A case that restates the income start year should keep it');
+    assert(projection.debug.inputs.primaryPension.retirementAge === 58, 'Contributions should still stop at 58');
+  }));
+
+  cases.push(runCase('Every case shares one chart axis', () => {
+    const base = CASE_FIXTURES[0].base;
+    const axes = ['retire-58', 'retire-62', 'retire-66'].map((scenarioId) => {
+      const projection = computePensionProjection(base, { scenarioId });
+      const drawdown = projection.charts.find((chart) => chart.meta?.kind === 'pensionDrawdownComposite');
+      return {
+        drawdown: drawdown.labels.join(','),
+        accumulation: projection.charts[0].labels.join(',')
+      };
+    });
+
+    assert(axes.every((axis) => axis.drawdown === axes[0].drawdown), 'The drawdown axis should not move with the case');
+    assert(axes.every((axis) => axis.accumulation === axes[0].accumulation), 'The accumulation axis should not move with the case');
+    assert(axes[0].drawdown.startsWith('58,'), `The shared axis should start at the earliest retirement age, got ${axes[0].drawdown.slice(0, 12)}`);
+    assert(axes[0].accumulation.endsWith(',66'), `The shared accumulation axis should run to the latest retirement age, got ${axes[0].accumulation.slice(-12)}`);
+  }));
+
+  cases.push(runCase('A case card says what the case changes', () => {
+    const byId = new Map(getPensionScenarioCases(CASE_FIXTURES[1].base).map((entry) => [entry.id, entry]));
+
+    assert(byId.get('as-is').summary === '', 'The base case changes nothing, so it says nothing');
+    assert(byId.get('pay-10').summary === 'Personal contributions 10.0%', `Unexpected contributions summary: ${byId.get('pay-10').summary}`);
+    assert(byId.get('top-up').summary === 'Pension value €475,000', `Unexpected top-up summary: ${byId.get('top-up').summary}`);
+    assert(
+      byId.get('part-time').summary.startsWith('Retires at 60, income from 2036, part-time income'),
+      `Unexpected part-time summary: ${byId.get('part-time').summary}`
+    );
+  }));
+
+  cases.push(runCase('Case payloads are rejected with the case named', () => {
+    const rejects = (raw, expected) => {
+      let message = '';
+      try {
+        normalizePensionInputs(raw);
+      } catch (error) {
+        message = error?.message || '';
+      }
+      assert(message === expected, `Expected "${expected}", got "${message}"`);
+    };
+    const withCases = (scenarios, extra = {}) => ({ ...RETIREMENT_AGE_BASE, ...extra, scenarios });
+    const couple = (scenarios) => ({ ...COUPLE_INPUTS, scenarios });
+
+    rejects(
+      withCases(Array.from({ length: 5 }, (_, index) => ({ id: `case-${index}`, title: `Case ${index}` }))),
+      'generated.pensionInputs.scenarios supports at most 4 cases; received 5.'
+    );
+    rejects(
+      withCases([{ id: 'same', title: 'One' }, { id: 'same', title: 'Two' }]),
+      'generated.pensionInputs.scenarios[1].id must be unique.'
+    );
+    rejects(
+      couple([{ id: 'as-planned', title: 'As planned' }, { id: 'earlier', title: 'Retire at 58', pensionOverrides: [{ id: 'joan', retirementAge: 58 }] }]),
+      'generated.pensionInputs.scenarios[1] (Retire at 58): pensionOverrides[0].id must match a pension id.'
+    );
+    rejects(
+      withCases([{ id: 'as-is', title: 'As things stand' }, { id: 'faster', title: 'Faster growth', growthRate: 0.07 }]),
+      'generated.pensionInputs.scenarios[1] (Faster growth): growthRate is not a case override.'
+    );
+    rejects(
+      { ...RETIREMENT_AGE_BASE, scenarios: [{ id: 'a', title: 'A' }], rentalIncomeScenarios: [{ id: 'r', title: 'R', rentalIncomeToday: 0 }] },
+      'generated.pensionInputs must use scenarios or rentalIncomeScenarios, not both.'
+    );
+    rejects(
+      withCases([{ id: 'as-is', title: 'As things stand' }, { id: 'too-early', title: 'Retire at 30', retirementAge: 30 }]),
+      'generated.pensionInputs.scenarios[1] (Retire at 30): retirementAge must be greater than or equal to currentAge.'
+    );
+    rejects(
+      withCases([{ id: 'as-is', title: 'As things stand' }], { baseScenarioId: 'missing' }),
+      'generated.pensionInputs.baseScenarioId must match a case id.'
+    );
+    rejects(
+      { ...COUPLE_WITH_DB_INPUTS, scenarios: [{ id: 'as-planned', title: 'As planned' }, { id: 'no-db', title: 'Without the DB pension', excludedIncomeSourceIds: ['mary-db-pension'] }] },
+      'generated.pensionInputs.scenarios[1] (Without the DB pension): excludedIncomeSourceIds must match an other income source id.'
+    );
+    rejects(
+      couple([{ id: 'as-planned', title: 'As planned' }, { id: 'earlier', title: 'Retire at 58', retirementAge: 58 }]),
+      'generated.pensionInputs.scenarios[1] (Retire at 58): retirementAge must be set through pensionOverrides when the payload has more than one pension.'
+    );
+  }));
+
+  cases.push(runCase('Editing a case moves that case and leaves the household alone', () => {
+    // The shape the app writes back when a figure is edited with a non-base
+    // case on screen: the whole case list, normalised, with one override
+    // changed and the household's own figure untouched.
+    const base = CASE_FIXTURES[0].base;
+    const edited = {
+      ...base,
+      scenarios: getPensionScenarioCases(base).map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        description: entry.description,
+        overrides: entry.id === 'retire-58'
+          ? { ...entry.overrides, retirementAge: 57 }
+          : { ...entry.overrides }
+      }))
+    };
+
+    const movedCase = computePensionProjection(edited, { scenarioId: 'retire-58' });
+    const untouchedBase = computePensionProjection(edited, { scenarioId: 'retire-62' });
+    const standalone = computePensionProjection({ ...RETIREMENT_AGE_BASE, retirementAge: 57 });
+
+    assert(movedCase.debug.inputs.primaryPension.retirementAge === 57, 'The edited case should retire at 57');
+    assert(untouchedBase.debug.inputs.primaryPension.retirementAge === 62, 'The base case should not move');
+    assert(
+      movedCase.debug.requiredPot === standalone.debug.requiredPot,
+      'The edited case should still equal the standalone payload it now describes'
+    );
+  }));
+
+  cases.push(runCase('A stored case reads the same way the second time', () => {
+    const base = CASE_FIXTURES[1].base;
+    const stored = JSON.parse(JSON.stringify(normalizePensionInputs(base)));
+    const reStored = normalizePensionInputs(stored);
+
+    assert(
+      JSON.stringify(stored.scenarios) === JSON.stringify(reStored.scenarios),
+      'Normalising a stored payload again should not change its cases'
+    );
+    ['pay-10', 'top-up', 'part-time'].forEach((scenarioId) => {
+      const fresh = computePensionProjection(base, { scenarioId });
+      const reloaded = computePensionProjection(stored, { scenarioId });
+      assert(
+        fresh.debug.requiredPot === reloaded.debug.requiredPot,
+        `Case "${scenarioId}" should survive a session round trip`
+      );
+    });
+  }));
+
+  /* ----------------------------------------------------------------- tax ---
+   *
+   * The Irish tax engine brief (7.2 to 7.8). The engine's own golden cases are
+   * in tests_ie_tax.js; these prove the retirement module uses it correctly.
+   */
+
+  cases.push(runCase('A fund above the SFT pays chargeable excess tax at retirement, and the pot compared is the drawdown fund', () => {
+    const payload = {
+      currentYear: 2026,
+      currentAge: 64,
+      retirementAge: 64,
+      currentSalary: 0,
+      currentPot: 2_500_000,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0.05,
+      inflationRate: 0.02,
+      wageGrowthRate: 0.02,
+      horizonEndAge: 90,
+      incomeMode: 'target',
+      targetIncomeToday: 90000,
+      includeStatePension: false
+    };
+    const projection = computePensionProjection(payload);
+    const [record] = projection.debug.tax.crystallisations.current;
+
+    assertApprox(record.chargeableExcess, 300000, 0.01, 'Chargeable excess over the 2026 threshold');
+    assertApprox(record.netCet, 120000, 0.01, 'No lump sum, so no credit: 40% of the excess');
+    assertApprox(projection.debug.projectedPotCurrent, 2_380_000, 0.01, 'The projected pot is the drawdown fund');
+    assert(projection.debug.sftBreaches.current === true, 'The breach is flagged on the current path');
+    assert(projection.outputsTable.rows.some((row) => row[0] === 'Projected pot at target start (current, after lump sum and tax at retirement)'), 'The pot row says it is after tax at retirement');
+    assert(projection.debug.sftSentence.startsWith('On the current path, the fund at retirement in 2026 is above the Standard Fund Threshold of €2.2 million'), `CET sentence: ${projection.debug.sftSentence}`);
+  }));
+
+  cases.push(runCase('Each member is tested at the SFT for their own retirement year', () => {
+    // Before this change both members were tested at the reference year
+    // (2031, when the later one retires). John retires in 2027, when the
+    // threshold is €2.4m; Mary in 2031, when it is €2.8m, held.
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      inflationRate: 0,
+      growthRate: 0,
+      wageGrowthRate: 0,
+      incomeMode: 'target',
+      targetIncomeToday: 1,
+      horizonEndAge: 70,
+      includeEmploymentIncomeDuringBridge: false,
+      pensions: [
+        { id: 'john', title: 'John', currentAge: 64, retirementAge: 65, currentSalary: 0, currentPot: 2_600_000, personalPct: 0, employerPct: 0, includeStatePension: false },
+        { id: 'mary', title: 'Mary', currentAge: 60, retirementAge: 65, currentSalary: 0, currentPot: 100_000, personalPct: 0, employerPct: 0, includeStatePension: false }
+      ]
+    });
+    const byMember = new Map(projection.debug.sftByMember.map((entry) => [entry.id, entry]));
+    const [john] = projection.debug.tax.crystallisations.current;
+
+    assert(byMember.get('john').year === 2027 && byMember.get('john').sftValue === 2_400_000, 'John is tested in 2027 at €2.4m');
+    assert(byMember.get('mary').year === 2031 && byMember.get('mary').sftBasis === 'held', 'Mary is tested in 2031 at the held figure');
+    assertApprox(john.chargeableExcess, 200_000, 0.01, "John's excess is measured against 2027's threshold");
+    const row = projection.outputsTable.rows.find((entry) => entry[0] === 'SFT threshold used');
+    assert(row[1] === 'John €2.4m (2027); Mary €2.8m (2031, held)', `Threshold row: ${row[1]}`);
+    assert(projection.debug.tax.disclosureCodes.includes('SFT_HELD'), 'A held threshold on screen carries SFT_HELD');
+  }));
+
+  cases.push(runCase('The required-pot search never crystallises', () => {
+    const projection = computePensionProjection({
+      ...BASE_TARGET_INPUTS,
+      lumpSum: { mode: 'max' }
+    });
+    assert(projection.debug.retirementSimulationRequired.crystallisations.length === 0, 'No crystallisation on the required path');
+    const [record] = projection.debug.tax.crystallisations.current;
+    assertApprox(record.lumpSum, record.fundValue * 0.25, 0.01, 'The "max" lump sum is 25% of the fund');
+    assertApprox(projection.debug.projectedPotCurrent, record.drawdownFund, 0.01, 'The projected pot is the fund after the lump sum');
+    assert(projection.debug.tax.disclosureCodes.includes('LUMP_SUM_AS_CASH'), 'The lump sum is disclosed as cash');
+  }));
+
+  cases.push(runCase('Gross-mode tax is information only', () => {
+    const plain = computePensionProjection(BASE_TARGET_INPUTS);
+    const taxedStatus = computePensionProjection({ ...BASE_TARGET_INPUTS, householdTaxStatus: 'single' });
+    const rows = (projection) => projection.outputsTable.rows.filter((row) => !String(row[0]).startsWith('Estimated') && !String(row[0]).includes('net cost'));
+    assert(JSON.stringify(rows(plain)) === JSON.stringify(rows(taxedStatus)), 'A tax status changes no gross figure');
+    assert(plain.debug.tax.disclosureCodes.includes('STATUS_SINGLE'), 'A single person without a status is assessed as single');
+  }));
+
+  cases.push(runCase('The income panel adds a net income line and hidden tax series, all of them in the CSV', () => {
+    const projection = computePensionProjection(COUPLE_INPUTS);
+    const chart = projection.charts.find((entry) => entry.meta?.kind === 'pensionDrawdownComposite');
+    const income = new Map(chart.panels.income.datasets.map((dataset) => [dataset.label, dataset]));
+    const csv = chart.panels.income.csvDatasets.map((dataset) => dataset.label);
+
+    assert(income.get('Net income (current)') && !income.get('Net income (current)').hidden, 'Net income (current) is visible');
+    ['Income tax (current)', 'USC (current)', 'PRSI (current)'].forEach((label) => {
+      assert(income.get(label)?.hidden === true, `${label} is hidden by default`);
+    });
+    ['Net income (current)', 'Net income (max)', 'Income tax (current)', 'USC (current)', 'PRSI (current)', 'Income tax (max)', 'USC (max)', 'PRSI (max)']
+      .forEach((label) => assert(csv.includes(label), `${label} is in the CSV`));
+    assert(income.has('Required income'), 'The gross target line keeps its name');
+    assert(projection.debug.tax.disclosureCodes.includes('STATUS_DEFAULT_SINGLE'), 'A couple without a status is told they were assessed as single');
+
+    const net = computePensionProjection({ ...COUPLE_INPUTS, targetIncomeBasis: 'net' });
+    const netChart = net.charts.find((entry) => entry.meta?.kind === 'pensionDrawdownComposite');
+    assert(netChart.panels.income.datasets.some((dataset) => dataset.label === 'Required net income'), 'Net mode names the required line');
+  }));
+
+  cases.push(runCase('Net mode: the shortfall is the net gap at maximum withdrawal', () => {
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      currentAge: 66,
+      retirementAge: 66,
+      currentSalary: 0,
+      currentPot: 40000,
+      personalPct: 0,
+      employerPct: 0,
+      growthRate: 0,
+      inflationRate: 0,
+      wageGrowthRate: 0,
+      horizonEndAge: 68,
+      incomeMode: 'target',
+      targetIncomeToday: 60000,
+      targetIncomeBasis: 'net',
+      includeStatePension: true
+    });
+    const simulation = projection.debug.retirementSimulationProjectedCurrent;
+    assertApprox(simulation.mandatoryWithdrawals[0] + simulation.electedWithdrawals[0], 40000, 0.02, 'Everything available is drawn');
+    assertApprox(simulation.shortfalls[0], 60000 - simulation.tax.netIncome[0], 0.01, 'The shortfall is net of tax');
+    assert(simulation.shortfalls[0] > 0, 'A shortfall is recorded');
+  }));
+
+  cases.push(runCase('Other income is taxed by its treatment, and an assumed treatment is disclosed', () => {
+    const projection = computePensionProjection({
+      ...COUPLE_WITH_DB_INPUTS,
+      householdTaxStatus: 'married_or_civil_partners',
+      otherIncomeSources: [
+        ...COUPLE_WITH_DB_INPUTS.otherIncomeSources,
+        { id: 'lease', title: 'Land lease income', type: 'rental_or_lease_income', ownerId: 'household', annualAmountToday: 6000, startAge: 66, inflationIndexed: true },
+        { id: 'gift', title: 'Family support', type: 'other', ownerId: 'john', annualAmountToday: 3000, startAge: 67, inflationIndexed: false, taxTreatment: 'non_taxable' }
+      ]
+    });
+    const treatments = new Map(projection.debug.tax.incomeTreatments.map((entry) => [entry.id, entry]));
+    assert(treatments.get('mary-db').treatment === 'occupational_pension' && !treatments.get('mary-db').assumedAsPension, 'A DB pension is an occupational pension');
+    assert(treatments.get('lease').assumedAsPension === true && treatments.get('lease').ownerId === 'joint', 'Unlisted types are taxed as a pension, split for household income');
+    assert(treatments.get('gift').itemType === null, 'Non-taxable income becomes no tax item');
+    const texts = projection.debug.tax.disclosures.map((entry) => entry.text);
+    assert(texts.includes('Land lease income is taxed like an Irish occupational pension.'), 'The assumed treatment is disclosed');
+    assert(!texts.some((text) => text.startsWith('Mary DB pension is taxed like')), 'A DB pension needs no such disclosure');
+  }));
+
+  cases.push(runCase('Tax inputs are refused with the field named', () => {
+    const rejects = (raw, expected) => {
+      let message = '';
+      try {
+        computePensionProjection(raw);
+      } catch (error) {
+        message = error?.message || '';
+      }
+      assert(message === expected, `Expected "${expected}", got "${message}"`);
+    };
+    rejects({ ...BASE_TARGET_INPUTS, householdTaxStatus: 'cohabiting' }, 'generated.pensionInputs.householdTaxStatus must be one of: single, married_or_civil_partners, widowed_or_surviving_civil_partner.');
+    rejects({ ...COUPLE_INPUTS, householdTaxStatus: 'widowed_or_surviving_civil_partner' }, 'generated.pensionInputs.householdTaxStatus widowed_or_surviving_civil_partner describes one person, but the payload has 2 pensions.');
+    rejects({ ...BASE_TARGET_INPUTS, targetIncomeBasis: 'after-tax' }, 'generated.pensionInputs.targetIncomeBasis must be "gross" or "net".');
+    rejects({ ...BASE_TARGET_INPUTS, rentalIncomeOwnerId: 'joint' }, 'generated.pensionInputs.rentalIncomeOwnerId "joint" splits rent between two people, but the payload has one pension.');
+    rejects({ ...COUPLE_INPUTS, rentalIncomeOwnerId: 'joan' }, 'generated.pensionInputs.rentalIncomeOwnerId must match a pension id, or be "joint".');
+    rejects({ ...BASE_TARGET_INPUTS, lumpSum: { mode: 'all' } }, 'generated.pensionInputs.legacy.lumpSum.mode must be "none", "max" or "amount".');
+    rejects({ ...BASE_TARGET_INPUTS, sftAlreadyUsed: -1 }, 'generated.pensionInputs.legacy.sftAlreadyUsed must be greater than or equal to 0.');
+    rejects({ ...COUPLE_WITH_DB_INPUTS, otherIncomeSources: [{ ...COUPLE_WITH_DB_INPUTS.otherIncomeSources[0], taxTreatment: 'pension' }] }, 'generated.pensionInputs.otherIncomeSources[0].taxTreatment must be one of: occupational_pension, rental, employment, social_welfare, non_taxable.');
+    rejects({ ...BASE_TARGET_INPUTS, lumpSum: { mode: 'amount', amount: 5_000_000 } }, 'generated.pensionInputs: the lump sum of €5,000,000 for Pension is more than the projected fund of €1,336,648 at retirement.');
+  }));
+
+  cases.push(runCase('A lump sum above 25% of the fund is allowed and disclosed', () => {
+    const projection = computePensionProjection({ ...BASE_TARGET_INPUTS, lumpSum: { mode: 'amount', amount: 600000 } });
+    const [record] = projection.debug.tax.crystallisations.current;
+    assertApprox(record.lumpSum, 600000, 0.01, 'The amount asked for is taken');
+    assert(projection.debug.tax.disclosureCodes.includes('LUMP_SUM_ABOVE_25'), 'LUMP_SUM_ABOVE_25 is raised');
+    assert(record.scheduleE > 0 && record.scheduleETax > 0, 'The part above €500,000 is taxed as income');
+    assertApprox(record.netLumpSum, 600000 - 60000 - record.scheduleETax, 0.01, 'Net lump sum takes off the 20% tax and the Schedule E tax');
+  }));
+
+  cases.push(runCase('A couple far apart in age is taxed to the younger partner’s 100th birthday', () => {
+    // The household horizon puts the older partner at 130 in its last year;
+    // the tax engine must not refuse that as an impossible age.
+    const projection = computePensionProjection({
+      currentYear: 2026,
+      incomeMode: 'target',
+      targetIncomeToday: 50000,
+      pensions: [
+        { id: 'a', title: 'A', currentAge: 70, retirementAge: 70, currentSalary: 0, currentPot: 600000, personalPct: 0, employerPct: 0 },
+        { id: 'b', title: 'B', currentAge: 40, retirementAge: 60, currentSalary: 60000, currentPot: 50000, personalPct: 0.05, employerPct: 0.05 }
+      ]
+    });
+    const tax = projection.debug.retirementSimulationProjectedCurrent.tax;
+    assert(projection.debug.inputs.horizonEndYear === 2086, 'The horizon is the younger partner’s 100th birthday');
+    assert(tax.netIncome.length === projection.debug.retirementSimulationProjectedCurrent.years.length, 'Every year is taxed');
+  }));
+
+  cases.push(runCase('A stored tax payload reads the same way the second time', () => {
+    const stored = JSON.parse(JSON.stringify(normalizePensionInputs(COUPLE_INPUTS)));
+    assert(!('householdTaxStatus' in stored), 'A status that was not given is not stored as its default');
+    const fresh = computePensionProjection(COUPLE_INPUTS);
+    const reloaded = computePensionProjection(stored);
+    assert(JSON.stringify(fresh.debug.tax.disclosureCodes) === JSON.stringify(reloaded.debug.tax.disclosureCodes), 'The same disclosures after a round trip');
+    const taxed = JSON.parse(JSON.stringify(normalizePensionInputs(TAXED_COUPLE_INPUTS)));
+    assert(taxed.pensions[0].lumpSum.mode === 'max' && taxed.pensions[0].priorLumpSumsSince2005 === 50000, 'Member tax inputs are kept');
+    assert(computePensionProjection(taxed).debug.requiredPot === computePensionProjection(TAXED_COUPLE_INPUTS).debug.requiredPot, 'A stored taxed payload computes the same');
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;

@@ -37,7 +37,7 @@
 
 import assert from 'node:assert/strict';
 
-import { computePensionProjection } from '../js/pension_math.js';
+import { computePensionProjection, computeSft } from '../js/pension_math.js';
 import { createHouseholdProfile, normalizeHouseholdProfile, ownerConfirmedNonePath } from '../js/planning/profile.js';
 import {
   buildPensionProjectionInput,
@@ -536,25 +536,34 @@ const memberFor = (input, ownerId) => {
 }
 
 {
-  // THE ARF RULES NOW LIVE IN THE RULES CATALOGUE, not as constants inside the
-  // engine. The move changed no value: the rates and the threshold are exactly
-  // what the engine applied before, and the projection below is pinned to a
-  // figure computed when they were still hardcoded.
+  // THE ARF RULES LIVE IN THE RULES CATALOGUE, and were corrected by the Irish
+  // tax engine brief (4.9, compatibility reason 2). The statute charges an
+  // imputed distribution only where the holder is 60 or over for the WHOLE
+  // tax year, and 5% only where they are 70 or over for the whole year, so the
+  // bands start at attained ages 61 and 71. Before the correction the engine
+  // charged 4% from retirement at any age and 5% from attained age 70.
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.baseRate, 0.04);
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRate, 0.05);
-  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRateFromAge, 70);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.minimumWholeYearAge, 60);
+  assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.higherRateWholeYearAge, 70);
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.highValueRate, 0.06);
   assert.equal(IRISH_ARF_MINIMUM_DRAWDOWN.highValueThresholdEur, 2_000_000);
 
-  // The bands, including that a high-value fund outranks the age band.
-  assert.equal(irishArfMinimumRate(65, 500_000), 0.04, 'under 70, ordinary fund');
-  assert.equal(irishArfMinimumRate(70, 500_000), 0.05, 'from 70, ordinary fund');
-  assert.equal(irishArfMinimumRate(65, 2_500_000), 0.06, 'a high-value fund at any age');
+  // The bands by attained age. The age test comes first; once it is met, a
+  // high-value fund outranks the age band.
+  assert.equal(irishArfMinimumRate(60, 500_000), 0, 'no imputed distribution in the year the holder turns 60');
+  assert.equal(irishArfMinimumRate(61, 500_000), 0.04, 'from the year the holder turns 61');
+  assert.equal(irishArfMinimumRate(70, 500_000), 0.04, 'still 4% in the year the holder turns 70');
+  assert.equal(irishArfMinimumRate(71, 500_000), 0.05, 'from the year the holder turns 71');
+  assert.equal(irishArfMinimumRate(65, 2_500_000), 0.06, 'a high-value fund once the age test is met');
   assert.equal(irishArfMinimumRate(75, 2_500_000), 0.06);
+  assert.equal(irishArfMinimumRate(58, 2_500_000), 0, 'but not before it');
   assert.equal(irishArfMinimumRate(65, 2_000_000), 0.04, 'the threshold is exclusive');
 
-  // And the projection is unchanged. This figure was recorded from a run made
-  // while the rates were still hardcoded in pension_math.js.
+  // The staggered projection pinned here was 240,545.38 while the engine drew
+  // 4% from the primary's retirement at 52. Neither member is 61 before the
+  // 2031 reference year, so nothing is drawn and both pots simply grow for five
+  // years: 2 x 100,000 x 1.05^5 = 255,256.31.
   const staggered = computePensionProjection({
     ...ENGINE_BASE, targetIncomeToday: 0,
     pensions: [
@@ -564,11 +573,12 @@ const memberFor = (input, ownerId) => {
   });
   close(
     staggered.debug.projectedPotCurrent,
-    240_545.38,
+    2 * referencePot({ currentPot: 100_000, growthRate: 0.05, years: 5 }),
     CENT,
-    'the drawdown result is identical to the pre-move run'
+    'both pots grow undrawn until the holders are 61'
   );
-  pass('the ARF drawdown rules moved to the versioned catalogue without changing a single output');
+  close(staggered.debug.projectedPotCurrent, 255_256.31, CENT, 'the corrected figure');
+  pass('ARF imputed distributions start in the year the holder turns 61, as the statute’s whole-year test requires');
 }
 
 /* ---------------------------------------------------- 7. the input contract */
@@ -654,6 +664,116 @@ const memberFor = (input, ownerId) => {
   assert.equal(result.semanticResult.retirementYear, 2041, 'fifteen years from 2026');
   assert.ok(Number.isFinite(result.semanticResult.requiredPot), 'and states a required pot to compare it against');
   pass('pension projection runs end to end and reports the independently accumulated pot');
+}
+
+/* ------------------------------------------------------------- 9. cases */
+
+/**
+ * A CASE HAS TO BE ARITHMETIC, NOT PRESENTATION.
+ *
+ * The module can show up to four cases on one screen, and a case may move a
+ * retirement age, a contribution rate or a pot. The claim being checked here is
+ * that each case's pot is the pot the reference calculator accumulates for that
+ * case's own facts -- not the base's, and not the base's with a label changed.
+ */
+{
+  const caseBase = {
+    ...ENGINE_BASE,
+    currentAge: 50,
+    retirementAge: 62,
+    currentSalary: 90_000,
+    currentPot: 400_000,
+    personalPct: 0.05,
+    employerPct: 0.06,
+    wageGrowthRate: 0.02,
+    includeStatePension: false,
+    baseScenarioId: 'retire-62',
+    scenarios: [
+      { id: 'retire-62', title: 'Retire at 62' },
+      { id: 'retire-58', title: 'Retire at 58', retirementAge: 58 },
+      { id: 'pay-10', title: 'Pay in 10%', personalPct: 0.10 },
+      { id: 'top-up', title: 'Top up the pot', currentPot: 475_000 }
+    ]
+  };
+
+  const expectations = [
+    { id: 'retire-62', years: 12, currentPot: 400_000, personalPct: 0.05, retirementYear: 2038 },
+    { id: 'retire-58', years: 8, currentPot: 400_000, personalPct: 0.05, retirementYear: 2034 },
+    { id: 'pay-10', years: 12, currentPot: 400_000, personalPct: 0.10, retirementYear: 2038 },
+    { id: 'top-up', years: 12, currentPot: 475_000, personalPct: 0.05, retirementYear: 2038 }
+  ];
+
+  for (const expectation of expectations) {
+    const result = computePensionProjection(caseBase, { scenarioId: expectation.id });
+    close(
+      projectedPot(result),
+      referencePot({
+        currentPot: expectation.currentPot,
+        currentSalary: 90_000,
+        personalPct: expectation.personalPct,
+        employerPct: 0.06,
+        growthRate: 0.05,
+        wageGrowthRate: 0.02,
+        years: expectation.years
+      }),
+      CENT,
+      `case ${expectation.id} vs reference`
+    );
+    assert.equal(
+      result.debug.retirementYear,
+      expectation.retirementYear,
+      `case ${expectation.id} should retire in ${expectation.retirementYear}`
+    );
+    assert.equal(
+      result.debug.sftYearUsed,
+      computeSft(expectation.retirementYear).sftYearUsed,
+      `case ${expectation.id} should use its own retirement year for the SFT check`
+    );
+  }
+  pass('each retirement case accumulates the pot its own ages and contributions imply, and dates itself from its own retirement year');
+}
+
+{
+  // The axis is shared so the client can read one case against another. The
+  // FIGURES must still be each case's own, which is what the padding proves:
+  // the same label count, different values under it.
+  const axes = ['retire-62', 'retire-58', 'pay-10'].map((scenarioId) => {
+    const result = computePensionProjection({
+      ...ENGINE_BASE,
+      currentAge: 50,
+      retirementAge: 62,
+      currentSalary: 90_000,
+      currentPot: 400_000,
+      personalPct: 0.05,
+      employerPct: 0.06,
+      includeStatePension: false,
+      baseScenarioId: 'retire-62',
+      scenarios: [
+        { id: 'retire-62', title: 'Retire at 62' },
+        { id: 'retire-58', title: 'Retire at 58', retirementAge: 58 },
+        { id: 'pay-10', title: 'Pay in 10%', personalPct: 0.10 }
+      ]
+    }, { scenarioId });
+    const drawdown = result.charts.find((chart) => chart.meta?.kind === 'pensionDrawdownComposite');
+    return {
+      labels: drawdown.labels.join(','),
+      ageLabels: drawdown.meta.ageLabels.length,
+      datasetLengths: new Set(drawdown.datasets.map((dataset) => dataset.data.length)),
+      pot: Math.round(projectedPot(result))
+    };
+  });
+
+  assert.equal(new Set(axes.map((axis) => axis.labels)).size, 1, 'every case draws on the same axis');
+  axes.forEach((axis) => {
+    assert.equal(axis.datasetLengths.size, 1, 'every dataset fills the shared axis');
+    assert.equal(
+      [...axis.datasetLengths][0],
+      axis.ageLabels,
+      'and the hover labels cover it too'
+    );
+  });
+  assert.equal(new Set(axes.map((axis) => axis.pot)).size, 3, 'while each case keeps its own figures');
+  pass('cases share one chart axis without sharing figures');
 }
 
 console.info('[PensionAudit] All pension projection audit checks passed.');

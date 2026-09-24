@@ -145,7 +145,25 @@ private/video-calls/<date>-<client-slug>/
 
 Codex should create `index.html`, its scoped CSS/JS, `storyboard.md`, `source-brief.json`, and `quality-review.md` there. Each bespoke page should include a local-only presenter recorder mode: start camera/mic, use a mirrored presenter camera with local MediaPipe smart framing, live microphone verification, audio mixing, and a mirrored centred-crop fallback, enter fullscreen, record the current tab/window with browser-native `getDisplayMedia` + `MediaRecorder`, stop with `S`, `Esc`, browser stop-sharing, or a hidden emergency stop control, and save a local WebM. The quality review is part of the output contract: every bespoke scene should be checked for duplicate branding, text/chart/card/metric overlaps, presenter-zone intrusions, presenter camera fit, mirrored camera output, face centring, stable adaptive zoom, lost-face fallback, no external AI/API calls for tracking, live microphone presence, recorded WebM audio, setup controls hidden during capture, fullscreen stop controls that do not force visible UI into the recording, small-screen legibility, static dead time, step-through/progress accuracy, scene-to-scene visual continuity, reuse of moving visual elements rather than slide-by-slide rebuilds, ambiguous decorative marks that could be misread as charts/arrows/decision paths, underlying-problem diagnosis before solution mechanics, decision-first sequencing, and whether the opening seconds match the promised topic. When a module includes source studies or return tables, the bespoke page should preserve the study source, risk-free or fixed-rate comparison, average-return potential, and downside risk instead of over-compressing the point into one chart. When a scene shows a derived figure, show the formula and planning rationale where the brief provides it. That directory is neither built nor deployed. Open the resulting `index.html` locally, use the built-in recorder, or capture it in OBS/Screen Studio as a fallback.
 
+## Case Applications (video-first)
+
+The homepage points to `/apply/`, a one-page application for a case video. It replaces the old request-a-call form as the way in. Gerry reads each application, picks some to explain in a published video, and emails the person when it is live.
+
+- Page: `apply/index.html` and `js/apply.js`. The form is rendered from `js/case_application/schema.js`, which the Worker and the admin also use, so a question reads the same everywhere. Answers are saved in the browser until sent; nothing is saved on the server before Send.
+- Endpoint: `POST /api/applications`. Name, email, the question and two consents are required; every figure is optional and a figure the page cannot read is dropped, not refused. A `website` honeypot, a persistent limit of 5 per hour per IP, and a 64 KB body cap protect it.
+- Storage: the `leads` table (`worker/migrations/0017_add_case_applications.sql`). The name, email and question use the existing columns, so every current view shows them. The figures are stored only in `application_payload_encrypted` (AES-256-GCM through `worker/src/consumer/crypto.js`, key `APPLICATION_DATA_ENCRYPTION_KEY`, bound to `application_id`). Topics and the answered count stay readable for the list.
+- Emails: Gerry gets "New Planeir application", with the question but no figures. The applicant always gets an automatic reply saying what happens next.
+- Admin: client pipeline, **Applications** source tab, **Application** section. Set the status (New, Reviewing, Picked, Video live, Closed), read the write-up, **Copy as text**, **Download case.md** (it takes the place of `forum.md` in the presenter workflow and is headed by the lead number, not the person's name), **Download case.json**, **Copy public case JSON**, **Email: video is live**, and **Delete application** for erasure requests.
+- Retention: the hourly cron deletes the figures of applications that were not picked 12 months after they arrived. The lead row and question stay.
+- Secret: `APPLICATION_DATA_ENCRYPTION_KEY` (32 random bytes, base64url). The protected Worker deploy creates it when it is missing, in the same step that provisions the consumer keys. If that step is not running, set it in Cloudflare under Workers & Pages, the Worker, Settings, Variables and Secrets. Without it, `/api/applications` answers 503 and stores nothing.
+- Deploy order: the Worker first (it applies migration 0017 and provisions the key), then Pages.
+- Case videos: one JSON file per published video in `content/cases/` (see `content/cases/README.md`). `npm run generate:cases` writes `/cases/`, one page per video, the homepage "Latest cases" row and `sitemap.xml`; `npm run check:cases` fails when they are stale.
+- Privacy notice: `/privacy/`.
+- Checks: `npm run check:case-application` (parsing, validation, write-up and public-case snapshots).
+
 ## Lead Capture
+
+The original request-a-call route still works for any cached copy of the old homepage. The homepage no longer carries this form.
 
 The landing page form posts to the existing Cloudflare Worker:
 
@@ -290,8 +308,8 @@ For Trustpilot AFS, set `TRUSTPILOT_AFS_EMAIL=planeir.ie+c36359b3d5@invite.trust
 The public homepage is positioned as Irish financial education, not regulated financial advice. The static build publishes:
 
 - `robots.txt` with a sitemap reference
-- `sitemap.xml` containing only `https://planeir.ie/`
-- canonical, Open Graph, Twitter, and JSON-LD metadata on `/`
+- `sitemap.xml` listing `/`, `/apply/`, `/cases/`, `/privacy/` and each case page (written by `npm run generate:cases`)
+- canonical, Open Graph, Twitter, and JSON-LD metadata on `/`, and VideoObject JSON-LD on each case page
 - `noindex, nofollow` metadata on `/app/`, `/app/session.html`, `/app/clients.html`, `/app/access.html`, and `/session.html`
 - `assets/brand/planeir-social-card-newgrange.png` for new social previews; the former neutral URL remains a compatibility alias
 
@@ -316,6 +334,7 @@ The build step:
 - emits `dist/app/index.html`
 - emits `dist/app/session.html`
 - emits the root compatibility redirect at `dist/session.html`
+- runs `npm run generate:cases` first, then emits `dist/apply/`, `dist/privacy/`, `dist/cases/` and each `dist/cases/<slug>/`
 - copies `CNAME` into `dist/`
 
 GitHub Pages must publish from `GitHub Actions`, not from the branch root or `/docs`.

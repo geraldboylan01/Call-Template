@@ -145,6 +145,39 @@
               </div>
             </section>
 
+            <section id="clientApplicationSection" class="lead-detail-section client-pipeline-section" aria-label="Application" hidden>
+              <div class="client-section-header">
+                <h3>Application</h3>
+                <select id="clientApplicationStatus" class="publish-select-input" aria-label="Application status">
+                  <option value="new">New</option>
+                  <option value="reviewing">Reviewing</option>
+                  <option value="picked">Picked</option>
+                  <option value="video-live">Video live</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+              <p id="clientApplicationMeta" class="client-application-meta"></p>
+              <div id="clientApplicationBody" class="client-application-body" aria-live="polite"></div>
+              <div class="access-manager-actions client-inline-actions">
+                <button id="clientApplicationCopyTextBtn" class="ui-button" type="button">Copy as text</button>
+                <button id="clientApplicationDownloadMdBtn" class="ui-button" type="button">Download case.md</button>
+                <button id="clientApplicationDownloadJsonBtn" class="ui-button" type="button">Download case.json</button>
+                <button id="clientApplicationCopyPublicBtn" class="ui-button" type="button">Copy public case JSON</button>
+              </div>
+              <label for="clientVideoLiveUrl" class="publish-pin-input-label">Case video link</label>
+              <input
+                id="clientVideoLiveUrl"
+                class="publish-link-value"
+                type="url"
+                placeholder="https://planeir.ie/cases/..."
+                autocomplete="off"
+              />
+              <div class="access-manager-actions client-inline-actions">
+                <button id="clientVideoLiveEmailBtn" class="ui-button" type="button">Email: video is live</button>
+                <button id="clientApplicationDeleteBtn" class="ui-button" type="button">Delete application</button>
+              </div>
+            </section>
+
             <section class="lead-detail-section client-pipeline-section" aria-label="Meeting workflow">
               <div class="client-section-header">
                 <h3>Meeting</h3>

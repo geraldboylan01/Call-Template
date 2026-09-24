@@ -1,0 +1,33 @@
+{
+  "title": "Your retirement",
+  "generated": {
+    "summaryHtml": "<p>x</p>",
+    "pensionInputs": {
+      "currentAge": 50,
+      "retirementAge": 62,
+      "currentSalary": 90000,
+      "currentPot": 400000,
+      "personalPct": 0.05,
+      "employerPct": 0.06,
+      "growthRate": 0.05,
+      "inflationRate": 0.02,
+      "wageGrowthRate": 0.02,
+      "horizonEndAge": 92,
+      "currentYear": 2026,
+      "incomeMode": "target",
+      "targetIncomeToday": 45000,
+      "baseScenarioId": "retire-62",
+      "scenarios": [
+        {
+          "id": "retire-62",
+          "title": "Retire at 62"
+        },
+        {
+          "id": "retire-58",
+          "title": "Retire at 58",
+          "retirementAge": 58
+        }
+      ]
+    }
+  }
+}

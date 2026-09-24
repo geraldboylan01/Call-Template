@@ -29,10 +29,28 @@ import {
   getMortgageScenarioCases
 } from './mortgage_math.js';
 import {
-  computeLiquidityReserve,
   resolveLiquidityReservePolicy
 } from './liquidity_reserve.js';
 import { buildRepaymentCaseModule } from './repayment_case_module.js';
+import {
+  PBS_ASSET_SECTION_KEYS,
+  resolveLiquidityReserveForPlan,
+  findOutputsBucketedSection,
+  findOutputsBucketedSectionByKey,
+  findOutputsBucketedSummarySection,
+  getFiniteNumber,
+  getLiquidityClientStatus,
+  getLiquidityMonthlyExpenditure,
+  getOptionalFiniteNumber,
+  getOutputsBucketedSubtotal,
+  getPbsBalanceMetrics,
+  getPbsSummaryNetWorthValue,
+  getPositiveFiniteNumber,
+  isOutputsBucketedSummarySection,
+  isPbsNetWorthSummaryLabel,
+  normalizeSectionToken,
+  sanitizeSectionRows
+} from './module_pipeline.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const OVERVIEW_CHART_COLORS = ['#74d6ff', '#7bffbf', '#ffd166', '#ff9fb3'];
@@ -100,7 +118,7 @@ const HFCS_DECILE_BANDS = Object.freeze([
   { upperKey: 'd8Upper', lowerBoundPercent: 70, upperBoundPercent: 80 },
   { upperKey: 'd9Upper', lowerBoundPercent: 80, upperBoundPercent: 90 }
 ]);
-const PBS_ASSET_SECTION_KEYS = ['lifestyle', 'liquidity', 'longevity', 'legacy'];
+
 const PBS_CURRENT_SCENARIO_ID = 'current';
 /** How long a flow chip lives, matching its transition in styles/base.css. */
 const PBS_FLOW_CHIP_LIFETIME_MS = 820;
@@ -109,8 +127,8 @@ const PBS_FLOW_MINIMUM_AMOUNT = 1;
 /** More chips than this at once is a swarm rather than an explanation. */
 const PBS_MAX_FLOW_CHIPS = 6;
 const PBS_SCENARIO_CHARTS_UPDATED_EVENT = 'callcanvas:pbs-scenario-charts-updated';
-const PBS_NET_WORTH_TOKENS = new Set(['networth', 'netassets', 'netwealth']);
-const PBS_BALANCE_CHANGE_WORDS = /\b(change|difference|increase|decrease|movement|delta|gap|variance)\b/i;
+
+
 const activePbsScenarioChartsByModuleId = new Map();
 const PBS_BUCKET_DEFINITIONS = Object.freeze({
   lifestyle: 'Assets that support day-to-day living, usually not treated as spendable reserves.',
@@ -347,11 +365,20 @@ function formatDisplayCurrency(value, currencySymbol = '€') {
 
 function formatCurrencyMarkedText(value) {
   const raw = String(value ?? '');
-  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?(?:\\s*[km])?';
+  // A k or m suffix counts only as a whole token: the "m" of "€2.8 million"
+  // is the start of a word, not a multiplier.
+  const amountPattern = '(-?\\d{1,3}(?:,\\d{3})+|-?\\d+)(?:\\.\\d+)?(?:\\s*[km](?![a-z]))?';
   const markerPattern = '(€|£|\\$|\\bEUR|\\bEUROS?\\b|\\bGBP\\b|\\bUSD\\b)';
   const regex = new RegExp(`${markerPattern}\\s*(${amountPattern})`, 'gi');
 
-  return normalizeCurrencyLabelText(raw.replace(regex, (match, marker, amountText) => {
+  return normalizeCurrencyLabelText(raw.replace(regex, (match, marker, amountText, ...rest) => {
+    // An amount already written out in words ("€2.8 million") is left as it
+    // is, rather than rounded to "€3" in front of the word.
+    const source = rest[rest.length - 1];
+    const offset = rest[rest.length - 2];
+    if (/^\s*(?:thousand|million|billion)\b/i.test(source.slice(offset + match.length))) {
+      return match;
+    }
     const parsed = parseDisplayNumber(amountText);
     if (parsed === null) {
       return match;
@@ -660,7 +687,9 @@ function normalizeReportTimelineContent(svgSpec) {
       || toTrimmedString(event.when)
       || toTrimmedString(event.date);
     const orderValue = Number(event.order);
-    const parsedDate = Date.parse(dateLabel);
+    // Ages are labels, not calendar dates (Date.parse('Age 57') can mean 1957).
+    // Preserve the supplied order, including age ranges, unless order is explicit.
+    const parsedDate = /^age\b/i.test(dateLabel) ? NaN : Date.parse(dateLabel);
 
     let sortOrder = index;
     if (Number.isFinite(orderValue)) {
@@ -2808,6 +2837,29 @@ function getPensionScenarioForModule(module) {
   return getDefaultPensionScenarioForModule(module) || cases[0].id;
 }
 
+/**
+ * The figures the assumption inputs show.
+ *
+ * The table above them is the SELECTED case's, so the boxes have to be too. A
+ * card headed "Retire at 58" that offers 62 in the retirement-age box is
+ * describing two different plans at once.
+ */
+function getPensionAssumptionInputs(module) {
+  const inputs = module?.generated?.pensionInputs;
+  if (!inputs || !Array.isArray(inputs.scenarios) || inputs.scenarios.length === 0) {
+    return inputs;
+  }
+
+  // Read through the engine's own case list rather than the payload's: an
+  // authored case states its changes flat and a stored one nests them under
+  // `overrides`, and only the engine knows both shapes.
+  const selectedId = getPensionScenarioForModule(module);
+  const selected = getPensionScenarioCasesForModule(module)
+    .find((pensionCase) => pensionCase.id === selectedId);
+
+  return selected?.overrides ? { ...inputs, ...selected.overrides } : inputs;
+}
+
 function getPensionDisplayModule(module) {
   if (!isPensionModule(module)) {
     return module;
@@ -4019,7 +4071,7 @@ function createEditableAssumptionCell({
   const errors = status?.errors && typeof status.errors === 'object' ? status.errors : {};
 
   if (isPensionModule(module)) {
-    const pensionInputs = module.generated.pensionInputs;
+    const pensionInputs = getPensionAssumptionInputs(module);
     const pensionFieldMap = {
       currentage: {
         field: 'currentAge',
@@ -4610,90 +4662,21 @@ function isOutputsBucketedPresent(outputsBucketed) {
   );
 }
 
-function normalizeSectionToken(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
-}
 
-function normalizeReadableLabelText(value) {
-  return String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
-function isPbsNetWorthSummaryLabel(value) {
-  const token = normalizeSectionToken(value);
-  if (PBS_NET_WORTH_TOKENS.has(token)) {
-    return true;
-  }
 
-  const text = normalizeReadableLabelText(value);
-  if (!/\bnet\s+(worth|assets|wealth)\b/i.test(text)) {
-    return false;
-  }
 
-  return !PBS_BALANCE_CHANGE_WORDS.test(text);
-}
 
-function findOutputsBucketedSection(sections, targetKey) {
-  const targetToken = normalizeSectionToken(targetKey);
-  return sections.find((section) => (
-    normalizeSectionToken(section?.key) === targetToken
-    || normalizeSectionToken(section?.title) === targetToken
-  )) || null;
-}
 
-function findOutputsBucketedSectionByKey(sections, targetKey) {
-  const targetToken = normalizeSectionToken(targetKey);
-  return (Array.isArray(sections) ? sections : []).find((section) => (
-    normalizeSectionToken(section?.key) === targetToken
-  )) || null;
-}
 
-function isOutputsBucketedSummarySection(section) {
-  const keyToken = normalizeSectionToken(section?.key);
-  const titleToken = normalizeSectionToken(section?.title);
-  if (keyToken === 'summary' || titleToken === 'summary') {
-    return true;
-  }
 
-  if (keyToken.endsWith('summary') || titleToken.endsWith('summary')) {
-    return true;
-  }
 
-  const rows = sanitizeSectionRows(section?.rows);
-  const hasNetWorth = rows.some(([label]) => isPbsNetWorthSummaryLabel(label));
-  const hasBalanceMetric = rows.some(([label]) => (
-    ['grossassets', 'totalassets', 'totalliabilities', 'grossliabilities', 'liabilities']
-      .includes(normalizeSectionToken(label))
-  ));
 
-  return hasNetWorth && hasBalanceMetric;
-}
 
-function findOutputsBucketedSummarySection(sections) {
-  const list = Array.isArray(sections) ? sections : [];
-  return findOutputsBucketedSectionByKey(list, 'summary')
-    || findOutputsBucketedSection(list, 'summary')
-    || list.find((section) => isOutputsBucketedSummarySection(section))
-    || null;
-}
 
-function sanitizeSectionRows(rows) {
-  if (!Array.isArray(rows)) {
-    return [];
-  }
 
-  return rows
-    .filter((row) => Array.isArray(row) && row.length >= 2)
-    .map((row) => [String(row[0] ?? ''), Number(row[1])])
-    .filter((row) => Number.isFinite(row[1]));
-}
+
+
 
 function hasPersonalBalanceSheetBucketShape(outputsBucketed) {
   if (!hasOutputsBucketed(outputsBucketed)) {
@@ -4720,23 +4703,11 @@ function isPersonalBalanceSheetModule(module) {
   return title.includes('personal balance sheet');
 }
 
-function getPositiveFiniteNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : null;
-}
 
-function getFiniteNumber(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : null;
-}
 
-function getOptionalFiniteNumber(value) {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
 
-  return getFiniteNumber(value);
-}
+
+
 
 function formatBucketedCurrency(value, currencySymbol = '€') {
   const numericValue = getFiniteNumber(value);
@@ -4748,15 +4719,7 @@ function formatBucketedCurrency(value, currencySymbol = '€') {
   return `${numericValue < 0 ? '-' : ''}${symbol}${formatBucketedAmount(Math.abs(numericValue))}`;
 }
 
-function getOutputsBucketedSubtotal(section) {
-  const subtotalValue = getOptionalFiniteNumber(section?.subtotalValue);
-  if (subtotalValue !== null) {
-    return subtotalValue;
-  }
 
-  return sanitizeSectionRows(section?.rows)
-    .reduce((sum, row) => sum + row[1], 0);
-}
 
 function computeReserveMonthsAssessment(reserveValue, annualExpenditure, {
   warningThreshold = 3,
@@ -4955,36 +4918,11 @@ function getHfcsAgeBandMeta(currentAge) {
   return HFCS_AGE_BAND_META.find((band) => normalizedCurrentAge < band.maxAgeExclusive) || null;
 }
 
-function getOutputsBucketedRowValue(section, targetLabel) {
-  const targetToken = normalizeSectionToken(targetLabel);
-  const row = sanitizeSectionRows(section?.rows)
-    .find(([label]) => normalizeSectionToken(label) === targetToken);
-  return row ? row[1] : null;
-}
 
-function getFirstOutputsBucketedRowValueByPredicate(section, predicate) {
-  const row = sanitizeSectionRows(section?.rows)
-    .find(([label]) => predicate(label));
-  return row ? row[1] : null;
-}
 
-function getPbsSummaryNetWorthValue(summarySection) {
-  const exactValue = getFirstOutputsBucketedRowValue(summarySection, ['net worth', 'net assets', 'net wealth']);
-  if (exactValue !== null) {
-    return exactValue;
-  }
 
-  const flexibleValue = getFirstOutputsBucketedRowValueByPredicate(summarySection, isPbsNetWorthSummaryLabel);
-  if (flexibleValue !== null) {
-    return flexibleValue;
-  }
 
-  if (isPbsNetWorthSummaryLabel(summarySection?.subtotalLabel)) {
-    return getOptionalFiniteNumber(summarySection?.subtotalValue);
-  }
 
-  return null;
-}
 
 function getOutputsBucketedCurrencySymbol(outputsBucketed) {
   return normalizeDisplayCurrencySymbol(outputsBucketed?.currencySymbol, '€');
@@ -5229,16 +5167,7 @@ function updatePbsScenarioChartsCard(module, outputsBucketed, pbsCase, contentHo
   requestAnimationFrame(() => notifyPbsScenarioChartsUpdated(module, pbsCase));
 }
 
-function getFirstOutputsBucketedRowValue(section, targetLabels) {
-  for (const targetLabel of targetLabels) {
-    const value = getOutputsBucketedRowValue(section, targetLabel);
-    if (value !== null) {
-      return value;
-    }
-  }
 
-  return null;
-}
 
 function closeActivePbsInfoPopover({ restoreFocus = false } = {}) {
   if (!activePbsInfoButton) {
@@ -5685,44 +5614,7 @@ function buildPbsLeadCopy(summaryHtml) {
   return lead;
 }
 
-function getPbsBalanceMetrics(outputsBucketed) {
-  const sections = outputsBucketed.sections;
-  const summarySection = findOutputsBucketedSummarySection(sections);
-  const assetSections = PBS_ASSET_SECTION_KEYS
-    .map((key) => findOutputsBucketedSectionByKey(sections, key) || findOutputsBucketedSection(sections, key))
-    .filter(Boolean);
-  const grossAssetsFallback = assetSections.length > 0
-    ? assetSections.reduce((sum, section) => sum + getOutputsBucketedSubtotal(section), 0)
-    : null;
-  const liabilitiesSection = findOutputsBucketedSectionByKey(sections, 'liabilities')
-    || findOutputsBucketedSection(sections, 'liabilities');
-  const liabilitiesFallback = liabilitiesSection
-    ? Math.abs(getOutputsBucketedSubtotal(liabilitiesSection))
-    : null;
 
-  const grossAssets = getFirstOutputsBucketedRowValue(summarySection, ['gross assets', 'total assets'])
-    ?? grossAssetsFallback;
-  const grossLiabilities = getFirstOutputsBucketedRowValue(summarySection, [
-    'gross liabilities',
-    'total liabilities',
-    'liabilities'
-  ])
-    ?? liabilitiesFallback;
-  const normalizedGrossAssets = getOptionalFiniteNumber(grossAssets);
-  const normalizedGrossLiabilities = getOptionalFiniteNumber(grossLiabilities);
-  const netAssets = getPbsSummaryNetWorthValue(summarySection)
-    ?? (
-      normalizedGrossAssets !== null && normalizedGrossLiabilities !== null
-        ? normalizedGrossAssets - Math.abs(normalizedGrossLiabilities)
-        : null
-    );
-
-  return {
-    netAssets: getOptionalFiniteNumber(netAssets),
-    grossAssets: normalizedGrossAssets,
-    grossLiabilities: normalizedGrossLiabilities === null ? null : Math.abs(normalizedGrossLiabilities)
-  };
-}
 
 function setPbsValueDataset(element, options = {}) {
   setScenarioValueDataset(element, { ...options, prefix: 'pbs' });
@@ -7267,6 +7159,15 @@ function buildPbsScenarioMatrixContent(module, outputsBucketed, {
     });
   }
 
+  shell.presenterSelectScenario = async (id) => {
+    const index = cases.findIndex(item => item.id === id);
+    if (index < 0) throw new Error(`Unknown balance sheet scenario: ${id}`);
+    if (index === selectedIndex) return;
+    closeActivePbsInfoPopover();
+    window.__setPbsScenario?.(module.id, id);
+    renderCase(index, { animate: true });
+    await new Promise(resolve => window.setTimeout(resolve, isPbsReducedMotionPreferred() ? 0 : 950));
+  };
   renderCase(selectedIndex);
   shell.appendChild(summaryHost);
   if (switcher) {
@@ -7680,12 +7581,29 @@ function getRetirementCaseProjection(module, scenarioId) {
   }
 }
 
+/**
+ * What the card says this case is.
+ *
+ * A case that changes an age or a contribution has to say so in the words the
+ * client would use -- "Retires at 58, income from 2034" -- because the title
+ * alone does not tell them what moved. A case the author described in their own
+ * sentence keeps that sentence. A rent-only case reads as it always has.
+ */
 function buildRetirementCaseDetail(projection) {
   const debug = projection?.debug || {};
   const details = [];
+  const described = typeof debug.selectedScenarioDescription === 'string'
+    ? debug.selectedScenarioDescription.trim()
+    : '';
+  const summary = typeof debug.selectedScenarioSummary === 'string'
+    ? debug.selectedScenarioSummary.trim()
+    : '';
+  const changed = described || summary;
   const rent = Number(debug.rentalIncomeToday);
 
-  if (Number.isFinite(rent)) {
+  if (changed) {
+    details.push(changed);
+  } else if (debug.hasRentalContext && Number.isFinite(rent)) {
     details.push(rent > 0
       ? `${formatRetirementCurrency(rent)} gross rent today`
       : 'Rental income removed');
@@ -7700,11 +7618,25 @@ function buildRetirementCaseDetail(projection) {
   return details.join(' - ');
 }
 
+/**
+ * What the case group is called.
+ *
+ * "Retirement income case" is right for cases that only move income around. A
+ * case set that changes when someone retires or what they pay in is a
+ * retirement case, and calling it an income case would misdescribe the choice.
+ */
+function getRetirementCaseGroupLabel(module) {
+  const inputs = module?.generated?.pensionInputs;
+  return Array.isArray(inputs?.scenarios) && inputs.scenarios.length > 0
+    ? 'Retirement case'
+    : 'Retirement income case';
+}
+
 function buildRetirementScenarioOptions(module, cases, selectedId) {
   const options = document.createElement('div');
   options.className = 'retirement-scenario-options';
   options.setAttribute('role', 'radiogroup');
-  options.setAttribute('aria-label', 'Choose retirement income case');
+  options.setAttribute('aria-label', 'Choose retirement case');
 
   cases.forEach((pensionCase) => {
     const projection = getRetirementCaseProjection(module, pensionCase.id);
@@ -7780,7 +7712,7 @@ function buildRetirementDecisionPanel(module) {
 
     const scenarioLabel = document.createElement('p');
     scenarioLabel.className = 'retirement-scenario-label';
-    scenarioLabel.textContent = 'Retirement income case';
+    scenarioLabel.textContent = getRetirementCaseGroupLabel(module);
     scenarioArea.appendChild(scenarioLabel);
     scenarioArea.appendChild(buildRetirementScenarioOptions(module, cases, selectedId));
     panel.appendChild(scenarioArea);
@@ -8004,7 +7936,7 @@ function buildPensionScenarioSwitcher(module, cases) {
   const selectedId = getPensionScenarioForModule(module);
   const wrap = document.createElement('section');
   wrap.className = 'pension-scenario-switcher';
-  wrap.setAttribute('aria-label', 'Retirement income case');
+  wrap.setAttribute('aria-label', getRetirementCaseGroupLabel(module));
 
   const label = document.createElement('span');
   label.className = 'pension-scenario-switcher-label';
@@ -8014,7 +7946,7 @@ function buildPensionScenarioSwitcher(module, cases) {
   const options = document.createElement('div');
   options.className = 'pension-scenario-options';
   options.setAttribute('role', 'group');
-  options.setAttribute('aria-label', 'Choose retirement income case');
+  options.setAttribute('aria-label', 'Choose retirement case');
 
   cases.forEach((pensionCase) => {
     const button = document.createElement('button');
@@ -9397,6 +9329,7 @@ function renderReportChecklistBlock(block) {
   (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
     const entry = document.createElement('li');
     entry.className = 'report-checklist-item';
+    entry.dataset.reportItemId = item.id;
     entry.dataset.checked = item?.checked ? 'true' : 'false';
 
     const marker = document.createElement('span');
@@ -9515,6 +9448,7 @@ function renderReportKpiRowBlock(block) {
   items.forEach((item, index) => {
     const metric = document.createElement('article');
     metric.className = 'report-kpi-item';
+    metric.dataset.reportItemId = item.id;
     if (typeof item?.tone === 'string' && item.tone.trim()) {
       metric.dataset.tone = item.tone.trim().toLowerCase();
     }
@@ -9563,6 +9497,7 @@ function renderReportInsightGridBlock(block) {
   (Array.isArray(block?.items) ? block.items : []).forEach((item) => {
     const insight = document.createElement('article');
     insight.className = 'report-insight-card';
+    insight.dataset.reportItemId = item.id;
     if (item?.tone) {
       insight.dataset.tone = item.tone;
     }
@@ -9657,7 +9592,9 @@ function renderReportAccordionBlock(block) {
   (Array.isArray(block?.items) ? block.items : []).forEach((item, index) => {
     const details = document.createElement('details');
     details.className = 'report-accordion-item';
+    details.dataset.reportItemId = item.id;
     details.open = item?.defaultOpen === true || index === 0;
+    details.dataset.defaultOpen = String(details.open);
 
     const summary = document.createElement('summary');
     summary.className = 'report-accordion-summary';
@@ -9960,15 +9897,7 @@ function getLiquidityCashItems(plan = {}) {
     : [];
 }
 
-function getLiquidityClientStatus(plan = {}) {
-  const status = typeof plan.clientStatus === 'string'
-    ? plan.clientStatus.trim().toLowerCase()
-    : '';
-  if (status === 'retired') {
-    return 'retired';
-  }
-  return 'not-retired';
-}
+
 
 function formatLiquidityMonths(value, { suffix = 'months' } = {}) {
   const parsed = Number(value);
@@ -10003,19 +9932,10 @@ function clampLiquidityRatio(value) {
   return Math.min(1, Math.max(0, parsed));
 }
 
-function getLiquidityMonthlyExpenditure(plan = {}) {
-  const monthlyExpenditure = getPositiveFiniteNumber(plan.monthlyExpenditure);
-  if (monthlyExpenditure !== null) {
-    return monthlyExpenditure;
-  }
 
-  const annualExpenditure = getPositiveFiniteNumber(plan.annualExpenditure);
-  return annualExpenditure !== null ? annualExpenditure / 12 : null;
-}
 
 function computeLiquidityAssessment(plan = {}) {
   const currencySymbol = normalizeDisplayCurrencySymbol(plan.currencySymbol, '€');
-  const clientStatus = getLiquidityClientStatus(plan);
   // RETIREMENT IS A STATUS, NOT A FIELD. Two labels below read a bare
   // `retired` that nothing ever declared, so every Liquidity render threw
   // `retired is not defined` before it drew anything -- including payloads
@@ -10023,22 +9943,15 @@ function computeLiquidityAssessment(plan = {}) {
   // unconditionally. The payload contract has no `retired` field and is not
   // gaining one: the cohort is derived from `clientStatus`, the same value the
   // policy lookup already uses.
-  const isRetired = clientStatus === 'retired';
-  const policy = resolveLiquidityReservePolicy(clientStatus);
-  const minimumBufferMonths = getPositiveFiniteNumber(plan.minimumBufferMonths)
-    ?? policy.minimumBufferMonths;
-  const rawTargetMonths = getPositiveFiniteNumber(plan.targetBufferMonths)
-    ?? policy.targetBufferMonths;
-  const targetBufferMonths = Math.max(rawTargetMonths, minimumBufferMonths);
-  const currentCash = getFiniteNumber(plan.currentCash);
-  const monthlyExpenditure = getLiquidityMonthlyExpenditure(plan);
-  const reserve = computeLiquidityReserve({
-    currentCash,
-    monthlyExpenditure,
+  const {
     clientStatus,
     minimumBufferMonths,
-    targetBufferMonths
-  });
+    targetBufferMonths,
+    currentCash,
+    monthlyExpenditure,
+    reserve
+  } = resolveLiquidityReserveForPlan(plan);
+  const isRetired = clientStatus === 'retired';
   const annualExpenditure = reserve.annualExpenditure;
   const targetCash = reserve.targetCash;
   const minimumCash = reserve.minimumCash;
@@ -10310,16 +10223,20 @@ function buildLiquidityHeroCard(module, assessment, {
 
   const stats = document.createElement('div');
   stats.className = 'liquidity-stat-grid';
-  stats.appendChild(buildLiquidityStat(
+  const currentCashStat = buildLiquidityStat(
     'Current cash',
     formatLiquidityCurrency(assessment.currentCash, assessment.currencySymbol),
     assessment.monthsLabel
-  ));
-  stats.appendChild(buildLiquidityStat(
+  );
+  currentCashStat.dataset.presenterMetric = 'current-cash';
+  stats.appendChild(currentCashStat);
+  const targetReserveStat = buildLiquidityStat(
     'Target reserve',
     formatLiquidityCurrency(assessment.targetCash, assessment.currencySymbol),
     assessment.targetLabel
-  ));
+  );
+  targetReserveStat.dataset.presenterMetric = 'target-reserve';
+  stats.appendChild(targetReserveStat);
   stats.appendChild(buildLiquidityStat(
     assessment.primaryActionLabel,
     formatLiquidityCurrency(assessment.actionAmount, assessment.currencySymbol),
@@ -13416,6 +13333,10 @@ export function getUiElements() {
     devExampleSelect: document.getElementById('devExampleSelect'),
     devApplyBtn: document.getElementById('devApplyBtn'),
     devCreateApplyBtn: document.getElementById('devCreateApplyBtn'),
+    devApplyAllBtn: document.getElementById('devApplyAllBtn'),
+    devNewCallFromPackBtn: document.getElementById('devNewCallFromPackBtn'),
+    devLoadPackFileBtn: document.getElementById('devLoadPackFileBtn'),
+    devPackFileInput: document.getElementById('devPackFileInput'),
     devLoadExampleBtn: document.getElementById('devLoadExampleBtn'),
     devClearBtn: document.getElementById('devClearBtn'),
     devCloseBtn: document.getElementById('devCloseBtn'),

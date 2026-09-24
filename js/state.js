@@ -1090,6 +1090,44 @@ export function normalizePersonalBalanceSheetInputs(personalBalanceSheetInputs) 
   return normalizePbsInputs(personalBalanceSheetInputs);
 }
 
+const PENSION_TAX_STATUSES = Object.freeze([
+  'single',
+  'married_or_civil_partners',
+  'widowed_or_surviving_civil_partner'
+]);
+
+const PENSION_OTHER_INCOME_TAX_TREATMENTS = Object.freeze([
+  'occupational_pension',
+  'rental',
+  'employment',
+  'social_welfare',
+  'non_taxable'
+]);
+
+/**
+ * A member's tax inputs: how the lump sum is taken, and the lifetime limits
+ * already used. Read from a member, or from the top level of a single-person
+ * payload, which is where that shape keeps them.
+ */
+function normalizeImportedMemberTaxFields(source) {
+  const fields = {};
+  const lumpSum = source?.lumpSum;
+  if (lumpSum && typeof lumpSum === 'object' && !Array.isArray(lumpSum)) {
+    const mode = typeof lumpSum.mode === 'string' ? lumpSum.mode.trim().toLowerCase() : '';
+    if (mode === 'none' || mode === 'max') {
+      fields.lumpSum = { mode };
+    } else if (mode === 'amount' && typeof lumpSum.amount === 'number' && Number.isFinite(lumpSum.amount) && lumpSum.amount >= 0) {
+      fields.lumpSum = { mode, amount: lumpSum.amount };
+    }
+  }
+  ['priorLumpSumsSince2005', 'sftAlreadyUsed', 'unrelievedLumpSumTax'].forEach((key) => {
+    if (typeof source?.[key] === 'number' && Number.isFinite(source[key]) && source[key] >= 0) {
+      fields[key] = source[key];
+    }
+  });
+  return fields;
+}
+
 function normalizePensionInputs(pensionInputs) {
   if (!pensionInputs || typeof pensionInputs !== 'object' || Array.isArray(pensionInputs)) {
     return null;
@@ -1126,6 +1164,19 @@ function normalizePensionInputs(pensionInputs) {
   if (typeof pensionInputs.includeStatePension === 'boolean') {
     normalized.includeStatePension = pensionInputs.includeStatePension;
   }
+
+  // Tax inputs (Irish tax engine brief, 7.1). The engine refuses a bad value
+  // with a message; the importer only keeps the ones it could use.
+  if (PENSION_TAX_STATUSES.includes(pensionInputs.householdTaxStatus)) {
+    normalized.householdTaxStatus = pensionInputs.householdTaxStatus;
+  }
+  if (pensionInputs.targetIncomeBasis === 'gross' || pensionInputs.targetIncomeBasis === 'net') {
+    normalized.targetIncomeBasis = pensionInputs.targetIncomeBasis;
+  }
+  if (typeof pensionInputs.rentalIncomeOwnerId === 'string' && pensionInputs.rentalIncomeOwnerId.trim()) {
+    normalized.rentalIncomeOwnerId = pensionInputs.rentalIncomeOwnerId.trim();
+  }
+  Object.assign(normalized, normalizeImportedMemberTaxFields(pensionInputs));
 
   if (typeof pensionInputs.includeEmploymentIncomeDuringBridge === 'boolean') {
     normalized.includeEmploymentIncomeDuringBridge = pensionInputs.includeEmploymentIncomeDuringBridge;
@@ -1218,6 +1269,7 @@ function normalizePensionInputs(pensionInputs) {
         if (typeof member.includeStatePension === 'boolean') {
           normalizedMember.includeStatePension = member.includeStatePension;
         }
+        Object.assign(normalizedMember, normalizeImportedMemberTaxFields(member));
         return normalizedMember;
       })
       .filter((member) => typeof member.currentAge === 'number'
@@ -1233,49 +1285,212 @@ function normalizePensionInputs(pensionInputs) {
   }
 
   if (Array.isArray(pensionInputs.otherIncomeSources)) {
-    const otherIncomeSources = pensionInputs.otherIncomeSources
-      .filter((source) => source && typeof source === 'object' && !Array.isArray(source))
-      .map((source, index) => {
-        const normalizedSource = {
-          id: typeof source.id === 'string' && source.id.trim()
-            ? source.id.trim()
-            : `other-income-${index + 1}`,
-          title: typeof source.title === 'string' && source.title.trim()
-            ? source.title.trim()
-            : `Other income ${index + 1}`,
-          type: typeof source.type === 'string' && source.type.trim()
-            ? source.type.trim().toLowerCase()
-            : 'other'
-        };
-        if (typeof source.ownerId === 'string' && source.ownerId.trim()) {
-          normalizedSource.ownerId = source.ownerId.trim();
-        }
-        [
-          'annualAmountToday',
-          'startYear',
-          'startAge',
-          'endYear',
-          'endAge'
-        ].forEach((key) => {
-          if (typeof source[key] === 'number' && Number.isFinite(source[key])) {
-            normalizedSource[key] = source[key];
-          }
-        });
-        if (typeof source.inflationIndexed === 'boolean') {
-          normalizedSource.inflationIndexed = source.inflationIndexed;
-        }
-        return normalizedSource;
-      })
-      .filter((source) => typeof source.annualAmountToday === 'number'
-        && (typeof source.startYear === 'number' || typeof source.startAge === 'number')
-        && typeof source.inflationIndexed === 'boolean');
+    const otherIncomeSources = normalizeImportedIncomeSources(pensionInputs.otherIncomeSources);
 
     if (otherIncomeSources.length > 0) {
       normalized.otherIncomeSources = otherIncomeSources;
     }
   }
 
+  const scenarios = normalizePensionScenarios(pensionInputs.scenarios, 'pensionInputs.scenarios');
+  if (scenarios) {
+    normalized.scenarios = scenarios;
+    // The engine takes one case list or the other. A session carrying both is
+    // opened on the richer one rather than refused, because refusing it would
+    // lose the whole module over a payload the client never sees.
+    if (normalized.rentalIncomeScenarios) {
+      delete normalized.rentalIncomeScenarios;
+      recordSessionImportWarning(
+        'pensionInputs carried both scenarios and rentalIncomeScenarios; kept the scenarios.'
+      );
+    }
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function normalizeImportedIncomeSources(rawSources) {
+  if (!Array.isArray(rawSources)) {
+    return [];
+  }
+
+  return rawSources
+    .filter((source) => source && typeof source === 'object' && !Array.isArray(source))
+    .map((source, index) => {
+      const normalizedSource = {
+        id: typeof source.id === 'string' && source.id.trim()
+          ? source.id.trim()
+          : `other-income-${index + 1}`,
+        title: typeof source.title === 'string' && source.title.trim()
+          ? source.title.trim()
+          : `Other income ${index + 1}`,
+        type: typeof source.type === 'string' && source.type.trim()
+          ? source.type.trim().toLowerCase()
+          : 'other'
+      };
+      if (typeof source.ownerId === 'string' && source.ownerId.trim()) {
+        normalizedSource.ownerId = source.ownerId.trim();
+      }
+      [
+        'annualAmountToday',
+        'startYear',
+        'startAge',
+        'endYear',
+        'endAge'
+      ].forEach((key) => {
+        if (typeof source[key] === 'number' && Number.isFinite(source[key])) {
+          normalizedSource[key] = source[key];
+        }
+      });
+      if (typeof source.inflationIndexed === 'boolean') {
+        normalizedSource.inflationIndexed = source.inflationIndexed;
+      }
+      if (PENSION_OTHER_INCOME_TAX_TREATMENTS.includes(source.taxTreatment)) {
+        normalizedSource.taxTreatment = source.taxTreatment;
+      }
+      return normalizedSource;
+    })
+    .filter((source) => typeof source.annualAmountToday === 'number'
+      && (typeof source.startYear === 'number' || typeof source.startAge === 'number')
+      && typeof source.inflationIndexed === 'boolean');
+}
+
+/** Numbers a stored Retirement case may restate for the household or the person. */
+const PENSION_SCENARIO_NUMERIC_OVERRIDES = Object.freeze([
+  'rentalIncomeToday',
+  'targetIncomeToday',
+  'targetIncomePctOfSalary',
+  'retirementAge',
+  'personalPct',
+  'employerPct',
+  'currentPot',
+  'incomeStartYear',
+  'targetStartYear',
+  'targetStartAge',
+  'requiredPotReferenceYear'
+]);
+
+/** Answers a stored Retirement case may restate as yes or no. */
+const PENSION_SCENARIO_BOOLEAN_OVERRIDES = Object.freeze([
+  'includeStatePension',
+  'includeEmploymentIncomeDuringBridge'
+]);
+
+/** Per-person numbers inside a stored case's `pensionOverrides`. */
+const PENSION_SCENARIO_MEMBER_NUMERIC_OVERRIDES = Object.freeze([
+  'retirementAge',
+  'personalPct',
+  'employerPct',
+  'currentPot'
+]);
+
+/**
+ * Retirement cases as they come back off a saved session.
+ *
+ * The engine rejects a bad payload on the way in; this tolerates one on the
+ * way back out, because a session published when the rules were looser still
+ * has to open. Unrecognised keys are dropped rather than refused, which is why
+ * every key the engine accepts has to be listed here too.
+ */
+function normalizePensionScenarios(rawScenarios, label) {
+  if (!Array.isArray(rawScenarios)) {
+    return null;
+  }
+
+  const scenarios = rawScenarios
+    .map((rawScenario, index) => {
+      if (!rawScenario || typeof rawScenario !== 'object' || Array.isArray(rawScenario)) {
+        return null;
+      }
+
+      const id = typeof rawScenario.id === 'string' ? rawScenario.id.trim() : '';
+      if (!id) {
+        return null;
+      }
+
+      const rawOverrides = rawScenario.overrides && typeof rawScenario.overrides === 'object'
+        && !Array.isArray(rawScenario.overrides)
+        ? rawScenario.overrides
+        // A case that was stored flat, before the engine normalised it.
+        : rawScenario;
+      const overrides = {};
+
+      PENSION_SCENARIO_NUMERIC_OVERRIDES.forEach((key) => {
+        if (typeof rawOverrides[key] === 'number' && Number.isFinite(rawOverrides[key])) {
+          overrides[key] = rawOverrides[key];
+        }
+      });
+
+      PENSION_SCENARIO_BOOLEAN_OVERRIDES.forEach((key) => {
+        if (typeof rawOverrides[key] === 'boolean') {
+          overrides[key] = rawOverrides[key];
+        }
+      });
+
+      const excluded = Array.isArray(rawOverrides.excludedIncomeSourceIds)
+        ? rawOverrides.excludedIncomeSourceIds
+          .map((sourceId) => (typeof sourceId === 'string' ? sourceId.trim() : ''))
+          .filter(Boolean)
+        : [];
+      if (excluded.length > 0) {
+        overrides.excludedIncomeSourceIds = excluded;
+      }
+
+      const additional = normalizeImportedIncomeSources(rawOverrides.additionalIncomeSources);
+      if (additional.length > 0) {
+        overrides.additionalIncomeSources = additional;
+      }
+
+      const pensionOverrides = Array.isArray(rawOverrides.pensionOverrides)
+        ? rawOverrides.pensionOverrides
+          .map((entry) => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+              return null;
+            }
+            const memberId = typeof entry.id === 'string' ? entry.id.trim() : '';
+            if (!memberId) {
+              return null;
+            }
+            const member = { id: memberId };
+            PENSION_SCENARIO_MEMBER_NUMERIC_OVERRIDES.forEach((key) => {
+              if (typeof entry[key] === 'number' && Number.isFinite(entry[key])) {
+                member[key] = entry[key];
+              }
+            });
+            if (typeof entry.includeStatePension === 'boolean') {
+              member.includeStatePension = entry.includeStatePension;
+            }
+            return member;
+          })
+          .filter(Boolean)
+        : [];
+      if (pensionOverrides.length > 0) {
+        overrides.pensionOverrides = pensionOverrides;
+      }
+
+      return {
+        id,
+        title: typeof rawScenario.title === 'string' && rawScenario.title.trim()
+          ? rawScenario.title.trim()
+          : id,
+        description: typeof rawScenario.description === 'string' ? rawScenario.description.trim() : '',
+        overrides
+      };
+    })
+    .filter(Boolean);
+
+  const unique = [];
+  const usedIds = new Set();
+  scenarios.forEach((scenario) => {
+    if (usedIds.has(scenario.id)) {
+      return;
+    }
+    usedIds.add(scenario.id);
+    unique.push(scenario);
+  });
+
+  const capped = capImportedScenarioCases(unique, MAX_MODULE_SCENARIO_CASES, label);
+  return capped.length > 0 ? capped : null;
 }
 
 /** Keys a stored case may restate, in the engine's own normalised shape. */

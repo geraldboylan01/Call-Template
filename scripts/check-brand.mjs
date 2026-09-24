@@ -10,6 +10,21 @@ const DEPLOYED_HTML = [
   'app/clients.html', 'app/analytics.html', 'app/modules.html', 'app/access.html',
   'app/leads.html', 'app/video.html', 'plan/index.html', 'plan/privacy.html'
 ];
+// The video-first public pages. Each carries the site header, as does every
+// generated case page under cases/<slug>/.
+const PUBLIC_PAGES = ['apply/index.html', 'privacy/index.html', 'cases/index.html'];
+const BASE_HEADER_COUNT = 9;
+
+async function generatedCasePages(base) {
+  let entries = [];
+  try {
+    entries = await readdir(resolve(base, 'cases'), { withFileTypes: true });
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => `cases/${entry.name}/index.html`).sort();
+}
 const RETIRED = [
   'js/planeir_harp_artwork.js', 'js/success_harp_resonance.js',
   'assets/brand/planeir-harp-light.svg', 'assets/brand/planeir-wordmark-no-harp-light.svg'
@@ -32,7 +47,9 @@ async function verifyBrand({ dist = false } = {}) {
     await assert.rejects(access(resolve(base, file)), { code: 'ENOENT' }, `Retired asset is still published: ${file}`);
   }
   let headerCount = 0;
-  for (const file of DEPLOYED_HTML) {
+  const publicPages = [...PUBLIC_PAGES, ...await generatedCasePages(base)];
+  const deployed = [...DEPLOYED_HTML, ...publicPages];
+  for (const file of deployed) {
     const html = await readFile(resolve(base, file), 'utf8');
     assert.ok(!OLD_MARKERS.test(html), `${file} still contains obsolete brand markup.`);
     assert.ok(!html.includes('planeir-wordmark-light.svg'), `${file} uses a compatibility URL internally.`);
@@ -52,7 +69,7 @@ async function verifyBrand({ dist = false } = {}) {
       if (dist) assert.match(url, /[?&]v=/, `Unversioned deployed asset in ${file}: ${url}`);
     }
   }
-  assert.equal(headerCount, 9, 'Expected exactly nine migrated header placements.');
+  assert.equal(headerCount, BASE_HEADER_COUNT + publicPages.length, `Expected ${BASE_HEADER_COUNT + publicPages.length} header placements.`);
   const landing = await readFile(resolve(base, 'index.html'), 'utf8');
   assert.equal(landing.split('https://planeir.ie/assets/brand/planeir-social-card-newgrange.png').length - 1, 2);
   for (const file of [...await filesIn(resolve(base, 'js')), ...await filesIn(resolve(base, 'assets/brand'))]) {
@@ -67,9 +84,9 @@ async function verifyBrand({ dist = false } = {}) {
   if (!dist) {
     const worker = await readFile(resolve(ROOT, 'worker/src/index.js'), 'utf8');
     assert.ok(worker.includes('/assets/brand/planeir-social-card-newgrange.png'));
-    assert.equal((worker.match(/\$\{buildPlaneirEmailCardHtml\(\)\}/g) || []).length, 5, 'All five email variants must retain shared branding.');
+    assert.equal((worker.match(/\$\{buildPlaneirEmailCardHtml\(\)\}/g) || []).length, 8, 'All eight email variants must retain shared branding.');
   }
-  console.log(`Verified ${dist ? 'deployed' : 'source'} branding across 12 pages, 9 headers, and all exports.`);
+  console.log(`Verified ${dist ? 'deployed' : 'source'} branding across ${deployed.length} pages, ${headerCount} headers, and all exports.`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

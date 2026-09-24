@@ -1028,7 +1028,8 @@ jobs:
               const required = [
                 "CONSUMER_DATA_ENCRYPTION_KEY",
                 "CONSUMER_RATE_LIMIT_HASH_KEY",
-                "CONSUMER_INVITE_SIGNING_KEY"
+                "CONSUMER_INVITE_SIGNING_KEY",
+                "APPLICATION_DATA_ENCRYPTION_KEY"
               ];
               process.stdout.write(required.filter((name) => !names.has(name)).join("\n"));
             '
@@ -1068,6 +1069,7 @@ jobs:
               "CONSUMER_DATA_ENCRYPTION_KEY",
               "CONSUMER_RATE_LIMIT_HASH_KEY",
               "CONSUMER_INVITE_SIGNING_KEY",
+              "APPLICATION_DATA_ENCRYPTION_KEY",
               "OPENAI_API_KEY",
               "CONSUMER_DEPLOY_VERIFICATION_KEY"
             ];

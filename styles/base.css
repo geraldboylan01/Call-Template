@@ -7149,6 +7149,61 @@ body.overview-has-selection .toast-host {
   gap: 12px;
 }
 
+/* Case applications in the client pipeline (js/client_manager.js). */
+.client-application-meta {
+  margin: 0;
+  color: #a9c1dc;
+  font-size: 0.86rem;
+}
+
+.client-application-body {
+  display: grid;
+  gap: 12px;
+  max-height: 520px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 160, 200, 0.24);
+  background: rgba(7, 16, 31, 0.5);
+}
+
+.client-application-body h4 {
+  margin: 0 0 4px;
+  color: #8fd0ff;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.client-application-body ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #f0f7ff;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.client-application-body ul ul {
+  margin: 2px 0 4px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(143, 208, 255, 0.22);
+}
+
+.client-application-body .client-application-label {
+  color: #a9c1dc;
+}
+
+.client-application-body .client-application-question {
+  white-space: pre-wrap;
+}
+
+.client-application-body .client-application-unsure {
+  color: #ffd79a;
+}
+
 .lead-manager-textarea {
   width: 100%;
   min-height: 96px;

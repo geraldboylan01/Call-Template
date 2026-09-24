@@ -79,6 +79,21 @@ const PLANEIR_SITE_URL = 'https://planeir.ie';
 const PLANEIR_EMAIL_CARD_URL = `${PLANEIR_SITE_URL}/assets/brand/planeir-social-card-newgrange.png`;
 const PLANEIR_EMAIL_CARD_ALT = 'Planeir - Irish financial education calls. Educational only, not financial advice.';
 const LEAD_SOURCE_LABEL = 'Planeir landing page';
+// Case applications from /apply/. The figures are encrypted at rest with their
+// own key (not the consumer journey's), bound to the application id.
+const APPLICATION_SOURCE = 'apply-page';
+const APPLICATION_SOURCE_LABEL = 'Planeir application page';
+const APPLICATION_AAD_PREFIX = 'lead/application/';
+const APPLICATION_DEFAULT_KEY_ID = 'application-v1';
+const MAX_APPLICATION_BODY_BYTES = 64 * 1024;
+const APPLICATION_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+const APPLICATION_RATE_LIMIT_MAX = 5;
+// Applications that were not picked are kept for 12 months, as the privacy
+// notice at /privacy/ says. Picked and published cases are kept.
+const APPLICATION_RETENTION_MS = 365 * 24 * 60 * 60 * 1000;
+const APPLICATION_RETAINED_STATUSES = ['picked', 'video-live'];
+const APPLICATION_PURGE_BATCH = 100;
+const VIDEO_LINK_HOSTS = new Set(['planeir.ie', 'www.planeir.ie', 'youtube.com', 'www.youtube.com', 'youtu.be']);
 const DEFAULT_LEAD_SCHEDULE_TIMEZONE = 'Europe/Dublin';
 const DEFAULT_LEAD_SCHEDULE_LOCATION = 'Zoom meeting link to be created automatically';
 const DEFAULT_LEAD_SCHEDULE_DURATION_MINUTES = 30;
@@ -133,6 +148,9 @@ const CALL_OUTCOME_LABELS = {
 const ALLOWED_LEAD_STATUSES = new Set([
   'new',
   'reviewing',
+  'picked',
+  'video-live',
+  'closed',
   'awaiting-client',
   'booked',
   'declined',
@@ -142,6 +160,9 @@ const ALLOWED_LEAD_STATUSES = new Set([
 const LEAD_STATUS_LABELS = {
   new: 'New',
   reviewing: 'Reviewing',
+  picked: 'Picked',
+  'video-live': 'Video live',
+  closed: 'Closed',
   'awaiting-client': 'Awaiting client',
   booked: 'Booked',
   declined: 'Declined',
@@ -168,15 +189,17 @@ const ALLOWED_CLIENT_PIPELINE_STAGES = new Set(CLIENT_PIPELINE_STAGES);
  * How a client record came to exist. Three genuinely different relationships,
  * and a list that mixes them cannot answer "who should I follow up with".
  *
- *   adviser_meeting  registered, scheduled, sat through a session with Gerry
- *   direct_publish   work published straight from the app, no registration
- *   consumer_call    completed an online self-service call, never spoke to anyone
+ *   adviser_meeting   registered, scheduled, sat through a session with Gerry
+ *   direct_publish    work published straight from the app, no registration
+ *   consumer_call     completed an online self-service call, never spoke to anyone
+ *   case_application  applied at /apply/ with their figures for a case video
  */
-const CLIENT_SOURCES = ['adviser_meeting', 'direct_publish', 'consumer_call'];
+const CLIENT_SOURCES = ['adviser_meeting', 'direct_publish', 'consumer_call', 'case_application'];
 const CLIENT_SOURCE_LABELS = {
   adviser_meeting: 'Adviser sessions',
   direct_publish: 'Published from the app',
-  consumer_call: 'Online calls'
+  consumer_call: 'Online calls',
+  case_application: 'Applications'
 };
 const ALLOWED_CLIENT_SOURCES = new Set(CLIENT_SOURCES);
 
@@ -295,6 +318,12 @@ function getRouteConfig(pathname) {
     };
   }
 
+  if (pathname === '/api/applications') {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
   if (pathname === '/api/publish') {
     return {
       methods: 'POST,OPTIONS'
@@ -390,6 +419,18 @@ function getRouteConfig(pathname) {
   }
 
   if (/^\/api\/advisor\/leads\/\d+\/send-schedule-email$/.test(pathname)) {
+    return {
+      methods: 'POST,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/leads\/\d+\/application$/.test(pathname)) {
+    return {
+      methods: 'GET,DELETE,OPTIONS'
+    };
+  }
+
+  if (/^\/api\/advisor\/leads\/\d+\/video-live-email$/.test(pathname)) {
     return {
       methods: 'POST,OPTIONS'
     };
@@ -1419,6 +1460,248 @@ function buildLeadConfirmationHtml(lead) {
 </html>`;
 }
 
+/* ---------- application emails ---------- */
+
+const APPLICATION_TOPIC_LABELS = {
+  retirement: 'Retirement and pensions',
+  mortgage: 'My mortgage',
+  buying: 'Buying a home',
+  education: 'Children’s education',
+  loans: 'Loans and credit cards',
+  savings: 'Savings and a rainy day fund',
+  whole: 'The whole picture',
+  other: 'Something else'
+};
+
+function formatApplicationTopics(topics = []) {
+  const labels = topics.map((topic) => APPLICATION_TOPIC_LABELS[topic]).filter(Boolean);
+  return labels.length > 0 ? labels.join(', ') : 'No topic chosen';
+}
+
+function firstNameOf(fullName) {
+  return normalizeLeadValue(fullName).split(/\s+/)[0] || 'there';
+}
+
+/** A short, stable fingerprint for idempotency keys. Not a security hash. */
+function shortTextHash(value) {
+  let hash = 5381;
+  for (const char of String(value)) {
+    hash = ((hash * 33) ^ char.codePointAt(0)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function buildApplicationAdminLink(application, leadId) {
+  const url = new URL(`${PLANEIR_SITE_URL}/app/clients.html`);
+  if (application.clientId) url.searchParams.set('client', String(application.clientId));
+  if (leadId) url.searchParams.set('lead', String(leadId));
+  return url.toString();
+}
+
+// Gerry's notification carries no figures: those stay encrypted and are read
+// in the client pipeline, not left sitting in an inbox.
+function buildApplicationNotificationRows(application, leadId) {
+  return [
+    ['Lead ID', leadId ? String(leadId) : 'Not available'],
+    ['Name', formatOptionalText(application.fullName)],
+    ['Email', formatOptionalText(application.email)],
+    ['Help wanted with', formatApplicationTopics(application.topics)],
+    ['Questions answered', `${application.answered} of ${application.total}`],
+    ['Submitted at', formatOptionalText(application.createdAt)],
+    ['Source', APPLICATION_SOURCE_LABEL]
+  ];
+}
+
+function buildApplicationNotificationText(application, leadId) {
+  return [
+    'New Planeir application',
+    '',
+    ...buildApplicationNotificationRows(application, leadId).map(([label, value]) => `${label}: ${value}`),
+    '',
+    'Question:',
+    formatOptionalText(application.question),
+    '',
+    `Read the full application: ${buildApplicationAdminLink(application, leadId)}`,
+    buildPlaneirEmailCardText()
+  ].join('\n');
+}
+
+function buildApplicationNotificationHtml(application, leadId) {
+  const rows = buildApplicationNotificationRows(application, leadId)
+    .map(([label, value]) => `
+      <tr>
+        <td style="padding:10px 12px;border:1px solid #d9e2ea;background:#f7fafc;font-weight:600;vertical-align:top;">${escapeHtml(label)}</td>
+        <td style="padding:10px 12px;border:1px solid #d9e2ea;vertical-align:top;">${escapeHtml(value)}</td>
+      </tr>
+    `)
+    .join('');
+  const questionHtml = escapeHtml(formatOptionalText(application.question)).replace(/\n/g, '<br />');
+  const adminLink = escapeHtml(buildApplicationAdminLink(application, leadId));
+
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px 24px 12px;background:#0f2233;color:#ffffff;">
+        <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.8;">Planeir application</p>
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">New application from ${escapeHtml(application.fullName)}</h1>
+      </div>
+      <div style="padding:24px;">
+        <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;font-size:14px;line-height:1.5;">
+          ${rows}
+        </table>
+        <h2 style="margin:24px 0 12px;font-size:18px;line-height:1.3;">Question</h2>
+        <div style="padding:16px;border:1px solid #d9e2ea;border-radius:12px;background:#f7fafc;font-size:14px;line-height:1.7;">
+          ${questionHtml}
+        </div>
+        <p style="margin:20px 0 0;font-size:14px;line-height:1.6;">
+          The figures are in the client pipeline: <a href="${adminLink}">read the full application</a>.
+        </p>
+        ${buildPlaneirEmailCardHtml()}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+const APPLICATION_REPLY_PARAGRAPHS = [
+  'Thanks for sending your application to Planeir.',
+  'Gerry reads every application. He picks some to explain in a short video, using the figures you sent. If yours is picked, he will email you when the video is live. Your name is not shown in the video.',
+  'If Gerry needs one more detail, he will reply to this email.',
+  'Planeir is financial education only. It is not financial advice and does not recommend products.'
+];
+
+function buildApplicationReplyText(application) {
+  return [
+    `Hi ${firstNameOf(application.fullName)},`,
+    '',
+    ...APPLICATION_REPLY_PARAGRAPHS.flatMap((paragraph) => [paragraph, '']),
+    'Best,',
+    'Planeir',
+    buildPlaneirEmailCardText()
+  ].join('\n');
+}
+
+function buildApplicationReplyHtml(application) {
+  const paragraphs = APPLICATION_REPLY_PARAGRAPHS
+    .map((paragraph) => `<p style="margin:0 0 16px;">${escapeHtml(paragraph)}</p>`)
+    .join('\n        ');
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Your application is in</h1>
+      </div>
+      <div style="padding:24px;font-size:15px;line-height:1.7;">
+        <p style="margin:0 0 16px;">Hi ${escapeHtml(firstNameOf(application.fullName))},</p>
+        ${paragraphs}
+        <p style="margin:0;">Best,<br />Planeir</p>
+        ${buildPlaneirEmailCardHtml()}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+function buildVideoLiveText(lead, videoUrl) {
+  return [
+    `Hi ${firstNameOf(lead.fullName)},`,
+    '',
+    'Gerry has made a video about the situation you sent in. It is live now:',
+    videoUrl,
+    '',
+    'Your name is not shown, and the figures are rounded.',
+    'Thanks for applying.',
+    '',
+    'Planeir is financial education only. It is not financial advice and does not recommend products.',
+    '',
+    'Best,',
+    'Gerry',
+    'Planeir',
+    buildPlaneirEmailCardText()
+  ].join('\n');
+}
+
+function buildVideoLiveHtml(lead, videoUrl) {
+  const safeUrl = escapeHtml(videoUrl);
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:24px;background:#f1f5f9;color:#102a43;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+    <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #d9e2ea;border-radius:16px;overflow:hidden;">
+      <div style="padding:24px;background:#0f2233;color:#ffffff;">
+        <h1 style="margin:0;font-size:24px;line-height:1.25;">Your case video is live</h1>
+      </div>
+      <div style="padding:24px;font-size:15px;line-height:1.7;">
+        <p style="margin:0 0 16px;">Hi ${escapeHtml(firstNameOf(lead.fullName))},</p>
+        <p style="margin:0 0 16px;">Gerry has made a video about the situation you sent in. It is live now:</p>
+        <p style="margin:0 0 20px;"><a href="${safeUrl}" style="display:inline-block;padding:12px 20px;border-radius:999px;background:#0f2233;color:#ffffff;text-decoration:none;font-weight:600;">Watch the video</a></p>
+        <p style="margin:0 0 16px;">Your name is not shown, and the figures are rounded. Thanks for applying.</p>
+        <p style="margin:0 0 16px;">Planeir is financial education only. It is not financial advice and does not recommend products.</p>
+        <p style="margin:0;">Best,<br />Gerry<br />Planeir</p>
+        ${buildPlaneirEmailCardHtml()}
+      </div>
+    </div>
+  </body>
+</html>`;
+}
+
+async function sendApplicationEmails(env, application, leadId) {
+  const config = getLeadEmailConfig(env);
+
+  if (!config.apiKey || !config.from) {
+    console.warn('Application email sending skipped because provider credentials are not configured.');
+    return;
+  }
+
+  if (config.notificationRecipients.length > 0) {
+    try {
+      const topics = formatApplicationTopics(application.topics);
+      const result = await sendEmailWithResend(config, {
+        from: config.from,
+        to: config.notificationRecipients,
+        subject: `New Planeir application: ${application.fullName} (${topics})`,
+        html: buildApplicationNotificationHtml(application, leadId),
+        text: buildApplicationNotificationText(application, leadId),
+        reply_to: application.email
+      }, buildEmailIdempotencyKey(leadId, application.createdAt, 'application-internal'));
+      console.log('Application notification email accepted', {
+        leadId,
+        resendEmailId: result?.id || null
+      });
+    } catch (error) {
+      console.error('Application notification email failed', {
+        leadId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  } else {
+    console.warn('Application notification email skipped because LEAD_NOTIFICATION_TO is not configured.');
+  }
+
+  // The applicant always gets the automatic reply. It says what happens next,
+  // and carries none of their figures back to an address nobody has verified.
+  try {
+    const result = await sendEmailWithResend(config, {
+      from: config.from,
+      to: [application.email],
+      subject: 'We received your Planeir application',
+      html: buildApplicationReplyHtml(application),
+      text: buildApplicationReplyText(application),
+      reply_to: config.replyTo || undefined
+    }, buildEmailIdempotencyKey(leadId, application.createdAt, 'application-reply'));
+    console.log('Application reply email accepted', {
+      leadId,
+      resendEmailId: result?.id || null
+    });
+  } catch (error) {
+    console.error('Application reply email failed', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
 function getLeadEmailConfig(env) {
   const apiKey = normalizeEnvValue(env.RESEND_API_KEY);
   const from = normalizeEnvValue(env.LEAD_EMAIL_FROM);
@@ -1753,7 +2036,12 @@ function normalizeLeadRow(row) {
     understandsRecordedCall: Boolean(Number(row.consent_free_call || 0)),
     understandsEducationalOnly: Boolean(Number(row.consent_education_only || 0)),
     understandsEducationalContent: Boolean(Number(row.consent_recording || 0)),
-    source: row.source || 'landing-page'
+    source: row.source || 'landing-page',
+    applicationId: row.application_id || '',
+    applicationTopics: String(row.application_topics || '').split(',').map((value) => value.trim()).filter(Boolean),
+    applicationAnsweredCount: Number(row.application_answered_count || 0),
+    applicationDeletedAt: row.application_deleted_at || '',
+    hasApplication: Boolean(Number(row.application_present || 0))
   };
 }
 
@@ -1789,7 +2077,13 @@ function buildLeadManagerSummary(lead) {
     scheduleCleanupAttemptedAt: lead.scheduleCleanupAttemptedAt,
     scheduleCleanupError: lead.scheduleCleanupError,
     lastScheduleEmailSentAt: lead.lastScheduleEmailSentAt,
-    scheduleEmailSendCount: lead.scheduleEmailSendCount
+    scheduleEmailSendCount: lead.scheduleEmailSendCount,
+    source: lead.source,
+    isApplication: Boolean(lead.applicationId),
+    applicationTopics: lead.applicationTopics,
+    applicationAnsweredCount: lead.applicationAnsweredCount,
+    applicationDeletedAt: lead.applicationDeletedAt,
+    hasApplication: lead.hasApplication
   };
 }
 
@@ -1859,7 +2153,10 @@ function normalizeClientEmailForMatch(value) {
 function inferPipelineStageFromLeadStatus(status) {
   switch (normalizeLeadStatus(status, 'new')) {
     case 'reviewing':
+    case 'picked':
       return 'reviewing';
+    case 'closed':
+      return 'archived';
     case 'awaiting-client':
       return 'awaiting_meeting';
     case 'booked':
@@ -2874,6 +3171,11 @@ async function getLeadRow(env, leadId) {
       schedule_cleanup_error,
       last_schedule_email_sent_at,
       schedule_email_send_count,
+      application_id,
+      application_topics,
+      application_answered_count,
+      application_deleted_at,
+      CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
     WHERE id = ?
@@ -2948,6 +3250,11 @@ async function listLeadRows(env, options = {}) {
       schedule_cleanup_error,
       last_schedule_email_sent_at,
       schedule_email_send_count,
+      application_id,
+      application_topics,
+      application_answered_count,
+      application_deleted_at,
+      CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
     ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
@@ -2955,12 +3262,15 @@ async function listLeadRows(env, options = {}) {
       CASE status
         WHEN 'new' THEN 0
         WHEN 'reviewing' THEN 1
-        WHEN 'awaiting-client' THEN 2
-        WHEN 'booked' THEN 3
-        WHEN 'declined' THEN 4
-        WHEN 'expired' THEN 5
-        WHEN 'archived' THEN 6
-        ELSE 7
+        WHEN 'picked' THEN 2
+        WHEN 'awaiting-client' THEN 3
+        WHEN 'booked' THEN 4
+        WHEN 'video-live' THEN 5
+        WHEN 'declined' THEN 6
+        WHEN 'expired' THEN 7
+        WHEN 'closed' THEN 8
+        WHEN 'archived' THEN 9
+        ELSE 10
       END,
       COALESCE(updated_at, created_at) DESC,
       id DESC
@@ -3059,6 +3369,11 @@ async function listClientLeadRows(env, clientId) {
       schedule_cleanup_error,
       last_schedule_email_sent_at,
       schedule_email_send_count,
+      application_id,
+      application_topics,
+      application_answered_count,
+      application_deleted_at,
+      CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
     WHERE client_id = ?
@@ -3402,6 +3717,11 @@ async function listExpiredLeadScheduleRowsForCleanup(env, limit = 25) {
       schedule_cleanup_error,
       last_schedule_email_sent_at,
       schedule_email_send_count,
+      application_id,
+      application_topics,
+      application_answered_count,
+      application_deleted_at,
+      CASE WHEN application_payload_encrypted IS NULL THEN 0 ELSE 1 END AS application_present,
       updated_at
     FROM leads
     WHERE schedule_response_expires_at IS NOT NULL
@@ -5490,10 +5810,12 @@ function validateAdvisorClientUpdatePayload(payload, currentClient) {
     throw new Error('Client email address is invalid.');
   }
 
+  // A blank phone normalizes to null. Applications collect no phone at all, so
+  // this has to allow for it or no such client could ever be saved.
   const phone = hasOwn(payload, 'phone')
     ? normalizeOptionalLeadValue(payload.phone)
     : currentClient.phone;
-  if (phone.length > MAX_LEAD_PHONE_LENGTH) {
+  if (phone && phone.length > MAX_LEAD_PHONE_LENGTH) {
     throw new Error('Phone number is too long.');
   }
 
@@ -6551,6 +6873,471 @@ async function handleLeadSubmit(request, env, origin, ctx) {
   }
 }
 
+/* ---------- case applications (/apply/) ---------- */
+
+function loadCaseApplicationModule() {
+  return import('../../js/case_application/index.js');
+}
+
+/**
+ * The consumer journey's AES-GCM envelope, pointed at the application key.
+ * The helper reads CONSUMER_* names, so the application key is mapped onto
+ * them here rather than shared: rotating one must never touch the other.
+ */
+function applicationCryptoEnv(env) {
+  return {
+    CONSUMER_DATA_ENCRYPTION_KEY: normalizeEnvValue(env.APPLICATION_DATA_ENCRYPTION_KEY),
+    CONSUMER_DATA_ENCRYPTION_KEY_ID: normalizeEnvValue(env.APPLICATION_DATA_ENCRYPTION_KEY_ID) || APPLICATION_DEFAULT_KEY_ID,
+    CONSUMER_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON: normalizeEnvValue(env.APPLICATION_DATA_ENCRYPTION_PREVIOUS_KEYS_JSON)
+  };
+}
+
+function isApplicationEncryptionConfigured(env) {
+  return Boolean(normalizeEnvValue(env.APPLICATION_DATA_ENCRYPTION_KEY));
+}
+
+async function encryptApplicationPayload(env, applicationId, application) {
+  const { encryptJson } = await import('./consumer/crypto.js');
+  return encryptJson(applicationCryptoEnv(env), application, `${APPLICATION_AAD_PREFIX}${applicationId}`);
+}
+
+async function decryptApplicationPayload(env, applicationId, encrypted) {
+  const { decryptJson } = await import('./consumer/crypto.js');
+  return decryptJson(applicationCryptoEnv(env), encrypted, `${APPLICATION_AAD_PREFIX}${applicationId}`);
+}
+
+function validateApplicationContact(payload) {
+  const fullName = normalizeLeadValue(payload.fullName).replace(/\s+/g, ' ');
+  const email = normalizeLeadValue(payload.email).toLowerCase();
+
+  if (!fullName) {
+    throw new Error('Add your name. A first name is fine.');
+  }
+  if (fullName.length > MAX_LEAD_NAME_LENGTH) {
+    throw new Error('Your name is too long.');
+  }
+  if (!email) {
+    throw new Error('Add your email address so Gerry can reply.');
+  }
+  if (email.length > MAX_LEAD_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('Enter a valid email address.');
+  }
+  if (!normalizeLeadConsent(payload.consentVideo)) {
+    throw new Error('Confirm that Gerry may use your situation in a video, with your name removed.');
+  }
+  if (!normalizeLeadConsent(payload.consentEducation)) {
+    throw new Error('Confirm that you understand Planeir is education only.');
+  }
+
+  return { fullName, email };
+}
+
+async function readBoundedJsonBody(request, maxBytes) {
+  const declared = Number(request.headers.get('Content-Length') || 0);
+  if (declared > maxBytes) {
+    return { tooLarge: true };
+  }
+  const text = await request.text();
+  if (new TextEncoder().encode(text).length > maxBytes) {
+    return { tooLarge: true };
+  }
+  return { body: JSON.parse(text) };
+}
+
+/**
+ * POST /api/applications
+ *
+ * One page, one submit. Only the name, email, question and two consents are
+ * required; every figure is optional and a figure the page could not read is
+ * dropped rather than refused. The figures are encrypted before they are
+ * stored, and none of them go into email.
+ */
+async function handleApplicationSubmit(request, env, origin, ctx) {
+  const methods = 'POST,OPTIONS';
+  const clientIp = getClientIp(request);
+  if (!checkRateLimit(clientIp)) {
+    return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+
+  if (!env.LEADS_DB) {
+    console.error('LEADS_DB binding is missing for application submission');
+    return jsonResponse({ error: 'Applications are not open right now. Please try again later.' }, 503, origin, methods, null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    const read = await readBoundedJsonBody(request, MAX_APPLICATION_BODY_BYTES);
+    if (read.tooLarge) {
+      return jsonResponse({ error: 'That application is too long to send. Shorten the longer answers and try again.' }, 413, origin, methods, null, noStoreHeaders());
+    }
+    body = read.body;
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return jsonResponse({ error: 'Invalid application.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  // A filled honeypot is a form-filling bot. It is told the send worked, so it
+  // learns nothing, and nothing is stored.
+  if (normalizeLeadValue(body.website)) {
+    console.warn('Application honeypot filled; discarded.');
+    return jsonResponse({ ok: true }, 201, origin, methods, null, noStoreHeaders());
+  }
+
+  const persistentAllowed = await checkPersistentRateLimit(
+    env,
+    'application-submit',
+    clientIp,
+    APPLICATION_RATE_LIMIT_WINDOW_MS,
+    APPLICATION_RATE_LIMIT_MAX
+  ).catch((error) => {
+    console.error('Application rate limit check failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return true;
+  });
+  if (!persistentAllowed) {
+    return jsonResponse({ error: 'Too many applications from this connection. Please try again in an hour.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+
+  let contact;
+  try {
+    contact = validateApplicationContact(body);
+  } catch (error) {
+    return jsonResponse({ error: error.message || 'Invalid application.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  const { normalizeApplication, countAnswers, APPLICATION_SCHEMA_VERSION } = await loadCaseApplicationModule();
+  const application = normalizeApplication(body.application);
+  if (!application.question) {
+    return jsonResponse({ error: 'Add your question so Gerry knows what you want to understand.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  if (!isApplicationEncryptionConfigured(env)) {
+    console.error('APPLICATION_DATA_ENCRYPTION_KEY is not configured; application refused.');
+    return jsonResponse({ error: 'Applications are not open right now. Please try again later.' }, 503, origin, methods, null, noStoreHeaders());
+  }
+
+  const { randomId } = await import('./consumer/crypto.js');
+  const applicationId = randomId('app');
+  let encrypted;
+  try {
+    encrypted = await encryptApplicationPayload(env, applicationId, application);
+  } catch (error) {
+    console.error('Application encryption failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Applications are not open right now. Please try again later.' }, 503, origin, methods, null, noStoreHeaders());
+  }
+
+  const createdAt = new Date().toISOString();
+  const counts = countAnswers(application);
+  const topics = application.topics.join(',');
+
+  try {
+    const client = await findOrCreateClientForProfile(env, {
+      fullName: contact.fullName,
+      email: contact.email,
+      phone: null,
+      pipelineStage: 'new_lead',
+      timestamp: createdAt,
+      source: 'case_application'
+    });
+    const result = await env.LEADS_DB.prepare(`
+      INSERT INTO leads (
+        client_id,
+        created_at,
+        updated_at,
+        full_name,
+        email,
+        phone,
+        help_reason,
+        stage,
+        call_outcome,
+        availability_notes,
+        status,
+        consent_free_call,
+        consent_education_only,
+        consent_recording,
+        source,
+        application_id,
+        application_payload_encrypted,
+        application_schema_version,
+        application_topics,
+        application_answered_count
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 'new', 0, 1, 1, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      client?.id || null,
+      createdAt,
+      createdAt,
+      contact.fullName,
+      contact.email,
+      application.question,
+      APPLICATION_SOURCE,
+      applicationId,
+      encrypted,
+      APPLICATION_SCHEMA_VERSION,
+      topics || null,
+      counts.answered
+    ).run();
+
+    if (!result.success) {
+      throw new Error('Application insert did not succeed.');
+    }
+
+    const leadId = result.meta?.last_row_id ?? null;
+    if (leadId) {
+      await insertLeadEvent(env, leadId, 'client', 'application-submitted', {
+        source: APPLICATION_SOURCE,
+        clientId: client?.id || null,
+        topics: application.topics,
+        answered: counts.answered,
+        total: counts.total
+      }).catch((error) => {
+        console.error('Failed to record application submitted event', {
+          leadId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+    }
+
+    const emailTask = sendApplicationEmails(env, {
+      fullName: contact.fullName,
+      email: contact.email,
+      question: application.question,
+      topics: application.topics,
+      answered: counts.answered,
+      total: counts.total,
+      createdAt,
+      clientId: client?.id || null
+    }, leadId).catch((error) => {
+      console.error('Application email failed', {
+        leadId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    });
+
+    if (ctx && typeof ctx.waitUntil === 'function') {
+      ctx.waitUntil(emailTask);
+    } else {
+      await emailTask;
+    }
+
+    return jsonResponse({ ok: true }, 201, origin, methods, null, noStoreHeaders());
+  } catch (error) {
+    console.error('Failed to store application', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'Could not save your application right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
+  }
+}
+
+async function getLeadApplicationRow(env, leadId) {
+  return getPublishedSessionsDb(env).prepare(`
+    SELECT
+      id,
+      full_name,
+      created_at,
+      status,
+      application_id,
+      application_payload_encrypted,
+      application_schema_version,
+      application_topics,
+      application_answered_count,
+      application_deleted_at
+    FROM leads
+    WHERE id = ?
+    LIMIT 1
+  `).bind(leadId).first();
+}
+
+/** GET /api/advisor/leads/:id/application — the decrypted figures, for Gerry only. */
+async function handleAdvisorLeadApplication(request, env, origin, leadId) {
+  const methods = 'GET,DELETE,OPTIONS';
+  const advisorAccess = await requireAdvisorSession(request, env, origin, methods);
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const row = await getLeadApplicationRow(env, leadId);
+  if (!row) {
+    return jsonResponse({ error: 'Lead not found.' }, 404, origin, methods, null, noStoreHeaders());
+  }
+  if (!row.application_id) {
+    return jsonResponse({ error: 'This request was not made through the application page.' }, 404, origin, methods, null, noStoreHeaders());
+  }
+
+  const base = {
+    ok: true,
+    leadId,
+    fullName: row.full_name || '',
+    submittedAt: row.created_at || '',
+    status: normalizeLeadStatus(row.status, 'new'),
+    topics: String(row.application_topics || '').split(',').filter(Boolean),
+    answeredCount: Number(row.application_answered_count || 0),
+    deletedAt: row.application_deleted_at || ''
+  };
+
+  if (!row.application_payload_encrypted) {
+    return jsonResponse({ ...base, application: null }, 200, origin, methods, null, noStoreHeaders());
+  }
+
+  try {
+    const application = await decryptApplicationPayload(env, row.application_id, row.application_payload_encrypted);
+    return jsonResponse({ ...base, application }, 200, origin, methods, null, noStoreHeaders());
+  } catch (error) {
+    console.error('Application could not be decrypted', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'The application could not be read. Check the application encryption key.' }, 500, origin, methods, null, noStoreHeaders());
+  }
+}
+
+/** DELETE /api/advisor/leads/:id/application — erase the figures on request. */
+async function handleAdvisorLeadApplicationDelete(request, env, origin, leadId) {
+  const methods = 'GET,DELETE,OPTIONS';
+  const advisorAccess = await requireAdvisorSession(request, env, origin, methods, {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const row = await getLeadApplicationRow(env, leadId);
+  if (!row || !row.application_id) {
+    return jsonResponse({ error: 'Application not found.' }, 404, origin, methods, null, noStoreHeaders());
+  }
+
+  const deletedAt = row.application_deleted_at || nowIso();
+  await getPublishedSessionsDb(env).prepare(`
+    UPDATE leads
+    SET
+      application_payload_encrypted = NULL,
+      application_deleted_at = COALESCE(application_deleted_at, ?),
+      updated_at = ?
+    WHERE id = ?
+  `).bind(deletedAt, nowIso(), leadId).run();
+  await insertLeadEvent(env, leadId, 'advisor', 'application-deleted', { reason: 'advisor-request' }).catch(() => {});
+
+  return jsonResponse({ ok: true, deletedAt }, 200, origin, methods, null, noStoreHeaders());
+}
+
+function validateVideoLiveUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(normalizeLeadValue(value));
+  } catch (_error) {
+    throw new Error('Enter the full link to the case video, starting with https://');
+  }
+  if (parsed.protocol !== 'https:' || !VIDEO_LINK_HOSTS.has(parsed.hostname.toLowerCase())) {
+    throw new Error('The link must be a planeir.ie case page or a YouTube video.');
+  }
+  return parsed.toString();
+}
+
+/** POST /api/advisor/leads/:id/video-live-email — tell the applicant their video is up. */
+async function handleAdvisorLeadVideoLiveEmail(request, env, origin, leadId) {
+  const methods = 'POST,OPTIONS';
+  const advisorAccess = await requireAdvisorSession(request, env, origin, methods, {
+    requireCsrf: true
+  });
+  if (advisorAccess.response) {
+    return advisorAccess.response;
+  }
+
+  const lead = await getLeadRow(env, leadId);
+  if (!lead) {
+    return jsonResponse({ error: 'Lead not found.' }, 404, origin, methods, null, noStoreHeaders());
+  }
+
+  let body;
+  try {
+    body = await parseJsonBody(request);
+  } catch (_error) {
+    return jsonResponse({ error: 'Invalid JSON body.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  let videoUrl;
+  try {
+    videoUrl = validateVideoLiveUrl(body?.url);
+  } catch (error) {
+    return jsonResponse({ error: error.message }, 400, origin, methods, null, noStoreHeaders());
+  }
+
+  const config = getLeadEmailConfig(env);
+  if (!config.apiKey || !config.from) {
+    return jsonResponse({ error: 'Email is not configured. Set RESEND_API_KEY and LEAD_EMAIL_FROM.' }, 500, origin, methods, null, noStoreHeaders());
+  }
+
+  try {
+    await sendEmailWithResend(config, {
+      from: config.from,
+      to: [lead.email],
+      subject: 'Your Planeir case video is live',
+      html: buildVideoLiveHtml(lead, videoUrl),
+      text: buildVideoLiveText(lead, videoUrl),
+      reply_to: config.replyTo || undefined
+    }, buildEmailIdempotencyKey(leadId, '', `video-live-${shortTextHash(videoUrl)}`));
+  } catch (error) {
+    console.error('Video live email failed', {
+      leadId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return jsonResponse({ error: 'The email could not be sent. Try again shortly.' }, 502, origin, methods, null, noStoreHeaders());
+  }
+
+  const updatedAt = nowIso();
+  await getPublishedSessionsDb(env).prepare(`
+    UPDATE leads SET status = 'video-live', updated_at = ? WHERE id = ?
+  `).bind(updatedAt, leadId).run();
+  await insertLeadEvent(env, leadId, 'advisor', 'video-live-email-sent', { url: videoUrl, previousStatus: lead.status }).catch(() => {});
+
+  const updatedLead = await getLeadRow(env, leadId);
+  const events = await listLeadEvents(env, leadId).catch(() => []);
+  return jsonResponse({
+    ok: true,
+    lead: buildLeadManagerDetail(updatedLead, events)
+  }, 200, origin, methods, null, noStoreHeaders());
+}
+
+/**
+ * Keep an application's figures for 12 months unless the case was picked.
+ * The lead row and its question stay; only the encrypted figures go.
+ */
+async function purgeExpiredApplicationPayloads(env, options = {}) {
+  const db = getPublishedSessionsDb(env);
+  const now = options.now ? new Date(options.now) : new Date();
+  const cutoff = new Date(now.getTime() - APPLICATION_RETENTION_MS).toISOString();
+  const placeholders = APPLICATION_RETAINED_STATUSES.map(() => '?').join(', ');
+  const result = await db.prepare(`
+    SELECT id
+    FROM leads
+    WHERE application_payload_encrypted IS NOT NULL
+      AND created_at < ?
+      AND status NOT IN (${placeholders})
+    ORDER BY created_at
+    LIMIT ?
+  `).bind(cutoff, ...APPLICATION_RETAINED_STATUSES, APPLICATION_PURGE_BATCH).all();
+  const rows = Array.isArray(result?.results) ? result.results : [];
+  let purged = 0;
+  for (const row of rows) {
+    const deletedAt = now.toISOString();
+    await db.prepare(`
+      UPDATE leads
+      SET application_payload_encrypted = NULL,
+          application_deleted_at = COALESCE(application_deleted_at, ?),
+          updated_at = ?
+      WHERE id = ? AND application_payload_encrypted IS NOT NULL
+    `).bind(deletedAt, deletedAt, row.id).run();
+    await insertLeadEvent(env, row.id, 'system', 'application-expired', { retainedUntil: cutoff }).catch(() => {});
+    purged += 1;
+  }
+  return { checked: rows.length, purged };
+}
+
 async function handleGetSession(request, env, origin, sessionId) {
   const clientIp = request.headers.get('CF-Connecting-IP') || request.headers.get('x-forwarded-for') || 'unknown';
   if (!checkRateLimit(clientIp)) {
@@ -7538,6 +8325,17 @@ export default {
         });
       })
     );
+    ctx.waitUntil(
+      purgeExpiredApplicationPayloads(env).then((result) => {
+        if (result.purged > 0) {
+          console.log('Expired application figures removed', result);
+        }
+      }).catch((error) => {
+        console.error('Application retention cleanup failed', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      })
+    );
     if (env.CONSUMER_DB) {
       ctx.waitUntil(
         import('./consumer/router.js').then(({ cleanupExpiredConsumerSessions }) => (
@@ -7705,6 +8503,10 @@ export default {
       return handleLeadSubmit(request, env, origin, ctx);
     }
 
+    if (request.method === 'POST' && pathname === '/api/applications') {
+      return handleApplicationSubmit(request, env, origin, ctx);
+    }
+
     if (request.method === 'GET' && pathname === '/api/leads/schedule-response') {
       return handleLeadScheduleResponse(request, env);
     }
@@ -7837,6 +8639,30 @@ export default {
       }
 
       return handleSendLeadScheduleEmail(request, env, origin, leadId);
+    }
+
+    const advisorLeadApplicationMatch = /^\/api\/advisor\/leads\/(\d+)\/application$/.exec(pathname);
+    if ((request.method === 'GET' || request.method === 'DELETE') && advisorLeadApplicationMatch) {
+      const leadId = validateLeadId(advisorLeadApplicationMatch[1]);
+      if (!leadId) {
+        return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'GET,DELETE,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      if (request.method === 'GET') {
+        return handleAdvisorLeadApplication(request, env, origin, leadId);
+      }
+
+      return handleAdvisorLeadApplicationDelete(request, env, origin, leadId);
+    }
+
+    const advisorLeadVideoLiveMatch = /^\/api\/advisor\/leads\/(\d+)\/video-live-email$/.exec(pathname);
+    if (request.method === 'POST' && advisorLeadVideoLiveMatch) {
+      const leadId = validateLeadId(advisorLeadVideoLiveMatch[1]);
+      if (!leadId) {
+        return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'POST,OPTIONS', requestHeaders, noStoreHeaders());
+      }
+
+      return handleAdvisorLeadVideoLiveEmail(request, env, origin, leadId);
     }
 
     const advisorLeadMatch = /^\/api\/advisor\/leads\/(\d+)$/.exec(pathname);

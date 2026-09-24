@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Apply for a Planeir case video. Tell Gerry Boylan about your situation, with your own figures, and he may explain it in a short education video. Your name is not shown. Education only, not financial advice."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://planeir.ie/apply/" />
+    <meta property="og:site_name" content="Planeir" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://planeir.ie/apply/" />
+    <meta property="og:title" content="Apply for a case video | Planeir" />
+    <meta
+      property="og:description"
+      content="Tell Gerry about your situation with your own figures. He picks some applications to explain in short education videos."
+    />
+    <meta property="og:image" content="https://planeir.ie/assets/brand/planeir-social-card-newgrange.png" />
+    <meta property="og:locale" content="en_IE" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Apply for a case video | Planeir</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles/landing.css" />
+    <link rel="stylesheet" href="../styles/success_takeover.css" />
+    <link rel="stylesheet" href="../styles/apply.css" />
+  </head>
+  <body>
+    <div class="landing-shell">
+      <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+      <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
+      <div class="landing-grid" aria-hidden="true"></div>
+
+      <header class="site-header">
+        <a class="site-brand" href="../" aria-label="Planeir home">
+          <span class="site-brand-logo-wrap" aria-hidden="true">
+            <img
+              class="site-brand-logo"
+              src="../assets/brand/planeir-lockup-light.svg"
+              alt="Planeir logo"
+              width="1330"
+              height="384"
+              decoding="async"
+            />
+          </span>
+        </a>
+        <nav class="site-header-actions" aria-label="Site">
+          <a class="site-nav-admin-login" href="../cases/">Watch the cases</a>
+        </nav>
+      </header>
+
+      <main class="apply-main">
+        <section class="apply-intro">
+          <p class="section-eyebrow">Apply for a case video</p>
+          <h1 class="apply-title">Tell Gerry about your situation.</h1>
+          <p class="apply-lede">
+            Gerry reads every application and picks some to explain in a short video, using the real
+            figures. Fill in what you can. Skip anything you don't know. Round figures are fine.
+          </p>
+          <ul class="request-reassurance-list" aria-label="About applying">
+            <li>Free to apply</li>
+            <li>Your name is not shown</li>
+            <li>Education only</li>
+            <li>About 10 minutes</li>
+          </ul>
+        </section>
+
+        <noscript>
+          <p class="apply-noscript">
+            This form needs JavaScript. You can also email your situation to
+            <a class="inline-link" href="mailto:hello@planeir.ie">hello@planeir.ie</a>.
+          </p>
+        </noscript>
+
+        <div class="apply-layout">
+          <form id="applyForm" class="apply-form" novalidate>
+            <section class="apply-card apply-topics" role="group" aria-labelledby="applyTopicsTitle">
+              <h2 id="applyTopicsTitle" class="apply-card-title">What would you like help with?</h2>
+              <p class="apply-card-intro">Pick one or more. The questions below change to match.</p>
+              <div id="applyTopics" class="apply-chip-row"></div>
+            </section>
+
+            <section class="apply-card apply-tohand" aria-labelledby="applyToHandTitle">
+              <h2 id="applyToHandTitle" class="apply-card-title">Have these to hand</h2>
+              <ul id="applyToHand" class="apply-tohand-list"></ul>
+              <p class="apply-card-intro">Estimates are fine. You can leave anything blank.</p>
+            </section>
+
+            <div id="applySections" class="apply-sections"></div>
+
+            <section id="applyAddMore" class="apply-addmore" aria-label="Add more sections" hidden>
+              <p class="apply-addmore-label">Add more:</p>
+              <div id="applyAddMoreButtons" class="apply-chip-row"></div>
+            </section>
+
+            <div id="applyExtra" class="apply-sections"></div>
+
+            <section class="apply-card apply-preview" aria-labelledby="applyPreviewTitle">
+              <div class="apply-section-head">
+                <h2 id="applyPreviewTitle" class="apply-card-title">How your case reads</h2>
+                <span id="applyPreviewCount" class="apply-section-count"></span>
+              </div>
+              <p class="apply-card-intro">This is what Gerry will read. Totals are worked out from your figures.</p>
+              <div id="applyPreview" class="apply-preview-body" aria-live="off"></div>
+            </section>
+
+            <section class="apply-card apply-details" aria-labelledby="applyDetailsTitle">
+              <h2 id="applyDetailsTitle" class="apply-card-title">Your details</h2>
+              <div class="apply-pair">
+                <label class="field">
+                  <span>Name <em>(a first name is fine)</em></span>
+                  <input id="applyName" name="fullName" type="text" autocomplete="given-name" maxlength="120" required />
+                </label>
+                <label class="field">
+                  <span>Email</span>
+                  <input id="applyEmail" name="email" type="email" autocomplete="email" maxlength="160" required />
+                </label>
+              </div>
+              <label class="apply-honeypot" aria-hidden="true">
+                Website
+                <input id="applyWebsite" name="website" type="text" tabindex="-1" autocomplete="off" />
+              </label>
+              <div class="consent-grid">
+                <label class="consent-check">
+                  <input id="applyConsentVideo" name="consentVideo" type="checkbox" required />
+                  <span>I understand Gerry may use my situation in a video published online, with my name removed, and that I will be emailed when it is live.</span>
+                </label>
+                <label class="consent-check">
+                  <input id="applyConsentEducation" name="consentEducation" type="checkbox" required />
+                  <span>I understand Planeir is education only. It is not financial advice and does not recommend products.</span>
+                </label>
+              </div>
+              <p class="form-privacy">
+                Please do not include PPS numbers, account numbers, your address or copies of documents.
+                Read how your application is handled in the
+                <a class="inline-link" href="../privacy/">privacy notice</a>.
+              </p>
+            </section>
+
+            <div id="applyStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
+
+            <button id="applySubmit" class="button button-primary button-submit" type="submit">
+              Send my application
+            </button>
+
+            <p class="apply-saved-note">
+              <span id="applySavedNote">Your answers are saved on this device until you send them.</span>
+              <button id="applyClear" class="apply-link-button" type="button">Clear form</button>
+            </p>
+          </form>
+
+          <aside class="apply-rail" aria-label="Your progress">
+            <nav class="apply-card apply-progress" aria-labelledby="applyProgressTitle">
+              <h2 id="applyProgressTitle" class="apply-card-title">Your answers</h2>
+              <ol id="applyProgress" class="apply-progress-list"></ol>
+            </nav>
+          </aside>
+        </div>
+
+        <section id="applyDone" class="apply-card apply-done" tabindex="-1" hidden>
+          <p class="section-eyebrow">Application sent</p>
+          <h2 class="apply-title">Thanks, your application is in.</h2>
+          <p class="apply-lede">
+            Gerry reads every application. If yours is picked, he will email you when the video is
+            live. We have also sent you an email to confirm we received it.
+          </p>
+          <a class="button button-primary" href="../cases/">Watch the cases</a>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <p class="site-footer-note">
+          Planeir is educational only, not regulated financial advice.
+          <a href="../privacy/">Privacy</a> ·
+          <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
+        </p>
+      </footer>
+
+      <div id="leadSuccessOverlay" class="lead-success-overlay" aria-hidden="true">
+        <div class="lead-success-stage">
+          <div id="leadSuccessTarget" class="lead-success-lockup" aria-hidden="true">
+            <div class="lead-success-wordmark-shell"></div>
+          </div>
+          <div id="leadSuccessCopy" class="lead-success-copy" role="status" aria-live="polite">
+            <h2 class="lead-success-title">Thanks, your application is in.</h2>
+            <p class="lead-success-body">Gerry reads every application.</p>
+          </div>
+        </div>
+        <div class="lead-success-timer" aria-hidden="true">
+          <span class="lead-success-timer-bar"></span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      window.__WORKER_BASE_URL = "https://api.planeir.ie";
+    </script>
+    <script type="module" src="../js/apply.js"></script>
+  </body>
+</html>

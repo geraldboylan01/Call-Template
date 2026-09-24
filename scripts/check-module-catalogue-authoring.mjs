@@ -452,8 +452,9 @@ assert.doesNotMatch(JSON.stringify(genericFailure.payload), /sensitive sqlite/i)
 // in filename order, matching consumer-regression.yml.
 const databasePath = join(temporaryDirectory, 'after-0016.sqlite');
 const migrationFiles = replayMigrations(databasePath);
-assert.equal(migrationFiles.at(-1), '0016_create_module_catalogue_drafts.sql');
-assert.equal(migrationFiles.length, 16);
+assert.ok(migrationFiles.includes('0016_create_module_catalogue_drafts.sql'));
+assert.equal(migrationFiles.at(-1), '0017_add_case_applications.sql');
+assert.equal(migrationFiles.length, 17);
 const authoringMigrationSource = readFileSync(
   resolve(root, 'worker/migrations/0016_create_module_catalogue_drafts.sql'),
   'utf8'

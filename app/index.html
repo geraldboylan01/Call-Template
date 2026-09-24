@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="../styles/base.css" />
     <link rel="stylesheet" href="../styles/success_takeover.css" />
     <script type="module" src="../js/brand_header.js"></script>
+    <link rel="stylesheet" href="../styles/presenter.css" />
   </head>
   <body class="advisor-gate-pending">
     <div id="app">
@@ -188,12 +189,16 @@
               id="devPayloadInput"
               class="dev-textarea"
               spellcheck="false"
-              placeholder="{&quot;title&quot;:&quot;Updated module title&quot;,&quot;generated&quot;:{...}}"
+              placeholder="One payload, or several for Add All Modules: [{...},{...}], {&quot;modules&quot;:[...]}, or one after another"
             ></textarea>
           </div>
           <div class="dev-panel-actions">
             <button id="devApplyBtn" class="ui-button" type="button">Apply to Active Module</button>
             <button id="devCreateApplyBtn" class="ui-button" type="button">Create New Module + Apply</button>
+            <button id="devApplyAllBtn" class="ui-button" type="button">Add All Modules</button>
+            <button id="devNewCallFromPackBtn" class="ui-button" type="button">Start New Call From Pack</button>
+            <button id="devLoadPackFileBtn" class="ui-button" type="button">Load case pack file</button>
+            <input id="devPackFileInput" class="dev-file-input" type="file" accept=".json,application/json" hidden />
             <button id="devClearBtn" class="ui-button" type="button">Clear</button>
           </div>
         </aside>

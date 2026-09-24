@@ -23,7 +23,7 @@ import {
   validateOutputsBucketedPayload,
   validateOutputsBucketedScenariosPayload
 } from '../js/outputs_bucketed_contract.js';
-import { normalizePensionInputs } from '../js/pension_math.js';
+import { computePensionProjection, normalizePensionInputs } from '../js/pension_math.js';
 import { applyProfilePatch, createHouseholdProfile, runPlanningModule } from '../js/planning/index.js';
 import { buildPublishedSessionFromCall, canPublishModule } from '../js/planning/session_payload.js';
 import { MAX_MODULE_SCENARIO_CASES, MAX_PBS_SCENARIO_ALTERNATIVES } from '../js/scenario_cap.js';
@@ -309,6 +309,85 @@ check('four rental income cases normalise',
 checkThrows('a fifth rental income case is rejected',
   () => normalizePensionInputs({ ...pensionExample.pensionInputs, baseScenarioId: 'rental-case-1', rentalIncomeScenarios: rentalCases(5) }),
   /generated\.pensionInputs\.rentalIncomeScenarios supports at most 4 cases; received 5\./);
+
+// Retirement cases change more than rent -- an age, a contribution, a pot --
+// so the cap, the case names and the round trip all have to hold for them too.
+const RETIREMENT_CASE_INPUTS = {
+  currentAge: 50,
+  retirementAge: 62,
+  currentSalary: 90_000,
+  currentPot: 400_000,
+  personalPct: 0.05,
+  employerPct: 0.06,
+  growthRate: 0.05,
+  inflationRate: 0.02,
+  wageGrowthRate: 0.02,
+  horizonEndAge: 92,
+  currentYear: 2026,
+  incomeMode: 'target',
+  targetIncomeToday: 45_000,
+  baseScenarioId: 'retirement-case-1'
+};
+const retirementCases = (count) => casesOf(count, (index) => ({
+  id: `retirement-case-${index + 1}`, title: `Retirement case ${index + 1}`, retirementAge: 60 + index
+}));
+check('four retirement cases normalise',
+  normalizePensionInputs({ ...RETIREMENT_CASE_INPUTS, scenarios: retirementCases(MAX_MODULE_SCENARIO_CASES) })
+    .scenarios.length === MAX_MODULE_SCENARIO_CASES);
+checkThrows('a fifth retirement case is rejected',
+  () => normalizePensionInputs({ ...RETIREMENT_CASE_INPUTS, scenarios: retirementCases(5) }),
+  /generated\.pensionInputs\.scenarios supports at most 4 cases; received 5\./);
+checkThrows('a retirement payload cannot carry both case lists',
+  () => normalizePensionInputs({
+    ...RETIREMENT_CASE_INPUTS,
+    scenarios: retirementCases(2),
+    rentalIncomeScenarios: rentalCases(2)
+  }),
+  /must use scenarios or rentalIncomeScenarios, not both\./);
+
+// THE SAME SILENT FAILURE THE MORTGAGE CASES HAVE. The engine nests a case's
+// changes under `overrides`, and a session importer that does not carry those
+// keys drops them on load: four buttons, four identical retirement ages.
+{
+  const stored = normalizePensionInputs({
+    ...RETIREMENT_CASE_INPUTS,
+    scenarios: retirementCases(MAX_MODULE_SCENARIO_CASES)
+  });
+  const requiredPots = (inputs) => stored.scenarios
+    .map((scenario) => Math.round(computePensionProjection(inputs, { scenarioId: scenario.id }).debug.requiredPot));
+  const before = requiredPots(stored);
+  check('the retirement cases need different pots to begin with', new Set(before).size > 1);
+
+  const reopened = importPublishedSession({
+    ...session,
+    modules: [{ ...session.modules[0], id: 'module-retirement-cases', generated: { pensionInputs: stored } }]
+  });
+  drainSessionImportWarnings();
+  const reloaded = reopened.modules[0].generated.pensionInputs;
+  check('a reopened session still carries every retirement case',
+    reloaded.scenarios.length === MAX_MODULE_SCENARIO_CASES);
+  check('and the case that each one is measured against',
+    reloaded.baseScenarioId === 'retirement-case-1');
+  check('and each case still needs the pot it did before publishing',
+    JSON.stringify(requiredPots(reloaded)) === JSON.stringify(before));
+}
+
+// Over the cap on the way back out is tolerated, not thrown.
+{
+  const overCap = {
+    ...normalizePensionInputs({ ...RETIREMENT_CASE_INPUTS, scenarios: retirementCases(MAX_MODULE_SCENARIO_CASES) })
+  };
+  overCap.scenarios = [...overCap.scenarios, { id: 'retirement-case-5', title: 'Fifth', description: '', overrides: {} }];
+  const reopened = importPublishedSession({
+    ...session,
+    modules: [{ ...session.modules[0], id: 'module-retirement-over-cap', generated: { pensionInputs: overCap } }]
+  });
+  const warnings = drainSessionImportWarnings();
+  check('an over-cap retirement session opens, capped rather than refused',
+    reopened.modules[0].generated.pensionInputs.scenarios.length === MAX_MODULE_SCENARIO_CASES);
+  check('and says so',
+    warnings.some((warning) => /pensionInputs\.scenarios carried 5 cases/.test(warning)));
+}
 
 const netRetirementExample = exampleGenerated((generated) => generated.netRetirementInputs?.scenarios);
 const netCases = (count) => casesOf(count, (index) => ({

@@ -8,6 +8,13 @@ import {
   exportSession,
   importPublishedSession
 } from './state.js';
+import {
+  applicationToMarkdown,
+  applicationToSections,
+  applicationToText,
+  toPublicCase,
+  topicLabels
+} from './case_application/index.js';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -109,6 +116,17 @@ const ui = {
   clientResetAccessButton: document.getElementById('clientResetAccessBtn'),
   clientRevokeAccessButton: document.getElementById('clientRevokeAccessBtn'),
   clientTimeline: document.getElementById('clientTimeline'),
+  clientApplicationSection: document.getElementById('clientApplicationSection'),
+  clientApplicationStatus: document.getElementById('clientApplicationStatus'),
+  clientApplicationMeta: document.getElementById('clientApplicationMeta'),
+  clientApplicationBody: document.getElementById('clientApplicationBody'),
+  clientApplicationCopyTextButton: document.getElementById('clientApplicationCopyTextBtn'),
+  clientApplicationDownloadMdButton: document.getElementById('clientApplicationDownloadMdBtn'),
+  clientApplicationDownloadJsonButton: document.getElementById('clientApplicationDownloadJsonBtn'),
+  clientApplicationCopyPublicButton: document.getElementById('clientApplicationCopyPublicBtn'),
+  clientVideoLiveUrl: document.getElementById('clientVideoLiveUrl'),
+  clientVideoLiveEmailButton: document.getElementById('clientVideoLiveEmailBtn'),
+  clientApplicationDeleteButton: document.getElementById('clientApplicationDeleteBtn'),
   advisorAuthLayer: document.getElementById('advisorAuthLayer'),
   advisorAuthPasswordInput: document.getElementById('advisorAuthPasswordInput'),
   advisorAuthLoginButton: document.getElementById('advisorAuthLoginBtn'),
@@ -138,7 +156,11 @@ const state = {
   publishedRequestId: 0,
   searchTimer: 0,
   actionBusy: false,
-  lastGeneratedMessage: ''
+  lastGeneratedMessage: '',
+  // The application figures for the selected lead, fetched separately from the
+  // client detail so the list and detail payloads never carry them.
+  application: { leadId: '', payload: null, loading: false, error: '' },
+  applicationRequestId: 0
 };
 
 const advisorAuthState = {
@@ -788,6 +810,247 @@ function renderLeadWorkflow() {
     state.lastGeneratedMessage = buildDefaultScheduleMessage(lead);
     ui.clientScheduleMessage.value = lead?.scheduledMessage || state.lastGeneratedMessage;
   }
+
+  renderApplication();
+  void loadSelectedApplication();
+}
+
+/* ---------- case applications (/apply/) ---------- */
+
+const APPLICATION_STATUSES = [
+  ['new', 'New'],
+  ['reviewing', 'Reviewing'],
+  ['picked', 'Picked'],
+  ['video-live', 'Video live'],
+  ['closed', 'Closed']
+];
+
+function getSelectedApplicationLead() {
+  const lead = getSelectedLead();
+  return lead?.isApplication ? lead : null;
+}
+
+function getSelectedApplication() {
+  const lead = getSelectedApplicationLead();
+  if (!lead || state.application.leadId !== String(lead.id)) {
+    return null;
+  }
+  return state.application.payload?.application || null;
+}
+
+function resetApplicationState() {
+  state.application = { leadId: '', payload: null, loading: false, error: '' };
+}
+
+async function fetchLeadApplication(leadId) {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/leads/${encodeURIComponent(leadId)}/application`, {
+    method: 'GET',
+    cache: 'no-store'
+  }, {
+    authPrompt: 'Sign in to read applications.'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Could not load the application (${response.status}).`);
+  }
+  return payload;
+}
+
+async function loadSelectedApplication({ force = false } = {}) {
+  const lead = getSelectedApplicationLead();
+  if (!lead) {
+    resetApplicationState();
+    renderApplication();
+    return;
+  }
+
+  const leadId = String(lead.id);
+  if (!force && state.application.leadId === leadId && (state.application.payload || state.application.loading)) {
+    renderApplication();
+    return;
+  }
+
+  const requestId = ++state.applicationRequestId;
+  state.application = { leadId, payload: null, loading: true, error: '' };
+  renderApplication();
+  try {
+    const payload = await fetchLeadApplication(leadId);
+    if (requestId !== state.applicationRequestId) return;
+    state.application = { leadId, payload, loading: false, error: '' };
+  } catch (error) {
+    if (requestId !== state.applicationRequestId) return;
+    state.application = { leadId, payload: null, loading: false, error: error?.message || 'Could not load the application.' };
+  }
+  renderApplication();
+  updateActionState();
+}
+
+function applicationLineNode(section, line) {
+  const item = document.createElement('li');
+  if (section.id === 'question' && line.label === 'Question') {
+    item.className = 'client-application-question';
+    item.textContent = line.value;
+    return item;
+  }
+  const label = document.createElement('span');
+  label.className = 'client-application-label';
+  label.textContent = Array.isArray(line.items) ? line.label : `${line.label}: `;
+  item.appendChild(label);
+  if (Array.isArray(line.items)) {
+    const list = document.createElement('ul');
+    line.items.forEach((entry) => list.appendChild(applicationLineNode({ id: '' }, entry)));
+    item.appendChild(list);
+    return item;
+  }
+  const value = document.createElement('span');
+  value.textContent = line.value;
+  if (line.value === 'not sure') value.className = 'client-application-unsure';
+  item.appendChild(value);
+  return item;
+}
+
+function renderApplication() {
+  const lead = getSelectedApplicationLead();
+  if (!ui.clientApplicationSection) {
+    return;
+  }
+  ui.clientApplicationSection.hidden = !lead;
+  if (!lead) {
+    return;
+  }
+
+  if (ui.clientApplicationStatus) {
+    ui.clientApplicationStatus.innerHTML = '';
+    const statuses = APPLICATION_STATUSES.some(([value]) => value === lead.status)
+      ? APPLICATION_STATUSES
+      : [...APPLICATION_STATUSES, [lead.status, lead.statusLabel || lead.status]];
+    statuses.forEach(([value, label]) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      ui.clientApplicationStatus.appendChild(option);
+    });
+    ui.clientApplicationStatus.value = lead.status;
+  }
+
+  const { payload, loading, error } = state.application;
+  const topics = (payload?.topics || lead.applicationTopics || []).length > 0
+    ? topicLabels({ topics: payload?.topics || lead.applicationTopics }).join(', ')
+    : 'No topic chosen';
+  if (ui.clientApplicationMeta) {
+    ui.clientApplicationMeta.textContent = [
+      `Submitted ${formatDateTime(lead.createdAt, 'unknown')}`,
+      topics,
+      `${payload?.answeredCount ?? lead.applicationAnsweredCount ?? 0} answers`
+    ].join(' · ');
+  }
+
+  const body = ui.clientApplicationBody;
+  if (!body) {
+    return;
+  }
+  body.innerHTML = '';
+  const note = (text) => {
+    const paragraph = document.createElement('p');
+    paragraph.className = 'client-application-meta';
+    paragraph.textContent = text;
+    body.appendChild(paragraph);
+  };
+
+  if (loading) {
+    note('Loading the application...');
+    return;
+  }
+  if (error) {
+    note(error);
+    return;
+  }
+  if (payload && !payload.application) {
+    note(`The figures were deleted${payload.deletedAt ? ` on ${formatDateTime(payload.deletedAt)}` : ''}. The question is still shown in Meeting below.`);
+    return;
+  }
+  const application = getSelectedApplication();
+  if (!application) {
+    return;
+  }
+
+  applicationToSections(application).forEach((section) => {
+    const block = document.createElement('div');
+    const heading = document.createElement('h4');
+    heading.textContent = section.title;
+    const list = document.createElement('ul');
+    section.lines.forEach((line) => list.appendChild(applicationLineNode(section, line)));
+    block.append(heading, list);
+    body.appendChild(block);
+  });
+}
+
+function downloadText(filename, text, type = 'text/plain') {
+  const blob = new Blob([text], { type: `${type};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * case.md takes the place of forum.md in the presenter workflow, and is what
+ * gets pasted into ChatGPT or Codex. It is headed by the lead number and the
+ * name the person chose for the video, never their real name.
+ */
+function applicationMarkdownHeading(lead, application) {
+  const videoName = String(application?.videoName || '').trim();
+  return `Application ${lead.id}${videoName ? ` (${videoName})` : ''}`;
+}
+
+async function patchLeadStatus(leadId, status) {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/leads/${encodeURIComponent(leadId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to update applications.'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Could not update the status (${response.status}).`);
+  }
+  return payload;
+}
+
+async function sendVideoLiveEmail(leadId, url) {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/leads/${encodeURIComponent(leadId)}/video-live-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url })
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to send emails.'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Could not send the email (${response.status}).`);
+  }
+  return payload;
+}
+
+async function deleteLeadApplication(leadId) {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/leads/${encodeURIComponent(leadId)}/application`, {
+    method: 'DELETE'
+  }, {
+    includeCsrf: true,
+    authPrompt: 'Sign in to delete applications.'
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Could not delete the application (${response.status}).`);
+  }
+  return payload;
 }
 
 function renderPublishedWorkflow() {
@@ -886,6 +1149,26 @@ function updateActionState() {
   }
   if (ui.clientRevokeAccessButton) {
     ui.clientRevokeAccessButton.disabled = busy || !recoveryReady || session?.status !== 'active';
+  }
+
+  const applicationLead = getSelectedApplicationLead();
+  const application = getSelectedApplication();
+  [
+    ui.clientApplicationCopyTextButton,
+    ui.clientApplicationDownloadMdButton,
+    ui.clientApplicationDownloadJsonButton,
+    ui.clientApplicationCopyPublicButton
+  ].forEach((button) => {
+    if (button) button.disabled = busy || !application;
+  });
+  if (ui.clientApplicationStatus) {
+    ui.clientApplicationStatus.disabled = busy || !applicationLead;
+  }
+  if (ui.clientVideoLiveEmailButton) {
+    ui.clientVideoLiveEmailButton.disabled = busy || !applicationLead;
+  }
+  if (ui.clientApplicationDeleteButton) {
+    ui.clientApplicationDeleteButton.disabled = busy || !application;
   }
 }
 
@@ -1646,6 +1929,84 @@ function bindEvents() {
       }
       await revokePublishedSession(session);
       showToast('Client access revoked.');
+      await refreshSelectedClient();
+    });
+  });
+
+  ui.clientApplicationStatus?.addEventListener('change', async () => {
+    const lead = getSelectedApplicationLead();
+    const status = String(ui.clientApplicationStatus.value || '');
+    if (!lead || !status || status === lead.status) {
+      return;
+    }
+    await runClientAction(async () => {
+      await patchLeadStatus(lead.id, status);
+      showToast('Application status updated.');
+      await refreshSelectedClient();
+    });
+  });
+
+  ui.clientApplicationCopyTextButton?.addEventListener('click', async () => {
+    const application = getSelectedApplication();
+    if (!application) return;
+    const copied = await copyToClipboard(applicationToText(application)).catch(() => false);
+    showToast(copied ? 'Application copied as text.' : 'Could not copy the application.', copied ? 'success' : 'error');
+  });
+
+  ui.clientApplicationDownloadMdButton?.addEventListener('click', () => {
+    const lead = getSelectedApplicationLead();
+    const application = getSelectedApplication();
+    if (!lead || !application) return;
+    downloadText(`case-${lead.id}.md`, applicationToMarkdown(application, {
+      heading: applicationMarkdownHeading(lead, application),
+      submittedAt: formatDateTime(lead.createdAt, '')
+    }), 'text/markdown');
+  });
+
+  ui.clientApplicationDownloadJsonButton?.addEventListener('click', () => {
+    const lead = getSelectedApplicationLead();
+    const application = getSelectedApplication();
+    if (!lead || !application) return;
+    downloadText(`case-${lead.id}.json`, `${JSON.stringify(application, null, 2)}\n`, 'application/json');
+  });
+
+  ui.clientApplicationCopyPublicButton?.addEventListener('click', async () => {
+    const application = getSelectedApplication();
+    if (!application) return;
+    const publicCase = toPublicCase(application, { publishedDate: new Date().toISOString().slice(0, 10) });
+    const copied = await copyToClipboard(`${JSON.stringify(publicCase, null, 2)}\n`).catch(() => false);
+    showToast(copied ? `Public case JSON copied. Save it as content/cases/${publicCase.slug}.json.` : 'Could not copy the public case.', copied ? 'success' : 'error');
+  });
+
+  ui.clientVideoLiveEmailButton?.addEventListener('click', async () => {
+    const lead = getSelectedApplicationLead();
+    const url = String(ui.clientVideoLiveUrl?.value || '').trim();
+    if (!lead) return;
+    if (!url) {
+      setActionError('Enter the case video link first.');
+      ui.clientVideoLiveUrl?.focus();
+      return;
+    }
+    if (!window.confirm(`Email ${lead.email} to say their case video is live?`)) {
+      return;
+    }
+    await runClientAction(async () => {
+      await sendVideoLiveEmail(lead.id, url);
+      showToast('Video live email sent.');
+      await refreshSelectedClient();
+    });
+  });
+
+  ui.clientApplicationDeleteButton?.addEventListener('click', async () => {
+    const lead = getSelectedApplicationLead();
+    if (!lead || !getSelectedApplication()) return;
+    if (!window.confirm('Delete the figures in this application? This cannot be undone. The name, email and question stay in the pipeline.')) {
+      return;
+    }
+    await runClientAction(async () => {
+      await deleteLeadApplication(lead.id);
+      resetApplicationState();
+      showToast('Application figures deleted.');
       await refreshSelectedClient();
     });
   });
