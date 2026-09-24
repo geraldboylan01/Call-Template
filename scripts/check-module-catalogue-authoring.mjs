@@ -453,8 +453,8 @@ assert.doesNotMatch(JSON.stringify(genericFailure.payload), /sensitive sqlite/i)
 const databasePath = join(temporaryDirectory, 'after-0016.sqlite');
 const migrationFiles = replayMigrations(databasePath);
 assert.ok(migrationFiles.includes('0016_create_module_catalogue_drafts.sql'));
-assert.equal(migrationFiles.at(-1), '0017_add_case_applications.sql');
-assert.equal(migrationFiles.length, 17);
+assert.equal(migrationFiles.at(-1), '0018_add_agent_application_requests.sql');
+assert.equal(migrationFiles.length, 18);
 const authoringMigrationSource = readFileSync(
   resolve(root, 'worker/migrations/0016_create_module_catalogue_drafts.sql'),
   'utf8'

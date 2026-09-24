@@ -1,0 +1,967 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Planeir case video applications",
+    "version": "1.0.0",
+    "description": "Apply, on a person’s behalf and with their agreement, for a free Planeir case video. Gerry Boylan, a Qualified Financial Adviser in Ireland, reads every application and explains some in short education videos, with names left out and figures rounded. Planeir is financial education, not financial advice, and does not recommend products. Nothing reaches Gerry until the person confirms from an email. Guide: https://planeir.ie/for-ai-assistants/",
+    "contact": {
+      "email": "hello@planeir.ie",
+      "url": "https://planeir.ie/for-ai-assistants/"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.planeir.ie"
+    }
+  ],
+  "paths": {
+    "/api/agent/applications/check": {
+      "post": {
+        "operationId": "checkCaseApplication",
+        "summary": "Check an application before sending it",
+        "description": "Returns how the application will read to Gerry, anything that could not be used, and questions that would still help. Stores nothing and sends no email.",
+        "x-openai-isConsequential": false,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "How the application reads.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request could not be read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests. Try again later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/applications": {
+      "post": {
+        "operationId": "sendCaseApplication",
+        "summary": "Send an application for the person to confirm",
+        "description": "Only after the person has agreed. Planeir emails them a link to check and confirm; nothing reaches Gerry until they do. The link lasts 7 days.",
+        "x-openai-isConsequential": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Waiting for the person to confirm by email.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Something required is missing, such as consent, the email address or the question.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many applications for this email address or from this connection today.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Applications are not open right now.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Application": {
+        "title": "Planeir case video application",
+        "description": "The application format planeir.application.v1. Only \"question\" is required. Leave out anything the person does not know, or list its path in \"unsure\". Use plain numbers for money (35000), percentages (4.2) and years (22). Planeir is financial education from Gerry Boylan, a Qualified Financial Adviser in Ireland. It is not financial advice.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question"
+        ],
+        "properties": {
+          "topics": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "retirement",
+                "mortgage",
+                "buying",
+                "education",
+                "loans",
+                "savings",
+                "whole",
+                "other"
+              ]
+            },
+            "description": "What the person wants help with. \"retirement\" = Retirement and pensions, \"mortgage\" = My mortgage, \"buying\" = Buying a home, \"education\" = Children’s education, \"loans\" = Loans and credit cards, \"savings\" = Savings and a rainy day fund, \"whole\" = The whole picture, \"other\" = Something else."
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "What do you want to understand. For example: should we overpay the mortgage or pay more into our pensions?. Text, up to 2000 characters. Never published.",
+            "minLength": 1
+          },
+          "upcoming": {
+            "type": "string",
+            "maxLength": 600,
+            "description": "Is anything coming up, and when. For example: our fixed rate ends in March. Text, up to 600 characters. Never published."
+          },
+          "household": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Ages and household.",
+            "properties": {
+              "age": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 100,
+                "description": "Your age. A whole number from 16 to 100."
+              },
+              "partner": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ],
+                "description": "Are you planning with a partner. One of: \"yes\" (Yes), \"no\" (No)."
+              },
+              "partnerAge": {
+                "type": "integer",
+                "minimum": 16,
+                "maximum": 100,
+                "description": "Your partner’s age. A whole number from 16 to 100. Read when household.partner is \"yes\"."
+              },
+              "married": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ],
+                "description": "Are you married or in a civil partnership. It changes how you are taxed. One of: \"yes\" (Yes), \"no\" (No). Read when household.partner is \"yes\"."
+              },
+              "children": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ],
+                "description": "Do you have children. One of: \"yes\" (Yes), \"no\" (No)."
+              }
+            }
+          },
+          "children": {
+            "type": "array",
+            "maxItems": 8,
+            "description": "One entry per child. Read when household.children is \"yes\".",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "age": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 30,
+                  "description": "Age. A whole number from 0 to 30."
+                },
+                "collegePlan": {
+                  "type": "string",
+                  "enum": [
+                    "away",
+                    "home",
+                    "unsure"
+                  ],
+                  "description": "College plans. One of: \"away\" (Away from home), \"home\" (From home), \"unsure\" (Not sure yet). Read when topics include \"education\" or \"whole\"."
+                },
+                "saved": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Saved for them so far. A number in euro, like 35000. Read when topics include \"education\" or \"whole\"."
+                }
+              }
+            }
+          },
+          "income": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Pay before tax, type of work, and household take-home pay.",
+            "properties": {
+              "gross": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Your gross pay a year, before tax. A number in euro a year, like 35000."
+              },
+              "partnerGross": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Your partner’s gross pay a year. A number in euro a year, like 35000. Read when household.partner is \"yes\"."
+              },
+              "work": {
+                "type": "string",
+                "enum": [
+                  "employee",
+                  "self_employed",
+                  "director",
+                  "not_working",
+                  "retired"
+                ],
+                "description": "Your work. One of: \"employee\" (Employee), \"self_employed\" (Self-employed), \"director\" (Company director), \"not_working\" (Not working), \"retired\" (Retired)."
+              },
+              "partnerWork": {
+                "type": "string",
+                "enum": [
+                  "employee",
+                  "self_employed",
+                  "director",
+                  "not_working",
+                  "retired"
+                ],
+                "description": "Your partner’s work. One of: \"employee\" (Employee), \"self_employed\" (Self-employed), \"director\" (Company director), \"not_working\" (Not working), \"retired\" (Retired). Read when household.partner is \"yes\"."
+              },
+              "sector": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "private"
+                ],
+                "description": "Your sector. One of: \"public\" (Public sector), \"private\" (Private sector). Read when income.work is \"employee\"."
+              },
+              "partnerSector": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "private"
+                ],
+                "description": "Your partner’s sector. One of: \"public\" (Public sector), \"private\" (Private sector). Read when household.partner is \"yes\" and income.partnerWork is \"employee\"."
+              },
+              "takeHome": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Household take-home pay a month, after tax. A number in euro a month, like 35000."
+              }
+            }
+          },
+          "spending": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Whether the household saves most months, and monthly spending.",
+            "properties": {
+              "pattern": {
+                "type": "string",
+                "enum": [
+                  "save",
+                  "even",
+                  "more"
+                ],
+                "description": "Most months, do you. One of: \"save\" (Save some), \"even\" (Break even), \"more\" (Spend more than you earn)."
+              },
+              "saved": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Roughly how much you save a month. A number in euro a month, like 35000. Read when spending.pattern is not \"even\" or \"more\"."
+              },
+              "spend": {
+                "type": "number",
+                "minimum": 0,
+                "description": "What you spend a month, not counting rent or mortgage. A recent bank statement helps. A number in euro a month, like 35000."
+              }
+            }
+          },
+          "home": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The housing situation.",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "mortgage",
+                  "owned",
+                  "rent",
+                  "family"
+                ],
+                "description": "Your home. One of: \"mortgage\" (Own with a mortgage), \"owned\" (Own outright), \"rent\" (Rent), \"family\" (Live with family)."
+              },
+              "value": {
+                "type": "number",
+                "minimum": 0,
+                "description": "What it would sell for today. A number in euro, like 35000. Read when home.status is \"mortgage\" or \"owned\"."
+              },
+              "rent": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Rent a month. A number in euro a month, like 35000. Read when home.status is \"rent\"."
+              }
+            }
+          },
+          "mortgage": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The mortgage on the home. Read when home.status is \"mortgage\".",
+            "properties": {
+              "balance": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Balance left. A number in euro, like 35000. Read when home.status is \"mortgage\"."
+              },
+              "rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 30,
+                "description": "Interest rate. A percentage as a number, like 4.2 (up to 30). Read when home.status is \"mortgage\"."
+              },
+              "rateType": {
+                "type": "string",
+                "enum": [
+                  "tracker",
+                  "variable",
+                  "fixed"
+                ],
+                "description": "Rate type. One of: \"tracker\" (Tracker), \"variable\" (Variable), \"fixed\" (Fixed). Read when home.status is \"mortgage\"."
+              },
+              "fixedEnds": {
+                "type": "string",
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "description": "When the fixed rate ends. Year and month, like 2027-03. Read when mortgage.rateType is \"fixed\"."
+              },
+              "trackerMargin": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10,
+                "description": "Margin above the ECB rate. A percentage as a number, like 4.2 (up to 10). Read when mortgage.rateType is \"tracker\"."
+              },
+              "yearsLeft": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 40,
+                "description": "Years left. Not the original term. A number of years, like 22 or 22.5. Read when home.status is \"mortgage\"."
+              },
+              "repayment": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Repayment a month. A number in euro a month, like 35000. Read when home.status is \"mortgage\"."
+              },
+              "overpaying": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ],
+                "description": "Are you overpaying now. One of: \"yes\" (Yes), \"no\" (No). Read when home.status is \"mortgage\"."
+              },
+              "overpayment": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Overpayment a month. A number in euro a month, like 35000. Read when mortgage.overpaying is \"yes\"."
+              },
+              "lender": {
+                "type": "string",
+                "maxLength": 60,
+                "description": "Lender. Never shown in videos. Text, up to 60 characters. Read when home.status is \"mortgage\". Never published."
+              }
+            }
+          },
+          "buying": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "For someone planning to buy a home.",
+            "properties": {
+              "price": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Price you are looking at. A number in euro, like 35000."
+              },
+              "firstTime": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no"
+                ],
+                "description": "First-time buyer. One of: \"yes\" (Yes), \"no\" (No)."
+              },
+              "deposit": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Deposit saved so far. A number in euro, like 35000."
+              },
+              "approval": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Approval in principle, if you have one. A number in euro, like 35000."
+              },
+              "scheme": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "description": "Using Help to Buy or the First Home scheme. One of: \"yes\" (Yes), \"no\" (No), \"unsure\" (Not sure)."
+              },
+              "when": {
+                "type": "string",
+                "enum": [
+                  "6m",
+                  "12m",
+                  "24m",
+                  "later"
+                ],
+                "description": "When would you like to buy. One of: \"6m\" (Within 6 months), \"12m\" (6 to 12 months), \"24m\" (1 to 2 years), \"later\" (Later)."
+              }
+            }
+          },
+          "savings": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Cash, investments and shares in an employer.",
+            "properties": {
+              "cash": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Cash in the bank, all accounts. A number in euro, like 35000."
+              },
+              "investments": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Investments and shares. A number in euro, like 35000."
+              },
+              "employerShares": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Shares in your employer. A number in euro, like 35000."
+              }
+            }
+          },
+          "properties": {
+            "type": "array",
+            "maxItems": 4,
+            "description": "Property owned apart from the home, one entry each. If there are none, put \"properties\" in the \"none\" list instead.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "value": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Value. A number in euro, like 35000."
+                },
+                "mortgage": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Mortgage on it. A number in euro, like 35000."
+                },
+                "rent": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Rent a year. A number in euro a year, like 35000."
+                },
+                "costs": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Costs a year, not counting mortgage interest. A number in euro a year, like 35000."
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 30,
+                  "description": "Mortgage interest rate. A percentage as a number, like 4.2 (up to 30)."
+                }
+              }
+            }
+          },
+          "pensions": {
+            "type": "array",
+            "maxItems": 6,
+            "description": "One entry per pension, for the person or their partner. If there are none, put \"pensions\" in the \"none\" list instead.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "owner": {
+                  "type": "string",
+                  "enum": [
+                    "you",
+                    "partner"
+                  ],
+                  "description": "Whose pension. One of: \"you\" (Yours), \"partner\" (Your partner’s). Read when household.partner is \"yes\" (otherwise the pension is the applicant's)."
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "company",
+                    "public",
+                    "prsa",
+                    "personal",
+                    "bond",
+                    "unsure"
+                  ],
+                  "description": "Type. One of: \"company\" (Company pension), \"public\" (Public service or defined benefit), \"prsa\" (PRSA), \"personal\" (Personal pension), \"bond\" (Buy-out bond from an old job), \"unsure\" (Not sure)."
+                },
+                "value": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Value today. A number in euro, like 35000. Read when type is not \"public\"."
+                },
+                "youPay": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Personal contribution. A number: a percentage of salary like 5, or euro a month with youPayUnit set to \"eur\". Read when type is \"company\", \"prsa\", \"personal\" or \"unsure\"."
+                },
+                "youPayUnit": {
+                  "type": "string",
+                  "enum": [
+                    "pct",
+                    "eur"
+                  ],
+                  "default": "pct",
+                  "description": "Unit for youPay: \"pct\" = % of salary, \"eur\" = € a month."
+                },
+                "employerPays": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Employer contribution. A number: a percentage of salary like 5, or euro a month with employerPaysUnit set to \"eur\". Read when type is \"company\", \"prsa\" or \"unsure\"."
+                },
+                "employerPaysUnit": {
+                  "type": "string",
+                  "enum": [
+                    "pct",
+                    "eur"
+                  ],
+                  "default": "pct",
+                  "description": "Unit for employerPays: \"pct\" = % of salary, \"eur\" = € a month."
+                },
+                "contributing": {
+                  "type": "string",
+                  "enum": [
+                    "yes",
+                    "no"
+                  ],
+                  "description": "Still paying in. One of: \"yes\" (Yes), \"no\" (No). Read when type is \"company\", \"prsa\", \"personal\" or \"unsure\"."
+                },
+                "dbPension": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Expected pension a year. Your benefit statement shows this. A number in euro a year, like 35000. Read when type is \"public\"."
+                },
+                "dbLumpSum": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Expected lump sum. A number in euro, like 35000. Read when type is \"public\"."
+                },
+                "dbAge": {
+                  "type": "integer",
+                  "minimum": 50,
+                  "maximum": 75,
+                  "description": "From what age. A whole number from 50 to 75. Read when type is \"public\"."
+                }
+              }
+            }
+          },
+          "retirement": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Retirement ages and the income wanted.",
+            "properties": {
+              "age": {
+                "type": "integer",
+                "minimum": 40,
+                "maximum": 80,
+                "description": "Age you would like to stop working. A whole number from 40 to 80."
+              },
+              "partnerAge": {
+                "type": "integer",
+                "minimum": 40,
+                "maximum": 80,
+                "description": "Age your partner would like to stop working. A whole number from 40 to 80. Read when household.partner is \"yes\"."
+              },
+              "income": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Income you would like a year in retirement, in today’s money. Before tax, for the household. A number in euro a year, like 35000."
+              },
+              "statePension": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "partly",
+                  "unsure"
+                ],
+                "description": "Do you expect the full State Pension. One of: \"yes\" (Yes), \"partly\" (Partly), \"unsure\" (Not sure)."
+              }
+            }
+          },
+          "creditCard": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "How the credit card is used.",
+            "properties": {
+              "clears": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "none"
+                ],
+                "description": "Do you clear your credit card in full each month. One of: \"yes\" (Yes), \"no\" (No), \"none\" (No credit card)."
+              },
+              "balance": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Credit card balance. A number in euro, like 35000. Read when creditCard.clears is \"no\"."
+              }
+            }
+          },
+          "loans": {
+            "type": "array",
+            "maxItems": 6,
+            "description": "One entry per loan. Not the home mortgage. If there are none, put \"loans\" in the \"none\" list instead.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "car",
+                    "personal",
+                    "credit_union",
+                    "student",
+                    "other"
+                  ],
+                  "description": "Type. One of: \"car\" (Car), \"personal\" (Personal), \"credit_union\" (Credit union), \"student\" (Student), \"other\" (Other)."
+                },
+                "balance": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Balance. A number in euro, like 35000."
+                },
+                "rate": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 60,
+                  "description": "Interest rate. A percentage as a number, like 4.2 (up to 60)."
+                },
+                "yearsLeft": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 30,
+                  "description": "Years left. A number of years, like 22 or 22.5."
+                },
+                "payment": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Payment a month. A number in euro a month, like 35000."
+                }
+              }
+            }
+          },
+          "cover": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Life cover and income protection.",
+            "properties": {
+              "life": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "description": "Life cover. Including mortgage protection. One of: \"yes\" (Yes), \"no\" (No), \"unsure\" (Not sure)."
+              },
+              "incomeProtection": {
+                "type": "string",
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "description": "Income protection. One of: \"yes\" (Yes), \"no\" (No), \"unsure\" (Not sure)."
+              }
+            }
+          },
+          "anythingElse": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Anything else Gerry should know. Text, up to 2000 characters. Never published."
+          },
+          "videoName": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Name to use in the video. Optional. A made-up name is fine. Leave it blank and Gerry will not use a name. Text, up to 60 characters. Never published."
+          },
+          "unsure": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths of figures the person said they do not know, left empty, like \"pensions.0.value\" or \"mortgage.yearsLeft\". Different from leaving a field out."
+          },
+          "none": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "properties",
+                "pensions",
+                "loans"
+              ]
+            },
+            "description": "Sections the person confirmed do not apply: \"pensions\" (no pensions), \"loans\" (no loans), \"properties\" (no other property)."
+          }
+        }
+      },
+      "CheckRequest": {
+        "type": "object",
+        "required": [
+          "application"
+        ],
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/Application"
+          }
+        }
+      },
+      "ApplicationRequest": {
+        "type": "object",
+        "required": [
+          "person",
+          "consent",
+          "application"
+        ],
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "planeir.agent-application.v1"
+            ]
+          },
+          "person": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "email"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120,
+                "description": "The person’s name. A first name is fine."
+              },
+              "email": {
+                "type": "string",
+                "format": "email",
+                "maxLength": 160,
+                "description": "The person’s own email address. Planeir emails them a link to check and confirm the application."
+              }
+            }
+          },
+          "consent": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "videoPublication",
+              "educationOnly"
+            ],
+            "description": "Set both only after asking the person and hearing a clear yes. They confirm again by email.",
+            "properties": {
+              "videoPublication": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "The person agrees Gerry may use their situation in a video published online, with their name removed and figures rounded, and that they will be emailed when it is live."
+              },
+              "educationOnly": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "The person understands Planeir is education only. It is not financial advice and does not recommend products."
+              }
+            }
+          },
+          "application": {
+            "$ref": "#/components/schemas/Application"
+          },
+          "assistant": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 40,
+                "description": "The assistant sending this, for example ChatGPT or Claude."
+              }
+            }
+          }
+        }
+      },
+      "CheckResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "ready": {
+            "type": "boolean",
+            "description": "True when the application has a question and can be sent."
+          },
+          "summary": {
+            "type": "string",
+            "description": "The application as Gerry will read it. Show it to the person before sending."
+          },
+          "answered": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "The field the warning is about."
+                },
+                "message": {
+                  "type": "string",
+                  "description": "What happened, in plain words."
+                }
+              }
+            }
+          },
+          "stillUseful": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "question": {
+                  "type": "string",
+                  "description": "A question the assistant can ask its user."
+                },
+                "expects": {
+                  "type": "string",
+                  "description": "The form of answer that fits."
+                }
+              }
+            }
+          }
+        }
+      },
+      "SendResult": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "waiting_for_confirmation"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "What to tell the person next."
+          },
+          "confirmBy": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "The field the warning is about."
+                },
+                "message": {
+                  "type": "string",
+                  "description": "What happened, in plain words."
+                }
+              }
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

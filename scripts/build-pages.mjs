@@ -40,8 +40,10 @@ const HTML_FILES = [
   'plan/index.html',
   'plan/privacy.html',
   'apply/index.html',
+  'apply/confirm/index.html',
   'privacy/index.html',
-  'cases/index.html'
+  'cases/index.html',
+  'for-ai-assistants/index.html'
 ];
 const COPY_ENTRIES = [
   'styles',
@@ -55,7 +57,9 @@ const COPY_ENTRIES = [
   'Planeir_logo_transparent.png',
   'CNAME',
   'robots.txt',
-  'sitemap.xml'
+  'sitemap.xml',
+  'llms.txt',
+  'agents'
 ];
 const VERSION = (process.env.ASSET_VERSION || Date.now().toString()).slice(0, 16);
 

@@ -24,6 +24,11 @@ import { fileURLToPath } from 'node:url';
 import {
   APPLICATION_SCHEMA,
   SECTIONS,
+  buildApplicationJsonSchema,
+  buildOpenApiDocument,
+  buildPrefillLink,
+  parsePrefill,
+  prepareAgentApplication,
   applicationToMarkdown,
   applicationToText,
   countAnswers,
@@ -208,6 +213,97 @@ check('titles and slugs read like a forum thread', () => {
   assert.equal(suggestCaseTitle({ household: { age: 58, partner: 'no', children: 'no' }, topics: ['retirement'] }), '58, no children: retirement');
   assert.equal(suggestCaseTitle({}), 'A Planeir case');
   assert.equal(slugify('34 and 35: Pension or Overpay?'), '34-and-35-pension-or-overpay');
+});
+
+check('the JSON Schema for assistants covers every question on the form', () => {
+  const schema = buildApplicationJsonSchema();
+  const at = (path) => path.split('.').reduce((node, key) => node?.properties?.[key], schema);
+  SECTIONS.forEach((section) => {
+    (section.fields || []).forEach((field) => {
+      assert.ok(at(field.path), `schema is missing ${field.path}`);
+    });
+    if (section.repeater) {
+      const items = schema.properties[section.repeater.path]?.items?.properties || {};
+      section.repeater.fields.forEach((field) => {
+        assert.ok(items[field.key], `schema is missing ${section.repeater.path}[].${field.key}`);
+        if (field.unitKey) assert.ok(items[field.unitKey], `schema is missing ${field.unitKey}`);
+      });
+    }
+  });
+  assert.deepEqual(schema.required, ['question']);
+  assert.match(at('mortgage.fixedEnds').description, /Read when mortgage\.rateType is "fixed"/);
+});
+
+check('an assistant hears exactly what could not be used, and why', () => {
+  const { application, warnings } = prepareAgentApplication({
+    topics: ['retirement', 'crypto'],
+    question: 'Can we retire at 60?',
+    household: { age: 'sixty', partner: 'no', partnerAge: 58 },
+    income: { gross: 'about 50k' },
+    pensions: [{ type: 'company', value: 120000 }],
+    favouriteColour: 'blue'
+  });
+  const byPath = Object.fromEntries(warnings.map((warning) => [warning.path, warning.message]));
+  assert.match(byPath.topics, /"crypto" is not a topic/);
+  assert.match(byPath['household.age'], /Could not use "sixty"\. A whole number/);
+  assert.match(byPath['income.gross'], /A number in euro a year/);
+  assert.match(byPath.favouriteColour, /Not a Planeir field/);
+  assert.match(byPath['household.partnerAge'], /Gerry will not see it: it only applies when household\.partner is "yes"/);
+  assert.equal(application.pensions[0].value, 120000);
+});
+
+check('answers an assistant gives in a section with no chosen topic still reach Gerry', () => {
+  const { application } = prepareAgentApplication({
+    topics: ['buying'],
+    question: 'Can we afford it?',
+    pensions: [{ type: 'company', value: 40000 }],
+    cover: { life: 'yes' }
+  });
+  assert.deepEqual(application.added, ['pensions', 'cover']);
+  const text = applicationToText(application);
+  assert.match(text, /Value today: €40,000/);
+  assert.match(text, /Life cover: Yes/);
+});
+
+check('prefill links read field paths, lists and JSON, and nothing else', () => {
+  const dotted = parsePrefill('#topics=retirement,mortgage&q=Can+we+retire%3F&household.age=58&pensions.0.value=120k&unknown.path=1&__proto__.polluted=1&constructor.prototype.polluted=1');
+  assert.deepEqual(dotted, {
+    topics: ['retirement', 'mortgage'],
+    question: 'Can we retire?',
+    household: { age: '58' },
+    pensions: [{ value: '120k' }]
+  });
+  assert.equal({}.polluted, undefined);
+  const json = parsePrefill(`#prefill=${encodeURIComponent(JSON.stringify({ question: 'From JSON', household: { age: 40 } }))}`);
+  assert.deepEqual(json, { question: 'From JSON', household: { age: 40 } });
+  assert.equal(parsePrefill('#prefill=not-json'), null);
+  assert.equal(parsePrefill('#'), null);
+  assert.equal(parsePrefill('#t=abc'), null, 'a confirmation token is not a prefill');
+});
+
+check('a prefill link carries an application there and back unchanged', () => {
+  const { application } = prepareAgentApplication(full);
+  const link = buildPrefillLink(application);
+  assert.ok(link.startsWith('https://planeir.ie/apply/#'));
+  assert.ok(!/Aoife/.test(decodeURIComponent(link.split('#')[1]).replace(/videoName=[^&]*/, '')), 'no name beyond the chosen video name');
+  const again = prepareAgentApplication(parsePrefill(link.split('#')[1])).application;
+  assert.deepEqual(again, application);
+});
+
+check('the OpenAPI description asks before sending and its references resolve', () => {
+  const document = buildOpenApiDocument();
+  const send = document.paths['/api/agent/applications'].post;
+  const checkOperation = document.paths['/api/agent/applications/check'].post;
+  assert.equal(send.operationId, 'sendCaseApplication');
+  assert.equal(send['x-openai-isConsequential'], true);
+  assert.equal(checkOperation['x-openai-isConsequential'], false);
+  const text = JSON.stringify(document);
+  for (const [, name] of text.matchAll(/"#\/components\/schemas\/([A-Za-z]+)"/g)) {
+    assert.ok(document.components.schemas[name], `unresolved reference ${name}`);
+  }
+  for (const operation of [send, checkOperation]) {
+    assert.ok(operation.description.length <= 300, `${operation.operationId} description is too long for GPT actions`);
+  }
 });
 
 console.log(`\n${checks} case application checks passed${update ? ' (snapshots updated)' : ''}.`);

@@ -108,8 +108,8 @@ export const SECTIONS = Object.freeze([
     fields: [
       { path: 'household.age', label: 'Your age', short: 'Age', type: 'age', min: 16, max: 100, profilePath: '/primaryPerson/age' },
       { path: 'household.partner', label: 'Are you planning with a partner?', short: 'Planning with a partner', type: 'choice', options: YES_NO },
-      { path: 'household.partnerAge', label: 'Your partner’s age', short: 'Partner’s age', type: 'age', min: 16, max: 100, showIf: hasPartner, profilePath: '/partner/age' },
-      { path: 'household.married', label: 'Are you married or in a civil partnership?', short: 'Married or civil partners', hint: 'It changes how you are taxed.', type: 'choice', options: YES_NO, showIf: hasPartner },
+      { path: 'household.partnerAge', label: 'Your partner’s age', short: 'Partner’s age', type: 'age', min: 16, max: 100, showIf: hasPartner, when: 'household.partner is "yes"', profilePath: '/partner/age' },
+      { path: 'household.married', label: 'Are you married or in a civil partnership?', short: 'Married or civil partners', hint: 'It changes how you are taxed.', type: 'choice', options: YES_NO, showIf: hasPartner, when: 'household.partner is "yes"' },
       { path: 'household.children', label: 'Do you have children?', short: 'Children', type: 'choice', options: YES_NO }
     ]
   },
@@ -119,6 +119,7 @@ export const SECTIONS = Object.freeze([
     intro: 'Their ages show when college costs start and how long they depend on you.',
     always: true,
     showIf: hasChildren,
+    when: 'household.children is "yes"',
     repeater: {
       path: 'children',
       max: 8,
@@ -136,14 +137,16 @@ export const SECTIONS = Object.freeze([
             { value: 'home', label: 'From home' },
             { value: 'unsure', label: 'Not sure yet' }
           ],
-          showIf: (_app, ctx) => hasTopic(ctx, 'education', 'whole')
+          showIf: (_app, ctx) => hasTopic(ctx, 'education', 'whole'),
+          when: 'topics include "education" or "whole"'
         },
         {
           key: 'saved',
           label: 'Saved for them so far',
           short: 'Saved for them',
           type: 'money',
-          showIf: (_app, ctx) => hasTopic(ctx, 'education', 'whole')
+          showIf: (_app, ctx) => hasTopic(ctx, 'education', 'whole'),
+          when: 'topics include "education" or "whole"'
         }
       ]
     }
@@ -155,7 +158,7 @@ export const SECTIONS = Object.freeze([
     always: true,
     fields: [
       { path: 'income.gross', label: 'Your gross pay a year, before tax', short: 'Gross pay a year', type: 'money', unit: 'year', pair: 'gross', profilePath: '/incomeSources/*/grossAnnual' },
-      { path: 'income.partnerGross', label: 'Your partner’s gross pay a year', short: 'Partner’s gross pay a year', type: 'money', unit: 'year', pair: 'gross', showIf: hasPartner, profilePath: '/incomeSources/*/grossAnnual' },
+      { path: 'income.partnerGross', label: 'Your partner’s gross pay a year', short: 'Partner’s gross pay a year', type: 'money', unit: 'year', pair: 'gross', showIf: hasPartner, when: 'household.partner is "yes"', profilePath: '/incomeSources/*/grossAnnual' },
       {
         path: 'income.work',
         label: 'Your work',
@@ -185,6 +188,7 @@ export const SECTIONS = Object.freeze([
           { value: 'retired', label: 'Retired' }
         ],
         showIf: hasPartner,
+        when: 'household.partner is "yes"',
         profilePath: '/partner/employmentStatus'
       },
       {
@@ -197,7 +201,8 @@ export const SECTIONS = Object.freeze([
           { value: 'public', label: 'Public sector' },
           { value: 'private', label: 'Private sector' }
         ],
-        showIf: (app) => app?.income?.work === 'employee'
+        showIf: (app) => app?.income?.work === 'employee',
+        when: 'income.work is "employee"'
       },
       {
         path: 'income.partnerSector',
@@ -209,7 +214,8 @@ export const SECTIONS = Object.freeze([
           { value: 'public', label: 'Public sector' },
           { value: 'private', label: 'Private sector' }
         ],
-        showIf: (app) => hasPartner(app) && app?.income?.partnerWork === 'employee'
+        showIf: (app) => hasPartner(app) && app?.income?.partnerWork === 'employee',
+        when: 'household.partner is "yes" and income.partnerWork is "employee"'
       },
       { path: 'income.takeHome', label: 'Household take-home pay a month, after tax', short: 'Household take-home pay a month', type: 'money', unit: 'month', profilePath: '/householdIncome/netMonthly' }
     ]
@@ -231,7 +237,7 @@ export const SECTIONS = Object.freeze([
           { value: 'more', label: 'Spend more than you earn', publicLabel: 'Spend more than they earn' }
         ]
       },
-      { path: 'spending.saved', label: 'Roughly how much you save a month', short: 'Saved a month', type: 'money', unit: 'month', showIf: (app) => !['even', 'more'].includes(app?.spending?.pattern) },
+      { path: 'spending.saved', label: 'Roughly how much you save a month', short: 'Saved a month', type: 'money', unit: 'month', showIf: (app) => !['even', 'more'].includes(app?.spending?.pattern), when: 'spending.pattern is not "even" or "more"' },
       { path: 'spending.spend', label: 'What you spend a month, not counting rent or mortgage', short: 'Spending a month, not counting rent or mortgage', hint: 'A recent bank statement helps.', type: 'money', unit: 'month', profilePath: '/expenses/monthlyEssential' }
     ]
   },
@@ -254,8 +260,8 @@ export const SECTIONS = Object.freeze([
           { value: 'family', label: 'Live with family' }
         ]
       },
-      { path: 'home.value', label: 'What it would sell for today', short: 'Home value', type: 'money', showIf: (app) => ['mortgage', 'owned'].includes(app?.home?.status), profilePath: '/properties/*/currentValue' },
-      { path: 'home.rent', label: 'Rent a month', short: 'Rent a month', type: 'money', unit: 'month', showIf: (app) => app?.home?.status === 'rent', profilePath: '/expenses/currentMonthlyRent' }
+      { path: 'home.value', label: 'What it would sell for today', short: 'Home value', type: 'money', showIf: (app) => ['mortgage', 'owned'].includes(app?.home?.status), when: 'home.status is "mortgage" or "owned"', profilePath: '/properties/*/currentValue' },
+      { path: 'home.rent', label: 'Rent a month', short: 'Rent a month', type: 'money', unit: 'month', showIf: (app) => app?.home?.status === 'rent', when: 'home.status is "rent"', profilePath: '/expenses/currentMonthlyRent' }
     ]
   },
   {
@@ -264,6 +270,7 @@ export const SECTIONS = Object.freeze([
     intro: 'Your rate and years left decide what overpaying would save.',
     always: true,
     showIf: (app) => app?.home?.status === 'mortgage',
+    when: 'home.status is "mortgage"',
     fields: [
       { path: 'mortgage.balance', label: 'Balance left', short: 'Mortgage balance', type: 'money', profilePath: '/liabilities/*/currentBalance' },
       { path: 'mortgage.rate', label: 'Interest rate', short: 'Interest rate', type: 'percent', max: 30, profilePath: '/liabilities/*/annualInterestRate' },
@@ -278,12 +285,12 @@ export const SECTIONS = Object.freeze([
           { value: 'fixed', label: 'Fixed' }
         ]
       },
-      { path: 'mortgage.fixedEnds', label: 'When the fixed rate ends', short: 'Fixed rate ends', type: 'month', showIf: (app) => app?.mortgage?.rateType === 'fixed' },
-      { path: 'mortgage.trackerMargin', label: 'Margin above the ECB rate', short: 'Tracker margin above ECB', type: 'percent', max: 10, showIf: (app) => app?.mortgage?.rateType === 'tracker' },
+      { path: 'mortgage.fixedEnds', label: 'When the fixed rate ends', short: 'Fixed rate ends', type: 'month', showIf: (app) => app?.mortgage?.rateType === 'fixed', when: 'mortgage.rateType is "fixed"' },
+      { path: 'mortgage.trackerMargin', label: 'Margin above the ECB rate', short: 'Tracker margin above ECB', type: 'percent', max: 10, showIf: (app) => app?.mortgage?.rateType === 'tracker', when: 'mortgage.rateType is "tracker"' },
       { path: 'mortgage.yearsLeft', label: 'Years left', short: 'Years left', hint: 'Not the original term.', type: 'years', max: 40, profilePath: '/liabilities/*/remainingTermMonths' },
       { path: 'mortgage.repayment', label: 'Repayment a month', short: 'Repayment a month', type: 'money', unit: 'month', profilePath: '/liabilities/*/monthlyPayment' },
       { path: 'mortgage.overpaying', label: 'Are you overpaying now?', short: 'Overpaying now', type: 'choice', options: YES_NO },
-      { path: 'mortgage.overpayment', label: 'Overpayment a month', short: 'Overpayment a month', type: 'money', unit: 'month', showIf: (app) => app?.mortgage?.overpaying === 'yes' },
+      { path: 'mortgage.overpayment', label: 'Overpayment a month', short: 'Overpayment a month', type: 'money', unit: 'month', showIf: (app) => app?.mortgage?.overpaying === 'yes', when: 'mortgage.overpaying is "yes"' },
       { path: 'mortgage.lender', label: 'Lender', short: 'Lender', hint: 'Never shown in videos.', type: 'text', maxLength: 60, private: true }
     ]
   },
@@ -364,7 +371,8 @@ export const SECTIONS = Object.freeze([
             { value: 'you', label: 'Yours', publicLabel: 'The applicant' },
             { value: 'partner', label: 'Your partner’s', publicLabel: 'Their partner' }
           ],
-          showIf: (app) => hasPartner(app)
+          showIf: (app) => hasPartner(app),
+          when: 'household.partner is "yes" (otherwise the pension is the applicant\'s)'
         },
         {
           key: 'type',
@@ -381,7 +389,7 @@ export const SECTIONS = Object.freeze([
           ],
           profilePath: '/pensions/*/type'
         },
-        { key: 'value', label: 'Value today', short: 'Value today', type: 'money', showIf: (_app, _ctx, item) => item?.type !== 'public', profilePath: '/pensions/*/currentValue' },
+        { key: 'value', label: 'Value today', short: 'Value today', type: 'money', showIf: (_app, _ctx, item) => item?.type !== 'public', when: 'type is not "public"', profilePath: '/pensions/*/currentValue' },
         {
           key: 'youPay',
           label: 'Personal contribution',
@@ -390,6 +398,7 @@ export const SECTIONS = Object.freeze([
           unitKey: 'youPayUnit',
           units: CONTRIBUTION_UNITS,
           showIf: (_app, _ctx, item) => !item?.type || PENSION_CONTRIBUTORY.has(item.type),
+          when: 'type is "company", "prsa", "personal" or "unsure"',
           profilePath: '/pensions/*/employeeContributionRate'
         },
         {
@@ -400,6 +409,7 @@ export const SECTIONS = Object.freeze([
           unitKey: 'employerPaysUnit',
           units: CONTRIBUTION_UNITS,
           showIf: (_app, _ctx, item) => !item?.type || PENSION_EMPLOYER.has(item.type),
+          when: 'type is "company", "prsa" or "unsure"',
           profilePath: '/pensions/*/employerContributionRate'
         },
         {
@@ -409,11 +419,12 @@ export const SECTIONS = Object.freeze([
           type: 'choice',
           options: YES_NO,
           showIf: (_app, _ctx, item) => !item?.type || PENSION_CONTRIBUTORY.has(item.type),
+          when: 'type is "company", "prsa", "personal" or "unsure"',
           profilePath: '/pensions/*/contributionStatus'
         },
-        { key: 'dbPension', label: 'Expected pension a year', short: 'Expected pension a year', hint: 'Your benefit statement shows this.', type: 'money', unit: 'year', showIf: (_app, _ctx, item) => item?.type === 'public', profilePath: '/pensions/*/projectedAnnualIncome' },
-        { key: 'dbLumpSum', label: 'Expected lump sum', short: 'Expected lump sum', type: 'money', showIf: (_app, _ctx, item) => item?.type === 'public', profilePath: '/pensions/*/retirementLumpSum' },
-        { key: 'dbAge', label: 'From what age', short: 'From age', type: 'age', min: 50, max: 75, showIf: (_app, _ctx, item) => item?.type === 'public', profilePath: '/pensions/*/benefitStartAge' }
+        { key: 'dbPension', label: 'Expected pension a year', short: 'Expected pension a year', hint: 'Your benefit statement shows this.', type: 'money', unit: 'year', showIf: (_app, _ctx, item) => item?.type === 'public', when: 'type is "public"', profilePath: '/pensions/*/projectedAnnualIncome' },
+        { key: 'dbLumpSum', label: 'Expected lump sum', short: 'Expected lump sum', type: 'money', showIf: (_app, _ctx, item) => item?.type === 'public', when: 'type is "public"', profilePath: '/pensions/*/retirementLumpSum' },
+        { key: 'dbAge', label: 'From what age', short: 'From age', type: 'age', min: 50, max: 75, showIf: (_app, _ctx, item) => item?.type === 'public', when: 'type is "public"', profilePath: '/pensions/*/benefitStartAge' }
       ]
     }
   },
@@ -424,7 +435,7 @@ export const SECTIONS = Object.freeze([
     topics: ['retirement', 'whole'],
     fields: [
       { path: 'retirement.age', label: 'Age you would like to stop working', short: 'Would like to stop working at', type: 'age', min: 40, max: 80, pair: 'retireAge', profilePath: '/primaryPerson/intendedRetirementAge' },
-      { path: 'retirement.partnerAge', label: 'Age your partner would like to stop working', short: 'Partner would like to stop working at', type: 'age', min: 40, max: 80, pair: 'retireAge', showIf: hasPartner, profilePath: '/partner/intendedRetirementAge' },
+      { path: 'retirement.partnerAge', label: 'Age your partner would like to stop working', short: 'Partner would like to stop working at', type: 'age', min: 40, max: 80, pair: 'retireAge', showIf: hasPartner, when: 'household.partner is "yes"', profilePath: '/partner/intendedRetirementAge' },
       { path: 'retirement.income', label: 'Income you would like a year in retirement, in today’s money', short: 'Income wanted a year in retirement', hint: 'Before tax, for the household.', type: 'money', unit: 'year' },
       {
         path: 'retirement.statePension',
@@ -472,7 +483,7 @@ export const SECTIONS = Object.freeze([
     },
     fields: [
       { path: 'creditCard.clears', label: 'Do you clear your credit card in full each month?', short: 'Credit card cleared each month', type: 'choice', options: [...YES_NO, { value: 'none', label: 'No credit card' }] },
-      { path: 'creditCard.balance', label: 'Credit card balance', short: 'Credit card balance', type: 'money', showIf: (app) => app?.creditCard?.clears === 'no' }
+      { path: 'creditCard.balance', label: 'Credit card balance', short: 'Credit card balance', type: 'money', showIf: (app) => app?.creditCard?.clears === 'no', when: 'creditCard.clears is "no"' }
     ]
   },
   {
@@ -673,6 +684,35 @@ export function pruneToVisible(app) {
 
   result.unsure = keptUnsure;
   return result;
+}
+
+function sectionHasAnswers(section, app) {
+  if (isSectionNone(section, app)) return true;
+  const scalar = (section.fields || []).some((field) => hasValue(getPath(app, field.path)));
+  if (scalar) return true;
+  if (!section.repeater) return false;
+  const items = getPath(app, section.repeater.path);
+  return Array.isArray(items) && items.some((item) => (
+    item && typeof item === 'object' && section.repeater.fields.some((field) => hasValue(item[field.key]))
+  ));
+}
+
+/**
+ * Open every topic-gated section that already holds answers.
+ *
+ * A person on the page opens a section with "Add more" before filling it in.
+ * An assistant sends the answers directly, so a section it filled in would
+ * otherwise stay closed, and its answers would never reach Gerry's write-up,
+ * just because a topic chip was not chosen.
+ */
+export function includeAnsweredSections(app) {
+  const ctx = createContext(app);
+  const added = new Set(Array.isArray(app?.added) ? app.added : []);
+  SECTIONS.forEach((section) => {
+    if (section.always || isSectionOffered(section, ctx)) return;
+    if (sectionHasAnswers(section, app)) added.add(section.id);
+  });
+  return { ...app, added: TOPIC_GATED_SECTION_IDS.filter((id) => added.has(id)) };
 }
 
 function baseOf(app) {

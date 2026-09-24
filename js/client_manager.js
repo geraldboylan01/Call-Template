@@ -825,6 +825,17 @@ const APPLICATION_STATUSES = [
   ['closed', 'Closed']
 ];
 
+/** How an application arrived, in the words Gerry reads in the pipeline. */
+function applicationChannelText(channel, assistant) {
+  if (channel === 'agent-api') {
+    return `Sent by an AI assistant${assistant ? ` (${assistant})` : ''}, confirmed by the person by email`;
+  }
+  if (channel === 'assistant-link') {
+    return 'Filled in from an AI assistant\u2019s link, sent from the application page';
+  }
+  return 'Sent from the application page';
+}
+
 function getSelectedApplicationLead() {
   const lead = getSelectedLead();
   return lead?.isApplication ? lead : null;
@@ -940,9 +951,10 @@ function renderApplication() {
   if (ui.clientApplicationMeta) {
     ui.clientApplicationMeta.textContent = [
       `Submitted ${formatDateTime(lead.createdAt, 'unknown')}`,
+      applicationChannelText(payload?.channel || lead.applicationChannel, payload?.assistant || lead.applicationAssistant),
       topics,
       `${payload?.answeredCount ?? lead.applicationAnsweredCount ?? 0} answers`
-    ].join(' · ');
+    ].filter(Boolean).join(' · ');
   }
 
   const body = ui.clientApplicationBody;

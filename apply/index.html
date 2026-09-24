@@ -68,6 +68,10 @@
             <li>Education only</li>
             <li>About 10 minutes</li>
           </ul>
+          <p class="apply-assistant-hint">
+            Talking this through with ChatGPT or Claude? It can fill in this page for you.
+            <a class="inline-link" href="../for-ai-assistants/">How that works</a>.
+          </p>
         </section>
 
         <noscript>
@@ -79,6 +83,14 @@
 
         <div class="apply-layout">
           <form id="applyForm" class="apply-form" novalidate>
+            <section id="applyAssistantNote" class="apply-card apply-assistant-note" role="status" hidden>
+              <h2 class="apply-card-title">Your assistant filled in these answers</h2>
+              <p class="apply-card-intro">
+                Check them and change anything that is wrong. Then add your name and email at the bottom and
+                send. Nothing is sent until you press Send.
+              </p>
+            </section>
+
             <section class="apply-card apply-topics" role="group" aria-labelledby="applyTopicsTitle">
               <h2 id="applyTopicsTitle" class="apply-card-title">What would you like help with?</h2>
               <p class="apply-card-intro">Pick one or more. The questions below change to match.</p>

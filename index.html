@@ -55,7 +55,10 @@
             "alternateName": "Planeir Irish financial education",
             "url": "https://planeir.ie/",
             "inLanguage": "en-IE",
-            "description": "Planeir publishes Irish financial education videos that explain real situations with the figures on screen."
+            "description": "Planeir publishes Irish financial education videos that explain real situations with the figures on screen.",
+            "publisher": {
+              "@id": "https://planeir.ie/#organization"
+            }
           },
           {
             "@type": "Person",
@@ -118,6 +121,97 @@
               "@id": "https://planeir.ie/#gerry-boylan"
             },
             "description": "Planeir is Irish financial education. Short videos take a real person's situation and explain options, trade-offs and whether goals are on track, with the figures on screen. It does not sell products or provide regulated financial advice or product recommendations."
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://planeir.ie/#organization",
+            "name": "Planéir",
+            "alternateName": "Planeir",
+            "url": "https://planeir.ie/",
+            "email": "hello@planeir.ie",
+            "founder": {
+              "@id": "https://planeir.ie/#gerry-boylan"
+            },
+            "areaServed": {
+              "@type": "Country",
+              "name": "Ireland"
+            },
+            "description": "Free Irish financial education. People in Ireland apply with their situation and figures, and Gerry Boylan, a Qualified Financial Adviser, explains selected cases in short videos. Education, not financial advice.",
+            "knowsAbout": [
+              "Pensions in Ireland",
+              "Retirement planning",
+              "Mortgages in Ireland",
+              "Buying a home in Ireland",
+              "Saving for children's education",
+              "Irish income tax"
+            ],
+            "potentialAction": {
+              "@type": "ApplyAction",
+              "name": "Apply for a case video",
+              "target": "https://planeir.ie/apply/"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://planeir.ie/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Planeir?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Planeir is free Irish financial education from Gerry Boylan, a Qualified Financial Adviser (QFA) in Ireland. Gerry takes real situations that people send in and explains them in short videos, with the figures on screen."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is it financial advice?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The videos are education. They explain options and trade-offs using Irish tax, pension and mortgage rules. They do not sell, arrange or recommend products. For a recommendation, speak to a regulated financial adviser."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What does it cost?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Nothing. Applying is free, and so are the videos."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Will my name be shown?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. Your name, email, employer and lender are left out, and the figures are rounded."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What can I apply about?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Pensions and retirement, a mortgage, buying a home, children's education costs, loans and credit cards, savings and a rainy day fund, or your finances as a whole."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What happens after I apply?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Gerry reads every application and picks some to explain. If yours is picked, he emails you when the video is live. If it is not picked, your figures are deleted 12 months after you apply."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can my AI assistant fill in the application?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. If you are talking your finances through with ChatGPT or Claude, it can fill in the application for you. You check it and send it yourself, or confirm it from an email. Nothing is sent without you."
+                }
+              }
+            ]
           }
         ]
       }
@@ -254,6 +348,43 @@
           </div>
         </section>
 
+        <section class="content-section faq-section" aria-labelledby="faqTitle">
+          <div class="section-heading" data-reveal>
+            <p class="section-eyebrow">Questions</p>
+            <h2 id="faqTitle">Questions people ask</h2>
+          </div>
+          <div class="faq-list">
+            <details class="faq-item">
+              <summary>What is Planeir?</summary>
+              <p>Planeir is free Irish financial education from Gerry Boylan, a Qualified Financial Adviser (QFA) in Ireland. Gerry takes real situations that people send in and explains them in short videos, with the figures on screen.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Is it financial advice?</summary>
+              <p>No. The videos are education. They explain options and trade-offs using Irish tax, pension and mortgage rules. They do not sell, arrange or recommend products. For a recommendation, speak to a regulated financial adviser.</p>
+            </details>
+            <details class="faq-item">
+              <summary>What does it cost?</summary>
+              <p>Nothing. Applying is free, and so are the videos.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Will my name be shown?</summary>
+              <p>No. Your name, email, employer and lender are left out, and the figures are rounded.</p>
+            </details>
+            <details class="faq-item">
+              <summary>What can I apply about?</summary>
+              <p>Pensions and retirement, a mortgage, buying a home, children's education costs, loans and credit cards, savings and a rainy day fund, or your finances as a whole.</p>
+            </details>
+            <details class="faq-item">
+              <summary>What happens after I apply?</summary>
+              <p>Gerry reads every application and picks some to explain. If yours is picked, he emails you when the video is live. If it is not picked, your figures are deleted 12 months after you apply.</p>
+            </details>
+            <details class="faq-item">
+              <summary>Can my AI assistant fill in the application?</summary>
+              <p>Yes. If you are talking your finances through with ChatGPT or Claude, it can fill in the application for you. You check it and send it yourself, or confirm it from an email. Nothing is sent without you. <a class="inline-link" href="./for-ai-assistants/">How it works</a>.</p>
+            </details>
+          </div>
+        </section>
+
         <h2 class="visually-hidden">Apply for a case video</h2>
         <section class="cta-band-section content-section" id="request-call" aria-label="Apply for a case video">
           <div id="advisorGateNotice" class="advisor-gate-notice" hidden tabindex="-1">
@@ -278,6 +409,7 @@
         <p class="site-footer-note">
           Planeir is educational only, not regulated financial advice.
           <a href="./privacy/">Privacy</a> ·
+          <a href="./for-ai-assistants/">For AI assistants</a> ·
           <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
         </p>
       </footer>

@@ -28,7 +28,9 @@ import {
   isSectionNone,
   isSectionOffered,
   isSectionVisible,
+  includeAnsweredSections,
   normalizeApplication,
+  parsePrefill,
   parseMoney,
   parsePercent,
   parseWhole,
@@ -110,11 +112,15 @@ const ui = {
   submit: document.getElementById('applySubmit'),
   clear: document.getElementById('applyClear'),
   savedNote: document.getElementById('applySavedNote'),
-  done: document.getElementById('applyDone')
+  done: document.getElementById('applyDone'),
+  assistantNote: document.getElementById('applyAssistantNote')
 };
 
 const state = {
   draft: emptyDraft(),
+  // 'assistant-link' when the answers arrived in a link an assistant wrote.
+  // The person still reads, completes and sends the page themselves.
+  via: '',
   submitting: false,
   saveTimer: 0
 };
@@ -220,6 +226,7 @@ function saveDraft() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
       v: 1,
       draft: state.draft,
+      via: state.via,
       contact: { fullName: ui.name?.value || '', email: ui.email?.value || '' },
       savedAt: new Date().toISOString()
     }));
@@ -786,7 +793,8 @@ async function onSubmit(event) {
     consentVideo: ui.consentVideo.checked,
     consentEducation: ui.consentEducation.checked,
     website: ui.website.value,
-    application: pruneToVisible(prepared())
+    application: pruneToVisible(prepared()),
+    ...(state.via ? { via: state.via } : {})
   };
 
   state.submitting = true;
@@ -814,6 +822,7 @@ async function onSubmit(event) {
     });
     ui.form.reset();
     state.draft = emptyDraft();
+    state.via = '';
     ui.layout.hidden = true;
     ui.done.hidden = false;
     window.scrollTo({ top: 0 });
@@ -851,12 +860,25 @@ function start() {
   const saved = loadDraft();
   if (saved) {
     state.draft = { ...emptyDraft(), ...saved.draft };
+    state.via = saved.via === 'assistant-link' ? 'assistant-link' : '';
     ['topics', 'added', 'unsure', 'none'].forEach((key) => {
       if (!Array.isArray(state.draft[key])) state.draft[key] = [];
     });
     ui.name.value = typeof saved.contact?.fullName === 'string' ? saved.contact.fullName : '';
     ui.email.value = typeof saved.contact?.email === 'string' ? saved.contact.email : '';
   }
+
+  // A link an assistant wrote carries the answers after "#". They replace any
+  // earlier draft on this device: following the link is the newer intent.
+  // The fragment is then removed, so the figures do not sit in the address bar
+  // or in the browser history.
+  const prefill = parsePrefill(window.location.hash);
+  if (prefill) {
+    state.draft = { ...emptyDraft(), ...includeAnsweredSections(normalizeApplication(prefill)) };
+    state.via = 'assistant-link';
+    window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  }
+  if (ui.assistantNote) ui.assistantNote.hidden = state.via !== 'assistant-link';
 
   const requested = new URLSearchParams(window.location.search).get('topic');
   if (requested && TOPICS.some((topic) => topic.id === requested) && state.draft.topics.length === 0) {
@@ -873,6 +895,8 @@ function start() {
     if (!window.confirm('Clear all your answers from this device?')) return;
     clearSavedDraft();
     state.draft = emptyDraft();
+    state.via = '';
+    if (ui.assistantNote) ui.assistantNote.hidden = true;
     ui.form.reset();
     setStatus('', '');
     render();

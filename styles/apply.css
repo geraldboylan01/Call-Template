@@ -534,6 +534,18 @@
   outline: none;
 }
 
+.apply-assistant-hint {
+  margin: 0;
+  color: var(--landing-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.apply-assistant-note {
+  border-color: rgba(143, 208, 255, 0.45);
+  background: linear-gradient(135deg, rgba(78, 176, 255, 0.14), rgba(9, 17, 31, 0.9));
+}
+
 /* Progress rail, desktop only */
 .apply-rail {
   display: none;
