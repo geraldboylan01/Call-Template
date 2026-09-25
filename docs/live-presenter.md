@@ -18,7 +18,7 @@ Planéir exposes real presentation targets and executes a package. Codex reads t
 6. Serve the repository from its root with `node scripts/serve-presenter.mjs 8788`, then open `http://127.0.0.1:8788/private/aam-makeovers/my-presentation/`. This is the actual app shell importing `initApp` and the production controller, with a local, read-only case bootstrap. Private case files are excluded from the build and Git.
 7. Run `await window.planeirPresenter.validateLive()` or use **Controls → Validate live**. Retain the returned JSON, review the live views, fix failures, then regenerate the annotated script from the validated package. Do not invent a substitute visual for a missing target.
 
-In an already loaded advisor case, `window.planeirPresenter.discover()` returns the whole-case catalogue, and `.brief()` adds authoring instructions. These are read-only interfaces for local/browser tooling. The **Export presentation targets** button is a debugging fallback. The **Presenter Mode** button loads `presentation.json` and `script.md` together. It rejects a different or edited case.
+In an already loaded advisor case, `window.planeirPresenter.discover()` returns the whole-case catalogue, and `.brief()` adds authoring instructions. These are read-only interfaces for local/browser tooling. The **Export presentation targets** button is a debugging fallback. The **Presenter Mode** button accepts `presentation.json` and `script.md` separately or together. Start preview stays disabled until both files pass validation; an invalid replacement clears the previously loaded package. It rejects a different or edited case.
 
 The catalogue identifies modules by content revision rather than import-time UUID. It includes hidden-card availability, descriptions, output origins, scalar values, report block/item hierarchy, PBS holdings in each named scenario, repayment facts from the existing engine, timelines, and authored report chart points. It distinguishes authored reports from calculator outputs and declares that STATE does not recalculate other modules.
 
@@ -127,6 +127,7 @@ node scripts/check-presenter-take.mjs
 node scripts/serve-presenter.mjs 8788
 # In another terminal; uses locally installed playwright-core and Chrome:
 node scripts/check-presenter-browser.mjs
+node scripts/check-presenter-browser.mjs --loading-only
 node scripts/check-presenter-browser.mjs --recording-only
 node scripts/check-presenter-browser.mjs --capture-only
 node scripts/check-presenter-browser.mjs --design-only

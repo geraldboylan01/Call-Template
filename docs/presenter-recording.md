@@ -6,7 +6,7 @@ Use **iPhone Camera + OBS Studio on the Mac + DaVinci Resolve Free**. Keep two c
 
 1. Open the client's analysis in the normal Planéir advisor workspace. Finish any financial edits and close comparison mode.
 2. You need the case's `presentation.json` and `script.md`, generated from that case and its completed script. Give Codex the case material, module JSON and style reference; Codex discovers the live targets and prepares this package. The app does not generate the narrative automatically. A package for a different or edited case is rejected.
-3. Click **Presenter Mode** in the top bar. Select `presentation.json` and `script.md` together in **Presentation package**. Click **Download presenter script** to save the annotated reading copy.
+3. Click **Presenter Mode** in the top bar. Choose `presentation.json` in the first box and `script.md` in the second. You can also select both together in the first box. **Start preview** becomes available when both files pass validation. Click **Download presenter script** to save the annotated reading copy.
 4. Click **Start preview**. The case opens before cue 1. RIGHT advances one complete visual beat; LEFT reconstructs the previous beat. No financial change is saved by Presenter Mode.
 5. Open **Controls**, choose **Fullscreen** if desired, and settle on the final window size. Click **Validate live**. It rehearses every beat in both directions; wait for it to finish. Validation is required before starting a clean take and must be rerun if the capture layout changes.
 6. Put the annotated script on a second display or print it. Keep the Planéir browser focused when using the arrows. The captured window must contain only Planéir, not the script or editor.

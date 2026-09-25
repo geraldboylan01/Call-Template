@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { loadPresentationSession, preparePreview } from './presenter-package.mjs';
 import { buildPresentationCatalogue, fingerprint } from '../js/presenter_catalogue.js';
+if (process.argv.includes('--loading-only')) { const {checkPresenterLoading}=await import('./presenter-loading-browser.mjs'); await checkPresenterLoading(process.argv[3]); process.exit(0); }
 if (process.argv.includes('--recording-only')) { const {checkPresenterRecording}=await import('./presenter-recording-browser.mjs'); await checkPresenterRecording(); process.exit(0); }
 if (process.argv.includes('--capture-only')) { const {checkNativeCapture}=await import('./presenter-capture-browser.mjs'); await checkNativeCapture(); process.exit(0); }
 if (process.argv[2] === '--design-only') { const {checkPresenterDesign}=await import('./presenter-design-browser.mjs'); await checkPresenterDesign(process.argv[3]); process.exit(0); }
