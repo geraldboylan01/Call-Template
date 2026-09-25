@@ -125,14 +125,23 @@ export function createPresenterController(host, onChange = () => {}, onEvent = (
   const api = {
     discover: () => buildPresentationCatalogue(host.session()),
     brief: () => buildLivePresenterBrief(api.discover()),
+    unload() {
+      if (active || busy) throw new Error('Exit the current preview before changing its files.');
+      pkg = script = catalogue = compiled = undefined; index = -1; error = ''; validation = null; emit();
+    },
     load(nextPackage, nextScript) {
       if (active || busy) throw new Error('Exit the current preview before loading another package.');
-      catalogue = api.discover(); compiled = compilePresentation(nextPackage, catalogue, nextScript);
-      pkg = structuredClone(nextPackage); script = nextScript; index = -1; error = ''; validation = null; emit();
+      api.unload();
+      try {
+        const nextCatalogue = api.discover(), nextCompiled = compilePresentation(nextPackage, nextCatalogue, nextScript);
+        catalogue = nextCatalogue; compiled = nextCompiled; pkg = structuredClone(nextPackage); script = nextScript;
+      } catch (e) { error = e.message; emit(); throw e; }
+      emit();
       return { ...api.state(), narrative: compiled.narrative, annotatedScript: annotateScript(script, compiled) };
     },
     start: () => exclusive(async () => {
       if (active) return;
+      if (!pkg || !compiled) throw new Error('Choose presentation.json and script.md before starting preview. Both files are required.');
       catalogue = api.discover(); compiled = compilePresentation(pkg, catalogue, script);
       await host.begin(); active = true; document.body.classList.add('presenter-active');
       try { await ready(); } catch(e) { clean(); await host.end(); active = false; document.body.classList.remove('presenter-active'); throw e; }
@@ -181,7 +190,7 @@ export function createPresenterController(host, onChange = () => {}, onEvent = (
       validation = { version: 1, status: failures.length ? 'failed' : 'passed', validatedAt: new Date().toISOString(), caseFingerprint: catalogue.caseFingerprint, scriptHash: fingerprint(script), stepCount: compiled.steps.length, cueCount: compiled.cues.length, viewport: { width: innerWidth, height: innerHeight }, surface: { width: host.root().clientWidth, height: host.root().clientHeight }, failures, evidence, narrative: compiled.narrative, unmapped: compiled.unmapped };
       return structuredClone(validation);
     }),
-    state: () => ({ active, busy, index, count: compiled?.steps.length || 0, current: index < 0 ? 'Ready — first cue is next' : compiled?.steps[index]?.label, next: compiled?.steps[index + 1]?.label || 'End', error, narrative: compiled?.narrative, validationStatus: validation?.status || 'not-run', scenarios: { ...liveScenarios } }),
+    state: () => ({ active, busy, loaded: Boolean(compiled), index, count: compiled?.steps.length || 0, current: index < 0 ? 'Ready — first cue is next' : compiled?.steps[index]?.label, next: compiled?.steps[index + 1]?.label || 'End', error, narrative: compiled?.narrative, validationStatus: validation?.status || 'not-run', scenarios: { ...liveScenarios } }),
     recordingBundle: () => ({ presentation: structuredClone(pkg), script, compiled: structuredClone(compiled), validation: structuredClone(validation) }),
     setExternalRecording: value => { externalRecording = Boolean(value); },
     canRecord() {
@@ -201,27 +210,57 @@ const saveFile = (name, value, type = 'application/json') => {
 export function installPresenter(host) {
   const launch = document.createElement('button'); launch.id = 'presenterLaunch'; launch.className = 'ui-button presenter-launch'; launch.textContent = 'Presenter Mode'; document.querySelector('.topbar-right')?.prepend(launch);
   const panel = document.createElement('dialog'); panel.className = 'presenter-setup';
-  panel.innerHTML = '<h2>Live Presenter Mode</h2><p>Load presentation.json and its script.md for this analysis. Preview starts before the first cue. Each RIGHT ARROW presents one visual idea.</p><label>Presentation package <input type="file" accept=".json,.md" multiple></label><p class="presenter-message" role="status"></p><div class="presenter-actions"></div><div class="presenter-edit-recording"></div><details class="presenter-browser-recording"><summary>Alternative: browser WebM recording</summary><div class="presenter-recording"></div></details>';
+  panel.innerHTML = '<h2>Live Presenter Mode</h2><p>Choose the two files for this analysis, one at a time or together. Preview starts before the first cue. Each RIGHT ARROW presents one visual idea.</p><label>1. Presentation — presentation.json <input class="presenter-package-file" type="file" accept=".json,.md" multiple></label><label>2. Spoken script — script.md <input class="presenter-script-file" type="file" accept=".md"></label><p class="presenter-files-status" role="status"></p><p class="presenter-message" role="status"></p><div class="presenter-actions"></div><div class="presenter-edit-recording"></div><details class="presenter-browser-recording"><summary>Alternative: browser WebM recording</summary><div class="presenter-recording"></div></details>';
   document.body.append(panel);
   const message = panel.querySelector('.presenter-message'), actions = panel.querySelector('.presenter-actions');
   const hud = document.createElement('aside'); hud.className = 'presenter-hud'; hud.setAttribute('aria-live', 'polite'); document.body.append(hud);
-  let recorderUI, editRecording, exiting = false, wideScroll = null;
+  let recorderUI, editRecording, exiting = false, wideScroll = null, startButton;
+  const fileInputs = [...panel.querySelectorAll('input[type=file]')], chosen = { json: null, script: null };
+  let fileGeneration = 0;
+  const filesStatus = panel.querySelector('.presenter-files-status');
   const api = createPresenterController(host, state => {
     hud.replaceChildren();
     const text = document.createElement('span'); text.textContent = `${Math.max(0, state.index + 1)}/${state.count} · ${state.current} · Next: ${state.next}${state.busy ? ' · Moving…' : ''}${state.error ? ` · ${state.error}` : ''}`; hud.append(text);
     const controls = document.createElement('button'); controls.textContent = 'Controls'; controls.onclick = () => { editRecording?.observe({ type: 'controls-opened' }); panel.showModal(); }; hud.append(controls);
-    message.textContent = state.error || `${state.count} beats · Live validation: ${state.validationStatus}`;
+    message.textContent = state.error || (state.loaded ? `${state.count} beats ready · Live validation: ${state.validationStatus}` : 'Choose both files to enable Start preview.');
+    filesStatus.textContent = state.loaded ? 'Presentation and script are ready.' : `Presentation: ${chosen.json?.name || 'not selected'} · Script: ${chosen.script?.name || 'not selected'}`;
+    if (startButton) startButton.disabled = !state.loaded || state.busy;
+    fileInputs.forEach(input => { input.disabled = state.active || state.busy; });
   }, event => editRecording?.observe(event));
   const run = fn => Promise.resolve().then(fn).catch(e => { message.textContent = e.message; hud.dataset.error = e.message; if (editRecording?.active && !panel.open) { editRecording.observe({ type: 'controls-opened', reason: e.message }); panel.showModal(); } });
-  const button = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = () => run(fn); actions.append(b); };
+  const button = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = () => run(fn); actions.append(b); return b; };
   launch.onclick = () => panel.showModal();
-  panel.querySelector('input').onchange = async e => run(async () => {
-    const files = [...e.target.files], json = files.find(f => f.name === 'presentation.json') || files.find(f => f.name.endsWith('.json'));
+  fileInputs.forEach(input => { input.onchange = event => run(async () => {
+    const files = [...event.target.files];
+    if (!files.length) return; // Cancelling the picker keeps the current selection.
+    const generation = ++fileGeneration;
+    api.unload(); // Never leave an old package startable after a failed replacement.
+    const json = files.find(f => f.name === 'presentation.json') || files.find(f => f.name.endsWith('.json'));
     const md = files.find(f => f.name === 'script.md');
-    if (!json || !md) throw new Error('Select both presentation.json and script.md together.');
-    api.load(JSON.parse(await json.text()), await md.text());
-  });
-  button('Start preview', async () => { await api.start(); panel.close(); });
+    if (event.target.classList.contains('presenter-script-file')) chosen.script = null;
+    else if (!json && !md) chosen.json = null;
+    if (json) chosen.json = json;
+    if (md) chosen.script = md;
+    filesStatus.textContent = `Presentation: ${chosen.json?.name || 'not selected'} · Script: ${chosen.script?.name || 'not selected'}`;
+    if (files.some(f => f.name.endsWith('.md') && f.name !== 'script.md')) throw new Error('Choose script.md as the spoken script. Keep script-presenter.md as your reading copy.');
+    if (!json && !md) throw new Error('Choose presentation.json or script.md. Keep script-presenter.md as your reading copy.');
+    if (!chosen.json || !chosen.script) {
+      message.textContent = chosen.json ? 'Presentation selected. Now choose script.md in the second box.' : 'Script selected. Now choose presentation.json in the first box.';
+      return;
+    }
+    message.textContent = 'Checking the presentation and script…';
+    try {
+      const [packageText, scriptText] = await Promise.all([chosen.json.text(), chosen.script.text()]);
+      if (generation !== fileGeneration) return;
+      let parsed;
+      try { parsed = JSON.parse(packageText); } catch { throw new Error('The presentation file is not valid JSON. Choose the original presentation.json.'); }
+      api.load(parsed, scriptText);
+    } catch (e) { if (generation === fileGeneration) throw e; }
+  }); });
+  startButton = button('Start preview', async () => { await api.start(); panel.close(); });
+  startButton.disabled = true;
+  message.textContent = 'Choose both files to enable Start preview.';
+  filesStatus.textContent = 'Presentation: not selected · Script: not selected';
   button('Validate live', async () => { panel.close(); const result = await api.validateLive(); saveFile('validation.json', result); panel.showModal(); });
   button('Restart at first cue', async () => { await api.restart(); panel.close(); });
   button('Fullscreen', () => document.documentElement.requestFullscreen());
