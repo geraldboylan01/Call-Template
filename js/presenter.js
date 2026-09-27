@@ -4,6 +4,7 @@ import { focusPresenterChartPoint, waitForPresenterCharts } from './charts.js';
 import { mountVideoCapture } from './video_capture.js';
 import { createPresenterAttention, glideTo, changePresenterScene } from './presenter_attention.js';
 import { mountPresenterRecording } from './presenter_recording.js';
+import { mountPresenterConsole } from './presenter_console.js';
 
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const attr = value => CSS.escape(String(value));
@@ -35,11 +36,11 @@ export function resolvePresentationTarget(root, target) {
 export function createPresenterController(host, onChange = () => {}, onEvent = () => {}) {
   let pkg, script, catalogue, compiled, active = false, busy = false, index = -1;
   let error = '', loadError = '', cleanupPoint, focused, framed, currentModule, validation = null;
-  let externalRecording = false, navigationId = 0;
+  let externalRecording = false, navigationId = 0, exploring = false;
   const attention = createPresenterAttention();
   const targets = () => new Map(catalogue.targets.map(t => [t.id, t]));
   const emit = () => onChange(api.state());
-  const clean = () => { attention.clear(); cleanupPoint?.(); cleanupPoint = null; focused?.classList.remove('presenter-focus'); focused = null; framed?.classList.remove('presenter-timeline-overview', 'presenter-timeline-compact'); framed = null; };
+  const clean = () => { document.body.classList.remove('presenter-chart-hover'); attention.clear(); cleanupPoint?.(); cleanupPoint = null; focused?.classList.remove('presenter-focus'); focused = null; framed?.classList.remove('presenter-timeline-overview', 'presenter-timeline-compact'); framed = null; };
   const defaults = () => Object.fromEntries(catalogue.modules.filter(m => m.scenarios.length).map(m => [m.key, m.defaultScenarioId]));
   let liveScenarios = {};
   async function show(key) {
@@ -112,6 +113,7 @@ export function createPresenterController(host, onChange = () => {}, onEvent = (
     return evidence;
   }
   async function ready() {
+    exploring = false;
     liveScenarios = defaults(); currentModule = null;
     await show(compiled.steps[0].view.moduleKey);
     const module = catalogue.targets.find(t => t.moduleKey === currentModule && t.ref.type === 'module');
@@ -153,8 +155,10 @@ export function createPresenterController(host, onChange = () => {}, onEvent = (
       const navigation = { navigationId: ++navigationId, fromIndex: previous, index: destination, direction: destination > previous ? 'forward' : destination < previous ? 'backward' : 'repeat', stepId: compiled.steps[destination]?.id || null, label: compiled.steps[destination]?.label || 'Ready' };
       onEvent({ type: 'requested', ...navigation });
       try {
+        const reconstruct = exploring || destination !== index + 1;
+        if (exploring) currentModule = null; // Remount to discard local date/what-if controls.
         if (destination === -1) await ready();
-        else { await execute(compiled.steps[destination], destination !== index + 1); index = destination; }
+        else { await execute(compiled.steps[destination], reconstruct); index = destination; exploring = false; }
         onEvent({ type: 'arrived', ...navigation });
       } catch(e) {
         // A failure cannot consume a script cue or leave a half-selected scenario.
@@ -164,11 +168,23 @@ export function createPresenterController(host, onChange = () => {}, onEvent = (
     }),
     next: () => api.goTo(index + 1), previous: () => api.goTo(index - 1),
     restart: () => api.goTo(-1),
+    resume: () => api.goTo(index),
+    explore(label = 'Live calculator interaction') {
+      if (!active || busy) return false;
+      exploring = true; clean();
+      onEvent({ type: 'exploration', index, stepId: compiled.steps[index]?.id || null, label }); emit();
+      return true;
+    },
+    chartHover(value) {
+      document.body.classList.toggle('presenter-chart-hover', active && value);
+      // Let Chart.js finish its own mouseout handler before restoring the cue.
+      if (!value) requestAnimationFrame(() => requestAnimationFrame(() => { if (active && !busy && !document.body.classList.contains('presenter-chart-hover')) { cleanupPoint?.restore?.(); attention.refresh(); } }));
+    },
     async exit() {
       if (busy) { while (busy) await pause(30); }
       return exclusive(async () => {
         if (!active) return;
-        clean(); document.body.classList.remove('presenter-active', 'presenter-wide', 'presenter-hud-hidden');
+        clean(); exploring = false; document.body.classList.remove('presenter-active', 'presenter-wide', 'presenter-hud-hidden', 'presenter-chart-hover');
         await host.end(); active = false; index = -1; currentModule = null;
       });
     },
@@ -190,7 +206,7 @@ export function createPresenterController(host, onChange = () => {}, onEvent = (
       validation = { version: 1, status: failures.length ? 'failed' : 'passed', validatedAt: new Date().toISOString(), caseFingerprint: catalogue.caseFingerprint, scriptHash: fingerprint(script), stepCount: compiled.steps.length, cueCount: compiled.cues.length, viewport: { width: innerWidth, height: innerHeight }, surface: { width: host.root().clientWidth, height: host.root().clientHeight }, failures, evidence, narrative: compiled.narrative, unmapped: compiled.unmapped };
       return structuredClone(validation);
     }),
-    state: () => ({ active, busy, loaded: Boolean(compiled), index, count: compiled?.steps.length || 0, current: index < 0 ? 'Ready — first cue is next' : compiled?.steps[index]?.label, next: compiled?.steps[index + 1]?.label || 'End', error: loadError || error, narrative: compiled?.narrative, validationStatus: validation?.status || 'not-run', scenarios: { ...liveScenarios } }),
+    state: () => ({ active, busy, exploring, loaded: Boolean(compiled), index, count: compiled?.steps.length || 0, current: index < 0 ? 'Ready — first cue is next' : compiled?.steps[index]?.label, next: compiled?.steps[index + 1]?.label || 'End', error: loadError || error, narrative: compiled?.narrative, validationStatus: validation?.status || 'not-run', scenarios: { ...liveScenarios } }),
     recordingBundle: () => ({ presentation: structuredClone(pkg), script, compiled: structuredClone(compiled), validation: structuredClone(validation) }),
     setExternalRecording: value => { externalRecording = Boolean(value); },
     canRecord() {
@@ -214,21 +230,22 @@ export function installPresenter(host) {
   document.body.append(panel);
   const message = panel.querySelector('.presenter-message'), actions = panel.querySelector('.presenter-actions');
   const hud = document.createElement('aside'); hud.className = 'presenter-hud'; hud.setAttribute('aria-live', 'polite'); document.body.append(hud);
-  let recorderUI, editRecording, exiting = false, wideScroll = null, selectionError = '';
+  let recorderUI, editRecording, recordingConsole, exiting = false, wideScroll = null, selectionError = '';
   const gatedButtons = [];
   const fileInputs = [...panel.querySelectorAll('input[type=file]')], chosen = { json: null, script: null };
   let fileGeneration = 0;
   const filesStatus = panel.querySelector('.presenter-files-status');
   const api = createPresenterController(host, state => {
+    document.body.classList.toggle('presenter-busy', state.active && state.busy);
     hud.replaceChildren();
-    const text = document.createElement('span'); text.textContent = `${Math.max(0, state.index + 1)}/${state.count} · ${state.current} · Next: ${state.next}${state.busy ? ' · Moving…' : ''}${state.error ? ` · ${state.error}` : ''}`; hud.append(text);
+    const text = document.createElement('span'); text.textContent = `${Math.max(0, state.index + 1)}/${state.count} · ${state.current} · Next: ${state.next}${state.exploring ? ' · Exploring — next arrow returns to the script' : ''}${state.busy ? ' · Moving…' : ''}${state.error ? ` · ${state.error}` : ''}`; hud.append(text);
     const controls = document.createElement('button'); controls.textContent = 'Controls'; controls.onclick = () => { editRecording?.observe({ type: 'controls-opened' }); panel.showModal(); }; hud.append(controls);
     message.textContent = selectionError || state.error || (state.loaded ? `${state.count} beats ready · Live validation: ${state.validationStatus}` : 'Choose both files to enable Start preview.');
     filesStatus.textContent = state.loaded ? 'Presentation and script are ready.' : `Presentation: ${chosen.json?.name || 'not selected'} · Script: ${chosen.script?.name || 'not selected'}`;
     gatedButtons.forEach(({ element, enabled }) => { element.disabled = !enabled(state); });
     fileInputs.forEach(input => { input.disabled = state.active || state.busy; });
   }, event => editRecording?.observe(event));
-  const run = fn => Promise.resolve().then(fn).catch(e => { message.textContent = selectionError || api.state().error || e.message; hud.dataset.error = e.message; if (editRecording?.active && !panel.open) { editRecording.observe({ type: 'controls-opened', reason: e.message }); panel.showModal(); } });
+  const run = fn => Promise.resolve().then(fn).catch(e => { message.textContent = selectionError || api.state().error || e.message; hud.dataset.error = e.message; recordingConsole?.report(e.message); if (!recordingConsole?.isOpen && !editRecording?.controlled && editRecording?.active && !panel.open) { editRecording.observe({ type: 'controls-opened', reason: e.message }); panel.showModal(); } });
   const button = (label, fn, enabled = () => true) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = () => run(fn); actions.append(b); gatedButtons.push({ element: b, enabled }); b.disabled = !enabled(api.state()); return b; };
   launch.onclick = () => panel.showModal();
   fileInputs.forEach(input => { input.onchange = event => run(async () => {
@@ -265,6 +282,11 @@ export function installPresenter(host) {
   filesStatus.textContent = 'Presentation: not selected · Script: not selected';
   button('Validate live', async () => { panel.close(); try { const result = await api.validateLive(); saveFile('validation.json', result); } finally { if (!panel.open) panel.showModal(); } }, active);
   button('Restart at first cue', async () => { await api.restart(); panel.close(); }, active);
+  button('Return to scripted view', async () => { await api.resume(); panel.close(); }, active);
+  button('Open recording controls', () => recordingConsole.open(), active);
+  const consoleHelp = document.createElement('p'); consoleHelp.className = 'presenter-console-help';
+  consoleHelp.textContent = 'First run “Start Presenter Controls.command” in your local Planéir repo (or node scripts/serve-presenter-controls.mjs). Keep its Terminal open, then open the separate controls window. Capture only the Planéir window in OBS.';
+  actions.after(consoleHelp);
   button('Fullscreen', () => document.documentElement.requestFullscreen());
   button('Download presenter script', () => { const b = api.recordingBundle(); if (!b.compiled) throw new Error('Load a presentation package first.'); saveFile('script-presenter.md', annotateScript(b.script, b.compiled), 'text/markdown'); }, loaded);
   button('Export presentation targets', () => saveFile('presentation-targets.json', api.discover()));
@@ -277,9 +299,14 @@ export function installPresenter(host) {
   button('Exit presenter', exit);
   recorderUI = mountVideoCapture(panel.querySelector('.presenter-recording'), { beforeStart: () => { if (editRecording.active) throw new Error('Finish the OBS take before using the browser recorder.'); api.canRecord(); panel.close(); } });
   editRecording = mountPresenterRecording(panel.querySelector('.presenter-edit-recording'), { api, panel, recorderUI, run });
+  recordingConsole = mountPresenterConsole({ api, panel, take: editRecording, exit });
   const handleKey = event => {
     if (!api.state().active) return false;
-    if (event.key === 'Escape') { event.preventDefault(); void run(exit); return true; }
+    if (event.key === 'Escape') { event.preventDefault(); if (recordingConsole.isOpen || editRecording.controlled) recordingConsole.focus(); else void run(exit); return true; }
+    if (recordingConsole.isOpen && !event.target?.matches?.('input,textarea,select,[contenteditable="true"]')) {
+      const key = event.key.toLowerCase();
+      if (key === 's' || key === 'c') { event.preventDefault(); if (!event.repeat) void run(() => key === 's' ? recordingConsole.stop() : recordingConsole.focus()); return true; }
+    }
     if (editRecording.countingDown) { event.preventDefault(); return true; }
     if (event.target?.matches?.('input,textarea,select,[contenteditable="true"]') || panel.open) return true;
     const key = event.key.toLowerCase();
@@ -292,14 +319,27 @@ export function installPresenter(host) {
     if (key === 'arrowright') void run(() => api.next());
     if (key === 'arrowleft') void run(() => api.previous());
     if (key === 'arrowup') { wideScroll = host.root().scrollTop; host.root().scrollTop = 0; document.body.classList.add('presenter-wide'); }
-    if (key === 'h' && !editRecording.active) document.body.classList.toggle('presenter-hud-hidden');
+    if (key === 'h' && !editRecording.active && !recordingConsole.isOpen) document.body.classList.toggle('presenter-hud-hidden');
     return true;
   };
   const restoreWide = () => { if (wideScroll !== null && host.root()) host.root().scrollTop = wideScroll; wideScroll = null; document.body.classList.remove('presenter-wide'); };
   window.addEventListener('keyup', e => { if (e.key === 'ArrowUp') restoreWide(); });
   window.addEventListener('blur', restoreWide);
   panel.addEventListener('cancel', e => { e.preventDefault(); panel.close(); });
-  // Intercept mouse changes in live content: the storyboard is the sole director.
-  document.addEventListener('click', e => { if (api.state().active && e.target.closest?.('#swipeStage button, #swipeStage input, #swipeStage summary, #swipeStage a')) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+  // Existing read-only calculator controls act on the isolated presentation copy.
+  // The next cue reconstructs its scripted state, including local date controls.
+  document.addEventListener('click', e => {
+    if (!api.state().active) return;
+    const control = e.target.closest?.('#swipeStage button, #swipeStage input, #swipeStage select, #swipeStage summary, #swipeStage a');
+    if (!control) return;
+    if (api.state().busy || control.matches('a')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+    api.explore(control.getAttribute('aria-label') || control.textContent.trim().slice(0, 150) || 'Calculator control');
+  }, true);
+  document.addEventListener('change', e => {
+    if (e.target.matches?.('#swipeStage input, #swipeStage select')) api.explore(e.target.getAttribute('aria-label') || 'Calculator value changed');
+  }, true);
+  const chartSurface = element => element?.closest?.('#swipeStage canvas, .callcanvas-chart-overlay-wrapper');
+  document.addEventListener('pointerover', e => { if (chartSurface(e.target)) api.chartHover(true); });
+  document.addEventListener('pointerout', e => { if (chartSurface(e.target) && !chartSurface(e.relatedTarget)) api.chartHover(false); });
   return { ...api, handleKey, exit, take: editRecording };
 }

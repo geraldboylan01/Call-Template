@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Planéir · Private recording controls</title><link rel="stylesheet" href="/styles/presenter-controls.css"></head>
+<body><main>
+  <header><span class="eyebrow">PLANÉIR · PRESENTER DESK</span><h1>Your private controls</h1><p>Capture the <strong>other Planéir window only</strong> in OBS. Keep this window outside that capture.</p></header>
+  <div id="connection" role="status">Connecting to the Planéir presentation…</div>
+  <section class="recording" aria-label="Recording">
+    <div id="record-state" role="status" data-state="unknown">OBS not connected</div><div id="timer">00:00:00</div>
+    <p id="record-detail">Connect below to see confirmed recording status.</p>
+    <div class="actions"><button id="record" class="primary" disabled>Record</button><button id="stop" class="stop" disabled>Stop recording</button><button id="download" disabled>Download edit package</button></div>
+    <p id="take-state"></p>
+    <label class="check"><input id="ready" type="checkbox"> My iPhone is recording; I checked the external mic in OBS and OBS captures only the Planéir window.</label>
+  </section>
+  <p id="error" role="alert"></p>
+  <section aria-label="Visual direction"><div class="eyebrow" id="beat">Waiting for presentation</div><h2 id="current">Start preview in Planéir</h2><p id="next"></p><p id="exploring" hidden>Live exploration · Next/Previous or Return to script restores the authored view.</p>
+    <div class="actions"><button data-command="previous" disabled>← Previous</button><button data-command="next" disabled>Next →</button><button data-command="resume" disabled>Return to script</button><button data-command="retake" disabled>Mark retake</button></div>
+    <div class="actions secondary"><button data-command="validate" disabled>Validate live</button><button data-command="restart" disabled>Restart</button><button id="exit" disabled>Back to setup</button></div>
+    <p id="validation"></p><details open><summary>Words for this beat</summary><div id="script"></div></details>
+  </section>
+  <details id="obs-setup" open><summary>OBS connection · one-time setup, connect each session</summary>
+    <p>In OBS, open <strong>Tools → WebSocket Server Settings</strong>. Enable the server and authentication. Copy the password from <strong>Show Connect Info</strong>. Keep OBS open. Start the iPhone yourself.</p>
+    <form id="connect-form"><label>Port<input id="port" type="number" min="1024" max="65535" value="4455" required></label><label>OBS password<input id="password" type="password" autocomplete="off" required></label><button id="connect">Connect to OBS</button></form>
+    <p>The password stays in this window’s memory. It is cleared from the field after connecting and is never saved or sent to Planéir’s website.</p>
+  </details>
+  <footer>RIGHT/LEFT works in either window. S stops OBS and the cue log. C brings these controls forward. After Record, wait for SYNC, say the take name and clap, then speak. Stop the iPhone separately. Always check a short saved test for picture and sound.</footer>
+</main><script type="module" src="/js/presenter_controls.js"></script></body></html>

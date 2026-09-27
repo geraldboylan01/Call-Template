@@ -11,12 +11,12 @@ export function createPresenterTake({ now = () => performance.now(), date = () =
   };
   return {
     snapshot,
-    begin(bundle, viewport) {
+    begin(bundle, viewport, { obsConfirmed = false } = {}) {
       if (take && !take.exported) throw new Error('Download the previous edit package before starting another take.');
       origin = null;
       take = { version: 1, id: `take-${date().toISOString().replace(/[:.]/g, '-')}-${id().slice(0, 8)}`, createdAt: date().toISOString(), status: 'countdown', exported: false, viewport, bundle: structuredClone(bundle), events: [],
         timeReference: 'Milliseconds from the first visible SYNC slate, not from OBS file start. Locate that frame in the screen recording and add its offset. These are browser event times, not frame-accurate media timecodes.',
-        capture: { screen: 'External recorder (OBS)', camera: 'iPhone local recording', audio: 'External Mac microphone in OBS; iPhone audio for sync', verifiedByApp: false } };
+        capture: { screen: 'External recorder (OBS)', camera: 'iPhone local recording', audio: 'External Mac microphone in OBS; iPhone audio for sync', verifiedByApp: false, obsRecordingConfirmed: obsConfirmed, note: obsConfirmed ? 'OBS confirmed its recording output. Camera, microphone routing and captured picture still require a physical test.' : 'External recorders are operated manually; recording status was not verified.' } };
       return snapshot();
     },
     sync() { if (take?.status !== 'countdown') throw new Error('No take is waiting for sync.'); origin = now(); take.status = 'recording'; record({ type: 'sync', label: 'First visible SYNC slate' }); },
@@ -54,7 +54,7 @@ export function buildTakeFiles(take) {
     ...arrivals.map(e => { const step = compiled.steps.find(s => s.id === e.stepId); return `| ${elapsedTime(e.elapsedMs)} | ${cell(e.label)} | ${cell(e.direction)} | ${cell(step?.edit?.shot || 'screen candidate')} | ${cell(step?.edit?.reason || step?.rationale || 'Review this visual against the spoken explanation.')} |`; }), '',
     'These are editorial suggestions, not automatic cuts. Script anchors are planned words, not a transcript or word-level audio alignment.', '',
     '## Events to review', '',
-    ...take.events.filter(e => ['failed', 'retake', 'controls-opened', 'viewport-changed', 'page-hidden', 'page-visible', 'end'].includes(e.type)).map(e => `- ${elapsedTime(e.elapsedMs)} — ${cell(e.type)}: ${cell(e.error || e.reason || e.label || '')}`),
+    ...take.events.filter(e => ['failed', 'retake', 'exploration', 'capture-warning', 'controls-opened', 'viewport-changed', 'page-hidden', 'page-visible', 'end'].includes(e.type)).map(e => `- ${elapsedTime(e.elapsedMs)} — ${cell(e.type)}: ${cell(e.error || e.reason || e.label || '')}`),
     ...(take.interruption ? ['', `Recovery note: ${take.interruption}`] : []), '',
     'Keep the original iPhone video, OBS MKV/MP4 and this package together. Confirm both recorders have stopped separately.'
   ].join('\n');

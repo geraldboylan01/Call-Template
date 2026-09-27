@@ -5,13 +5,14 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export function mountPresenterRecording(host, { api, panel, recorderUI, run }) {
   const log = createPresenterTake();
-  let generation = 0, countdown = false, storageError = '';
+  let generation = 0, countdown = false, storageError = '', controlled = false;
   host.innerHTML = `<h3>Record for editing · iPhone + OBS</h3>
     <p>Record yourself on your iPhone. In OBS, record this clean Planéir view and your external Mac microphone. Both recordings run continuously.</p>
-    <p>Start preview, choose your final window size, then Validate live. Start both recorders and clap once. Start the take below: a countdown and SYNC slate mark the timing reference, then all controls disappear.</p>
+    <p>Recommended: use <strong>Open recording controls</strong> above. Its separate window starts/stops OBS, shows confirmed recording status and runs the cue log. Start the iPhone yourself. OBS must capture only this Planéir window.</p>
+    <details><summary>Fallback: start OBS manually</summary><p>Start preview, choose your final window size, then Validate live. Start both recorders and clap once. Start the take below: a countdown and SYNC slate mark the timing reference, then all controls disappear.</p>
     <p>RIGHT / LEFT: visual beat · M: mark a retake · C: controls · S: finish take log. OBS and iPhone must be stopped separately.</p>
     <label><input type="checkbox" class="presenter-capture-confirm"> OBS and iPhone are recording; the external mic meter is moving in OBS.</label>
-    <div class="presenter-take-actions"></div><p class="presenter-take-status" role="status"></p>
+    <div class="presenter-take-actions"></div><p class="presenter-take-status" role="status"></p></details>
     <a href="./recording.html" target="_blank" rel="noopener">Recording and editing guide</a>`;
   // Resolve relative to the deployed app rather than a private preview directory.
   host.querySelector('a').href = new URL('../app/recording.html', import.meta.url).href;
@@ -29,23 +30,38 @@ export function mountPresenterRecording(host, { api, panel, recorderUI, run }) {
   };
   const observe = event => { if (!log.active) return; log.record(event); persist(); };
   const clean = value => document.body.classList.toggle('presenter-clean-recording', value);
-  async function finish(reason = 'finished') {
-    if (!log.active) return;
+  async function finish(reason = 'finished', { confirmedStopped = false, reveal = true } = {}) {
+    if (controlled && !confirmedStopped) throw new Error('Stop OBS from the separate recording controls first.');
+    if (!log.active && !controlled) return;
     generation++; countdown = false; slate.hidden = true;
+    // OBS is already stopped in the controlled path. Do not log the arrival of
+    // an animation that finishes after the last recorded frame.
+    if (confirmedStopped) log.end(reason);
     while (api.state().busy) await pause(30);
-    log.end(reason); api.setExternalRecording(false); clean(false); confirm.checked = false; persist();
-    if (!panel.open) panel.showModal();
+    log.end(reason); controlled = false; api.setExternalRecording(false); clean(false); confirm.checked = false; persist();
+    if (reveal && !panel.open) panel.showModal();
   }
-  async function startTake() {
-    if (!confirm.checked) throw new Error('Start OBS and iPhone recording, check your microphone in OBS, then tick the confirmation.');
+  function preflight() {
+    if (controlled || log.active) throw new Error('A take is already running.');
     if (recorderUI.recorder.recording || recorderUI.recorder.starting) throw new Error('Stop browser recording before starting an OBS take.');
     api.canRecord();
     if (log.snapshot() && !log.snapshot().exported) throw new Error('Download the previous edit package before starting another take.');
+  }
+  async function prepare() {
+    preflight();
     // Release any devices prepared in the alternative browser recorder.
     await recorderUI.recorder.dispose();
     api.canRecord();
     await api.restart();
-    log.begin(api.recordingBundle(), { width: innerWidth, height: innerHeight });
+    api.setExternalRecording(true); clean(true); panel.close();
+  }
+  async function startTake() {
+    if (!confirm.checked) throw new Error('Start OBS and iPhone recording, check your microphone in OBS, then tick the confirmation.');
+    await prepare();
+    return begin();
+  }
+  async function begin() {
+    log.begin(api.recordingBundle(), { width: innerWidth, height: innerHeight }, { obsConfirmed: controlled });
     api.setExternalRecording(true); countdown = true; clean(true); panel.close(); persist();
     const token = ++generation;
     try {
@@ -61,7 +77,10 @@ export function mountPresenterRecording(host, { api, panel, recorderUI, run }) {
       log.sync(); persist();
       await pause(1000); if (token !== generation) return;
       slate.hidden = true; countdown = false; observe({ type: 'ready', label: 'Begin speaking; first RIGHT is cue 1' });
-    } catch (error) { await finish('start-failed'); throw error; }
+    } catch (error) {
+      if (!controlled) await finish('start-failed');
+      throw error;
+    }
   }
   function downloadPackage() {
     const take = log.snapshot(), blob = zipTakeFiles(buildTakeFiles(take));
@@ -78,5 +97,11 @@ export function mountPresenterRecording(host, { api, panel, recorderUI, run }) {
   document.addEventListener('visibilitychange', () => observe({ type: document.hidden ? 'page-hidden' : 'page-visible', label: 'Check recording continuity and sync' }));
   window.addEventListener('pagehide', () => { if (log.active) { log.end('page-closed'); persist(); } });
   window.addEventListener('beforeunload', event => { if (log.active || (log.snapshot() && !log.snapshot().exported)) { event.preventDefault(); event.returnValue = ''; } });
-  return { start: startTake, finish, observe, download: downloadPackage, snapshot: log.snapshot, get active() { return log.active; }, get countingDown() { return countdown; } };
+  return {
+    start: startTake, finish, observe, download: downloadPackage, snapshot: log.snapshot,
+    async prepareControlled() { await prepare(); controlled = true; },
+    beginControlled() { if (!controlled || log.active) throw new Error('Prepare a new OBS take first.'); return begin(); },
+    finishControlled: (reason = 'finished') => finish(reason, { confirmedStopped: true, reveal: false }),
+    get controlled() { return controlled; }, get active() { return log.active; }, get countingDown() { return countdown; }
+  };
 }

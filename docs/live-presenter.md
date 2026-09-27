@@ -79,7 +79,7 @@ Module navigation uses a short native dissolve of the existing stage, with the c
 
 ## Controller and state boundaries
 
-`window.planeirPresenter` exposes `discover`, `brief`, `load(package, script)`, `start`, `next`, `previous`, `goTo(index)`, `restart`, `state`, `validateLive`, `canRecord`, and `exit`.
+`window.planeirPresenter` exposes `discover`, `brief`, `load(package, script)`, `start`, `next`, `previous`, `goTo(index)`, `restart`, `resume`, `explore`, `state`, `validateLive`, `canRecord`, and `exit`.
 
 The ready position is index -1. The first RIGHT ARROW consumes cue 1. Starting recording does not advance a cue. At the end, RIGHT remains at the end; LEFT from cue 1 returns to ready. LEFT reconstructs the destination beat's complete named-scenario map and visual/disclosure state, rather than attempting to reverse incidental DOM effects. Busy transitions cannot consume a second cue. Failed resolution leaves the cue unconsumed and attempts to restore the preceding view; the error remains visible.
 
@@ -89,9 +89,13 @@ Preview and recording use this same controller. The recording core in `js/video_
 
 ## Separate camera and screen recording
 
-The default production workflow is **Record for editing · iPhone + OBS**. OBS captures the clean Planéir window plus the external Mac microphone; the iPhone records locally. Planéir does not start, stop or verify those external recorders. See [the recording guide](presenter-recording.md) or the in-app `app/recording.html`.
+The default production workflow is **Open recording controls · iPhone + OBS**. A separate local window controls OBS through authenticated WebSocket v5 and shows confirmed output status/time. OBS captures the clean Planéir window plus the external Mac microphone; the iPhone records locally and is operated manually. See [the recording guide](presenter-recording.md) or the in-app `app/recording.html`.
 
-After validation at the capture size, Start clean take restarts at ready, shows a countdown and visible SYNC reference, then hides HUD, camera inset, emergency control and cursor. RIGHT/LEFT use the same controller. M marks a retake; C opens controls and logs that interruption; S ends only the take log. Validation is blocked while the take runs. A downloaded ZIP contains actual request/arrival/failure events, repeated visits, timestamps relative to SYNC, a timed script, editorial guide and the original package/validation. These browser event times are not encoded timecodes. Align the footage by shared audio; locate the SYNC frame for guide offsets. No video or case data is uploaded. A session-storage recovery copy is separate from financial persistence; reloading marks it interrupted rather than resuming its clock.
+After validation at the capture size, Record hides captured controls and restarts at ready before starting OBS. Only a confirmed OBS recording starts the cue log/countdown/SYNC reference. Stop (or S in either window) confirms OBS is inactive before ending the log. Connection loss never reveals captured controls or implies recording has stopped. A failed start does not automatically stop a recording that might have started elsewhere. Reconnect and explicitly stop it. The iPhone and microphone routing cannot be verified by this protocol.
+
+`scripts/serve-presenter-controls.mjs` binds only 127.0.0.1:8790 and serves four fixed assets, no financial files or HTTP API. The HTTP localhost controls can connect to localhost OBS without adding insecure connections to the production HTTPS CSP. Cross-window commands require the expected origin, the exact opened window and a random session nonce. Commands are allowlisted. The OBS password stays in local-window memory, never storage or URLs. Capture only the presentation window, never the entire desktop. OBS should omit the cursor while the operator can still see it.
+
+RIGHT/LEFT use the same controller. M marks a retake. Validation is blocked while a take is armed or running. The ZIP contains actual request/arrival/failure/exploration events, repeated visits, timestamps relative to SYNC, a timed script, editorial guide and original package/validation. Browser event times are not encoded timecodes. Align footage by shared audio and locate SYNC for guide offsets. No case data is uploaded. Session-storage recovery is separate from financial persistence; reloading marks the log interrupted. The manual OBS fallback remains available: its Start clean take/S buttons operate the log only.
 
 Steps optionally accept `edit: {shot: "screen" | "presenter" | "hold", reason: "..."}`. This is script-led post-production advice only. It never adds cues, changes the live view or forces a cut. Unannotated beats are screen candidates requiring editorial review.
 
@@ -100,13 +104,13 @@ Steps optionally accept `edit: {shot: "screen" | "presenter" | "hold", reason: "
 - RIGHT / LEFT: next / previous visual beat.
 - Hold UP: temporarily return to the module top; release restores the prior scroll and emphasis.
 - H: hide/show the current/next cue HUD during preview; ignored during a clean take.
-- C: open controls; recorded as an interruption during a take.
+- C: bring the private controls forward; opens the in-page controls when no private window is in use.
 - M: mark a retake without advancing the visual.
-- S: finish the external-recording take log, or stop the alternative browser recorder. Stop OBS and iPhone separately.
-- Escape: stop recording, exit Presenter Mode, restore the normal case.
+- S: stop OBS and the log through the private controls. In manual fallback, ends the log only. The iPhone always stops separately.
+- Escape: bring private controls forward, or exit Presenter Mode when no private controls are in use.
 - Controls: load, start/restart, validate, export, prepare devices, fullscreen, record, stop or exit.
 
-Typing in setup inputs never advances the presentation. Ordinary editing/navigation controls are suppressed in the live view. Chart hover cannot erase a directed chart-point selection. The HUD and setup controls hide during capture. The emergency Stop button appears only on hover/focus and hides before stopping.
+Typing in inputs never advances the presentation. Chart hover remains live and a scripted point returns on pointer exit. Existing read-only calculator scenario/date controls operate on the disposable copy; clicking marks exploration and clears directing emphasis. Return to script or the next/previous cue remounts the module and reconstructs its authored scenario state, discarding local mortgage timing. Ordinary persisted financial editing stays hidden. The HUD/setup never appears while private controls are in use. The alternative browser recorder retains its own hover/focus emergency Stop.
 
 For the alternative browser recorder, prepare devices and choose fullscreen first, validate at that capture size, restart at the first cue, then Record and choose the current tab/window in the browser picker. Live validation and a completed narrative review are required by the Record button. A changed viewport or camera-reserved width requires revalidation. Platform capture permissions and the browser picker are unavoidable manual setup.
 
@@ -126,11 +130,14 @@ Native capture availability varies by browser/OS. The browser regression uses Ch
 node scripts/check-presenter-package.mjs
 node scripts/check-video-capture.mjs
 node scripts/check-presenter-take.mjs
+node scripts/check-presenter-obs.mjs
 node scripts/serve-presenter.mjs 8788
 # In another terminal; uses locally installed playwright-core and Chrome:
 node scripts/check-presenter-browser.mjs
 node scripts/check-presenter-browser.mjs --loading-only
 node scripts/check-presenter-browser.mjs --recording-only
+# Separate Terminal: node scripts/serve-presenter-controls.mjs
+node scripts/check-presenter-browser.mjs --controls-only
 node scripts/check-presenter-browser.mjs --capture-only
 node scripts/check-presenter-browser.mjs --design-only
 node scripts/check-presenter-browser.mjs private/aam-makeovers/my-presentation --motion --screenshots
