@@ -22,6 +22,8 @@ In an already loaded advisor case, `window.planeirPresenter.discover()` returns 
 
 The catalogue identifies modules by content revision rather than import-time UUID. It includes hidden-card availability, descriptions, output origins, scalar values, report block/item hierarchy, PBS holdings in each named scenario, repayment facts from the existing engine, timelines, and authored report chart points. It distinguishes authored reports from calculator outputs and declares that STATE does not recalculate other modules.
 
+Repayment discovery derives base outputs from the existing mortgage/loan inputs on a copy: the last viewed scenario's cached outputs do not change package identity. Leading/trailing whitespace in module titles is ignored. Financial inputs, authored content, meaningful title changes and card visibility still invalidate the package. Load errors remain visible until corrected; live validation and restart are available only after preview starts.
+
 ## Package shape
 
 ```json

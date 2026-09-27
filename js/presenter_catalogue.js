@@ -1,7 +1,7 @@
 // Shared by the live app and the local director tools. No DOM, storage or AI.
 import { getPensionScenarioCases } from './pension_math.js';
 import { getNetRetirementScenarioCases } from './net_retirement_math.js';
-import { getMortgageScenarioCases, computeMortgageComparison } from './mortgage_math.js';
+import { getMortgageScenarioCases, computeMortgageComparison, computeMortgageProjection } from './mortgage_math.js';
 import { resolveLiquidityReserveForPlan, normalizeSectionToken } from './module_pipeline.js';
 
 export const CATALOGUE_VERSION = 1;
@@ -22,9 +22,21 @@ export function fingerprint(value) {
 }
 export function moduleSource(module) {
   const generated = structuredClone(module.generated || {});
+  // The repayment view caches the last selected case in these output fields.
+  // Discover from the authored inputs and base case, never that display cache.
+  // Inputs remain in the fingerprint, so real financial edits still fail.
+  if (!generated.report && (generated.loanInputs || generated.mortgageInputs)) {
+    const projection = computeMortgageProjection(generated.loanInputs || generated.mortgageInputs, {
+      defaultLoanKind: generated.loanInputs ? 'loan' : 'mortgage'
+    });
+    generated.assumptions = projection.assumptionsTable;
+    generated.outputs = projection.outputsTable;
+    generated.charts = projection.charts;
+    generated.summaryHtml = projection.summaryHtml;
+  }
   // Normal import assigns these chart IDs from a fresh module UUID.
   for (const chart of generated.charts || []) delete chart.id;
-  return { title: module.title || '', generated, hiddenCardIds: module.ui?.hiddenCardIds || [], cardOrder: module.ui?.cardOrder || [] };
+  return { title: (module.title || '').trim(), generated, hiddenCardIds: module.ui?.hiddenCardIds || [], cardOrder: module.ui?.cardOrder || [] };
 }
 export function moduleKind(g) {
   for (const [key, kind] of Object.entries({ report: 'report', liquidityPlan: 'liquidity', outputsBucketed: 'balance-sheet', mortgageInputs: 'mortgage', loanInputs: 'loan', pensionInputs: 'pension', netRetirementInputs: 'net-retirement', housePurchaseInputs: 'house-purchase', education: 'education' })) {
@@ -44,7 +56,7 @@ const money = value => new Intl.NumberFormat('en-IE', { style: 'currency', curre
 export function buildPresentationCatalogue(session) {
   const modules = [], targets = [], errors = [];
   for (const module of session.modules || []) {
-    const g = module.generated || {}, kind = moduleKind(g), source = moduleSource(module);
+    const source = moduleSource(module), g = source.generated, kind = moduleKind(g);
     const key = `${kind}-${fingerprint(source)}`;
     if (modules.some(m => m.key === key)) errors.push(`Identical modules need disambiguation: ${module.title}`);
     let cases = [];
