@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
+import { computeMortgageProjection } from '../js/mortgage_math.js';
 
 export async function checkPresenterLoading(source = 'private/aam-makeovers/presenter-regression') {
   const directory = 'private/aam-makeovers/presenter-loading-regression';
@@ -12,7 +13,15 @@ export async function checkPresenterLoading(source = 'private/aam-makeovers/pres
     .replace('await window.planeirPresenter.start();', 'window.presenterLoadingReady = true;');
   await fs.writeFile(path.join(directory, 'index.html'), html);
   await fs.writeFile(path.join(directory, 'preview.js'), bootstrap);
-  await fs.copyFile(path.join(source, 'session.json'), path.join(directory, 'session.json'));
+  const session = JSON.parse(await fs.readFile(path.join(source, 'session.json'), 'utf8'));
+  const repayment = session.modules.find(m => m.generated.mortgageInputs || m.generated.loanInputs);
+  if (repayment) {
+    const inputs = repayment.generated.loanInputs || repayment.generated.mortgageInputs;
+    const projection = computeMortgageProjection(inputs, { scenarioId: inputs.scenarios.at(-1).id });
+    Object.assign(repayment.generated, { assumptions: projection.assumptionsTable, outputs: projection.outputsTable, charts: projection.charts, summaryHtml: projection.summaryHtml });
+  }
+  session.modules[0].title += ' ';
+  await fs.writeFile(path.join(directory, 'session.json'), JSON.stringify(session));
   const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'] });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
@@ -21,8 +30,12 @@ export async function checkPresenterLoading(source = 'private/aam-makeovers/pres
     await page.waitForFunction(() => window.presenterLoadingReady);
     await page.getByRole('button', { name: 'Presenter Mode', exact: true }).click();
     const start = page.getByRole('button', { name: 'Start preview', exact: true });
+    const validate = page.getByRole('button', { name: 'Validate live', exact: true, includeHidden: true });
+    const restart = page.getByRole('button', { name: 'Restart at first cue', exact: true });
+    const download = page.getByRole('button', { name: 'Download presenter script', exact: true });
     const json = page.locator('.presenter-package-file'), script = page.locator('.presenter-script-file');
     assert.equal(await start.isEnabled(), false);
+    for (const button of [validate, restart, download]) assert.equal(await button.isEnabled(), false);
     assert.match(await page.evaluate(() => window.planeirPresenter.start().catch(e => e.message)), /Both files are required/);
     await json.setInputFiles(path.join(source, 'presentation.json'));
     assert.equal(await start.isEnabled(), false);
@@ -31,13 +44,24 @@ export async function checkPresenterLoading(source = 'private/aam-makeovers/pres
     await script.setInputFiles(path.join(source, 'script.md'));
     await page.waitForFunction(() => window.planeirPresenter.state().loaded);
     assert.equal(await start.isEnabled(), true);
+    assert.equal(await validate.isEnabled(), false);
+    assert.equal(await download.isEnabled(), true);
     const count = await page.evaluate(() => window.planeirPresenter.state().count);
     await page.screenshot({ path: `${directory}/ready.png` });
     await start.click();
     await page.waitForFunction(() => window.planeirPresenter.state().active && !window.planeirPresenter.state().busy);
+    assert.equal(await validate.isEnabled(), true);
     await page.keyboard.press('ArrowRight'); await page.waitForFunction(() => !window.planeirPresenter.state().busy);
     assert.equal(await page.evaluate(() => window.planeirPresenter.state().index), 0);
     await page.evaluate(() => window.planeirPresenter.exit());
+    const mismatch = JSON.parse(await fs.readFile(path.join(source, 'presentation.json'), 'utf8'));
+    mismatch.caseFingerprint = 'a-different-case';
+    await json.setInputFiles({ name: 'presentation.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(mismatch)) });
+    await page.waitForFunction(() => document.querySelector('.presenter-message').textContent.includes('loaded case differs'));
+    for (const button of [start, validate, restart, download]) assert.equal(await button.isEnabled(), false);
+    // Even a direct premature validation call cannot erase the loading error.
+    await page.evaluate(() => window.planeirPresenter.validateLive().catch(() => {}));
+    assert.match(await page.locator('.presenter-message').innerText(), /loaded case differs/);
     // An invalid replacement must not silently leave the old presentation ready.
     await json.setInputFiles({ name: 'presentation.json', mimeType: 'application/json', buffer: Buffer.from('{') });
     await page.waitForFunction(() => document.querySelector('.presenter-message').textContent.includes('not valid JSON'));
@@ -61,7 +85,7 @@ export async function checkPresenterLoading(source = 'private/aam-makeovers/pres
     await json.setInputFiles([path.join(source, 'presentation.json'), path.join(source, 'script.md')]);
     await page.waitForFunction(() => window.planeirPresenter.state().loaded);
     assert.deepEqual(errors, []);
-    await fs.writeFile(`${directory}/validation.json`, JSON.stringify({ status: 'passed', source, count, checks: ['missing-file guidance and start guard', 'separate file selection', 'both files in one selection', 'preview and first cue', 'invalid replacement clears stale package', 'annotated script rejected', 'script mismatch rejected', 'corrected files recover', 'programmatic invalid load clears stale package'] }, null, 2));
+    await fs.writeFile(`${directory}/validation.json`, JSON.stringify({ status: 'passed', source, count, checks: ['cached repayment scenario and whitespace preserve identity', 'missing-file guidance and start guard', 'separate file selection', 'both files in one selection', 'preview and first cue', 'dependent controls disabled until ready', 'case mismatch error survives premature validation', 'invalid replacement clears stale package', 'annotated script rejected', 'script mismatch rejected', 'corrected files recover', 'programmatic invalid load clears stale package'] }, null, 2));
     console.log(`Presenter loading passed: ${count} beats, separate/together selection, guarded start, stale-package prevention and recovery.`);
   } finally { await browser.close(); }
 }
