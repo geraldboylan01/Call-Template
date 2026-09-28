@@ -51,6 +51,8 @@ jobs:
           node scripts/check-presenter-package.mjs
           node scripts/check-video-capture.mjs
           node scripts/check-presenter-take.mjs
+          node scripts/check-presenter-obs.mjs
+          node scripts/check-presenter-controls-server.mjs
 
       - name: Check consumer entry, recovery and results before publishing
         run: |

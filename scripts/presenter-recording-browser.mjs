@@ -13,6 +13,7 @@ export async function checkPresenterRecording() {
     await page.waitForFunction(() => window.planeirPresenter?.state().active && !window.planeirPresenter.state().busy);
     const original = await page.evaluate(() => ({ catalogue: JSON.stringify(window.planeirPresenter.discover()), storage: JSON.stringify({ ...localStorage }) }));
     await page.keyboard.press('c');
+    await page.locator('.presenter-edit-recording > details').evaluate(el => el.open = true);
     await page.locator('.presenter-capture-confirm').check();
     assert.match(await page.evaluate(() => window.planeirPresenter.take.start().catch(e => e.message)), /validation/);
     await page.locator('.presenter-setup').evaluate(el => el.close());
@@ -72,5 +73,5 @@ export async function checkPresenterRecording() {
     assert.deepEqual(errors, []);
     await fs.writeFile(`${dir}/validation.json`, JSON.stringify({ status: 'passed', checks: ['validation gate', 'countdown does not consume cue', 'clean 1920 view', 'hidden HUD/camera/cursor controls', 'validation blocked during take', 'four paired moves with backward visit', 'retake and controls markers', 'resize flag', 'S finishes log', 'downloaded ZIP integrity', 'reload recovery', 'original case and financial storage unchanged', 'guide renders'], physicalCaptureTested: false }, null, 2));
     console.log('Clean recording browser checks passed; no physical devices used.');
-  } finally { await browser.close(); }
+  } finally { for (const context of browser.contexts()) await context.close(); await browser.close(); }
 }

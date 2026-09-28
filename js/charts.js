@@ -9,16 +9,21 @@ export function focusPresenterChartPoint(block, datasetIndex, index, expected = 
     throw new Error('The requested chart point is not available in the rendered chart.');
   }
   if (expected && (chart.data.datasets[datasetIndex].data[index] !== expected.value || String(chart.data.labels[index]) !== expected.xLabel)) throw new Error('The rendered chart value differs from the discovered source.');
-  const point = chart.getDatasetMeta(datasetIndex).data[index];
-  chart.setActiveElements([{ datasetIndex, index }]);
-  chart.tooltip?.setActiveElements([{ datasetIndex, index }], { x: point.x, y: point.y });
-  chart.update('none');
+  const restore = () => {
+    if (!chart.ctx) return;
+    const point = chart.getDatasetMeta(datasetIndex).data[index];
+    chart.setActiveElements([{ datasetIndex, index }]);
+    chart.tooltip?.setActiveElements([{ datasetIndex, index }], { x: point.x, y: point.y });
+    chart.update('none');
+  };
+  restore();
   const cleanup = () => {
     if (!chart.ctx) return;
     chart.setActiveElements([]);
     chart.tooltip?.setActiveElements([], { x: 0, y: 0 });
     chart.update('none');
   };
+  cleanup.restore = restore;
   // Screen coordinates from the real chart, including its overlay canvas when
   // used. The director can mark a point without drawing another data series.
   cleanup.anchor = () => {

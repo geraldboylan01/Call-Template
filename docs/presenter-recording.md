@@ -1,6 +1,6 @@
 # Record Planéir and yourself, then choose the picture
 
-Use **iPhone Camera + OBS Studio on the Mac + DaVinci Resolve Free**. Keep two continuous original recordings. Planéir controls the financial presentation and writes an edit package; OBS records the clean screen and external microphone; the iPhone records you. Start and stop both recorders yourself. Planéir cannot verify that either recorder is running.
+Use **iPhone Camera + OBS Studio on the Mac + DaVinci Resolve Free**. Keep two continuous original recordings. A separate Planéir controls window starts/stops OBS and the cue log together and shows recording status confirmed by OBS. OBS records the clean screen and external microphone; the iPhone records you. Start and stop the iPhone yourself.
 
 ## Open presenter view from a client's analysis
 
@@ -8,16 +8,22 @@ Use **iPhone Camera + OBS Studio on the Mac + DaVinci Resolve Free**. Keep two c
 2. You need the case's `presentation.json` and `script.md`, generated from that case and its completed script. Give Codex the case material, module JSON and style reference; Codex discovers the live targets and prepares this package. The app does not generate the narrative automatically. A package for a different or edited case is rejected.
 3. Click **Presenter Mode** in the top bar. Choose `presentation.json` in the first box and `script.md` in the second. You can also select both together in the first box. **Start preview** becomes available when both files pass validation. Click **Download presenter script** to save the annotated reading copy.
 4. Click **Start preview**. The case opens before cue 1. RIGHT advances one complete visual beat; LEFT reconstructs the previous beat. No financial change is saved by Presenter Mode.
-5. Open **Controls**, choose **Fullscreen** if desired, and settle on the final window size. Click **Validate live**. It rehearses every beat in both directions; wait for it to finish. Validation is required before starting a clean take and must be rerun if the capture layout changes.
-6. Put the annotated script on a second display or print it. Keep the Planéir browser focused when using the arrows. The captured window must contain only Planéir, not the script or editor.
+5. Settle on the final window size. Keep the Planéir window visible alongside the separate controls window, ideally on a second display. Avoid macOS fullscreen Spaces if switching windows hides the presentation. Click **Validate live**. It rehearses every beat in both directions; wait for it to finish. Validation is required before recording and must be rerun if the capture layout changes.
+6. The controls window shows the script section for the current beat. RIGHT/LEFT works in either window. You can also print the complete annotated script. The captured window must contain only Planéir, not the script or editor.
 
 For Frasier, the local preview at `http://127.0.0.1:8788/private/aam-makeovers/2026-09-23-frasier-presenter/` already loads the case and its package. Start at step 5. Run `node scripts/serve-presenter.mjs 8788` from the repository if that preview server is not already running.
+
+### Explore while presenting
+
+Hover charts normally to inspect their live values. A scripted chart-point highlight returns when the pointer leaves the chart. Use existing scenario buttons, mortgage lump-sum year buttons, disclosures and scrolling when an explanation benefits from exploring. These controls operate on the temporary presentation copy. Mortgage timing only applies to a scenario that actually contains a lump sum.
+
+After a calculator interaction, the controls window says **Live exploration**. Click **Return to script** to restore the current beat, or use RIGHT/LEFT to move to the scripted destination. This also resets temporary mortgage timing. The saved client analysis is unchanged. Exploration is noted in the edit log; it does not add a scripted cue or update other modules automatically. Ordinary financial editing remains in the normal analysis workspace.
 
 ## Set up OBS once
 
 Download [OBS Studio](https://obsproject.com/download), open it, and allow macOS screen recording and microphone access when asked. Restart OBS if macOS requests it.
 
-Create a scene called **Planéir screen**. Add **macOS Screen Capture**, choose window capture, and select the Planéir browser window. Depending on OBS/macOS version, the source wording may vary. Disable capture of the mouse cursor. Crop browser chrome if it remains visible; do not crop the financial content. Confirm that the preview fills the canvas without stretching.
+Create a scene called **Planéir screen**. Add **macOS Screen Capture**, choose **window capture**, and select the Planéir presentation window. Do not choose the whole display or the private controls window. Depending on OBS/macOS version, the source wording may vary. Disable capture of the mouse cursor; it remains usable on your Mac for chart hovering. Crop browser chrome if it remains visible; do not crop the financial content. Confirm that the preview fills the canvas without stretching.
 
 Choose an actual 16:9 capture area: 1920×1080 is a practical baseline; use 3840×2160 only when your display/capture supplies that detail. Set **Settings → Video** base and output resolutions to the chosen size and **30 fps**. Do not enlarge a smaller source to claim extra detail. Check that figures remain readable at the intended viewing size.
 
@@ -33,6 +39,14 @@ In **Settings → Output**, choose a high-quality recording preset and an availa
 
 For the recommended OBS workflow, do not prepare the browser microphone/camera or start its alternative WebM recorder. The external microphone is selected in OBS. If recording a live conversation, this setup captures your voice only unless you also deliberately configure the call's remote audio in OBS; the iPhone reference sound is not a substitute for that remote audio track.
 
+### Connect the private controls to OBS
+
+1. In OBS, open **Tools → WebSocket Server Settings**. Enable the WebSocket server and **authentication**. Use the default port **4455**, or note your configured port. Click **Show Connect Info** to get the password. See the [official OBS remote-control guide](https://obsproject.com/kb/remote-control-guide).
+2. In your local Planéir repo, double-click **Start Presenter Controls.command**. Keep that Terminal window open. Alternatively run `node scripts/serve-presenter-controls.mjs` from the repo in Terminal. This requires Node.js and serves only the controls assets at `http://127.0.0.1:8790`; it does not serve client files or accept connections from other computers.
+3. In the active Planéir preview, press **C** and click **Open recording controls**. Allow the popup if your browser asks. Keep it as a **separate window**, outside the OBS window capture. If it cannot load, check that the helper Terminal is still running and port 8790 is free, then reopen it.
+4. Enter the OBS port/password in that local controls window and click **Connect to OBS**. The password is cleared from the field and is never saved or sent to Planéir's website. Re-enter it when reconnecting. Keep OBS open.
+5. Confirm **STOPPED · confirmed by OBS**, then check the actual OBS picture and external microphone. The status confirms the recording output, not that the correct window or audio source was selected. Make the short saved test described above before a full take.
+
 ## Set up the iPhone
 
 Mount it horizontally at eye level with the rear camera facing you. Use the Camera app to record locally. Choose **4K at 30 fps** if supported. For this straightforward SDR workflow, turn off **HDR Video** and **Auto FPS** in Camera recording settings. Use ordinary video mode. Keep exposure/focus stable, light your face softly, and place the script near the lens. Check power, free storage and framing before the take. Available settings vary by model: [Apple camera settings](https://support.apple.com/guide/iphone/change-video-recording-settings-iphc1827d32f/ios).
@@ -42,16 +56,20 @@ Leave iPhone audio enabled: it is the reference for synchronising with the exter
 ## Record each take
 
 1. Rehearse the script and verify the package at your final capture size. Activate macOS/iPhone Focus to avoid interruptions.
-2. Start the iPhone recording. Start **Recording** in OBS. Check that the external mic meter responds.
-3. With both running, say the case/take name and clap once in view of the camera. Both audio tracks should hear the clap. They do not need to have started at the same instant.
-4. Return to Planéir **Controls → Record for editing · iPhone + OBS**. Tick the recorder/microphone confirmation, then click **Start clean take**.
-5. Planéir restarts before cue 1, displays a three-second countdown followed by a one-second **SYNC** slate, and hides its controls, cue HUD, camera inset and cursor. The first SYNC frame is the screen reference for the exported timings. The slate is visual; there is no automatic sync beep.
-6. Begin speaking when the slate disappears. Press RIGHT at each `[→ LABEL]`. One press handles all the module, scenario, animation, scroll and emphasis operations. LEFT goes back. Keep the window size fixed and the browser focused.
+2. Start the iPhone recording and check the external mic meter in OBS. In the private controls window, tick the iPhone/microphone/window-capture confirmation.
+3. Click **Record**. Planéir cleans the captured window and returns to the beginning, starts OBS, verifies that OBS is recording, then starts the cue log. The private window shows **RECORDING · confirmed by OBS** and OBS's elapsed timer.
+4. The presentation shows a three-second countdown followed by a one-second **SYNC** slate. The first SYNC frame is the screen reference for the exported timings. The slate is visual; there is no automatic sync beep.
+5. When the slate disappears, say the case/take name and clap once in view of the camera, then begin the script. Both audio tracks should hear the clap. The two recorders do not need to start at exactly the same instant.
+6. Press RIGHT at each `[→ LABEL]`. One press handles all the module, scenario, animation, scroll and emphasis operations. LEFT goes back. Keep both windows open and the presentation visible at its validated size. Hover and explore when useful; the next cue returns to scripted state.
 7. If you stumble, pause, press **M** to mark a retake and repeat the sentence. LEFT and RIGHT can repeat a visual; every visit is retained in the log. Keep both recordings running.
-8. At the end, leave a few seconds of silence and clap once more to help check long-take alignment. Press **S** to finish the take log. **Stop OBS and the iPhone separately.** S does not stop those recorders.
-9. Click **Download edit package**. Save its ZIP alongside the two recordings. The controls shown after S are an expendable tail to trim in the edit.
+8. At the end, leave a few seconds of silence and clap once more to help check long-take alignment. Click **Stop recording** in the private window, or press **S** in either window. This stops OBS, verifies that it stopped, and ends the cue log. The captured window stays clean. **Stop the iPhone separately.**
+9. Click **Download edit package**. Save its ZIP alongside the two recordings. Click **Back to setup** when finished.
 
-**C** opens controls during a take and logs that event for removal in the edit. **H** cannot reveal the HUD during a clean take. **Escape** ends the log and exits Presenter Mode; the external recordings still need to be stopped. Avoid resizing or changing tabs while speaking. Visibility/size changes are flagged in the log, because they may affect capture or animation.
+**C** or **Escape** from the presentation brings the private controls forward. **H** cannot reveal the HUD while those controls are in use. No recording controls are drawn into the captured Planéir window. This depends on OBS capturing that specific window: a whole-display capture would include other windows too.
+
+If the OBS connection drops, the indicator becomes **status unknown**; the output remains clean and recording may continue. Reconnect and use Stop, or stop directly in OBS. If OBS rejects Stop, the take remains open for a retry. Do not pause OBS during a continuous take: browser cue times include the pause while the saved video may not. A detected pause or unexpected stop marks the take for review. Avoid closing/reloading either window or minimising the presentation while recording. If the controls window closes, press C to reopen it and reconnect; verify OBS before continuing.
+
+The **Fallback: start OBS manually** section retains the earlier workflow. There, Start clean take starts only the cue log, S finishes only that log, and you must stop OBS yourself. The recording indicator in the separate controls window is the recommended way to avoid confusing a cue log with a real recording.
 
 Each ZIP contains `take.json`, `cues.csv`, `edit-guide.md`, `script-timed.md`, the source `script.md` and `presentation.json`, and the live `validation.json`. The log distinguishes when each move was requested, when the visual settled, failures, repeated beats and retakes. No video is included or uploaded. A per-tab recovery copy survives an ordinary reload when browser session storage is available; it is marked interrupted and cannot resume a continuous clock. Download before closing the tab. A new take requires downloading the previous package first.
 
@@ -71,4 +89,4 @@ Each ZIP contains `take.json`, `cues.csv`, `edit-guide.md`, `script-timed.md`, t
 
 Planéir automatically executes the visuals, hides recording distractions, records actual cue events, and builds the local edit package. Codex can add optional `edit: {shot: "screen" | "presenter" | "hold", reason: "..."}` direction to each scripted beat. These recommendations never switch cameras or add arrow cues.
 
-You start/stop OBS and iPhone, transfer the footage, verify audio synchronisation and choose/review the final edit. Physical devices, OS permissions, OBS capture and Resolve media import require a short real recording test on your Mac. Automated browser checks use fixtures and do not prove that your microphone or iPhone is recording.
+The private controls start/stop OBS and verify its recording status. You operate the iPhone, choose the correct OBS window and external mic, transfer the footage, verify audio synchronisation and review the final edit. Physical devices, OS permissions, OBS capture and Resolve media import require a short real recording test on your Mac. Automated checks use a simulated OBS connection and do not prove that your microphone or iPhone is recording.

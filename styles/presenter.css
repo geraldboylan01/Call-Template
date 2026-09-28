@@ -12,6 +12,10 @@
 .presenter-clean-recording .presenter-hud, .presenter-clean-recording .presenter-camera, .presenter-clean-recording .presenter-emergency-stop { display: none !important; }
 .presenter-clean-recording, .presenter-clean-recording #swipeStage * { cursor: none !important; }
 .presenter-clean-recording .presenter-setup, .presenter-clean-recording .presenter-setup * { cursor: auto !important; }
+.presenter-console-open .presenter-hud, .presenter-console-open .presenter-setup, .presenter-console-open .presenter-camera, .presenter-console-open .presenter-emergency-stop { display: none !important; }
+/* OBS hides the cursor in its source; keep it usable on the operator's screen. */
+.presenter-console-open, .presenter-console-open #swipeStage * { cursor: auto !important; }
+.presenter-console-help { color: #b7cad1; font-size: 14px; }
 .presenter-sync-slate { position: fixed; inset: 0; z-index: 90000; background: #0e1a24; color: #f4f0e8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; font: 24px/1.5 system-ui; }
 .presenter-sync-slate strong { font-size: clamp(70px, 12vw, 180px); font-weight: 500; letter-spacing: .06em; }
 .presenter-sync-slate[hidden] { display: none; }
@@ -36,8 +40,9 @@
 @media (prefers-reduced-motion: reduce) { .presenter-active * { scroll-behavior: auto !important; } }
 
 .presenter-active .nav-arrow, .presenter-active [data-chart-download] { display: none !important; }
-/* Keep a storyboard's chart point selected when the presenter moves the mouse. */
-.presenter-active #swipeStage canvas, .presenter-active .callcanvas-chart-overlay-wrapper { pointer-events: none !important; }
+/* Hover readings remain available; a scripted point returns on pointer exit. */
+.presenter-chart-hover .presenter-attention { opacity: 0 !important; }
+.presenter-busy #swipeStage, .presenter-busy .callcanvas-chart-overlay-wrapper { pointer-events: none !important; }
 /* FRAME reflows the existing timeline nodes; FOCUS restores their detailed view. */
 .presenter-active .presenter-timeline-overview .report-timeline-items { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important; padding: 0 !important; }
 .presenter-active .presenter-timeline-overview .report-timeline-items::before,
