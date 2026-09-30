@@ -959,6 +959,9 @@ jobs:
           fs.writeFileSync(bootstrapPath, bootstrapSource.trimEnd() + '\n' + binding, { mode: 0o600 });
           NODE
 
+      - name: Compact non-secret settings for the Workers free plan
+        run: node ./scripts/pack-consumer-settings.mjs worker/wrangler.bootstrap.generated.toml worker/wrangler.production.generated.toml
+
       - name: Replay adviser and consumer migrations in fresh local D1 state
         working-directory: ./worker
         run: |

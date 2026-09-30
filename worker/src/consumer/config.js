@@ -1,4 +1,5 @@
 import { validInviteSigningKey } from './invite.js';
+import { expandConsumerSettings } from './packed_settings.js';
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const SAFE_MODEL_ID = /^[A-Za-z0-9._:-]{1,120}$/;
@@ -168,6 +169,7 @@ export const APPROVED_CONSUMER_MODULE_IDS = Object.freeze([
 export const APPROVED_CONSUMER_MODULE_KEY = [...APPROVED_CONSUMER_MODULE_IDS].sort().join(',');
 
 export function getConsumerConfig(env) {
+  env = expandConsumerSettings(env);
   const requestedJourneyEnabled = enabled(env.CONSUMER_JOURNEY_ENABLED);
   const encryptionKeyConfigured = validEncryptionKey(env.CONSUMER_DATA_ENCRYPTION_KEY);
   const rateLimitHashKeyConfigured = validEncryptionKey(env.CONSUMER_RATE_LIMIT_HASH_KEY);

@@ -25,6 +25,9 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 
 import { resolveShippedConsumerEnv } from './lib/shipped-consumer-config.mjs';
+import { compactConsumerSettings } from './pack-consumer-settings.mjs';
+import { expandConsumerSettings } from '../worker/src/consumer/packed_settings.js';
+import { getConsumerConfig } from '../worker/src/consumer/config.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const workflow = readFileSync(`${root}/.github/workflows/deploy-worker.yml`, 'utf8');
@@ -583,6 +586,36 @@ for (const tableName of ['fixedRealtimeValues']) {
   assert.throws(() => buildConfig({ CONSUMER_REALTIME_ADVISER_CANARY_ENABLED: 'true', CONSUMER_BETA_MODULE_PLANNER_MODE: 'shadow' }), /requires CONSUMER_MODULE_PLANNER_MODE = apply/);
   assert.throws(() => buildConfig({ CONSUMER_TYPED_LANE_ENABLED: 'typo' }), /must be exactly true or false/);
   pass('production builder handles saved typed preferences without activating a disabled planner or relaxing active-canary checks');
+
+  function readVariables(toml) {
+    const vars = toml.split('[vars]\n')[1].split('\n[')[0];
+    return Object.fromEntries([...vars.matchAll(/^([A-Z][A-Z0-9_]+)\s*=\s*("(?:\\.|[^"\\])*")\s*$/gm)].map(([, name, value]) => [name, JSON.parse(value)]));
+  }
+  for (const configs of [ordinary, active, dormant]) {
+    for (const source of Object.values(configs)) {
+      const original = readVariables(source);
+      const compacted = readVariables(compactConsumerSettings(source));
+      // Leave half the free plan's 64 bindings available for existing and
+      // future secrets, rather than checking plain-text bindings alone.
+      assert(Object.keys(compacted).length <= 32, 'packed settings must leave room for 32 secrets');
+      for (const [name, value] of Object.entries(compacted)) {
+        if (name.startsWith('CONSUMER_SETTINGS_JSON_')) assert(Buffer.byteLength(value) <= 4096);
+      }
+      for (const [name, value] of Object.entries(original)) {
+        assert.equal(expandConsumerSettings(compacted)[name], value, `setting changed during compaction: ${name}`);
+        if (name.endsWith('_ENABLED') || name.endsWith('_MODE')) assert.equal(compacted[name], value);
+      }
+      const bindings = { CONSUMER_DB: {}, CONSUMER_DATA_ENCRYPTION_KEY: 'A'.repeat(43), CONSUMER_RATE_LIMIT_HASH_KEY: 'B'.repeat(43), CONSUMER_INVITE_SIGNING_KEY: 'C'.repeat(43), OPENAI_API_KEY: 'synthetic-provider-key' };
+      assert.deepEqual(getConsumerConfig({ ...compacted, ...bindings }), getConsumerConfig({ ...original, ...bindings }));
+    }
+  }
+  const packed = { CONSUMER_SETTINGS_JSON_1: JSON.stringify({ CONSUMER_SESSION_TTL_DAYS: '7' }) };
+  assert.equal(expandConsumerSettings({ ...packed, CONSUMER_SESSION_TTL_DAYS: '3' }).CONSUMER_SESSION_TTL_DAYS, '3');
+  for (const invalid of ['{', 'null', '[]', '{"CONSUMER_JOURNEY_ENABLED":"true"}', '{"OPENAI_API_KEY":"not-allowed"}', '{"__proto__":"not-allowed"}', '{"CONSUMER_SESSION_TTL_DAYS":7}']) {
+    assert.throws(() => expandConsumerSettings({ CONSUMER_SETTINGS_JSON_1: invalid }), /Invalid packed consumer settings/);
+  }
+  assert.throws(() => expandConsumerSettings({ ...packed, CONSUMER_SETTINGS_JSON_2: packed.CONSUMER_SETTINGS_JSON_1 }), /Invalid packed consumer settings/);
+  pass('packed production settings fit the free plan, preserve every value and resolved mode, and cannot carry secrets or feature switches');
 }
 
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);
