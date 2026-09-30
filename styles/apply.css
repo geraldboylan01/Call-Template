@@ -602,3 +602,16 @@
     top: calc(var(--header-offset) + 0.5rem);
   }
 }
+/* Optional voice note, shared with the confirmation page. */
+.voice-note audio { display: block; width: 100%; margin: 16px 0; }
+.voice-note .voice-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.voice-note .voice-file-label { display: grid; gap: 8px; max-width: 100%; }
+.voice-note input[type="file"] { width: 100%; max-width: 300px; }
+.voice-note .voice-optional { font-size: .8em; font-weight: 400; opacity: .75; }
+.voice-note .voice-consent { margin-top: 20px; }
+.voice-note [aria-invalid="true"] { outline: 2px solid #ffb7ab; outline-offset: 3px; }
+.voice-note .is-error { color: #ffb7ab; }
+.voice-note .voice-timer { font-variant-numeric: tabular-nums; }
+.voice-note [hidden] { display: none !important; }
+.apply-missing { margin-top: 20px; }
+.apply-missing summary { cursor: pointer; }

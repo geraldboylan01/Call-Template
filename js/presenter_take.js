@@ -28,7 +28,7 @@ export function createPresenterTake({ now = () => performance.now(), date = () =
   };
 }
 
-export function elapsedTime(ms) {
+function elapsedTime(ms) {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   return `${String(Math.floor(seconds / 3600)).padStart(2, '0')}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}.${String(Math.round(ms) % 1000).padStart(3, '0')}`;
 }

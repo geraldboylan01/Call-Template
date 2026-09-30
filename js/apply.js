@@ -40,6 +40,8 @@ import {
   topicLabels
 } from './case_application/index.js';
 import { createSuccessTakeover } from './success_takeover.js';
+import { stillUsefulQuestions } from './case_application/agent.js';
+import { createApplicationVoice } from './application_voice.js';
 
 const WORKER_BASE_URL = (() => {
   const host = window.location.hostname;
@@ -122,6 +124,9 @@ const state = {
   // The person still reads, completes and sends the page themselves.
   via: '',
   submitting: false,
+  receipt: null,
+  submissionId: '',
+  sentPayload: null,
   saveTimer: 0
 };
 
@@ -228,6 +233,8 @@ function saveDraft() {
       draft: state.draft,
       via: state.via,
       contact: { fullName: ui.name?.value || '', email: ui.email?.value || '' },
+      submissionId: state.submissionId,
+      sentPayload: state.sentPayload,
       savedAt: new Date().toISOString()
     }));
   } catch (_error) {
@@ -697,6 +704,10 @@ function refresh() {
   renderCounts();
   renderProgress();
   renderPreview();
+  const missing = stillUsefulQuestions(prepared());
+  const details = document.getElementById('applyMissingDetails');
+  details.hidden = missing.length === 0;
+  document.getElementById('applyMissingList').replaceChildren(...missing.map(item => el('li', { text: item.question })));
   scheduleSave();
 }
 
@@ -741,6 +752,8 @@ function markInvalid(node, invalid) {
 
 function validate() {
   const errors = [];
+  const voiceError = voice.validate();
+  if (voiceError) errors.push({ node: document.querySelector('[data-voice="consent"]'), message: voiceError });
   const question = String(getPath(state.draft, 'question') || '').trim();
   const questionInput = document.getElementById(fieldId('question'));
   markInvalid(questionInput, !question);
@@ -775,7 +788,8 @@ async function onSubmit(event) {
   if (state.submitting) return;
   setStatus('', '');
 
-  const errors = validate();
+  const voiceError = voice.validate();
+  const errors = state.receipt || state.sentPayload ? (voiceError ? [{ message: voiceError }] : []) : validate();
   if (errors.length > 0) {
     setStatus('error', errors[0].message);
     errors[0].node?.focus();
@@ -787,12 +801,14 @@ async function onSubmit(event) {
     return;
   }
 
-  const payload = {
+  const payload = state.sentPayload || {
     fullName: ui.name.value.trim(),
     email: ui.email.value.trim(),
     consentVideo: ui.consentVideo.checked,
     consentEducation: ui.consentEducation.checked,
     website: ui.website.value,
+    submissionId: state.submissionId,
+    ...(voice.hasRecording ? { voiceNote: voice.consent() } : {}),
     application: pruneToVisible(prepared()),
     ...(state.via ? { via: state.via } : {})
   };
@@ -801,20 +817,39 @@ async function onSubmit(event) {
   ui.submit.disabled = true;
   ui.submit.textContent = 'Sending...';
   ui.form.setAttribute('aria-busy', 'true');
+  voice.setBusy(true);
 
   try {
-    const response = await fetch(`${WORKER_BASE_URL}/api/applications`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw new Error(data?.error || 'Your application could not be sent right now. Please try again shortly.');
+    if (!state.receipt) {
+      // Save the immutable sent payload locally so a lost response can be retried
+      // with the same submission ID. The audio itself stays in memory.
+      state.sentPayload = payload;
+      freezeWrittenAnswers();
+      saveDraft();
+      const response = await fetch(`${WORKER_BASE_URL}/api/applications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, voiceNote: voice.consent() || undefined })
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        // A definite rejection can be corrected. Keep ambiguous failures locked
+        // to the same answers so a lost success response cannot create a second case.
+        if ([400, 403, 413, 422, 429].includes(response.status)) {
+          state.sentPayload = null;
+          freezeWrittenAnswers(false);
+          saveDraft();
+        }
+        throw new Error(data?.error || 'Your application could not be sent right now. Please try again shortly.');
+      }
+      state.receipt = data;
+      // Freeze sent answers while a failed audio upload is retried or removed.
+      freezeWrittenAnswers();
+      clearSavedDraft();
+      window.clearTimeout(state.saveTimer);
     }
-
-    clearSavedDraft();
-    window.clearTimeout(state.saveTimer);
+    if (voice.hasRecording) await voice.upload(state.receipt.voiceAccess?.token);
+    voice.complete();
     await successTakeover.play({
       titleText: 'Thanks, your application is in.',
       bodyText: 'Gerry reads every application.',
@@ -828,12 +863,29 @@ async function onSubmit(event) {
     window.scrollTo({ top: 0 });
     ui.done.focus({ preventScroll: true });
   } catch (error) {
-    setStatus('error', friendlyError(error));
+    const voiceMessage = error instanceof TypeError ? 'The voice upload connection failed.' : error.message;
+    setStatus('error', state.receipt ? `Your written application is saved. ${voiceMessage} Retry the voice note, or remove it and finish without a recording.` : friendlyError(error));
   } finally {
     state.submitting = false;
     ui.submit.disabled = false;
-    ui.submit.textContent = 'Send my application';
+    ui.submit.textContent = state.receipt ? (voice.hasRecording ? 'Retry voice note' : 'Finish without a voice note') : 'Send my application';
+    voice.setBusy(false);
     ui.form.removeAttribute('aria-busy');
+  }
+}
+
+const frozenWrittenControls = new Map();
+function freezeWrittenAnswers(frozen = true) {
+  if (!frozen) {
+    for (const [node, wasDisabled] of frozenWrittenControls) node.disabled = wasDisabled;
+    frozenWrittenControls.clear();
+    return;
+  }
+  for (const node of ui.form.querySelectorAll('input, textarea, select, button')) {
+    if (!node.closest('#applyVoiceNote') && node !== ui.submit) {
+      if (!frozenWrittenControls.has(node)) frozenWrittenControls.set(node, node.disabled);
+      node.disabled = true;
+    }
   }
 }
 
@@ -852,6 +904,13 @@ const successTakeover = createSuccessTakeover({
   ].filter(Boolean)
 });
 
+const voice = createApplicationVoice(document.getElementById('applyVoiceNote'), {
+  baseUrl: WORKER_BASE_URL,
+  onChange: () => {
+    if (state.receipt && !state.submitting) ui.submit.textContent = voice.hasRecording ? 'Retry voice note' : 'Finish without a voice note';
+  }
+});
+
 /* ---------- start ---------- */
 
 function start() {
@@ -859,6 +918,7 @@ function start() {
 
   const saved = loadDraft();
   if (saved) {
+    state.submissionId = /^[A-Za-z0-9_-]{43}$/.test(saved.submissionId || '') ? saved.submissionId : '';
     state.draft = { ...emptyDraft(), ...saved.draft };
     state.via = saved.via === 'assistant-link' ? 'assistant-link' : '';
     ['topics', 'added', 'unsure', 'none'].forEach((key) => {
@@ -866,6 +926,13 @@ function start() {
     });
     ui.name.value = typeof saved.contact?.fullName === 'string' ? saved.contact.fullName : '';
     ui.email.value = typeof saved.contact?.email === 'string' ? saved.contact.email : '';
+    if (saved.sentPayload?.submissionId === state.submissionId && saved.sentPayload?.application && saved.sentPayload?.consentVideo === true && saved.sentPayload?.consentEducation === true) {
+      state.sentPayload = saved.sentPayload;
+      state.draft = { ...emptyDraft(), ...saved.sentPayload.application };
+      ui.name.value = saved.sentPayload.fullName;
+      ui.email.value = saved.sentPayload.email;
+      ui.consentVideo.checked = true; ui.consentEducation.checked = true;
+    }
   }
 
   // A link an assistant wrote carries the answers after "#". They replace any
@@ -874,11 +941,14 @@ function start() {
   // or in the browser history.
   const prefill = parsePrefill(window.location.hash);
   if (prefill) {
+    state.submissionId = '';
+    state.sentPayload = null;
     state.draft = { ...emptyDraft(), ...includeAnsweredSections(normalizeApplication(prefill)) };
     state.via = 'assistant-link';
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
   }
   if (ui.assistantNote) ui.assistantNote.hidden = state.via !== 'assistant-link';
+  if (!state.submissionId) state.submissionId = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
   const requested = new URLSearchParams(window.location.search).get('topic');
   if (requested && TOPICS.some((topic) => topic.id === requested) && state.draft.topics.length === 0) {
@@ -891,9 +961,12 @@ function start() {
     scheduleSave();
   }));
   [ui.consentVideo, ui.consentEducation].forEach((box) => box.addEventListener('change', () => markInvalid(box, false)));
-  ui.clear.addEventListener('click', () => {
+  ui.clear.addEventListener('click', async () => {
     if (!window.confirm('Clear all your answers from this device?')) return;
     clearSavedDraft();
+    await voice.clear();
+    state.sentPayload = null;
+    state.submissionId = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     state.draft = emptyDraft();
     state.via = '';
     if (ui.assistantNote) ui.assistantNote.hidden = true;
@@ -904,6 +977,10 @@ function start() {
   });
 
   render();
+  if (state.sentPayload) {
+    freezeWrittenAnswers();
+    setStatus('', 'Finishing your previously sent application. Press Send again to confirm it was received. If you had a recording, choose your saved copy and give permission for it again.');
+  }
 }
 
 start();

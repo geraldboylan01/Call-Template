@@ -11,6 +11,8 @@
     "generate:cases": "node ./scripts/generate-case-pages.mjs",
     "check:cases": "node ./scripts/generate-case-pages.mjs --check",
     "check:case-application": "node ./scripts/check-case-application.mjs",
+    "check:application-voice": "node ./scripts/check-application-voice.mjs",
+    "check:application-voice-browser": "node ./scripts/check-application-voice-browser.mjs",
     "generate:planning-playbooks": "node ./scripts/generate-planning-playbook-manifest.mjs",
     "check:planning-playbooks": "node ./scripts/generate-planning-playbook-manifest.mjs --check",
     "generate:module-manifest": "node ./scripts/generate-module-manifest.mjs",

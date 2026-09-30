@@ -21,7 +21,7 @@ export const APPLICATION_SCHEMA = 'planeir.application.v1';
 export const APPLICATION_SCHEMA_VERSION = 1;
 
 export const MAX_QUESTION_LENGTH = 2_000;
-export const MAX_LONG_TEXT_LENGTH = 2_000;
+const MAX_LONG_TEXT_LENGTH = 2_000;
 
 /**
  * What a person can ask for help with. The goal types are the planner's own
@@ -41,7 +41,7 @@ export const TOPICS = Object.freeze([
 
 const TOPIC_IDS = new Set(TOPICS.map((topic) => topic.id));
 
-export function topicLabel(id) {
+function topicLabel(id) {
   return TOPICS.find((topic) => topic.id === id)?.label || '';
 }
 
@@ -96,7 +96,9 @@ export const SECTIONS = Object.freeze([
         maxLength: 600,
         rows: 2,
         private: true
-      }
+      },
+      { path: 'goodOutcome', label: 'What would a good outcome look like?', short: 'Hoping to achieve', hint: 'For example: work less from 60 and feel confident we have enough.', type: 'longtext', maxLength: 1000, rows: 2, private: true },
+      { path: 'worries', label: 'What worries you most?', short: 'Main worries', hint: 'Optional. Tell Gerry what is on your mind.', type: 'longtext', maxLength: 1000, rows: 2, private: true }
     ]
   },
   {
@@ -744,7 +746,7 @@ function inRange(value, min, max) {
 }
 
 /** One value, checked against its field. Anything it cannot read is dropped. */
-export function normalizeFieldValue(field, raw, unit) {
+function normalizeFieldValue(field, raw, unit) {
   switch (field.type) {
     case 'money':
       return inRange(parseMoney(raw), 0, 1_000_000_000);

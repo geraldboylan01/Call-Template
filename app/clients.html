@@ -8,7 +8,7 @@
     <meta name="robots" content="noindex, nofollow" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://api.planeir.ie; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://api.planeir.ie; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
     />
     <meta
       name="call-canvas-worker-base-url"
@@ -61,6 +61,7 @@
           </div>
 
           <div id="clientSourceTabs" class="client-stage-tabs" role="tablist" aria-label="Filter clients by where they came from"></div>
+          <label class="consent-check"><input id="clientVoiceFilter" type="checkbox" /> Has a voice note approved for video</label>
           <div id="clientStageTabs" class="client-stage-tabs" role="tablist" aria-label="Filter clients by stage"></div>
 
           <div class="access-manager-search-row lead-filter-row">
@@ -157,6 +158,7 @@
                 </select>
               </div>
               <p id="clientApplicationMeta" class="client-application-meta"></p>
+              <div id="clientVoiceNote" class="lead-detail-section" hidden></div>
               <div id="clientApplicationBody" class="client-application-body" aria-live="polite"></div>
               <div class="access-manager-actions client-inline-actions">
                 <button id="clientApplicationCopyTextBtn" class="ui-button" type="button">Copy as text</button>

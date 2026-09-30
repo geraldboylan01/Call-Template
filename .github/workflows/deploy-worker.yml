@@ -333,6 +333,7 @@ jobs:
           npm run check:video-summary
           npm run check:video-scene
           npm run check:codex-video-brief
+          npm run check:application-voice
           npm run check:success-animation
           npm run build
         env:
@@ -1109,6 +1110,9 @@ jobs:
 
       - name: Smoke check live published-session routes
         run: node ./scripts/check-worker-published-session-routes.mjs
+
+      - name: Verify live application voice consent and private storage
+        run: node ./scripts/check-application-voice-live.mjs
 
       # A canary that cannot prove the real provider boundary must not remain
       # active. This compensating deploy preserves the existing adviser beta,

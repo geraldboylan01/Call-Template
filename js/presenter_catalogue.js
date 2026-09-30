@@ -4,8 +4,8 @@ import { getNetRetirementScenarioCases } from './net_retirement_math.js';
 import { getMortgageScenarioCases, computeMortgageComparison, computeMortgageProjection } from './mortgage_math.js';
 import { resolveLiquidityReserveForPlan, normalizeSectionToken } from './module_pipeline.js';
 
-export const CATALOGUE_VERSION = 1;
-export const plainText = (v) => String(v ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+const CATALOGUE_VERSION = 1;
+const plainText = (v) => String(v ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 export function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])]));
@@ -20,7 +20,7 @@ export function fingerprint(value) {
   }
   return `${(a >>> 0).toString(16)}${(b >>> 0).toString(16)}`;
 }
-export function moduleSource(module) {
+function moduleSource(module) {
   const generated = structuredClone(module.generated || {});
   // The repayment view caches the last selected case in these output fields.
   // Discover from the authored inputs and base case, never that display cache.

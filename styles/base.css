@@ -10497,3 +10497,6 @@ body.overview-has-selection .toast-host {
     transform: none;
   }
 }
+#clientVoiceNote[hidden] { display: none !important; }
+#clientVoiceNote .voice-download-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+#clientVoiceNote h4, #clientVoiceNote p { margin: 0; }

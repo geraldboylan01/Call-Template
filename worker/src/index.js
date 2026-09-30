@@ -1,3 +1,6 @@
+import { ensureAudioAccess, voiceMetadata, handlePublicAudio, deleteVoiceNotes, cleanupVoiceNotes } from './application_audio.js';
+import { hasVoicePublicationConsent } from '../../js/case_application/voice_contract.js';
+
 const PAYLOAD_VERSION = 1;
 const SESSION_KEY_PREFIX = 'sessions/';
 const SESSION_KEY_SUFFIX = '.json';
@@ -60,6 +63,8 @@ const ALLOWED_REQUEST_HEADER_NAMES = new Set([
   'x-consumer-invite',
   'x-voice-duration-ms',
   'x-voice-request-id',
+  'x-application-audio-token',
+  'x-voice-publication-consent',
   'x-realtime-activation-id',
   'x-realtime-control-capability'
 ]);
@@ -71,6 +76,8 @@ const DEFAULT_ALLOWED_REQUEST_HEADERS = [
   'X-Consumer-Invite',
   'X-Voice-Duration-Ms',
   'X-Voice-Request-Id',
+  'X-Application-Audio-Token',
+  'X-Voice-Publication-Consent',
   'X-Realtime-Activation-Id',
   'X-Realtime-Control-Capability'
 ].join(', ');
@@ -310,6 +317,10 @@ export { ConsumerRealtimeSession } from './consumer/realtime_session.js';
 export { ConsumerLiveSession } from './consumer/live/live_session.js';
 
 function getRouteConfig(pathname) {
+  if (/^\/api\/applications\/voice-note\/(config|access|prepare|upload|discard)$/.test(pathname)) {
+    return { methods: pathname.endsWith('/config') ? 'GET,OPTIONS' : pathname.endsWith('/upload') ? 'PUT,OPTIONS' : 'POST,OPTIONS' };
+  }
+  if (/^\/api\/advisor\/leads\/\d+\/voice-note$/.test(pathname)) return { methods: 'GET,DELETE,OPTIONS' };
   if (pathname === '/api/agent-tests/sessions') {
     return { methods: 'POST,OPTIONS' };
   }
@@ -1596,6 +1607,7 @@ function buildApplicationReplyText(application) {
     `Hi ${firstNameOf(application.fullName)},`,
     '',
     ...APPLICATION_REPLY_PARAGRAPHS.flatMap((paragraph) => [paragraph, '']),
+    ...(application.audioLink ? [`Add or replace an optional voice note within 7 days: ${application.audioLink}`, 'Sending a recording requires permission to use your voice in the published review. Your voice may be recognisable.', ''] : []),
     'Best,',
     'Planeir',
     buildPlaneirEmailCardText()
@@ -1616,6 +1628,7 @@ function buildApplicationReplyHtml(application) {
       <div style="padding:24px;font-size:15px;line-height:1.7;">
         <p style="margin:0 0 16px;">Hi ${escapeHtml(firstNameOf(application.fullName))},</p>
         ${paragraphs}
+        ${application.audioLink ? `<p><a href="${escapeHtml(application.audioLink)}">Add or replace an optional voice note</a> within 7 days. Sending a recording requires permission to use your voice in the published review. Your voice may be recognisable.</p>` : ''}
         <p style="margin:0;">Best,<br />Planeir</p>
         ${buildPlaneirEmailCardHtml()}
       </div>
@@ -2756,6 +2769,7 @@ function normalizeClientRow(row) {
     source: normalizeClientSource(row.source),
     sourceLabel: CLIENT_SOURCE_LABELS[normalizeClientSource(row.source)],
     leadCount: Number(row.lead_count || 0),
+    hasVoiceNote: Boolean(row.voice_note_present),
     publishedSessionCount: Number(row.published_session_count || 0),
     latestLeadId: Number(row.latest_lead_id || 0) || null,
     latestPublishedId: row.latest_published_id || '',
@@ -2782,6 +2796,7 @@ function buildClientManagerSummary(client) {
     stageUpdatedAt: client.stageUpdatedAt,
     advisorNotes: client.advisorNotes,
     leadCount: client.leadCount,
+    hasVoiceNote: client.hasVoiceNote,
     publishedSessionCount: client.publishedSessionCount,
     latestLeadId: client.latestLeadId,
     latestPublishedId: client.latestPublishedId,
@@ -2806,6 +2821,7 @@ async function getClientRow(env, clientId) {
       c.stage_updated_at,
       c.advisor_notes,
       c.source,
+      EXISTS (SELECT 1 FROM application_voice_notes v JOIN leads l ON l.id = v.lead_id WHERE l.client_id = c.id AND l.application_deleted_at IS NULL AND v.state = 'ready') AS voice_note_present,
       (SELECT COUNT(*) FROM leads WHERE client_id = c.id) AS lead_count,
       (SELECT COUNT(*) FROM published_sessions WHERE client_id = c.id) AS published_session_count,
       (SELECT id FROM leads WHERE client_id = c.id ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1) AS latest_lead_id,
@@ -2830,6 +2846,8 @@ async function listClientRows(env, options = {}) {
   const limit = Math.min(Math.max(Number(options.limit) || 60, 1), 120);
   const where = [];
   const bindings = [];
+
+  if (options.voice === 'yes') where.push("EXISTS (SELECT 1 FROM application_voice_notes v JOIN leads l ON l.id = v.lead_id WHERE l.client_id = c.id AND l.application_deleted_at IS NULL AND v.state = 'ready')");
 
   if (sourceFilter && sourceFilter !== 'all' && ALLOWED_CLIENT_SOURCES.has(sourceFilter)) {
     where.push('c.source = ?');
@@ -2901,6 +2919,7 @@ async function listClientRows(env, options = {}) {
       c.stage_updated_at,
       c.advisor_notes,
       c.source,
+      EXISTS (SELECT 1 FROM application_voice_notes v JOIN leads l ON l.id = v.lead_id WHERE l.client_id = c.id AND l.application_deleted_at IS NULL AND v.state = 'ready') AS voice_note_present,
       (SELECT COUNT(*) FROM leads WHERE client_id = c.id) AS lead_count,
       (SELECT COUNT(*) FROM published_sessions WHERE client_id = c.id) AS published_session_count,
       (SELECT id FROM leads WHERE client_id = c.id ORDER BY COALESCE(updated_at, created_at) DESC, id DESC LIMIT 1) AS latest_lead_id,
@@ -5977,7 +5996,7 @@ async function handleAdvisorClientsList(request, env, origin) {
   const limit = Number(url.searchParams.get('limit') || 60);
 
   try {
-    const rows = await listClientRows(env, { query, stage, source, limit });
+    const rows = await listClientRows(env, { query, stage, source, limit, voice: url.searchParams.get('voice') });
     return jsonResponse({
       ok: true,
       sources: CLIENT_SOURCES.map((value) => ({
@@ -7112,22 +7131,6 @@ async function handleApplicationSubmit(request, env, origin, ctx) {
     return jsonResponse({ ok: true }, 201, origin, methods, null, noStoreHeaders());
   }
 
-  const persistentAllowed = await checkPersistentRateLimit(
-    env,
-    'application-submit',
-    clientIp,
-    APPLICATION_RATE_LIMIT_WINDOW_MS,
-    APPLICATION_RATE_LIMIT_MAX
-  ).catch((error) => {
-    console.error('Application rate limit check failed', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    return true;
-  });
-  if (!persistentAllowed) {
-    return jsonResponse({ error: 'Too many applications from this connection. Please try again in an hour.' }, 429, origin, methods, null, noStoreHeaders());
-  }
-
   let contact;
   try {
     contact = validateApplicationContact(body);
@@ -7151,8 +7154,36 @@ async function handleApplicationSubmit(request, env, origin, ctx) {
     return jsonResponse({ error: 'Applications are not open right now. Please try again later.' }, 503, origin, methods, null, noStoreHeaders());
   }
 
-  const { randomId } = await import('./consumer/crypto.js');
-  const applicationId = randomId('app');
+  if (body.voiceNote && !hasVoicePublicationConsent(body.voiceNote)) {
+    return jsonResponse({ error: 'Tick the voice-recording permission box, or remove the recording.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+  if (body.submissionId !== undefined && !/^[A-Za-z0-9_-]{43}$/.test(body.submissionId)) {
+    return jsonResponse({ error: 'Invalid submission identifier.' }, 400, origin, methods, null, noStoreHeaders());
+  }
+  const { randomId, sha256Base64Url } = await import('./consumer/crypto.js');
+  const applicationId = body.submissionId ? `app_${await sha256Base64Url(body.submissionId)}` : randomId('app');
+  const submissionHash = await sha256Base64Url(JSON.stringify({ contact, application, via: body.via === 'assistant-link' ? 'assistant-link' : 'page' }));
+  const prior = body.submissionId ? await env.LEADS_DB.prepare('SELECT id, application_submission_hash FROM leads WHERE application_id = ?').bind(applicationId).first() : null;
+  if (prior) {
+    if (prior.application_submission_hash !== submissionHash) return jsonResponse({ error: 'This application was already sent with different answers. Use the receipt email to follow up.' }, 409, origin, methods, null, noStoreHeaders());
+    return jsonResponse(await applicationReceipt(env, prior.id), 200, origin, methods, null, noStoreHeaders());
+  }
+  const persistentAllowed = await checkPersistentRateLimit(
+    env,
+    'application-submit',
+    clientIp,
+    APPLICATION_RATE_LIMIT_WINDOW_MS,
+    APPLICATION_RATE_LIMIT_MAX
+  ).catch((error) => {
+    console.error('Application rate limit check failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return true;
+  });
+  if (!persistentAllowed) {
+    return jsonResponse({ error: 'Too many applications from this connection. Please try again in an hour.' }, 429, origin, methods, null, noStoreHeaders());
+  }
+
   let encrypted;
   try {
     encrypted = await encryptApplicationPayload(env, applicationId, application);
@@ -7164,26 +7195,34 @@ async function handleApplicationSubmit(request, env, origin, ctx) {
   }
 
   try {
-    await storeApplicationLead(env, ctx, {
+    const stored = await storeApplicationLead(env, ctx, {
       contact,
       application,
       counts: countAnswers(application),
       applicationId,
       encrypted,
       schemaVersion: APPLICATION_SCHEMA_VERSION,
+      submissionHash,
       // A person who opened /apply/ from a link their assistant wrote still
       // read, completed and sent it themselves; it is only marked so Gerry
       // knows how it began.
       channel: body.via === 'assistant-link' ? 'assistant-link' : 'page',
       replyToApplicant: true
     });
-    return jsonResponse({ ok: true }, 201, origin, methods, null, noStoreHeaders());
+    return jsonResponse(await applicationReceipt(env, stored.leadId), 201, origin, methods, null, noStoreHeaders());
   } catch (error) {
+    const saved = await env.LEADS_DB.prepare('SELECT id, application_submission_hash FROM leads WHERE application_id = ?').bind(applicationId).first().catch(() => null);
+    if (saved?.application_submission_hash === submissionHash) return jsonResponse(await applicationReceipt(env, saved.id), 200, origin, methods, null, noStoreHeaders());
     console.error('Failed to store application', {
       error: error instanceof Error ? error.message : String(error)
     });
     return jsonResponse({ error: 'Could not save your application right now. Please try again shortly.' }, 500, origin, methods, null, noStoreHeaders());
   }
+}
+
+async function applicationReceipt(env, leadId) {
+  const voiceAccess = await ensureAudioAccess(env, leadId).catch(() => null);
+  return { ok: true, ...(voiceAccess ? { voiceAccess } : {}) };
 }
 
 const APPLICATION_CHANNEL_LABELS = {
@@ -7206,6 +7245,7 @@ async function storeApplicationLead(env, ctx, {
   schemaVersion,
   channel = 'page',
   assistant = '',
+  submissionHash = null,
   replyToApplicant = true
 }) {
   const createdAt = new Date().toISOString();
@@ -7241,8 +7281,9 @@ async function storeApplicationLead(env, ctx, {
       application_topics,
       application_answered_count,
       application_channel,
-      application_assistant
-    ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 'new', 0, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+      application_assistant,
+      application_submission_hash
+    ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, NULL, 'new', 0, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
     client?.id || null,
     createdAt,
@@ -7257,7 +7298,8 @@ async function storeApplicationLead(env, ctx, {
     topics || null,
     counts.answered,
     channel,
-    assistant || null
+    assistant || null,
+    submissionHash
   ).run();
 
   if (!result.success) {
@@ -7282,9 +7324,11 @@ async function storeApplicationLead(env, ctx, {
     });
   }
 
+  const voiceAccess = await ensureAudioAccess(env, leadId).catch(() => null);
   const emailTask = sendApplicationEmails(env, {
     fullName: contact.fullName,
     email: contact.email,
+    audioLink: voiceAccess ? `${PLANEIR_SITE_URL}/apply/confirm/#voice=${voiceAccess.token}` : '',
     question: application.question,
     topics: application.topics,
     answered: counts.answered,
@@ -7612,7 +7656,8 @@ async function handleAgentApplicationConfirm(request, env, origin, ctx) {
   const { row } = found;
   const name = firstNameOf(row.full_name);
   if (row.confirmed_at) {
-    return jsonResponse({ ok: true, name, alreadyConfirmed: true }, 200, origin, methods, null, noStoreHeaders());
+    const lead = await env.LEADS_DB.prepare('SELECT id FROM leads WHERE application_id = ?').bind(row.application_id).first();
+    return jsonResponse({ ...await applicationReceipt(env, lead?.id), name, alreadyConfirmed: true }, 200, origin, methods, null, noStoreHeaders());
   }
 
   const db = getPublishedSessionsDb(env);
@@ -7649,7 +7694,8 @@ async function handleAgentApplicationConfirm(request, env, origin, ctx) {
       SET confirmed_at = ?, application_payload_encrypted = NULL, claimed_at = NULL
       WHERE id = ?
     `).bind(nowIso(), row.id).run();
-    return jsonResponse({ ok: true, name }, 200, origin, methods, null, noStoreHeaders());
+    const lead = await db.prepare('SELECT id FROM leads WHERE application_id = ?').bind(row.application_id).first();
+    return jsonResponse({ ...await applicationReceipt(env, lead?.id), name }, 200, origin, methods, null, noStoreHeaders());
   } catch (error) {
     console.error('Agent application confirmation failed', {
       error: error instanceof Error ? error.message : String(error)
@@ -7715,7 +7761,8 @@ async function handleAdvisorLeadApplication(request, env, origin, leadId) {
     answeredCount: Number(row.application_answered_count || 0),
     deletedAt: row.application_deleted_at || '',
     channel: row.application_channel || 'page',
-    assistant: row.application_assistant || ''
+    assistant: row.application_assistant || '',
+    voiceNote: advisorAccess.session?.authenticated ? await voiceMetadata(env, leadId) : null
   };
 
   if (!row.application_payload_encrypted) {
@@ -7749,6 +7796,7 @@ async function handleAdvisorLeadApplicationDelete(request, env, origin, leadId) 
     return jsonResponse({ error: 'Application not found.' }, 404, origin, methods, null, noStoreHeaders());
   }
 
+  const audioDeletion = await deleteVoiceNotes(env, leadId);
   const deletedAt = row.application_deleted_at || nowIso();
   await getPublishedSessionsDb(env).prepare(`
     UPDATE leads
@@ -7760,7 +7808,7 @@ async function handleAdvisorLeadApplicationDelete(request, env, origin, leadId) 
   `).bind(deletedAt, nowIso(), leadId).run();
   await insertLeadEvent(env, leadId, 'advisor', 'application-deleted', { reason: 'advisor-request' }).catch(() => {});
 
-  return jsonResponse({ ok: true, deletedAt }, 200, origin, methods, null, noStoreHeaders());
+  return jsonResponse({ ok: true, deletedAt, audioDeletionPending: audioDeletion.deletionPending }, 200, origin, methods, null, noStoreHeaders());
 }
 
 function validateVideoLiveUrl(value) {
@@ -8852,6 +8900,7 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
 
 export default {
   async scheduled(controller, env, ctx) {
+    ctx.waitUntil(cleanupVoiceNotes(env).catch(() => console.error('Voice-note cleanup failed; will retry.')));
     ctx.waitUntil(
       cleanupExpiredLeadScheduleProposals(env).then((result) => {
         if (result.checked > 0 || result.failed > 0) {
@@ -9046,6 +9095,34 @@ export default {
           { ...noStoreHeaders(), ...(extraHeaders || {}) }
         )
       });
+    }
+
+    if (/^\/api\/applications\/voice-note\/(config|access|prepare|upload|discard)$/.test(pathname)) {
+      const methods = routeConfig.methods;
+      if (!origin) return jsonResponse({ error: 'Origin not allowed.' }, 403, null, methods, null, noStoreHeaders());
+      if (!checkRateLimit(getClientIp(request)) || (request.method !== 'GET' && !await checkPersistentRateLimit(env, 'application-audio', getClientIp(request), HOUR_MS, 60))) {
+        return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, null, noStoreHeaders());
+      }
+      return handlePublicAudio(request, env, pathname, (data, status) => jsonResponse(data, status, origin, methods, null, noStoreHeaders()));
+    }
+    const advisorAudio = /^\/api\/advisor\/leads\/(\d+)\/voice-note$/.exec(pathname);
+    if (advisorAudio) {
+      const methods = 'GET,DELETE,OPTIONS';
+      const auth = await requireAdvisorSession(request, env, origin, methods, { requireCsrf: request.method !== 'GET' });
+      if (auth.response) return auth.response;
+      if (!auth.session?.authenticated) return jsonResponse({ error: 'Advisor login required.' }, 401, origin, methods, null, noStoreHeaders());
+      const leadId = Number(advisorAudio[1]);
+      if (request.method === 'DELETE') return jsonResponse(await deleteVoiceNotes(env, leadId), 200, origin, methods, null, noStoreHeaders());
+      if (request.method !== 'GET') return jsonResponse({ error: 'Method not allowed.' }, 405, origin, methods, null, noStoreHeaders());
+      const row = await env.LEADS_DB.prepare(`SELECT v.* FROM application_voice_notes v JOIN leads l ON l.id = v.lead_id
+        WHERE v.lead_id = ? AND v.state = 'ready' AND l.application_deleted_at IS NULL ORDER BY v.uploaded_at DESC LIMIT 1`).bind(leadId).first();
+      if (!row || !env.APPLICATION_AUDIO_BUCKET) return jsonResponse({ error: 'Voice note not found.' }, 404, origin, methods, null, noStoreHeaders());
+      const object = await env.APPLICATION_AUDIO_BUCKET.get(row.object_key);
+      if (!object) return jsonResponse({ error: 'Voice note not found.' }, 404, origin, methods, null, noStoreHeaders());
+      return new Response(object.body, { headers: { ...corsHeaders(origin, methods), ...securityHeaders(noStoreHeaders()),
+        'Content-Type': row.content_type, 'Content-Length': String(row.bytes),
+        'Content-Disposition': `attachment; filename="application-${leadId}-voice-note.${row.extension}"`,
+        'X-Content-Type-Options': 'nosniff' } });
     }
 
     if (request.method === 'POST' && pathname === '/api/leads') {

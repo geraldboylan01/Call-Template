@@ -15,6 +15,8 @@ import {
   toPublicCase,
   topicLabels
 } from './case_application/index.js';
+import { stillUsefulQuestions } from './case_application/agent.js';
+import { createAdvisorVoice } from './advisor_voice.js';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -150,6 +152,7 @@ const state = {
   // with Gerry, a session published straight from the app, and someone who
   // completed an online self-service call and has never spoken to anyone.
   sourceFilter: params.get('source')?.trim() || 'all',
+  voiceFilter: params.get('voice') === 'yes',
   sources: [],
   listRequestId: 0,
   detailRequestId: 0,
@@ -718,7 +721,7 @@ function renderClientList() {
     id.textContent = `Client #${client.id}`;
     const summary = document.createElement('span');
     summary.className = 'access-session-card-summary';
-    summary.textContent = `${client.leadCount || 0} lead${client.leadCount === 1 ? '' : 's'} | ${client.publishedSessionCount || 0} published | updated ${formatDateTime(client.stageUpdatedAt || client.updatedAt, 'recently')}`;
+    summary.textContent = `${client.leadCount || 0} lead${client.leadCount === 1 ? '' : 's'} | ${client.publishedSessionCount || 0} published | updated ${formatDateTime(client.stageUpdatedAt || client.updatedAt, 'recently')}${client.hasVoiceNote ? ' | Voice note ready' : ''}`;
     meta.append(id, summary);
 
     button.append(top, meta);
@@ -850,6 +853,7 @@ function getSelectedApplication() {
 }
 
 function resetApplicationState() {
+  advisorVoice.set(null);
   state.application = { leadId: '', payload: null, loading: false, error: '' };
 }
 
@@ -922,6 +926,7 @@ function applicationLineNode(section, line) {
 
 function renderApplication() {
   const lead = getSelectedApplicationLead();
+  advisorVoice.set(state.application.leadId === String(lead?.id) ? state.application.payload?.voiceNote : null, lead?.id);
   if (!ui.clientApplicationSection) {
     return;
   }
@@ -995,7 +1000,34 @@ function renderApplication() {
     block.append(heading, list);
     body.appendChild(block);
   });
+  const missing = stillUsefulQuestions(application);
+  if (missing.length) {
+    const details = document.createElement('details');
+    const summary = document.createElement('summary'); summary.textContent = 'Details to clarify before preparing the review';
+    const list = document.createElement('ul');
+    missing.forEach(item => { const li = document.createElement('li'); li.textContent = item.question; list.append(li); });
+    details.append(summary, list); body.append(details);
+  }
 }
+
+const advisorVoice = createAdvisorVoice(document.getElementById('clientVoiceNote'), {
+  async fetchAudio(leadId) {
+    const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/leads/${leadId}/voice-note`, { method: 'GET' }, { authPrompt: 'Sign in to listen to voice notes.' });
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || 'Could not load the voice note.');
+    return response.blob();
+  },
+  async deleteAudio(leadId) {
+    const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/leads/${leadId}/voice-note`, { method: 'DELETE' }, { includeCsrf: true, authPrompt: 'Sign in to delete the voice note.' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not delete the voice note.');
+    return result;
+  },
+  async onDeleted(result) {
+    await loadSelectedApplication({ force: true });
+    await loadClientList({ preserveSelection: true, autoSelect: false });
+    showToast(result.deletionPending ? 'Access revoked. Storage deletion will retry automatically.' : 'Voice note deleted.');
+  }
+});
 
 function downloadText(filename, text, type = 'text/plain') {
   const blob = new Blob([text], { type: `${type};charset=utf-8` });
@@ -1187,6 +1219,7 @@ function updateActionState() {
 function renderSelectedClient() {
   const client = state.selectedClient;
   if (!client) {
+    advisorVoice.set(null);
     ui.clientEmptyState?.classList.remove('is-hidden');
     ui.clientDetailCard?.classList.add('is-hidden');
     updateActionState();
@@ -1252,6 +1285,7 @@ async function fetchClients(query = '', stage = 'all', source = 'all') {
     url.searchParams.set('source', source);
   }
 
+  if (state.voiceFilter) url.searchParams.set('voice', 'yes');
   const response = await fetchWithAdvisorAuth(url.toString(), {
     method: 'GET',
     cache: 'no-store'
@@ -1770,6 +1804,9 @@ async function handleAdvisorLogout() {
 }
 
 function bindEvents() {
+  const voiceFilter = document.getElementById('clientVoiceFilter');
+  voiceFilter.checked = state.voiceFilter;
+  voiceFilter.addEventListener('change', () => { state.voiceFilter = voiceFilter.checked; void loadClientList(); });
   ui.clientRefreshButton?.addEventListener('click', async () => {
     await loadClientList({ preserveSelection: true, autoSelect: true });
   });
@@ -2012,13 +2049,13 @@ function bindEvents() {
   ui.clientApplicationDeleteButton?.addEventListener('click', async () => {
     const lead = getSelectedApplicationLead();
     if (!lead || !getSelectedApplication()) return;
-    if (!window.confirm('Delete the figures in this application? This cannot be undone. The name, email and question stay in the pipeline.')) {
+    if (!window.confirm('Delete the figures and voice note in this application? This also revokes its upload link. The name, email and question stay in the pipeline. Remove downloaded copies separately.')) {
       return;
     }
     await runClientAction(async () => {
-      await deleteLeadApplication(lead.id);
+      const result = await deleteLeadApplication(lead.id);
       resetApplicationState();
-      showToast('Application figures deleted.');
+      showToast(result.audioDeletionPending ? 'Figures deleted and voice access revoked. Storage deletion will retry.' : 'Application figures and voice note deleted.');
       await refreshSelectedClient();
     });
   });

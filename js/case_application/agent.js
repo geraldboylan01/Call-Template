@@ -32,10 +32,10 @@ import {
 } from './schema.js';
 
 export const AGENT_REQUEST_FORMAT = 'planeir.agent-application.v1';
-export const SITE_URL = 'https://planeir.ie';
-export const API_URL = 'https://api.planeir.ie';
-export const CONFIRMATION_DAYS = 7;
-export const STILL_USEFUL_LIMIT = 12;
+const SITE_URL = 'https://planeir.ie';
+const API_URL = 'https://api.planeir.ie';
+const CONFIRMATION_DAYS = 7;
+const STILL_USEFUL_LIMIT = 12;
 
 const LIST_KEYS = ['topics', 'unsure', 'none', 'added'];
 const UNSAFE_SEGMENTS = new Set(['__proto__', 'prototype', 'constructor']);
@@ -61,7 +61,7 @@ function indexKey(path) {
 }
 
 /** The schema field behind a concrete path such as "pensions.0.value". */
-export function describePath(path) {
+function describePath(path) {
   return FIELD_INDEX.get(indexKey(path)) || null;
 }
 
@@ -92,7 +92,7 @@ function unitWords(field) {
   return 'euro';
 }
 
-export function expectationFor(field) {
+function expectationFor(field) {
   switch (field.type) {
     case 'money':
       return `A number in ${unitWords(field)}, like 35000.`;
@@ -189,11 +189,11 @@ function hiddenValueWarnings(application) {
  * The questions still worth asking, for the topics chosen. An assistant can put
  * these to its user; every one of them can still be skipped.
  */
-function stillUsefulQuestions(application) {
+export function stillUsefulQuestions(application) {
   const unsure = new Set(Array.isArray(application.unsure) ? application.unsure : []);
   return listVisibleFields(application)
     .filter(({ field, path }) => (
-      !['question', 'upcoming', 'anythingElse', 'videoName'].includes(path)
+      !['question', 'upcoming', 'goodOutcome', 'worries', 'anythingElse', 'videoName'].includes(path)
       && field.type !== 'text'
       && !hasValue(getPath(application, path))
       && !unsure.has(path)

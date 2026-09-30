@@ -166,6 +166,16 @@
             "maxLength": 600,
             "description": "Is anything coming up, and when. For example: our fixed rate ends in March. Text, up to 600 characters. Never published."
           },
+          "goodOutcome": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "What would a good outcome look like. For example: work less from 60 and feel confident we have enough. Text, up to 1000 characters. Never published."
+          },
+          "worries": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "What worries you most. Optional. Tell Gerry what is on your mind. Text, up to 1000 characters. Never published."
+          },
           "household": {
             "type": "object",
             "additionalProperties": false,

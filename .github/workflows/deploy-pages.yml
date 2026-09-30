@@ -34,6 +34,7 @@ jobs:
       - name: Check case applications, assistant access and generated pages
         run: |
           npm run check:case-application
+          npm run check:application-voice
           npm run check:agent-applications
           npm run check:cases
           npm run check:agent-docs

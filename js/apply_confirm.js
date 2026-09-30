@@ -10,6 +10,8 @@
  * bar, and only ever sent in a request body.
  */
 
+import { createApplicationVoice } from './application_voice.js';
+
 const WORKER_BASE_URL = (() => {
   const host = window.location.hostname;
   if (host === '127.0.0.1' || host === 'localhost') {
@@ -63,6 +65,29 @@ function showExpired() {
   });
 }
 
+async function offerVoiceNote(access) {
+  if (!access?.token) return;
+  const section = document.getElementById('confirmVoiceSection');
+  const status = document.getElementById('confirmVoiceStatus');
+  const button = document.getElementById('confirmVoiceSubmit');
+  const voice = createApplicationVoice(document.getElementById('confirmVoiceNote'), { baseUrl: WORKER_BASE_URL });
+  await voice.ready;
+  if (!voice.enabled) return;
+  section.hidden = false;
+  button.addEventListener('click', async () => {
+    const invalid = voice.validate();
+    if (invalid || !voice.hasRecording) { status.textContent = invalid || 'Record or choose a voice note first.'; return; }
+    button.disabled = true; voice.setBusy(true); status.textContent = 'Sending your voice note…';
+    try {
+      await voice.upload(access.token);
+      voice.complete();
+      status.textContent = 'Your voice note is saved with permission to use it in your published review.';
+      button.textContent = 'Send a replacement voice note';
+    } catch (error) { status.textContent = `${error.message} Your written application is already saved.`; }
+    finally { button.disabled = false; voice.setBusy(false); }
+  });
+}
+
 async function confirm(token) {
   const response = await fetch(`${WORKER_BASE_URL}/api/agent/applications/confirm`, {
     method: 'POST',
@@ -76,8 +101,19 @@ async function confirm(token) {
 async function start() {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const token = params.get('t') || '';
-  if (token) {
+  const voiceToken = params.get('voice') || '';
+  if (token || voiceToken) {
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  }
+  if (voiceToken) {
+    try {
+      const response = await fetch(`${WORKER_BASE_URL}/api/applications/voice-note/access`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: voiceToken }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'This voice-note link is unavailable.');
+      show({ eyebrow: 'Your application is saved', title: 'Add a voice note', body: data.hasVoiceNote ? 'A voice note is already attached. You can replace it below. Give permission again for a replacement recording.' : 'You can add an optional voice note below. Sending a recording requires permission to use your real voice in the published review.', note: 'Written-only applications are still considered. You do not need to send your financial details again.' });
+      await offerVoiceNote({ token: voiceToken });
+    } catch (error) { show({ eyebrow: 'Voice-note link', title: 'This link is unavailable', body: error.message, note: 'Your written application is still saved. Email hello@planeir.ie if you need help.' }); }
+    return;
   }
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
     show({
@@ -96,6 +132,7 @@ async function start() {
     const { status, data } = await confirm(token);
     if (status === 200) {
       showConfirmed(data?.name || '');
+      await offerVoiceNote(data?.voiceAccess);
     } else if (status === 404) {
       showExpired();
     } else {
