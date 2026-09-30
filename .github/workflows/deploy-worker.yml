@@ -551,12 +551,11 @@ jobs:
           if (!['true', 'false'].includes(typedLaneToggle)) {
             throw new Error('CONSUMER_TYPED_LANE_ENABLED must be exactly true or false.');
           }
-          // TWO GATES, LIKE VOICE'S. The adviser beta decides WHO may run a
-          // planning meeting at all; the direct-module planner is what a typed
-          // meeting is built on -- there is no card to draw and no certified
-          // plan to confirm without it -- so asking for typed on a deployment
-          // whose planner is off is a configuration mistake, not a lesser mode.
-          const typedLaneEnabled = betaEnabled && typedLaneToggle === 'true';
+          // The planner is resolved off outside the Realtime canary above.
+          // Resolve its dependent typed lane off too, including ordinary pushes
+          // with a saved typed-lane preference. An active canary must still
+          // reject typed planning unless its planner is in apply mode.
+          const typedLaneEnabled = betaEnabled && realtimeEnabled && typedLaneToggle === 'true';
           if (typedLaneEnabled && directModulePlannerMode !== 'apply') {
             throw new Error('CONSUMER_TYPED_LANE_ENABLED requires CONSUMER_MODULE_PLANNER_MODE = apply.');
           }

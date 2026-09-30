@@ -21,6 +21,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 
 import { resolveShippedConsumerEnv } from './lib/shipped-consumer-config.mjs';
 
@@ -536,6 +538,51 @@ for (const tableName of ['fixedRealtimeValues']) {
   assert.match(workflow, /CONSUMER_PLANNER_RECONCILIATION_MODE: plannerReconciliationMode/,
     'the safety check must expect exactly what the builder resolved');
   pass('an ordinary push cannot activate apply without the protected variable');
+}
+
+{
+  // Execute the actual production builder: source-pattern checks missed the
+  // combination of a disabled canary and a saved typed-lane preference.
+  const section = workflow.split('      - name: Build fail-closed production Wrangler config\n')[1]?.split('\n      - name:')[0];
+  const builder = section?.match(/node <<'NODE'\n([\s\S]*?)\n          NODE/)?.[1];
+  assert.ok(builder, 'the production config builder must be executable in this check');
+  const requireFromRoot = createRequire(`${root}/package.json`);
+  function buildConfig(overrides = {}) {
+    const written = new Map();
+    const env = {
+      ...Object.fromEntries(declared),
+      CONSUMER_DB_ID: '11111111-1111-4111-8111-111111111111',
+      CONSUMER_ADVISER_INVITE_BETA_ENABLED: 'true',
+      CONSUMER_REALTIME_ADVISER_CANARY_ENABLED: 'false',
+      CONSUMER_MODULE_OFFERS_ENABLED: 'false',
+      CONSUMER_TYPED_LANE_ENABLED: 'true',
+      CONSUMER_BETA_MODULE_PLANNER_MODE: 'apply',
+      CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: 'apply',
+      CONSUMER_BETA_TURN_READING_MODE: 'shadow',
+      ...overrides
+    };
+    runInNewContext(builder, {
+      process: { env }, URL, console,
+      require: name => name === 'node:fs' ? {
+        readFileSync: path => readFileSync(`${root}/${path}`, 'utf8'),
+        writeFileSync: (path, text) => written.set(path, text)
+      } : requireFromRoot(name)
+    });
+    return Object.fromEntries(written);
+  }
+  const ordinary = buildConfig();
+  assert.match(ordinary['worker/wrangler.production.generated.toml'], /^CONSUMER_TYPED_LANE_ENABLED = "false"$/m);
+  assert.match(ordinary['worker/wrangler.production.generated.toml'], /^CONSUMER_MODULE_PLANNER_MODE = "off"$/m);
+  assert.match(ordinary['worker/wrangler.production.generated.toml'], /^CONSUMER_REALTIME_VOICE_ENABLED = "false"$/m);
+  const active = buildConfig({ CONSUMER_REALTIME_ADVISER_CANARY_ENABLED: 'true' });
+  assert.match(active['worker/wrangler.production.generated.toml'], /^CONSUMER_TYPED_LANE_ENABLED = "true"$/m);
+  assert.match(active['worker/wrangler.production.generated.toml'], /^CONSUMER_MODULE_PLANNER_MODE = "apply"$/m);
+  assert.match(active['worker/wrangler.bootstrap.generated.toml'], /^CONSUMER_TYPED_LANE_ENABLED = "false"$/m);
+  const dormant = buildConfig({ CONSUMER_ADVISER_INVITE_BETA_ENABLED: 'false' });
+  assert.match(dormant['worker/wrangler.production.generated.toml'], /^CONSUMER_TYPED_LANE_ENABLED = "false"$/m);
+  assert.throws(() => buildConfig({ CONSUMER_REALTIME_ADVISER_CANARY_ENABLED: 'true', CONSUMER_BETA_MODULE_PLANNER_MODE: 'shadow' }), /requires CONSUMER_MODULE_PLANNER_MODE = apply/);
+  assert.throws(() => buildConfig({ CONSUMER_TYPED_LANE_ENABLED: 'typo' }), /must be exactly true or false/);
+  pass('production builder handles saved typed preferences without activating a disabled planner or relaxing active-canary checks');
 }
 
 console.info(`\n[DeployCanary] ${passes.length} assertions passed.`);
