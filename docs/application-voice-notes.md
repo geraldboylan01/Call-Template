@@ -33,6 +33,8 @@ Audio is not embedded in public case JSON, copied case text, AI preparation pack
 
 This uses the existing Cloudflare Worker, D1 database, advisor login and receipt email, plus one dedicated private R2 **Standard** bucket. No recording widget, transcription, AI call or extra email subscription is required.
 
+The release workflow groups non-secret consumer planning settings into JSON variables under 4 KiB each to fit the Workers Free limit of 64 variables, including secrets. Feature switches and planning modes stay explicit. The committed configuration remains readable, and deployment checks compare every expanded value and runtime configuration before release. Existing secrets are never packed or rotated by this step.
+
 The default audio allocation is **1,000,000,000 bytes** across ready, reserved and deletion-pending files. The server rejects uploads before exceeding that allocation. Each file is capped at **10 MiB**, each link at ten upload reservations, and public audio mutations at 60 requests per IP per hour. There is no automatic quota increase. Written applications continue when voice capacity is exhausted.
 
 R2 Standard's current free allowance includes 10 GB-month of storage, one million Class A operations and ten million Class B operations per month, with free egress. The allowance is shared across the account; a separate bucket does not create another allowance. Check existing usage before activation. The feature quota bounds its stored bytes, not account-wide billing, request costs or existing Worker/D1/email costs. [Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/).
