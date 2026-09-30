@@ -623,7 +623,13 @@ await runCase('planning core has no DOM, browser-storage or Node-runtime imports
   assert.ok(paths.length >= 10);
   paths.forEach((url) => {
     const source = readFileSync(url, 'utf8');
-    assert.doesNotMatch(source, /\b(?:window|document|HTMLElement|customElements|localStorage|sessionStorage)\b/, String(url));
+    // The generated manifest embeds Markdown as JSON strings. Prose such as
+    // "document" does not introduce a DOM dependency; its generated content is
+    // checked separately by check:planning-playbooks. Still inspect its code.
+    const executableSource = url.pathname.endsWith('/playbook_manifest.generated.js')
+      ? source.replace(/"(?:\\.|[^"\\])*"/g, '""')
+      : source;
+    assert.doesNotMatch(executableSource, /\b(?:window|document|HTMLElement|customElements|localStorage|sessionStorage)\b/, String(url));
     assert.doesNotMatch(source, /(?:from|import\()\s*['"]node:/, String(url));
   });
   // Ensure this check itself did not accidentally rely on a workspace-relative cwd.

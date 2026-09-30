@@ -11,6 +11,11 @@ binding = "SESSIONS_BUCKET"
 bucket_name = "call-canvas-sessions"
 preview_bucket_name = "call-canvas-sessions-preview"
 
+# Private application recordings; public access is disabled.
+[[r2_buckets]]
+binding = "APPLICATION_AUDIO_BUCKET"
+bucket_name = "planeir-application-audio"
+
 [[d1_databases]]
 binding = "LEADS_DB"
 database_name = "planeir-leads"
@@ -53,6 +58,8 @@ new_sqlite_classes = ["ConsumerLiveSession"]
 crons = ["5 * * * *"]
 
 [vars]
+APPLICATION_AUDIO_ENABLED = "true"
+APPLICATION_AUDIO_QUOTA_BYTES = "1000000000"
 ALLOWED_ORIGINS = "https://geraldboylan01.github.io,https://planeir.ie,https://www.planeir.ie"
 SESSION_ADVISOR_NOTIFICATION_TO = "geraldboylan@gmail.com"
 TRUSTPILOT_AFS_EMAIL = "planeir.ie+c36359b3d5@invite.trustpilot.com"

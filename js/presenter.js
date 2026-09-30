@@ -9,7 +9,7 @@ import { mountPresenterConsole } from './presenter_console.js';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const attr = value => CSS.escape(String(value));
 
-export function resolvePresentationTarget(root, target) {
+function resolvePresentationTarget(root, target) {
   const r = target.ref;
   const block = r.blockId ? root?.querySelector(`[data-report-block-id="${attr(r.blockId)}"]`) : root;
   let element;
@@ -33,7 +33,7 @@ export function resolvePresentationTarget(root, target) {
 
 // Controller owns only navigation and ephemeral visual state. The host owns the
 // ordinary app renderer and isolates the financial session before any operation.
-export function createPresenterController(host, onChange = () => {}, onEvent = () => {}) {
+function createPresenterController(host, onChange = () => {}, onEvent = () => {}) {
   let pkg, script, catalogue, compiled, active = false, busy = false, index = -1;
   let error = '', loadError = '', cleanupPoint, focused, framed, currentModule, validation = null;
   let externalRecording = false, navigationId = 0, exploring = false;

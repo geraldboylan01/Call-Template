@@ -6,7 +6,7 @@ function keys(value, allowed, where) {
   assert(value && typeof value === 'object' && !Array.isArray(value), `${where} must be an object.`);
   for (const key of Object.keys(value)) assert(allowed.includes(key), `${where}: unsupported field ${key}.`);
 }
-export function flattenSteps(steps, depth = 0) {
+function flattenSteps(steps, depth = 0) {
   assert(Array.isArray(steps) && steps.length > 0, 'steps must be a non-empty array.');
   assert(depth < 5, 'Sequences are nested too deeply.');
   return steps.flatMap(step => {

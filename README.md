@@ -11,6 +11,8 @@ Planeir now ships as two connected experiences:
 
 ## Local Development
 
+Optional application voice notes, mandatory publication permission, private playback/downloads and activation steps are documented in [Application voice notes](docs/application-voice-notes.md). The production configuration uses a private bucket and a 1 GB audio quota; the release workflow checks consent and private storage after deployment.
+
 Brand assets, local animation previews, verification commands, and the separate release/external-upload checklist are documented in [Newgrange brand rollout](docs/newgrange-brand-rollout.md).
 
 ### Privacy-first learning signals (M4)

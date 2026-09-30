@@ -28,3 +28,5 @@ If a user of an AI assistant wants to apply, the assistant can fill in the whole
 ## Optional
 
 - [Home](https://planeir.ie/)
+
+Optional voice notes: the person can record or upload their own note on /apply/ or after confirming an assistant-submitted application by email. Every recording requires a separate affirmative permission for Gerry to edit/play their recognisable voice on YouTube and planeir.ie. Assistants should not submit audio or grant that permission. Written applications remain valid without audio.

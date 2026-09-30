@@ -48,7 +48,7 @@ function money(value, field, publicMode) {
 }
 
 /** Format one answer for reading. Returns '' when there is nothing to show. */
-export function formatAnswer(field, value, { publicMode = false, unit } = {}) {
+function formatAnswer(field, value, { publicMode = false, unit } = {}) {
   if (!hasValue(value)) return '';
   switch (field.type) {
     case 'money':
@@ -219,7 +219,7 @@ function multilineValue(value) {
 }
 
 /** Flatten a line to one string, for places that cannot nest. */
-export function lineToString(line) {
+function lineToString(line) {
   if (Array.isArray(line.items)) {
     return `${line.label}: ${line.items.map((item) => `${item.label} ${item.value}`).join(', ')}`;
   }

@@ -87,6 +87,14 @@ Each ZIP contains `take.json`, `cues.csv`, `edit-guide.md`, `script-timed.md`, t
 
 ## What is and is not automated
 
+### Add an applicant's voice note
+
+In the signed-in Client Pipeline, open the application's **Voice note** card, check its recorded publication permission and choose **Download WAV**. Save it beside the OBS recording, iPhone video and edit package. Import it into Resolve and place the chosen excerpt on a separate audio track before your response. Trim identifying details and balance the clip against your microphone; listen to the exported video before publishing. The original is also available through **Download original**.
+
+The note is a separate editing asset: it is not included in the presenter ZIP or automatically captured by OBS. See [Application voice notes](application-voice-notes.md) for permission, storage and deletion details.
+
+### Recording automation
+
 Planéir automatically executes the visuals, hides recording distractions, records actual cue events, and builds the local edit package. Codex can add optional `edit: {shot: "screen" | "presenter" | "hold", reason: "..."}` direction to each scripted beat. These recommendations never switch cameras or add arrow cues.
 
 The private controls start/stop OBS and verify its recording status. You operate the iPhone, choose the correct OBS window and external mic, transfer the footage, verify audio synchronisation and review the final edit. Physical devices, OS permissions, OBS capture and Resolve media import require a short real recording test on your Mac. Automated checks use a simulated OBS connection and do not prove that your microphone or iPhone is recording.

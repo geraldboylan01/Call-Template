@@ -1,5 +1,5 @@
 // A director's light over the live DOM. No values, charts or report nodes are copied.
-export const prefersQuietMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const prefersQuietMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const nextFrame = () => new Promise(requestAnimationFrame);
 
 export async function glideTo(root, destination, immediate = false) {

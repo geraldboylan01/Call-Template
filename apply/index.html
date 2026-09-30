@@ -112,6 +112,8 @@
 
             <div id="applyExtra" class="apply-sections"></div>
 
+            <section id="applyVoiceNote" class="apply-card voice-note" aria-label="Optional voice note" hidden></section>
+
             <section class="apply-card apply-preview" aria-labelledby="applyPreviewTitle">
               <div class="apply-section-head">
                 <h2 id="applyPreviewTitle" class="apply-card-title">How your case reads</h2>
@@ -119,6 +121,11 @@
               </div>
               <p class="apply-card-intro">This is what Gerry will read. Totals are worked out from your figures.</p>
               <div id="applyPreview" class="apply-preview-body" aria-live="off"></div>
+              <details id="applyMissingDetails" class="apply-missing" hidden>
+                <summary>Details that would help Gerry prepare your review</summary>
+                <p class="apply-card-intro">Fill in what you can. Estimates and “not sure” are fine. You can still send your application with these unanswered.</p>
+                <ul id="applyMissingList"></ul>
+              </details>
             </section>
 
             <section class="apply-card apply-details" aria-labelledby="applyDetailsTitle">
