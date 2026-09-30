@@ -67,9 +67,9 @@ const TO_HAND = [
   { title: 'A recent bank statement', detail: 'What goes out each month', when: () => true },
   { title: 'Savings balances', detail: 'Bank, credit union and investment accounts', when: () => true },
   {
-    title: 'Your latest pension statements',
-    detail: 'Value today and what goes in each month',
-    when: (draft, ctx) => isSectionOffered(getSection('pensions'), ctx)
+    title: 'Pension values, if you have them',
+    detail: 'Check your latest statements or provider’s app for each pension’s value and contributions. These can be hard to find: an estimate is fine, or leave them blank.',
+    when: () => true
   },
   {
     title: 'A pension benefit statement',
