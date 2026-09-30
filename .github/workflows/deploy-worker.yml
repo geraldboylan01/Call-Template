@@ -1011,7 +1011,7 @@ jobs:
         # Storage already exists and every binding has an explicit identifier.
         # Avoid auto-provisioning's bucket-management calls: this deployment
         # credential needs Worker deployment access, not storage administration.
-        run: wrangler deploy --no-x-provision --config wrangler.bootstrap.generated.toml
+        run: wrangler deploy --config wrangler.bootstrap.generated.toml --no-x-provision
 
       # Wrangler 4.110 `secret put` deploys a secret-only version immediately.
       # Use the bootstrap config so realtime stays disabled throughout secret
@@ -1092,7 +1092,7 @@ jobs:
             # may be live and restore the source-false bootstrap config.
             echo "CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED=true" >> "$GITHUB_ENV"
           fi
-          wrangler deploy --no-x-provision --config wrangler.production.generated.toml
+          wrangler deploy --config wrangler.production.generated.toml --no-x-provision
 
       - name: Verify live consumer deployment mode
         run: |
@@ -1124,7 +1124,7 @@ jobs:
         working-directory: ./worker
         run: |
           set -euo pipefail
-          wrangler deploy --no-x-provision --config wrangler.bootstrap.generated.toml
+          wrangler deploy --config wrangler.bootstrap.generated.toml --no-x-provision
           CONSUMER_EXPECTED_DEPLOYMENT_MODE=rules_only \
             node ../scripts/check-consumer-live-deployment.mjs
 
