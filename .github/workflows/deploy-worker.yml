@@ -975,8 +975,8 @@ jobs:
         working-directory: ./worker
         run: |
           set -euo pipefail
-          wrangler deploy --dry-run --config wrangler.bootstrap.generated.toml --outdir ../.worker-dry-run/deploy-bootstrap-bundle
-          wrangler deploy --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
+          wrangler deploy --no-x-provision --dry-run --config wrangler.bootstrap.generated.toml --outdir ../.worker-dry-run/deploy-bootstrap-bundle
+          wrangler deploy --no-x-provision --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
 
       - name: Upsert protected-beta response security headers
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
@@ -1008,7 +1008,10 @@ jobs:
       - name: Deploy Worker code and Durable Object bootstrap
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
         working-directory: ./worker
-        run: wrangler deploy --config wrangler.bootstrap.generated.toml
+        # Storage already exists and every binding has an explicit identifier.
+        # Avoid auto-provisioning's bucket-management calls: this deployment
+        # credential needs Worker deployment access, not storage administration.
+        run: wrangler deploy --no-x-provision --config wrangler.bootstrap.generated.toml
 
       # Wrangler 4.110 `secret put` deploys a secret-only version immediately.
       # Use the bootstrap config so realtime stays disabled throughout secret
@@ -1089,7 +1092,7 @@ jobs:
             # may be live and restore the source-false bootstrap config.
             echo "CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED=true" >> "$GITHUB_ENV"
           fi
-          wrangler deploy --config wrangler.production.generated.toml
+          wrangler deploy --no-x-provision --config wrangler.production.generated.toml
 
       - name: Verify live consumer deployment mode
         run: |
@@ -1121,7 +1124,7 @@ jobs:
         working-directory: ./worker
         run: |
           set -euo pipefail
-          wrangler deploy --config wrangler.bootstrap.generated.toml
+          wrangler deploy --no-x-provision --config wrangler.bootstrap.generated.toml
           CONSUMER_EXPECTED_DEPLOYMENT_MODE=rules_only \
             node ../scripts/check-consumer-live-deployment.mjs
 
