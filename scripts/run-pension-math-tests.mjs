@@ -44,7 +44,12 @@ function reportFailures(label, summary) {
 /** The figures a golden case is judged on, from the engine or from the CLI's JSON. */
 function comparableFigures(command, output) {
   if (command === 'year') {
-    return { totals: output.result.totals, crystallisations: output.result.crystallisations, nextState: output.nextState };
+    return {
+      totals: output.result.totals,
+      crystallisations: output.result.crystallisations,
+      capitalGains: output.result.capitalGains,
+      nextState: output.nextState
+    };
   }
   if (command === 'marginal') {
     return { byHead: output.byHead, total: output.total, netIncomeChange: output.netIncomeChange };
