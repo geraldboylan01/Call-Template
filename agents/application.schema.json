@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://planeir.ie/agents/application.schema.json",
-  "title": "Planeir case video application",
-  "description": "The application format planeir.application.v1. Only \"question\" is required. Leave out anything the person does not know, or list its path in \"unsure\". Use plain numbers for money (35000), percentages (4.2) and years (22). Planeir is financial education from Gerry Boylan, a Qualified Financial Adviser in Ireland. It is not financial advice.",
+  "title": "Planéir workspace information",
+  "description": "Fields for a local workspace form preview. This schema does not grant permission or provide a submission endpoint.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -30,7 +30,7 @@
     "question": {
       "type": "string",
       "maxLength": 2000,
-      "description": "What do you want to understand. For example: should we overpay the mortgage or pay more into our pensions?. Text, up to 2000 characters. Never published.",
+      "description": "What do you want to understand. For example: how would overpaying the mortgage compare with increasing pension contributions?. Text, up to 2000 characters. Never published.",
       "minLength": 1
     },
     "upcoming": {
@@ -46,7 +46,7 @@
     "worries": {
       "type": "string",
       "maxLength": 1000,
-      "description": "What worries you most. Optional. Tell Gerry what is on your mind. Text, up to 1000 characters. Never published."
+      "description": "What worries you most. Optional. Describe what is on your mind. Text, up to 1000 characters. Never published."
     },
     "household": {
       "type": "object",
@@ -55,9 +55,9 @@
       "properties": {
         "age": {
           "type": "integer",
-          "minimum": 16,
+          "minimum": 18,
           "maximum": 100,
-          "description": "Your age. A whole number from 16 to 100."
+          "description": "Your age. A whole number from 18 to 100."
         },
         "partner": {
           "type": "string",
@@ -298,7 +298,7 @@
         "lender": {
           "type": "string",
           "maxLength": 60,
-          "description": "Lender. Never shown in videos. Text, up to 60 characters. Read when home.status is \"mortgage\". Never published."
+          "description": "Lender. Optional; its name is not needed for the comparison."
         }
       }
     },
@@ -624,12 +624,7 @@
     "anythingElse": {
       "type": "string",
       "maxLength": 2000,
-      "description": "Anything else Gerry should know. Text, up to 2000 characters. Never published."
-    },
-    "videoName": {
-      "type": "string",
-      "maxLength": 60,
-      "description": "Name to use in the video. Optional. A made-up name is fine. Leave it blank and Gerry will not use a name. Text, up to 60 characters. Never published."
+      "description": "Anything else you want to add."
     },
     "unsure": {
       "type": "array",

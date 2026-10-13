@@ -529,7 +529,7 @@ function syncTermsDialog(bootstrap) {
   }
   if (termsPrivacyLink) {
     const url = String(bootstrap?.privacyNoticeUrl || '');
-    termsPrivacyLink.href = /^https:\/\//i.test(url) ? url : './privacy.html';
+    termsPrivacyLink.href = /^https:\/\//i.test(url) ? url : './privacy-legacy.html';
   }
 }
 
@@ -1261,7 +1261,11 @@ async function handleHandoff(form) {
       consent: true,
       policyVersion: state.bootstrap?.handoffPolicyVersion,
       policyUrl: state.bootstrap?.handoffPolicyUrl,
-      expectedRevision: currentProfileRevision()
+      expectedRevision: currentProfileRevision(),
+      ...(form.dataset.callOfferVersion ? {
+        callOfferVersion: form.dataset.callOfferVersion,
+        callOfferAcknowledged: data.get('handoffConsent') === 'on'
+      } : {})
     });
     setBusy(false);
     mergePayload(payload);

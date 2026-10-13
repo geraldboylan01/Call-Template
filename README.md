@@ -9,9 +9,31 @@ Planeir now ships as two connected experiences:
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
+## Private financial education workspace
+
+The public homepage and `/apply/` now introduce the planned free, automatic
+workspace. The form is a **local preview only**: it saves a browser draft and
+has no submission transport. It does not send data to the case-video pipeline
+or an AI provider. The homepage mentions an optional call without pricing. Its €100, 40-minute
+Zoom offer appears only after analysis. Call requests use the existing client
+pipeline and Zoom scheduler; payment collection remains a separate dependency.
+
+The homepage previews the real mortgage and personal balance sheet modules in
+short videos using fictional, engine-calculated figures. Both have desktop and
+mobile versions, play once, and support pause, replay and enlargement. Production
+and verification are documented in [Homepage module previews](docs/product-preview-videos.md).
+
+The desired workspace retention is until user deletion, with no inactivity
+expiry. This does not alter the invited beta's seven-day sessions. The main
+privacy routes present one workspace notice; original application and beta
+notices are preserved separately.
+
+Release dependencies, copy sources and verification are documented in
+[Workspace copy release](docs/workspace-copy-release.md).
+
 ## Local Development
 
-Optional application voice notes, mandatory publication permission, private playback/downloads and activation steps are documented in [Application voice notes](docs/application-voice-notes.md). The production configuration uses a private bucket and a 1 GB audio quota; the release workflow checks consent and private storage after deployment.
+Historical application voice notes, mandatory publication permission, private playback/downloads and activation steps are documented in [Application voice notes](docs/application-voice-notes.md). The production configuration uses a private bucket and a 1 GB audio quota; the release workflow checks consent and private storage after deployment.
 
 Brand assets, local animation previews, verification commands, and the separate release/external-upload checklist are documented in [Newgrange brand rollout](docs/newgrange-brand-rollout.md).
 
@@ -147,9 +169,13 @@ private/video-calls/<date>-<client-slug>/
 
 Codex should create `index.html`, its scoped CSS/JS, `storyboard.md`, `source-brief.json`, and `quality-review.md` there. Each bespoke page should include a local-only presenter recorder mode: start camera/mic, use a mirrored presenter camera with local MediaPipe smart framing, live microphone verification, audio mixing, and a mirrored centred-crop fallback, enter fullscreen, record the current tab/window with browser-native `getDisplayMedia` + `MediaRecorder`, stop with `S`, `Esc`, browser stop-sharing, or a hidden emergency stop control, and save a local WebM. The quality review is part of the output contract: every bespoke scene should be checked for duplicate branding, text/chart/card/metric overlaps, presenter-zone intrusions, presenter camera fit, mirrored camera output, face centring, stable adaptive zoom, lost-face fallback, no external AI/API calls for tracking, live microphone presence, recorded WebM audio, setup controls hidden during capture, fullscreen stop controls that do not force visible UI into the recording, small-screen legibility, static dead time, step-through/progress accuracy, scene-to-scene visual continuity, reuse of moving visual elements rather than slide-by-slide rebuilds, ambiguous decorative marks that could be misread as charts/arrows/decision paths, underlying-problem diagnosis before solution mechanics, decision-first sequencing, and whether the opening seconds match the promised topic. When a module includes source studies or return tables, the bespoke page should preserve the study source, risk-free or fixed-rate comparison, average-return potential, and downside risk instead of over-compressing the point into one chart. When a scene shows a derived figure, show the formula and planning rationale where the brief provides it. That directory is neither built nor deployed. Open the resulting `index.html` locally, use the built-in recorder, or capture it in OBS/Screen Studio as a fallback.
 
-## Case Applications (video-first)
+## Historical case applications (closed to new public requests)
 
-The homepage points to `/apply/`, a one-page application for a case video. It replaces the old request-a-call form as the way in. Gerry reads each application, picks some to explain in a published video, and emails the person when it is live.
+The original case-video service is retained for existing records, confirmation
+links and erasure. New browser and assistant application requests return 410
+unless `CASE_APPLICATIONS_ENABLED=true` is explicitly set for a historical test.
+Production keeps this false. `/apply/` is now the separate workspace preview.
+The details below describe the historical service, not workspace submission.
 
 - Page: `apply/index.html` and `js/apply.js`. The form is rendered from `js/case_application/schema.js`, which the Worker and the admin also use, so a question reads the same everywhere. Answers are saved in the browser until sent; nothing is saved on the server before Send.
 - Endpoint: `POST /api/applications`. Name, email, the question and two consents are required; every figure is optional and a figure the page cannot read is dropped, not refused. A `website` honeypot, a persistent limit of 5 per hour per IP, and a 64 KB body cap protect it.
@@ -160,12 +186,12 @@ The homepage points to `/apply/`, a one-page application for a case video. It re
 - Secret: `APPLICATION_DATA_ENCRYPTION_KEY` (32 random bytes, base64url). The protected Worker deploy creates it when it is missing, in the same step that provisions the consumer keys. If that step is not running, set it in Cloudflare under Workers & Pages, the Worker, Settings, Variables and Secrets. Without it, `/api/applications` answers 503 and stores nothing.
 - Deploy order: the Worker first (it applies migration 0017 and provisions the key), then Pages.
 - Case videos: one JSON file per published video in `content/cases/` (see `content/cases/README.md`). `npm run generate:cases` writes `/cases/`, one page per video, the homepage "Latest cases" row and `sitemap.xml`; `npm run check:cases` fails when they are stale.
-- Privacy notice: `/privacy/`.
+- Historical privacy notice: `/privacy/legacy-applications.html`.
 - Checks: `npm run check:case-application` (parsing, validation, write-up and public-case snapshots).
 
-### Applications from AI assistants
+### Historical applications from AI assistants
 
-People talk their finances through with ChatGPT and Claude, so an assistant can fill in the whole application for its user, with their agreement. Everything is generated from the same schema as `/apply/` (`js/case_application/agent.js`).
+The public assistant guide now offers only local form prefilling. Its OpenAPI document exposes no submission operations. Earlier application interfaces below are retained for historical tests and confirmations; publication permissions are never workspace acknowledgements.
 
 - Guide for assistants and their users: `/for-ai-assistants/` (when Planeir fits and when it does not, suggested wording, what Gerry does, consent, the question guide, and both ways to apply). Short version: `/llms.txt`. Machine-readable: `/agents/openapi.json` (OpenAPI 3.1, usable as ChatGPT GPT actions) and `/agents/application.schema.json`.
 - Way 1, a link: an assistant writes `https://planeir.ie/apply/#topics=...&household.age=41&...`. The page fills in every answer, removes them from the address bar, shows a note saying an assistant filled them in, and the person adds their name and email and sends it themselves. Stored with `application_channel = 'assistant-link'`.

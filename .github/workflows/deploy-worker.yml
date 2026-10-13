@@ -153,10 +153,10 @@ jobs:
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: "5000000"
       CONSUMER_BETA_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: "30000000"
       CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"
-      CONSUMER_BETA_HANDOFF_POLICY_URL: "https://planeir.ie/plan/privacy.html#handoff"
+      CONSUMER_BETA_HANDOFF_POLICY_URL: "https://planeir.ie/plan/privacy-legacy.html#handoff"
       CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"
       CONSUMER_BETA_HANDOFF_RETENTION_DAYS: "30"
-      CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy.html"
+      CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy-legacy.html"
       CONSUMER_BETA_SESSION_TTL_DAYS: "7"
     steps:
       - name: Checkout
@@ -760,7 +760,7 @@ jobs:
             if (
               parsedPrivacyUrl.protocol !== 'https:'
               || !['planeir.ie', 'www.planeir.ie'].includes(parsedPrivacyUrl.hostname)
-              || parsedPrivacyUrl.pathname !== '/plan/privacy.html'
+              || parsedPrivacyUrl.pathname !== '/plan/privacy-legacy.html'
               || parsedPrivacyUrl.username
               || parsedPrivacyUrl.password
               || parsedPrivacyUrl.search

@@ -58,6 +58,9 @@ new_sqlite_classes = ["ConsumerLiveSession"]
 crons = ["5 * * * *"]
 
 [vars]
+# Historical application records remain available; new public case intake is closed.
+CASE_APPLICATIONS_ENABLED = "false"
+
 APPLICATION_AUDIO_ENABLED = "true"
 APPLICATION_AUDIO_QUOTA_BYTES = "1000000000"
 ALLOWED_ORIGINS = "https://geraldboylan01.github.io,https://planeir.ie,https://www.planeir.ie"

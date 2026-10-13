@@ -38,6 +38,8 @@ jobs:
           npm run check:agent-applications
           npm run check:cases
           npm run check:agent-docs
+          npm run check:workspace-copy
+          npm run check:education-call
 
       - name: Build dist artifact
         run: npm run build

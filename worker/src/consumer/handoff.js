@@ -1,3 +1,5 @@
+import { EDUCATION_CALL } from '../../../js/workspace/education_call.js';
+import { getDisplayableResultItems } from '../../../js/plan/completion.js';
 import { ConsumerError } from './errors.js';
 import {
   claimHandoffForLink,
@@ -62,6 +64,16 @@ export function toPublicHandoff(row) {
   };
 }
 
+export async function toPublicHandoffWithOffer(env, row) {
+  if (!row) return null;
+  let callOfferVersion = null;
+  if (row.package_encrypted) {
+    try { callOfferVersion = (await readHandoffPackage(env, row)).callOfferVersion || null; }
+    catch { /* Metadata and data-rights access survive an unavailable package. */ }
+  }
+  return { ...toPublicHandoff(row), callOfferVersion };
+}
+
 export async function requestAdviserHandoff({
   env,
   config,
@@ -82,8 +94,17 @@ export async function requestAdviserHandoff({
   }
 
   let row = await getHandoff(env, sessionRow.id);
+  if (row && handoff.callOfferVersion) {
+    if (['purged', 'revoked'].includes(row.status) || !row.package_encrypted) {
+      throw new ConsumerError(410, 'handoff_unavailable', 'The earlier request is no longer available.');
+    }
+    const saved = await readHandoffPackage(env, row);
+    if (saved.callOfferVersion !== handoff.callOfferVersion) {
+      throw new ConsumerError(409, 'different_handoff_exists', 'An earlier request is already saved. Its permission cannot be changed into a call request.');
+    }
+  }
   if (row && ['linked', 'delivered'].includes(row.status)) {
-    return { handoff: toPublicHandoff(row), bookingUrl: config.bookingUrl, deliveryConfirmed: true, pipelineLinkPending: false };
+    return { handoff: await toPublicHandoffWithOffer(env, row), bookingUrl: config.bookingUrl, deliveryConfirmed: true, pipelineLinkPending: false };
   }
   if (row?.status === 'purged' || (row?.retention_expires_at && row.retention_expires_at <= new Date().toISOString())) {
     throw new ConsumerError(410, 'handoff_package_expired', 'The saved adviser handoff package has reached its retention deadline.');
@@ -101,6 +122,11 @@ export async function requestAdviserHandoff({
       sessionRow.confirmed_profile_revision,
       { completedOnly: true }
     );
+    if (handoff.callOfferVersion === EDUCATION_CALL.version
+      && (!calculatedAnalysis || getDisplayableResultItems(calculatedAnalysis).length === 0
+        || calculatedAnalysis.calculationPerformed === false)) {
+      throw new ConsumerError(409, 'current_analysis_required', 'Generate your analysis before requesting an education call.');
+    }
     const analysis = calculatedAnalysis || await getCurrentAdviserReviewOutcome(env, sessionRow);
     if (!analysis) {
       throw new ConsumerError(409, 'current_analysis_required', 'Complete the confirmed analysis plan before sending it to an adviser.');
@@ -109,15 +135,15 @@ export async function requestAdviserHandoff({
   }
 
   if (typeof createPipelineHandoff !== 'function') {
-    return { handoff: toPublicHandoff(row), bookingUrl: null, deliveryConfirmed: false, pipelineLinkPending: true };
+    return { handoff: await toPublicHandoffWithOffer(env, row), bookingUrl: null, deliveryConfirmed: false, pipelineLinkPending: true };
   }
   const claimed = await claimHandoffForLink(env, sessionRow.id, row.id);
   if (!claimed) {
     const current = await getHandoff(env, sessionRow.id);
     if (current && ['linked', 'delivered'].includes(current.status)) {
-      return { handoff: toPublicHandoff(current), bookingUrl: config.bookingUrl, deliveryConfirmed: true, pipelineLinkPending: false };
+      return { handoff: await toPublicHandoffWithOffer(env, current), bookingUrl: config.bookingUrl, deliveryConfirmed: true, pipelineLinkPending: false };
     }
-    return { handoff: toPublicHandoff(current || row), bookingUrl: null, deliveryConfirmed: false, pipelineLinkPending: true };
+    return { handoff: await toPublicHandoffWithOffer(env, current || row), bookingUrl: null, deliveryConfirmed: false, pipelineLinkPending: true };
   }
   row = claimed;
   const immutablePackage = await readHandoffPackage(env, row);
@@ -128,6 +154,7 @@ export async function requestAdviserHandoff({
       email: immutablePackage.contact.email,
       phone: immutablePackage.contact.phone,
       requestedHelp: immutablePackage.requestedHelp,
+      callOfferVersion: immutablePackage.callOfferVersion || null,
       consentPolicyVersion: row.consent_policy_version,
       policyUrl: row.policy_url,
       consentCapturedAt: row.consent_captured_at,
@@ -142,7 +169,7 @@ export async function requestAdviserHandoff({
       linked?.clientId,
       linked?.leadId
     );
-    return { handoff: toPublicHandoff(row), bookingUrl: config.bookingUrl, deliveryConfirmed: true, pipelineLinkPending: false };
+    return { handoff: await toPublicHandoffWithOffer(env, row), bookingUrl: config.bookingUrl, deliveryConfirmed: true, pipelineLinkPending: false };
   } catch (error) {
     await markHandoffFailed(env, sessionRow.id, row.id, claimed.linking_started_at).catch(() => {});
     console.error('Consumer handoff pipeline link failed', {
@@ -154,7 +181,7 @@ export async function requestAdviserHandoff({
       502,
       'handoff_pipeline_unavailable',
       'Your handoff was saved, but it could not be placed in the adviser queue yet. Please try again.',
-      { handoff: toPublicHandoff(failed), deliveryConfirmed: false, pipelineLinkPending: true }
+      { handoff: await toPublicHandoffWithOffer(env, failed), deliveryConfirmed: false, pipelineLinkPending: true }
     );
   }
 }

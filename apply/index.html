@@ -1,27 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-IE">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <meta
       name="description"
-      content="Apply for a Planeir case video. Tell Gerry Boylan about your situation, with your own figures, and he may explain it in a short education video. Your name is not shown. Education only, not financial advice."
+      content="Create your private financial education workspace with your own goals and figures. Estimates are fine, and you can skip what you don’t know."
     />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://planeir.ie/apply/" />
     <meta property="og:site_name" content="Planeir" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://planeir.ie/apply/" />
-    <meta property="og:title" content="Apply for a case video | Planeir" />
+    <meta property="og:title" content="Create my workspace | Planéir" />
     <meta
       property="og:description"
-      content="Tell Gerry about your situation with your own figures. He picks some applications to explain in short education videos."
+      content="Your goals and figures, brought together in a private financial education workspace."
     />
     <meta property="og:image" content="https://planeir.ie/assets/brand/planeir-social-card-newgrange.png" />
     <meta property="og:locale" content="en_IE" />
     <meta name="twitter:card" content="summary_large_image" />
-    <title>Apply for a case video | Planeir</title>
+    <title>Create my workspace | Planéir</title>
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
     <link rel="shortcut icon" href="../favicon.ico" />
@@ -29,6 +29,7 @@
     <link rel="stylesheet" href="../styles/landing.css" />
     <link rel="stylesheet" href="../styles/success_takeover.css" />
     <link rel="stylesheet" href="../styles/apply.css" />
+    <link rel="stylesheet" href="../styles/workspace.css" />
   </head>
   <body>
     <div class="landing-shell">
@@ -50,23 +51,23 @@
           </span>
         </a>
         <nav class="site-header-actions" aria-label="Site">
-          <a class="site-nav-admin-login" href="../cases/">Watch the cases</a>
+          <a class="site-nav-admin-login" href="../">About Planéir</a>
         </nav>
       </header>
 
       <main class="apply-main">
         <section class="apply-intro">
-          <p class="section-eyebrow">Apply for a case video</p>
-          <h1 class="apply-title">Tell Gerry about your situation.</h1>
+          <p class="section-eyebrow">Your private workspace · Form preview</p>
+          <h1 class="apply-title">Start with your own figures.</h1>
           <p class="apply-lede">
-            Gerry reads every application and picks some to explain in a short video, using the real
-            figures. Fill in what you can. Skip anything you don't know. Round figures are fine.
+            Fill in what you can. Estimates are fine. Skip anything you don’t know.
+            Missing details may prevent a particular calculation; the app identifies what is needed.
           </p>
-          <ul class="request-reassurance-list" aria-label="About applying">
-            <li>Free to apply</li>
-            <li>Your name is not shown</li>
+          <ul class="request-reassurance-list" aria-label="About your workspace">
+            <li>Free workspace</li>
+            <li>Your workspace is not published</li>
             <li>Education only</li>
-            <li>About 10 minutes</li>
+            <li>Automatic results</li>
           </ul>
           <p class="apply-assistant-hint">
             Talking this through with ChatGPT or Claude? It can fill in this page for you.
@@ -76,23 +77,23 @@
 
         <noscript>
           <p class="apply-noscript">
-            This form needs JavaScript. You can also email your situation to
-            <a class="inline-link" href="mailto:hello@planeir.ie">hello@planeir.ie</a>.
+            This form needs JavaScript. No information has been sent. Contact
+            <a class="inline-link" href="mailto:hello@planeir.ie">hello@planeir.ie</a> if you need help; please do not email financial documents.
           </p>
         </noscript>
 
+        <div id="workspaceLaunchNotice" class="workspace-notice" role="status"><h2>Form preview</h2><p>Workspace creation is unavailable in this preview. Your draft stays on this device and is not sent to Planéir or an AI provider.</p></div>
         <div class="apply-layout">
           <form id="applyForm" class="apply-form" novalidate>
             <section id="applyAssistantNote" class="apply-card apply-assistant-note" role="status" hidden>
               <h2 class="apply-card-title">Your assistant filled in these answers</h2>
               <p class="apply-card-intro">
-                Check them and change anything that is wrong. Then add your name and email at the bottom and
-                send. Nothing is sent until you press Send.
+                Check them and change anything that is wrong. This is a local preview; nothing is sent to Planéir.
               </p>
             </section>
 
             <section class="apply-card apply-topics" role="group" aria-labelledby="applyTopicsTitle">
-              <h2 id="applyTopicsTitle" class="apply-card-title">What would you like help with?</h2>
+              <h2 id="applyTopicsTitle" class="apply-card-title">What would you like to understand?</h2>
               <p class="apply-card-intro">Pick one or more. The questions below change to match.</p>
               <div id="applyTopics" class="apply-chip-row"></div>
             </section>
@@ -112,18 +113,18 @@
 
             <div id="applyExtra" class="apply-sections"></div>
 
-            <section id="applyVoiceNote" class="apply-card voice-note" aria-label="Optional voice note" hidden></section>
+
 
             <section class="apply-card apply-preview" aria-labelledby="applyPreviewTitle">
               <div class="apply-section-head">
-                <h2 id="applyPreviewTitle" class="apply-card-title">How your case reads</h2>
+                <h2 id="applyPreviewTitle" class="apply-card-title">Your information so far</h2>
                 <span id="applyPreviewCount" class="apply-section-count"></span>
               </div>
-              <p class="apply-card-intro">This is what Gerry will read. Totals are worked out from your figures.</p>
+              <p class="apply-card-intro">Check your answers. The summary totals are worked out from the figures you entered.</p>
               <div id="applyPreview" class="apply-preview-body" aria-live="off"></div>
               <details id="applyMissingDetails" class="apply-missing" hidden>
-                <summary>Details that would help Gerry prepare your review</summary>
-                <p class="apply-card-intro">Fill in what you can. Estimates and “not sure” are fine. You can still send your application with these unanswered.</p>
+                <summary>Missing information</summary>
+                <p class="apply-card-intro">Estimates and “not sure” are fine. A missing figure may prevent the related module from being calculated.</p>
                 <ul id="applyMissingList"></ul>
               </details>
             </section>
@@ -144,31 +145,29 @@
                 Website
                 <input id="applyWebsite" name="website" type="text" tabindex="-1" autocomplete="off" />
               </label>
+              <p class="apply-card-intro">Your email is used for return access and service messages. In this preview, it stays on your device.</p>
               <div class="consent-grid">
-                <label class="consent-check">
-                  <input id="applyConsentVideo" name="consentVideo" type="checkbox" required />
-                  <span>I understand Gerry may use my situation in a video published online, with my name removed, and that I will be emailed when it is live.</span>
-                </label>
-                <label class="consent-check">
-                  <input id="applyConsentEducation" name="consentEducation" type="checkbox" required />
-                  <span>I understand Planeir is education only. It is not financial advice and does not recommend products.</span>
-                </label>
+                <label class="consent-check"><input id="applyAdultConfirmed" name="adultConfirmed" type="checkbox" required /><span>I am 18 or older and entitled to share the household information I enter.</span></label>
+                <label class="consent-check"><input id="applyEducationAcknowledged" name="educationAcknowledged" type="checkbox" required /><span>I understand this is financial education, with modelled outcomes rather than regulated advice or product recommendations.</span></label>
+                <label class="consent-check"><input id="applyAiAcknowledged" name="aiProcessingAcknowledged" type="checkbox" required /><span>I understand AI helps identify scenarios from my objectives and organise the relevant modules. Calculations run in Planéir’s calculation engines, and individual results are not routinely reviewed by Gerry.</span></label>
+                <label class="consent-check"><input id="applyPrivacyAcknowledged" name="privacyNoticeAcknowledged" type="checkbox" required /><span>I have read the <a class="inline-link" href="../privacy/">privacy notice</a>.</span></label>
+                <label class="consent-check"><input id="applyTermsAccepted" name="termsAccepted" type="checkbox" required /><span>I agree to the <a class="inline-link" href="../terms/">Terms of Use</a>.</span></label>
               </div>
               <p class="form-privacy">
-                Please do not include PPS numbers, account numbers, your address or copies of documents.
-                Read how your application is handled in the
+                Do not include PPS numbers, account numbers, an exact address or documents.
+                Read how the workspace and local preview handle information in the
                 <a class="inline-link" href="../privacy/">privacy notice</a>.
               </p>
             </section>
 
             <div id="applyStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
 
-            <button id="applySubmit" class="button button-primary button-submit" type="submit">
-              Send my application
+            <button id="applySubmit" class="button button-primary button-submit" type="submit" disabled aria-describedby="workspaceLaunchNotice">
+              Create my workspace
             </button>
 
             <p class="apply-saved-note">
-              <span id="applySavedNote">Your answers are saved on this device until you send them.</span>
+              <span id="applySavedNote">Your draft is saved on this device. Nothing is sent to Planéir.</span>
               <button id="applyClear" class="apply-link-button" type="button">Clear form</button>
             </p>
           </form>
@@ -181,44 +180,18 @@
           </aside>
         </div>
 
-        <section id="applyDone" class="apply-card apply-done" tabindex="-1" hidden>
-          <p class="section-eyebrow">Application sent</p>
-          <h2 class="apply-title">Thanks, your application is in.</h2>
-          <p class="apply-lede">
-            Gerry reads every application. If yours is picked, he will email you when the video is
-            live. We have also sent you an email to confirm we received it.
-          </p>
-          <a class="button button-primary" href="../cases/">Watch the cases</a>
-        </section>
       </main>
 
       <footer class="site-footer">
         <p class="site-footer-note">
-          Planeir is educational only, not regulated financial advice.
+          Planéir provides financial education, not regulated advice.
           <a href="../privacy/">Privacy</a> ·
           <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>
         </p>
       </footer>
 
-      <div id="leadSuccessOverlay" class="lead-success-overlay" aria-hidden="true">
-        <div class="lead-success-stage">
-          <div id="leadSuccessTarget" class="lead-success-lockup" aria-hidden="true">
-            <div class="lead-success-wordmark-shell"></div>
-          </div>
-          <div id="leadSuccessCopy" class="lead-success-copy" role="status" aria-live="polite">
-            <h2 class="lead-success-title">Thanks, your application is in.</h2>
-            <p class="lead-success-body">Gerry reads every application.</p>
-          </div>
-        </div>
-        <div class="lead-success-timer" aria-hidden="true">
-          <span class="lead-success-timer-bar"></span>
-        </div>
-      </div>
     </div>
 
-    <script>
-      window.__WORKER_BASE_URL = "https://api.planeir.ie";
-    </script>
     <script type="module" src="../js/apply.js"></script>
   </body>
 </html>

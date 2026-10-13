@@ -1,0 +1,42 @@
+.workspace-launch-note { max-width: 42rem; margin-top: 1.1rem; color: var(--text-muted, #b9c6d5); font-size: .9rem; line-height: 1.6; }
+.workspace-example { min-width: 0; margin: 0; align-self: center; }
+.workspace-example img { display: block; width: 100%; height: auto; border: 1px solid rgba(142, 210, 246, .3); border-radius: 18px; }
+.workspace-example figcaption { margin-top: .9rem; color: var(--text-muted, #b9c6d5); font-size: .9rem; line-height: 1.6; }
+.workspace-founder { max-width: 48rem; color: var(--text-muted, #b9c6d5); font-size: 1.1rem; line-height: 1.75; }
+.workspace-call { max-width: 55rem; }
+.workspace-call h2 { font-size: clamp(1.3rem, 2.5vw, 2rem); }
+.workspace-call p { margin-bottom: 1rem; }
+.workspace-notice { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid rgba(142, 210, 246, .3); border-radius: 14px; line-height: 1.65; }
+.workspace-notice h2 { margin-top: 0; font-size: 1.2rem; }
+.button:disabled { cursor: default; opacity: .65; }
+.workspace-processing { max-width: 42rem; margin: 4rem auto; }
+@media (max-width: 700px) { .workspace-founder { font-size: 1rem; } .workspace-notice { padding: 1rem; } }
+
+.page-content { display: grid; gap: 1rem; margin-top: 1.5rem; }
+.page-content .page-card { margin: 0; }
+.workspace-processing h1 { font-size: clamp(1.5rem, 4vw, 2.3rem); }
+
+.trust-row-section { width: min(calc(100% - 1.5rem), var(--landing-max-width)); margin: 0 auto; }
+
+.product-preview { width: 100%; }
+.preview-tabs { display: flex; gap: .3rem; margin-bottom: .75rem; }
+.preview-tabs button { border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-muted, #b9c6d5); font: inherit; font-size: .85rem; padding: .6rem .75rem; cursor: pointer; }
+.preview-tabs button[aria-selected="true"] { color: #eaf6ff; border-color: #426078; background: #142537; }
+.preview-tabs button:focus-visible, .preview-controls button:focus-visible, .preview-dialog button:focus-visible { outline: 2px solid #8ed2f6; outline-offset: 3px; }
+.preview-stage { aspect-ratio: 4 / 3; border: 1px solid rgba(142, 210, 246, .3); border-radius: 16px; overflow: hidden; background: #07111e; }
+.preview-stage video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.preview-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .6rem; margin-top: .7rem; font-size: .75rem; color: var(--text-muted, #b9c6d5); }
+.preview-controls > div { display: flex; gap: .85rem; }
+.preview-controls button, .preview-dialog button { border: 0; background: transparent; padding: .25rem 0; font: inherit; color: #c6d9e8; cursor: pointer; text-decoration: underline; text-underline-offset: .2rem; }
+.product-preview figcaption { min-height: 2.8em; margin-top: .65rem; font-size: .85rem; line-height: 1.5; }
+.preview-dialog { width: min(1100px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); border: 1px solid #426078; border-radius: 16px; padding: 1rem; background: #07111e; color: #eaf6ff; }
+.preview-dialog::backdrop { background: #020911df; }
+.preview-dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .8rem; }
+.preview-dialog-header h2 { margin: 0; font: inherit; font-size: .95rem; }
+.preview-dialog video { display: block; width: 100%; max-height: calc(100dvh - 11rem); background: #07111e; }
+.preview-dialog-footer { display: flex; justify-content: flex-end; margin-top: .8rem; }
+@media (max-width: 700px) {
+  .preview-stage { aspect-ratio: 480 / 860; }
+  .preview-tabs button { font-size: .82rem; padding: .6rem .65rem; }
+  .preview-dialog { padding: .8rem; }
+}

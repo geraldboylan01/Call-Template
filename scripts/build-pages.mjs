@@ -9,6 +9,8 @@ const ASSET_EXTENSIONS = new Set([
   '.jpg',
   '.jpeg',
   '.gif',
+  '.mp4',
+  '.webm',
   '.svg',
   '.webp',
   '.mp4',
@@ -43,6 +45,10 @@ const HTML_FILES = [
   'apply/index.html',
   'apply/confirm/index.html',
   'privacy/index.html',
+  'privacy/legacy-applications.html',
+  'plan/privacy-legacy.html',
+  'terms/index.html',
+  'apply/preparing/index.html',
   'cases/index.html',
   'for-ai-assistants/index.html'
 ];
@@ -64,7 +70,7 @@ const COPY_ENTRIES = [
 ];
 const VERSION = (process.env.ASSET_VERSION || Date.now().toString()).slice(0, 16);
 
-const HTML_ASSET_TAG_PATTERN = /((?:href|src)=["'])(?!https?:\/\/|\/\/|data:|mailto:|#)([^"']+)(["'])/gi;
+const HTML_ASSET_TAG_PATTERN = /((?:href|src|poster)=["'])(?!https?:\/\/|\/\/|data:|mailto:|#)([^"']+)(["'])/gi;
 const JS_FROM_PATTERN = /(\bfrom\s*)(['"])([^'"]+)\2/g;
 const JS_SIDE_EFFECT_IMPORT_PATTERN = /((?:^|[\n\r;])\s*import\s+)(['"])([^'"]+)\2/g;
 const JS_DYNAMIC_IMPORT_PATTERN = /(\bimport\s*\(\s*)(['"])([^'"]+)\2(\s*\))/g;

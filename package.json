@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:cases && npm run generate:agent-docs && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
+    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:workspace-copy && npm run generate:cases && npm run generate:agent-docs && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
     "generate:agent-docs": "node ./scripts/generate-agent-docs.mjs",
     "check:agent-docs": "node ./scripts/generate-agent-docs.mjs --check",
     "check:agent-applications": "node ./scripts/check-agent-applications.mjs",
@@ -144,7 +144,13 @@
     "evals:first20": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-first20-semantic-evals.mjs",
     "evals:ai-led-simplified": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-ai-led-simplified.mjs",
     "evals:ai-led-simplified-seeded": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-ai-led-simplified-seeded.mjs",
-    "evals:ai-led-simplified-report": "node ./scripts/summarize-ai-led-simplified.mjs"
+    "evals:ai-led-simplified-report": "node ./scripts/summarize-ai-led-simplified.mjs",
+    "generate:workspace-copy": "node ./scripts/generate-workspace-pages.mjs",
+    "check:workspace-copy": "node ./scripts/generate-workspace-pages.mjs --check && node ./scripts/check-workspace-copy.mjs",
+    "check:workspace-browser": "node ./scripts/check-workspace-browser.mjs",
+    "check:education-call": "node ./scripts/check-education-call.mjs",
+    "generate:product-previews": "node ./scripts/create-product-preview-videos.mjs",
+    "check:product-previews": "node ./scripts/check-product-previews.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2"

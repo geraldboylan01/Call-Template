@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta name="robots" content="noindex,nofollow" />
+  <title>Analysis call invitation preview | Planéir</title>
+  <link rel="stylesheet" href="../styles/plan.css" />
+</head>
+<body>
+  <main class="plan-main"><p class="section-kicker">Local copy review · Fictional completed analysis</p><h1>Your financial picture</h1><p>This previews the invitation shown after generated results. It does not send a request, create a meeting or take a payment.</p><div id="preview"></div><p><a href="../">Back to the homepage</a></p></main>
+  <script type="module">
+    import { createEducationCallCTA, createHandoffView } from '../js/plan/views.js';
+    const state = {
+      session: { currentProfileRevision: 1, confirmedProfileRevision: 1 },
+      analysis: { id: 'fixture-analysis', profileRevision: 1, status: 'complete', results: [{ moduleId: 'house_purchase' }] },
+      bootstrap: { handoffEnabled: true, handoffRetentionDays: 30, handoffPolicyUrl: 'https://planeir.ie/privacy/#optional-call' },
+      busy: false
+    };
+    const host = document.getElementById('preview');
+    host.append(createEducationCallCTA(state));
+    host.addEventListener('click', (event) => {
+      if (event.target.closest('[data-view="handoff"]')) host.replaceChildren(createHandoffView(state));
+    });
+    host.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const note = document.createElement('p');
+      note.setAttribute('role', 'status');
+      note.textContent = 'Preview only. No request was sent.';
+      event.target.append(note);
+    });
+  </script>
+</body>
+</html>
