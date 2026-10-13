@@ -14,6 +14,13 @@
  * the only arithmetic done here is adding goals together and comparing them
  * with the money the household has.
  *
+ * NO SINGLE SCORE. Every case carries two measures side by side, "needed this
+ * year" and "paid out over the life of the goals", and neither orders the
+ * cases. They disagree: the use of cash that frees the most this year is not
+ * the one that costs the least over the life of the goals. Case 1 is the
+ * current position. The other three are the most different uses of cash, shown
+ * in order of how much they change from case 1.
+ *
  * Usage:
  *   node scripts/price-goal-cases.mjs            readable report
  *   node scripts/price-goal-cases.mjs --json     the same, as JSON
@@ -36,8 +43,19 @@ export const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
 
   /** Spare cash, already net of the emergency reserve. */
   spareCash: 60_000,
-  /** What is left over each year after everything they already pay. */
+  /**
+   * What is left over each year after everything they already pay. STATED for
+   * Stage 1. In a plan it will be the Household cash flow result's left-over
+   * figure, so this field is replaced by that result, not by the client typing it.
+   */
   leftOverEachYear: 6_000,
+
+  /**
+   * The client's stated priorities, highest first. A payload field: it decides
+   * which goal takes the yearly money first, and so which goals read "covered",
+   * "partly covered" or "not covered". Never a position this script chose.
+   */
+  goalPriorities: Object.freeze(['college', 'mortgage', 'retirement']),
 
   mortgage: Object.freeze({
     currentBalance: 380_000,
@@ -49,14 +67,14 @@ export const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
   }),
 
   people: Object.freeze([
-    Object.freeze({ id: 'niamh', title: 'Niamh', currentAge: 45, currentSalary: 90_000, currentPot: 180_000, personalPct: 0.06, employerPct: 0.06 }),
-    Object.freeze({ id: 'dara', title: 'Dara', currentAge: 45, currentSalary: 60_000, currentPot: 90_000, personalPct: 0.05, employerPct: 0.05 })
+    Object.freeze({ id: 'niamh', title: 'Niamh', currentAge: 45, currentSalary: 90_000, currentPot: 100_000, personalPct: 0.05, employerPct: 0.05 }),
+    Object.freeze({ id: 'dara', title: 'Dara', currentAge: 45, currentSalary: 60_000, currentPot: 40_000, personalPct: 0.04, employerPct: 0.04 })
   ]),
 
   /** Household targets: after tax, in today's money, State Pension included. */
   retirementTargets: Object.freeze({
-    base: Object.freeze({ id: 'retire-62', retirementAge: 62, targetIncomeToday: 45_000 }),
-    later: Object.freeze({ id: 'retire-65', retirementAge: 65, targetIncomeToday: 42_000 })
+    base: Object.freeze({ id: 'retire-62', retirementAge: 62, targetIncomeToday: 50_000 }),
+    later: Object.freeze({ id: 'retire-65', retirementAge: 65, targetIncomeToday: 46_000 })
   }),
 
   /** Children's ages. College timing and cost are the central assumptions. */
@@ -180,7 +198,8 @@ function priceCollege(lumpShare) {
       totalCost: projection.debug.totalCost,
       lumpSumToday: entry.lumpSumToday,
       yearlyAmount: entry.yearlyAmount,
-      savingYears: entry.savingYears
+      savingYears: entry.savingYears,
+      paidIn: entry.paidIn
     };
   });
   return {
@@ -188,6 +207,7 @@ function priceCollege(lumpShare) {
     lumpSumToday: perChild.reduce((sum, child) => sum + child.lumpSumToday, 0),
     yearlyAmountNow: perChild.reduce((sum, child) => sum + child.yearlyAmount, 0),
     requiredToday: perChild.reduce((sum, child) => sum + child.requiredToday, 0),
+    paidIn: perChild.reduce((sum, child) => sum + child.paidIn, 0),
     perChild
   };
 }
@@ -208,21 +228,24 @@ function pensionPayload(target, extraPoints) {
       retirementAge: target.retirementAge,
       currentSalary: person.currentSalary,
       currentPot: person.currentPot,
-      personalPct: person.personalPct + extraPoints,
+      personalPct: Math.max(0, person.personalPct + extraPoints),
       employerPct: person.employerPct,
       includeStatePension: true
     }))
   };
 }
 
-function pensionGap(target, extraPoints) {
+function pensionRun(target, extraPoints) {
   const { debug } = computePensionProjection(pensionPayload(target, extraPoints));
   return {
     gap: debug.currentGapVsRequired,
     surplus: debug.currentSurplusVsRequired,
     requiredPot: debug.requiredPot,
     projectedPot: debug.projectedPotCurrent,
-    status: debug.readinessStatus
+    status: debug.readinessStatus,
+    // What the household itself puts in, every year to retirement, as the
+    // engine simulated it (capped each year at the relief limit).
+    personalContributions: debug.currentScenario.personalEurSeries.reduce((sum, value) => sum + value, 0)
   };
 }
 
@@ -233,7 +256,7 @@ function pensionGap(target, extraPoints) {
  * already has; any gap left at the cap is reported.
  */
 export function priceRetirement(target) {
-  const atToday = pensionGap(target, 0);
+  const atToday = pensionRun(target, 0);
   const cap = Math.min(...H.people.map(
     (person) => maxRelievableContributionRatePercent(person.currentAge) / 100 - person.personalPct
   ));
@@ -243,7 +266,7 @@ export function priceRetirement(target) {
   let reachedCap = false;
 
   if (atToday.gap > 0) {
-    const atCap = pensionGap(target, cap);
+    const atCap = pensionRun(target, cap);
     if (atCap.gap > 0) {
       extraPoints = cap;
       result = atCap;
@@ -253,14 +276,14 @@ export function priceRetirement(target) {
       let high = cap;
       for (let i = 0; i < 30; i += 1) {
         const mid = (low + high) / 2;
-        if (pensionGap(target, mid).gap > 0) {
+        if (pensionRun(target, mid).gap > 0) {
           low = mid;
         } else {
           high = mid;
         }
       }
       extraPoints = high;
-      result = pensionGap(target, high);
+      result = pensionRun(target, high);
     }
   }
 
@@ -272,12 +295,12 @@ export function priceRetirement(target) {
     const floor = -Math.min(...H.people.map((person) => person.personalPct));
     let low = floor;
     let high = 0;
-    if (pensionGap(target, floor).gap === 0) {
+    if (pensionRun(target, floor).gap === 0) {
       high = floor;
     } else {
       for (let i = 0; i < 30; i += 1) {
         const mid = (low + high) / 2;
-        if (pensionGap(target, mid).gap > 0) {
+        if (pensionRun(target, mid).gap > 0) {
           low = mid;
         } else {
           high = mid;
@@ -288,7 +311,6 @@ export function priceRetirement(target) {
   }
 
   const salaryTotal = H.people.reduce((sum, person) => sum + person.currentSalary, 0);
-  const yearlyExtra = extraPoints * salaryTotal;
   return {
     id: target.id,
     retirementAge: target.retirementAge,
@@ -297,9 +319,14 @@ export function priceRetirement(target) {
     projectedPotAtToday: atToday.projectedPot,
     onTrackAtToday: atToday.gap === 0,
     extraPoints,
-    yearlyExtra,
+    yearlyExtra: extraPoints * salaryTotal,
     reachedCap,
     gapLeftOver: reachedCap ? result.gap : 0,
+    // The household's own contributions to retirement over the years to
+    // retirement, with and without the extra the search found.
+    personalContributionsToday: atToday.personalContributions,
+    personalContributionsWithExtra: result.personalContributions,
+    extraOverTheLife: result.personalContributions - atToday.personalContributions,
     // Money the current contributions carry beyond the target: personal
     // contributions could fall by this much a year and still close the gap.
     headroomYearly: lowestPoints < 0 ? -lowestPoints * salaryTotal : 0,
@@ -321,30 +348,74 @@ function describeUse(mortgageLump, collegeLump, wholeMortgage, wholeCollege) {
   return { mortgage: classify(mortgageLump, wholeMortgage), college: classify(collegeLump, wholeCollege) };
 }
 
+/**
+ * Who gets the yearly money, in the client's stated order. A goal takes what
+ * it needs from what is left, so a goal late in the order can be partly
+ * covered or not covered at all. A goal needing nothing this year is covered.
+ */
+function goalStates({ mortgageYearly, collegeYearly, pension }) {
+  const freed = Math.max(0, -mortgageYearly);
+  let remaining = H.leftOverEachYear + freed;
+  const needs = {
+    college: collegeYearly,
+    mortgage: Math.max(0, mortgageYearly),
+    retirement: pension.yearlyExtra
+  };
+  const states = {};
+  H.goalPriorities.forEach((goal) => {
+    const need = needs[goal];
+    const covered = Math.max(0, Math.min(need, remaining));
+    remaining -= covered;
+    let state = need <= 0.5 || covered >= need - 0.5 ? 'covered' : (covered <= 0 ? 'not' : 'partly');
+    // Contributions at the relief limit that still leave a gap cannot read
+    // "covered": the money is found and the target is still not met.
+    if (goal === 'retirement' && pension.reachedCap && pension.gapLeftOver > 0 && state === 'covered') {
+      state = 'partly';
+    }
+    states[goal] = { state, need, covered };
+  });
+  return states;
+}
+
 function priceAllocation({ mortgageLump, collegeLump }, wholeMortgage, wholeCollege, pension) {
   const mortgage = priceMortgage(mortgageLump);
   const college = priceCollege(wholeCollege.requiredToday > 0 ? collegeLump / wholeCollege.requiredToday : 0);
-  const pensionYearly = pension.yearlyExtra;
-  const needToday = mortgage.yearlyChange + college.yearlyAmountNow + pensionYearly;
-  const difference = needToday - H.leftOverEachYear;
+  const neededThisYear = mortgage.yearlyChange + college.yearlyAmountNow + pension.yearlyExtra;
+  const difference = neededThisYear - H.leftOverEachYear;
+  const goalCount = (mortgageLump > 0.5 ? 1 : 0) + (college.lumpSumToday > 0.5 ? 1 : 0);
+
+  // What leaves the household over the life of the three goals: the mortgage
+  // with its lump sum, everything paid into the college fund, and the
+  // household's own contributions to retirement (what it pays now, and the extra).
+  const paidOutOverLife = {
+    mortgage: mortgage.totalPaidOverTheLoan,
+    college: college.paidIn,
+    retirement: pension.personalContributionsWithExtra
+  };
+
   return {
     mortgageLump,
     collegeLump: college.lumpSumToday,
     cashUsed: mortgageLump + college.lumpSumToday,
     cashLeft: H.spareCash - mortgageLump - college.lumpSumToday,
+    goalsTouched: goalCount,
     use: describeUse(mortgageLump, college.lumpSumToday, wholeMortgage, wholeCollege.requiredToday),
     mortgage,
     college,
-    pensionYearly,
-    // What leaves the household over the whole life of the two goals: the
-    // mortgage with its lump sum, and everything paid into the college fund.
-    lifetimePaidOut: mortgage.totalPaidOverTheLoan + college.perChild.reduce(
-      (sum, child) => sum + child.lumpSumToday + child.yearlyAmount * child.savingYears, 0
-    ),
-    needToday,
+    pension,
+    neededThisYear,
     shortfall: Math.max(0, difference),
     spare: Math.max(0, -difference),
-    ledger: buildLedger(mortgage, college, pensionYearly)
+    paidOutOverLife: {
+      ...paidOutOverLife,
+      total: paidOutOverLife.mortgage + paidOutOverLife.college + paidOutOverLife.retirement
+    },
+    states: goalStates({
+      mortgageYearly: mortgage.yearlyChange,
+      collegeYearly: college.yearlyAmountNow,
+      pension
+    }),
+    ledger: buildLedger(mortgage, college, pension.yearlyExtra)
   };
 }
 
@@ -406,6 +477,91 @@ function enumerateUses(wholeMortgage, wholeCollege) {
   return unique;
 }
 
+/**
+ * The most different uses of cash: the three that, together with the current
+ * position, are furthest apart (the largest smallest gap between any two, in
+ * euros moved into the mortgage and into college). Distance, not outcome, so
+ * no score decides which cases are shown.
+ */
+function chooseMostDifferent(uses, current, count) {
+  const distance = (a, b) => Math.hypot(a.mortgageLump - b.mortgageLump, a.collegeLump - b.collegeLump);
+  const pool = uses.filter((entry) => entry !== current);
+  if (pool.length <= count) {
+    return pool;
+  }
+
+  let best = null;
+  const choose = (start, picked) => {
+    if (picked.length === count) {
+      const group = [current, ...picked];
+      let smallest = Infinity;
+      let total = 0;
+      for (let i = 0; i < group.length; i += 1) {
+        for (let j = i + 1; j < group.length; j += 1) {
+          const gap = distance(group[i], group[j]);
+          smallest = Math.min(smallest, gap);
+          total += gap;
+        }
+      }
+      if (!best || smallest > best.smallest + 1e-9 || (Math.abs(smallest - best.smallest) <= 1e-9 && total > best.total)) {
+        best = { picked: [...picked], smallest, total };
+      }
+      return;
+    }
+    for (let i = start; i < pool.length; i += 1) {
+      choose(i + 1, [...picked, pool[i]]);
+    }
+  };
+  choose(0, []);
+  return best.picked;
+}
+
+/** How much a use changes from leaving the cash alone: euros moved, then goals touched. */
+function byHowMuchTheyChange(a, b) {
+  return (a.cashUsed - b.cashUsed) || (a.goalsTouched - b.goalsTouched) || (a.mortgageLump - b.mortgageLump);
+}
+
+// ------------------------------------------------------------------- words ---
+
+const USE_TITLES = Object.freeze({
+  'none/none': 'Cash stays as it is',
+  'none/part': 'Part of college from cash',
+  'none/whole': 'Fund college today',
+  'part/none': 'Part of the mortgage from cash',
+  'whole/none': 'Mortgage from cash',
+  'over/none': 'All cash into the mortgage',
+  'whole/part': 'Mortgage, then college',
+  'whole/whole': 'Mortgage and college from cash',
+  'part/whole': 'College, then mortgage',
+  'over/part': 'Mortgage, then college',
+  'part/part': 'Cash split across both'
+});
+
+/**
+ * The words a case puts on screen, all addressed to the household as "you".
+ * Derived from the figures here, never typed per case.
+ */
+function caseWords(allocation) {
+  const key = `${allocation.use.mortgage}/${allocation.use.college}`;
+  const lumps = [];
+  if (allocation.mortgageLump > 0.5) lumps.push(eur(allocation.mortgageLump));
+  if (allocation.collegeLump > 0.5) lumps.push(eur(allocation.collegeLump));
+  const freed = Math.max(0, -allocation.mortgage.yearlyChange);
+  const short = allocation.shortfall > 0;
+  return {
+    title: USE_TITLES[key] || 'Cash used a different way',
+    amountLine: lumps.length === 0 ? 'Nothing from your cash' : `${lumps.join(' and ')} from your cash`,
+    headline: short
+      ? `You’re short by ${eur(allocation.shortfall)} a year`
+      : `You have ${eur(allocation.spare)} a year to spare`,
+    // The same figure as "needed this year", so the headline, the support line
+    // and the case's measures never state two different needs.
+    support: `Your goals need ${eur(allocation.neededThisYear)} a year `
+      + `against the ${eur(H.leftOverEachYear)} you have`
+      + `${freed > 0 ? `, counting the ${eur(freed)} a lower repayment frees` : ''}.`
+  };
+}
+
 // -------------------------------------------------------------------- run ---
 
 export function priceGoalCases() {
@@ -414,34 +570,38 @@ export function priceGoalCases() {
   const pensionBase = priceRetirement(H.retirementTargets.base);
   const pensionLater = priceRetirement(H.retirementTargets.later);
 
-  const uses = enumerateUses(wholeMortgage, wholeCollege);
-  const priced = uses
-    .map((use) => priceAllocation(use, wholeMortgage, wholeCollege, pensionBase))
-    .sort((a, b) => a.needToday - b.needToday);
+  const allUses = enumerateUses(wholeMortgage, wholeCollege);
+  const priced = allUses.map((use) => priceAllocation(use, wholeMortgage, wholeCollege, pensionBase));
 
+  // Case 1 is the current position as built: the cash stays, and every goal
+  // is pursued from yearly money.
   const current = priced.find((entry) => entry.mortgageLump === 0 && entry.collegeLump === 0);
-  const alternatives = priced.filter((entry) => entry !== current).slice(0, 3);
+  const others = chooseMostDifferent(priced, current, 3).sort(byHowMuchTheyChange);
 
-  const caseDefinitions = [
-    { id: 'current', title: 'Cash stays as it is', allocation: current, retirement: pensionBase },
-    { id: 'use-1', title: null, allocation: alternatives[0], retirement: pensionBase },
-    { id: 'use-2', title: null, allocation: alternatives[1], retirement: pensionBase },
-    { id: 'use-3-later', title: null, allocation: alternatives[2], retirement: pensionLater }
-  ];
-
-  const cases = caseDefinitions.map((definition, index) => {
-    const allocation = definition.allocation;
-    // The retirement target only changes the pension line. Case 4 prices its
-    // cash use again with the later target rather than reusing the 62 figure.
-    const priced4 = definition.retirement === pensionBase
-      ? allocation
-      : priceAllocation(
-        { mortgageLump: allocation.mortgageLump, collegeLump: allocation.collegeLump },
-        wholeMortgage,
-        wholeCollege,
-        definition.retirement
-      );
-    return { number: index + 1, id: definition.id, title: definition.title, retirement: definition.retirement, ...priced4 };
+  const cases = [current, ...others].map((allocation, index) => {
+    // The later retirement option moves only the pension line, so it is
+    // priced beside every case rather than attached to one of them.
+    const withLater = priceAllocation(
+      { mortgageLump: allocation.mortgageLump, collegeLump: allocation.collegeLump },
+      wholeMortgage,
+      wholeCollege,
+      pensionLater
+    );
+    return {
+      number: index + 1,
+      ...allocation,
+      words: caseWords(allocation),
+      laterRetirement: {
+        retirementAge: pensionLater.retirementAge,
+        targetIncomeToday: pensionLater.targetIncomeToday,
+        neededThisYear: withLater.neededThisYear,
+        shortfall: withLater.shortfall,
+        spare: withLater.spare,
+        paidOutOverLife: withLater.paidOutOverLife,
+        states: withLater.states,
+        pension: withLater.pension
+      }
+    };
   });
 
   return {
@@ -455,35 +615,10 @@ export function priceGoalCases() {
     },
     mortgageToday: priceMortgage(0),
     retirement: { base: pensionBase, later: pensionLater },
-    ranking: priced,
+    // Every use considered, in order of how much it changes. Not a ranking.
+    uses: [...priced].sort(byHowMuchTheyChange),
     cases
   };
-}
-
-function useWords(allocation) {
-  const m = allocation.use.mortgage;
-  const c = allocation.use.college;
-  if (m === 'none' && c === 'none') {
-    return 'Cash stays as it is';
-  }
-  const parts = [];
-  if (m !== 'none') {
-    const what = {
-      part: 'into the mortgage',
-      whole: `into the mortgage, enough to clear it by ${H.mortgage.clearByAge} at today's repayment`,
-      over: 'into the mortgage, which takes the repayment below today\'s'
-    }[m];
-    parts.push(`${eur(allocation.mortgageLump)} ${what}`);
-  }
-  if (c !== 'none') {
-    const what = {
-      part: 'into the college fund',
-      whole: 'into the college fund, which covers both children',
-      over: 'into the college fund'
-    }[c];
-    parts.push(`${eur(allocation.collegeLump)} ${what}`);
-  }
-  return parts.join(' and ');
 }
 
 function report(result) {
@@ -495,12 +630,14 @@ function report(result) {
   out('');
   out('Household');
   out(`  Spare cash (net of the emergency reserve)  ${eur(H.spareCash)}`);
-  out(`  Left over each year                         ${eur(H.leftOverEachYear)}`);
+  out(`  Left over each year (stated)                ${eur(H.leftOverEachYear)}`);
+  out(`  Priorities, highest first                   ${H.goalPriorities.join(', ')}`);
   out(`  Mortgage  ${eur(H.mortgage.currentBalance)} at ${(H.mortgage.annualInterestRate * 100).toFixed(1)}%, ${H.mortgage.remainingTermYears} years from ${H.mortgage.startDateIso}`);
   const today = result.mortgageToday;
   out(`            today's repayment ${eur(today.todayMonthlyPayment)} a month; ends ${today.todayPayoffDateIso}`);
   out(`            cleared by ${H.mortgage.clearByAge} = a ${today.termYears}-year term: ${eur(today.monthlyPayment)} a month with no lump sum (${signed(today.yearlyChange)} a year)`);
   out(`            the lump sum that clears it by ${H.mortgage.clearByAge} at today's repayment: ${eur(result.wholeMortgageLump)}`);
+  out(`  Pensions  ${H.people.map((p) => `${p.title}: pot ${eur(p.currentPot)}, salary ${eur(p.currentSalary)}, ${(p.personalPct * 100).toFixed(0)}% and ${(p.employerPct * 100).toFixed(0)}%`).join('; ')}`);
   out(`  College   ${H.children.map((child) => `${child.title.toLowerCase()} ${child.age}`).join(', ')}; four years each from 18, living at home`);
   result.wholeCollege.perChild.forEach((child) => {
     out(`            ${pad(child.title, 13)} starts in ${child.startsInYears} years, total ${eur(child.totalCost)}, funded today by ${eur(child.requiredToday)}`);
@@ -511,27 +648,31 @@ function report(result) {
   [result.retirement.base, result.retirement.later].forEach((entry) => {
     out(`  From ${entry.retirementAge} on ${eur(entry.targetIncomeToday)}: pot needed ${eur(entry.requiredPotAtToday)}, projected at today's contributions ${eur(entry.projectedPotAtToday)}`
       + `${entry.onTrackAtToday ? ' (on track)' : ''}`);
-    out(`     extra a year needed: ${eur(entry.yearlyExtra)}${entry.reachedCap ? `; at the relief limit, pot still short by ${eur(entry.gapLeftOver)}` : ''}`);
+    out(`     extra a year needed: ${eur(entry.yearlyExtra)} (${(entry.extraPoints * 100).toFixed(2)} points of salary each)`
+      + `${entry.reachedCap ? `; at the relief limit the pot is still short by ${eur(entry.gapLeftOver)}` : ''}`);
     if (entry.headroomYearly > 0) {
       out(`     contributions already above the target by about ${eur(entry.headroomYearly)} a year (reported, not counted as money to find)`);
     }
   });
   out('');
-  out('Every way of using the cash, by yearly need today (lowest first)');
-  result.ranking.forEach((entry) => {
+  out('Every way of using the cash, in order of how much it changes (not a ranking)');
+  result.uses.forEach((entry) => {
     const against = entry.shortfall > 0 ? `short by ${eur(entry.shortfall)}` : `${eur(entry.spare)} to spare`;
-    out(`  ${useWords(entry)}`);
-    out(`     mortgage ${signed(entry.mortgage.yearlyChange)} a year, college ${eur(entry.college.yearlyAmountNow)} a year, need ${eur(entry.needToday)}: ${against}`
-      + `; paid out over the life of both goals ${eur(entry.lifetimePaidOut)}`);
+    out(`  ${pad(caseWords(entry).amountLine, 52)} needed this year ${pad(eur(entry.neededThisYear), 9)} ${pad(against, 20)} paid out over the life ${eur(entry.paidOutOverLife.total)}`);
   });
   out('');
-  out('The four cases');
+  out('The four cases (case 1, then the three most different uses, in order of how much they change)');
   result.cases.forEach((entry) => {
-    const against = entry.shortfall > 0 ? `short by ${eur(entry.shortfall)} a year` : `${eur(entry.spare)} a year to spare`;
-    out(`  ${entry.number}. ${useWords(entry)}`);
-    out(`     Retire at ${entry.retirement.retirementAge} on ${eur(entry.retirement.targetIncomeToday)}; pension need ${eur(entry.pensionYearly)} a year`);
+    out(`  ${entry.number}. ${entry.words.title}: ${entry.words.amountLine}`);
+    out(`     ${entry.words.headline}`);
+    out(`     ${entry.words.support}`);
     out(`     Money now: mortgage ${eur(entry.mortgageLump)}, college ${eur(entry.collegeLump)}, cash left ${eur(entry.cashLeft)}`);
-    out(`     Mortgage repayment ${eur(entry.mortgage.monthlyPayment)} a month (${signed(entry.mortgage.yearlyChange)} a year); college ${eur(entry.college.yearlyAmountNow)} a year; need ${eur(entry.needToday)} against ${eur(H.leftOverEachYear)}: ${against}`);
+    out(`     Needed this year ${eur(entry.neededThisYear)}  |  paid out over the life of the goals ${eur(entry.paidOutOverLife.total)}`
+      + ` (mortgage ${eur(entry.paidOutOverLife.mortgage)}, college ${eur(entry.paidOutOverLife.college)}, retirement ${eur(entry.paidOutOverLife.retirement)})`);
+    out(`     Mortgage repayment ${eur(entry.mortgage.monthlyPayment)} a month (${signed(entry.mortgage.yearlyChange)} a year); college ${eur(entry.college.yearlyAmountNow)} a year; retirement extra ${eur(entry.pension.yearlyExtra)} a year`);
+    out(`     Goals in your order: ${H.goalPriorities.map((goal) => `${goal} ${entry.states[goal].state === 'covered' ? 'covered' : (entry.states[goal].state === 'partly' ? 'partly covered' : 'not covered')}`).join(', ')}`);
+    const later = entry.laterRetirement;
+    out(`     If you retire at ${later.retirementAge} on ${eur(later.targetIncomeToday)}: needed this year ${eur(later.neededThisYear)}, paid out over the life ${eur(later.paidOutOverLife.total)}`);
   });
   out('');
   out('Ledger, year by year (mortgage change, each child, pension, total, against what is left over)');
