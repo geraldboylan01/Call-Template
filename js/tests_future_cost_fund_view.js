@@ -279,7 +279,7 @@ export function runFutureCostFundViewTests() {
     assert(line.startsWith('M') && area.endsWith('Z'), 'the paths close');
   }));
 
-  cases.push(runCase('Axis labels thin out with the column width and always name the year the cost starts', () => {
+  cases.push(runCase('Axis names never touch, thin out with the column width, and always name the cost start', () => {
     const steps = {};
     STRESS_SHAPES.forEach((shape) => {
       const projection = computeFutureCostFundProjection(shape.payload, CALCULATION);
@@ -287,15 +287,19 @@ export function runFutureCostFundViewTests() {
         const layout = layoutFutureCostChart(projection, { width });
         assert(layout.axisLabels.some((label) => label.year === layout.startYear),
           `${shape.name} at ${width}: the start year is named`);
-        assert(layout.axisLabels.length <= layout.columns, `${shape.name} at ${width}: too many labels`);
-        const expected = layout.yearWidth >= 56 ? 1 : (layout.yearWidth >= 28 ? 2 : (layout.yearWidth >= 12 ? 5 : 10));
-        assertEqual(layout.labelStep, expected, `${shape.name} at ${width}: the label step`);
+        for (let i = 1; i < layout.axisLabels.length; i += 1) {
+          const gap = layout.axisLabels[i].x - layout.axisLabels[i - 1].x;
+          // "Today" is shorter than "Year NN", so the first pair may sit a little closer.
+          const need = i === 1 ? layout.labelNameWidth * 0.7 : layout.labelNameWidth;
+          assert(gap >= need - 0.5,
+            `${shape.name} at ${width}: "${layout.axisLabels[i - 1].text}" and "${layout.axisLabels[i].text}" are ${gap.toFixed(0)}px apart, need ${need.toFixed(0)}`);
+        }
         steps[`${shape.name} @${width}`] = layout.labelStep;
       });
     });
     assertEqual(steps['the sample @1776'], 1, 'every year on a wide sample');
     assertEqual(steps['the sample @358'], 2, 'every second year on a phone');
-    assert(steps['a long run: starts in 40 years and runs for 30 (70 columns) @358'] >= 5, 'thinned in a long run');
+    assert(steps['a long run: starts in 40 years and runs for 30 (70 columns) @358'] >= 10, 'thinned in a long run');
   }));
 
   cases.push(runCase('A one-year cost far away puts the panel header above the chart, not inside a sliver', () => {

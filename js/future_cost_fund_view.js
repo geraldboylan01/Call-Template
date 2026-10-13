@@ -426,16 +426,18 @@ export function layoutFutureCostChart(projection, { width } = {}) {
   const inset = Math.max(1, Math.min(k.blockInset, Math.round(yearWidth * 0.1)));
   const blockWidth = Math.max(1, yearWidth - (inset * 2));
 
-  // Axis labels: every year while there is room, then every 2, 5 and 10. The
-  // cost's first year is always named, because it is the year the picture turns.
-  const step = yearWidth >= 56 ? 1 : (yearWidth >= 28 ? 2 : (yearWidth >= 12 ? 5 : 10));
+  // Axis labels: every year while there is room for the widest name, then every
+  // 2, 5, 10, 20 or 50, chosen from the column width so that two names never
+  // touch. The cost's first year is always named, because it is the year the
+  // picture turns, and any name that would crowd it gives way.
+  const nameFont = narrow ? 12 : 18;
+  const nameWidth = estimateTextWidth(`Year ${columns - 1}`, nameFont, 500) + 4;
+  const step = [1, 2, 5, 10, 20, 50].find((candidate) => candidate * yearWidth >= nameWidth) || 50;
   const labelYears = new Set();
   for (let year = 0; year < columns; year += step) labelYears.add(year);
-  if (step > 1) {
-    Array.from(labelYears).forEach((year) => {
-      if (year !== startYear && Math.abs(year - startYear) < Math.ceil(step / 2)) labelYears.delete(year);
-    });
-  }
+  Array.from(labelYears).forEach((year) => {
+    if (year !== startYear && Math.abs(xAt(year) - xAt(startYear)) < nameWidth) labelYears.delete(year);
+  });
   labelYears.add(startYear);
   const axisLabels = Array.from(labelYears).sort((a, b) => a - b).map((year) => ({
     year,
@@ -448,8 +450,6 @@ export function layoutFutureCostChart(projection, { width } = {}) {
     { value: 0, y: yAt(0), text: '€0', baseline: true },
     { value: axisMax / 2, y: yAt(axisMax / 2), text: axisEuro(axisMax / 2), baseline: false }
   ];
-
-  const insidePanel = panelWidth >= k.panelInsideMinWidth;
 
   const values = {};
   model.cases.forEach((entry) => {
@@ -476,11 +476,12 @@ export function layoutFutureCostChart(projection, { width } = {}) {
     sampleYears,
     values,
     startYear,
-    panel: { left: panelLeft, width: panelWidth, top: 0, height: plotHeight + k.axisHeight, headerInside: insidePanel },
+    panel: { left: panelLeft, width: panelWidth, top: 0, height: plotHeight + k.axisHeight },
     blockInset: inset,
     blockWidth,
     axisLabels,
     labelStep: step,
+    labelNameWidth: nameWidth,
     grid
   };
 }
@@ -718,12 +719,16 @@ export function checkLabelPlacement(layout, labels, values) {
 }
 
 /**
- * Where the cost panel's header sits: inside the panel when it is wide enough,
- * and in a row above the chart when it is not (a one-year cost, say).
+ * Where the cost panel's header sits: inside the panel when its title fits on
+ * one line, and in a row above the chart when it does not (a one-year cost, or
+ * a cost so large that its total is a long figure).
  */
 export function placePanelHeader(layout, copy) {
   const k = layout.constants;
-  if (layout.panel.headerInside) {
+  const titleFont = layout.narrow ? 13 : 22;
+  const titleWidth = estimateTextWidth(copy.panel.title, titleFont, 700);
+  const needed = Math.max(k.panelInsideMinWidth, titleWidth + (k.headerPad * 2));
+  if (layout.panel.width >= needed) {
     return {
       placement: 'inside',
       left: layout.panel.left + k.headerPad,
@@ -731,7 +736,7 @@ export function placePanelHeader(layout, copy) {
       width: layout.panel.width - (k.headerPad * 2)
     };
   }
-  const width = layout.narrow ? 150 : estimateTextWidth(copy.panel.title, 22, 700) + 24;
+  const width = layout.narrow ? 150 : titleWidth + 24;
   return {
     placement: 'above',
     left: Math.max(0, layout.width - width),
