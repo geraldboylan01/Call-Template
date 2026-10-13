@@ -1,6 +1,6 @@
 # Protection gap: if one income stopped, how big is the hole and how long would savings fill it?
 
-Status: design chosen 2026-10-13 (option C, "the months", with the money-in bar split into the State floor and take-home), not started. Stage 1 only.
+Status: design chosen (option C, "the months", with the money-in bar split into the State floor and take-home), decisions confirmed 2026-10-13, not started. Stage 1 only. Build after the future cost fund screen has landed, and copy its wiring.
 
 ## Context
 
@@ -17,6 +17,8 @@ The idea it must land: **the size of the hole, and the number of months savings 
 
 Tone: calm and factual on a hard subject. No alarm styling, no warning icons, no imagery of illness or death.
 
+Where the figures come from: in Stage 1 they are **stated in the payload**. In a plan they will come from the household cash flow result (brief: `docs/household-cash-flow-app-change.md`, branch `module/household-cash-flow`). That is a later source swap behind the same field names, so **do not rename the fields** and do not build the link now.
+
 Reference frames, in the design canvas (private link: https://claude.ai/artifact/JRXfaVyTymypWMrpeq6p53):
 
 | Frame | File | What it shows |
@@ -31,34 +33,39 @@ Things to know before you use them:
 
 - They have **not been opened and checked in a browser**. Treat them as a drawing, not a reference implementation.
 - They were drawn with the sample household's figures exactly as given (below). They draw no footnote. One is required (see Words).
-- Where this brief and a frame disagree, the brief wins. Say which.
+- **They disagree with this brief in the words, on purpose.** The frames speak about the household in the third person ("Money in", "Money needed", "Savings of €60,000 would last", "€96,000 is still needed") and title the death case "Niamh dies". This brief speaks to the client as "you" and titles it "If Niamh died". The brief wins. Layout, sizes, colours and geometry are as drawn.
+- Where this brief and a frame disagree anywhere else, the brief wins. Say which.
 
-## Decisions to confirm
+## Decisions
 
-| # | Decision | Default used | Why it matters |
+Confirmed 2026-10-13 unless marked.
+
+| # | Decision | Answer | Notes |
 |---|---|---|---|
-| D1 | Where take-home and State payments come from | **Stated in the payload.** Nothing is calculated. | The tax engine has no income type for an illness or survivor's payment and no per-person take-home under joint assessment. Stated figures keep the module from holding any tax rule. See Out of scope. |
-| D2 | Module identity | New module `protection_gap`, kind `protection-gap`. `protection_analysis` untouched. | The hard limit (no cover, premium or product) makes merging with the report module wrong. |
-| D3 | Title for the death case | `{Name} dies`, as drawn. Override with `title`. | The softest honest wording is the adviser's call, for example "If Niamh died". |
+| D1 | Where take-home and State payments come from | **Stated in the payload, accepted for Stage 1.** Nothing is calculated. In a plan they will come from the household cash flow result, so the field names stay as they are (`people[].takeHome`, `event.statePayment`, `event.survivorsPension`, `event.neededAfter`). | The tax engine has no income type for an illness or survivor's payment and no per-person take-home under joint assessment. Stated figures keep the module from holding any tax rule. See Out of scope. |
+| D2 | Module identity | New module `protection_gap`, kind `protection-gap`. `protection_analysis` untouched. **Not raised in review: still the default.** | The hard limit (no cover, premium or product) makes merging with the report module wrong. |
+| D3 | Title for the death case | **`If {Name} died`.** Override with `title`. | Only the death case changed. `{Name} cannot work` stays as drawn. If the pair should read alike ("If Niamh cannot work"), say so before building. |
 | D4 | What savings does | The stated total is used **only** to fill the gap, with no interest and no inflation, and the gap stays constant. | A longer horizon needs its own brief. |
 | D5 | Months rounding | **Nearest month.** 60,000 against a 38,000 gap is 18.9, shown as 19. | Matches the sample (19 and 28). Rounding down would contradict it. |
 | D6 | The horizon | 36 months. If the unrounded months are 36 or more: "beyond three years". | The sample's death case lasts far longer and gave no months figure. Never show a derived long figure. |
 | D7 | Money in equals needed exactly | Not drawn. Build it plainly (see Edge cases) and report. | Frames first, then lift. |
+| D8 | Voice | **"You" in all on-screen words.** The client is "you". People are named. No gendered pronouns. | Applies to the answer, the sentence, the labels, the strip, the footnote and the accessible labels. |
 
 ## Defaults assumed
 
 1. **Release surface.** Adviser-only through the Dev Panel, the presenter and the published session viewer. `consumer: false`. No consumer routing, voice or planner facts.
 2. **One ordinary year.** Every amount is per year, in today's money.
-3. **One event per case.** A case changes one thing: a person cannot work, or a person dies. Base case has none.
+3. **One event per case.** A case changes one thing: a person cannot work, or a person dies. The base case has none.
 4. **Whole euros.** Amounts are stated as whole euros. Non-integers are rejected, not rounded.
-5. **The words.** "Money in", "Money needed", "Gap", "Short", "Left over", "Filled by savings", "State payment", "survivor's pension". "Cover" never appears, in any sense.
+5. **The words.** "What comes in", "What you need", "Gap", "Short", "Left over", "Filled by your savings", "State payment", "survivor's pension". "Cover" never appears, in any sense.
 
 ## Before you write code
 
-- Pull `main` and work on `module/protection-gap`. Do not build on another module's branch.
+- Wait until the future cost fund screen has landed. It sets the pattern for wiring a new engine module. Pull `main`, then work on `module/protection-gap`. Do not build on another module's branch.
+- Copy its wiring file by file: `js/state.js`, `js/render.js`, `js/app.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, its preview page, its check script, and the `package.json` and workflow lists. Reuse its motion rule, hysteresis and words check rather than writing new ones. Read `docs/future-cost-fund-app-change.md` for the discipline (a pure layout function, one motion clock, two fixtures).
 - Read `js/repayment_case_module.js` end to end. It is the closest precedent: same clock (`CLICK_MS`), same settling discipline, same `build...Module({ rawInputs, selectedCaseId, onSelectCase })` shape, same standalone preview (`dev/repayment-module-preview.html`).
-- Read `docs/future-cost-fund-app-change.md` and the household cash flow brief (`docs/household-cash-flow-app-change.md`, on branch `module/household-cash-flow`). Both touch the same wiring files (`presenter_catalogue.js`, `state.js`, `render.js`, `app.js`). Land one module's wiring first and copy it. Reuse its motion rule, its hysteresis idea and its words check rather than writing new ones.
-- Read `js/scenario_cap.js`, `js/presenter_catalogue.js` (`moduleKind`), `js/video_scene.js`, `js/codex_video_brief.js`, `js/state.js` (`normalizeGenerated`, `normalizeModuleUi`), `js/render.js`, `js/app.js`.
+- Read `docs/household-cash-flow-app-change.md`. It will be the source of these figures in a plan, and it touches the same wiring files.
+- Read `js/scenario_cap.js`, `js/presenter_catalogue.js` (`moduleKind`), and `js/state.js` (`normalizeGenerated`, `normalizeModuleUi`).
 - Read `js/planning/income_basis.js` for why stated take-home is net, and the header of `js/planning/tax/engine.js` for why it is not used here.
 - Then give a short plan: final field names, file list, where the pure layout function sits, how label placement is decided. **Wait for the go-ahead before implementing.**
 
@@ -107,7 +114,7 @@ A case states what changes, never the result. There is no gap, months or left-ov
 - Chart scale: `scaleMax` = `ceil(max over all cases of max(moneyIn, needed) × 1.05, to 10,000)`. 110,000 for the sample. **One scale for the module, the same in every case**, so nothing rescales on a click.
 - The sample, which is the design fixture and the first test:
 
-| | Today | Niamh cannot work | Dara cannot work | Niamh dies |
+| | Today | Niamh cannot work | Dara cannot work | If Niamh died |
 |---|---|---|---|---|
 | Floor | none | State payment 13,000 | State payment 13,000 | Survivor's pension 13,500 |
 | Take-home counted | 57,000 + 45,000 | 45,000 | 57,000 | 45,000 |
@@ -128,7 +135,7 @@ Messages name the field and the case, in the existing style:
 
 - `generated.protectionGapInputs.scenarios supports at most 4 cases; received 5.`
 - `generated.protectionGapInputs.people[0].takeHome must be a whole number of euros.`
-- `generated.protectionGapInputs.scenarios[3] (Niamh dies): needs two people in the household.`
+- `generated.protectionGapInputs.scenarios[3] (If Niamh died): needs two people in the household.`
 - `generated.protectionGapInputs.scenarios[1] (Niamh cannot work): personId "niamh" has no take-home to stop.`
 - `generated.protectionGapInputs.gap is not accepted. It is calculated.` Same for `months`, `spare`, `leftOver`.
 - **The hard limit, at the boundary:** a payload key whose name is or contains `cover`, `premium`, `policy`, `product`, `provider`, `insurer` or `quote` is rejected: `generated.protectionGapInputs.<key>: this screen shows the gap and the time, never a cover amount, a premium or a product.`
@@ -145,7 +152,7 @@ One element carries the screen: the strip of months. Everything else is quiet. R
 2. The case buttons (two to four; one case: no buttons).
 3. The one sentence saying what this case changes.
 4. **"How big is the hole, in € a year"**: the money-in bar, its brackets, the need tick and the labels.
-5. **"How long savings fill it"**: the months strip.
+5. **"How long your savings fill it"**: the months strip.
 6. One muted footnote (see Words).
 
 ### One drawing, two layouts
@@ -172,10 +179,10 @@ Reference is the 1920 frame: chart column 1296 wide, content width 1792. On a ph
 | Take-home segment | Blue at 38% | |
 | Bar height | | 80 / 56 |
 | Gap block | Red at 42%, from where money in ends to the need tick. If left over: green at 50%, from the tick to where money in ends. | |
-| Brackets | 8px high, 2px at 55% text, 14px above the bar: one over money in, one over the gap (not drawn for left over) | |
+| Brackets | 8px high, 2px at 55% text, 14px above the bar: one over what comes in, one over the gap (not drawn for left over) | |
 | Need tick | 2px, text colour, 14px above and below the bar | |
-| Labels above | "Money in" with the total, left-aligned at the bar start. The gap label ("Gap" and "€38,000 a year", or "Left over") centred over the gap block, clamped inside the chart. | 18/22 muted + 30/36 bold / 15/20 + 20/26 |
-| Label below | "Money needed" with the figure, centred under the tick, clamped | same sizes |
+| Labels above | "What comes in" with the total, left-aligned at the bar start. The gap label ("Gap" and "€38,000 a year", or "Left over") centred over the gap block, clamped inside the chart. | 18/22 muted + 30/36 bold / 15/20 + 20/26 |
+| Label below | "What you need" with the figure, centred under the tick, clamped | same sizes |
 | Segment labels | **Placed by the layout function.** Inside the segment when it is wide enough for its longest line plus 24px: name 18/22 600 and amount 28/32 700. Otherwise below the bar, left-aligned to the segment start, name 14/18 and amount 18/22. Nothing may be truncated. | State segment: inside on the wide frame (153px), below on a phone (42px) |
 
 The State label is two lines inside ("State" / "payment", "Survivor's" / "pension") so it fits 153px.
@@ -190,8 +197,8 @@ The State label is two lines inside ("State" / "payment", "Survivor's" / "pensio
 | Fill | Green at 50%, from the start to `months` cells. Beyond: full width. | |
 | Short | Red at 42%, the rest. Absent when beyond. | |
 | Dividers | 1px at 12% text per month, 40% at 12 and 24 | |
-| Words inside | "Filled by savings" in the fill, "Short" in the short part when 140px wide or more (56px phone). Left over: "Nothing to fill". | 30/44 600 / 16/22 |
-| End mark | 2×24px tick at the end of the fill. Above it, right-aligned to it: "Savings of €60,000 would last" 20/24 muted and the months at 64/72 800 ("19 months", "Beyond three years"). Phone: "Savings last" 15/20 and 32/40. | |
+| Words inside | "Filled by your savings" in the fill, "Short" in the short part when 140px wide or more (56px phone). Left over: "Nothing to fill". | 30/44 600 / 16/22 |
+| End mark | 2×24px tick at the end of the fill. Above it, right-aligned to it: "Your savings of €60,000 would last" 20/24 muted and the months at 64/72 800 ("19 months", "Beyond three years"). Phone: "Your savings last" 15/20 and 32/40. | |
 | Axis | Ticks and labels at 0 ("Income stops", or "Today" in the base case), 12, 24 and 36 months ("1 year", "2 years", "3 years") | 20/24 muted / 15/20 |
 
 ### Case buttons, type and colour
@@ -210,39 +217,47 @@ The State label is two lines inside ("State" / "payment", "Survivor's" / "pensio
 
 ### Words
 
-Plain, sentence case, euro with thousands separators, "a year" never "p.a.". It shows what is and what each case would change. Never "we recommend", "you should", "best option", "best", "ideal", "optimal", a product or provider name, or the words cover, premium, policy, insurer, insurance, quote, "income protection" or "serious illness". **No gendered pronouns anywhere**: sentences use the person's name.
+Plain, sentence case, euro with thousands separators, "a year" never "p.a.". It shows what is and what each case would change. **The client is "you"** (D8): "you", "your", "you need". People are named, and the sentences use the name, never "he" or "she". Never "we recommend", "you should", "best option", "best", "ideal", "optimal", a product or provider name, or the words cover, premium, policy, insurer, insurance, quote, "income protection" or "serious illness". "You should" is banned even though the screen says "you".
 
-Fallback case titles: base `Today`; `cannotWork` `{Name} cannot work`; `dies` `{Name} dies`.
+Fallback case titles: base `Today`; `cannotWork` `{Name} cannot work`; `dies` `If {Name} died` (D3).
 
 The answer is two lines, derived, never typed:
 
 | State | Line 1 | Line 2 |
 |---|---|---|
-| gap, months known | `{€gap} a year short.` | `Savings would last {n} months.` |
-| gap, beyond | `{€gap} a year short.` | `Savings would last beyond three years.` |
-| gap, no savings | `{€gap} a year short.` | `There are no savings to fill it.` |
-| left over | `{€spare} a year left over.` | `Nothing for savings to fill.` |
+| gap, months known | `You are {€gap} a year short.` | `Your savings would last {n} months.` |
+| gap, beyond | `You are {€gap} a year short.` | `Your savings would last beyond three years.` |
+| gap, no savings | `You are {€gap} a year short.` | `You have no savings to fill it.` |
+| left over | `You have {€spare} a year left over.` | `There is nothing for your savings to fill.` |
 
 The sentence under it is derived from the event:
 
 | Event | Template |
 |---|---|
-| none, two people | `Both take-home pays come in, and {€needed} is needed.` |
-| none, one person | `Take-home pay comes in, and {€needed} is needed.` |
-| `cannotWork` | `{Name}’s take-home stops and a State payment starts. {€needed} is still needed.` |
-| `dies`, needed unchanged | `{Name}’s take-home stops and a survivor’s pension starts. {€needed} is still needed.` |
-| `dies`, needed lower | `{Name}’s take-home stops and a survivor’s pension starts. {€needed} is needed, because {reason}.` |
+| none, two people | `Both of your take-home pays come in, and you need {€needed}.` |
+| none, one person | `Your take-home pay comes in, and you need {€needed}.` |
+| `cannotWork` | `{Name}’s take-home stops and a State payment starts. You still need {€needed}.` |
+| `dies`, needed unchanged | `{Name}’s take-home stops and a survivor’s pension starts. You still need {€needed}.` |
+| `dies`, needed lower | `{Name}’s take-home stops and a survivor’s pension starts. You need {€needed}, because {reason}.` |
 
-`reason`: both codes `the mortgage is cleared and living costs drop`; `mortgageCleared` only `the mortgage is cleared`; `livingCostsLower` only `living costs drop`.
+`reason`: both codes `your mortgage is cleared and your living costs drop`; `mortgageCleared` only `your mortgage is cleared`; `livingCostsLower` only `your living costs drop`.
 
-The four sample sentences are golden strings:
+The four sample sentences are golden strings, and so are the four answer pairs:
 
-1. `Both take-home pays come in, and €96,000 is needed.`
-2. `Niamh’s take-home stops and a State payment starts. €96,000 is still needed.`
-3. `Dara’s take-home stops and a State payment starts. €96,000 is still needed.`
-4. `Niamh’s take-home stops and a survivor’s pension starts. €60,000 is needed, because the mortgage is cleared and living costs drop.`
+1. `Both of your take-home pays come in, and you need €96,000.`
+2. `Niamh’s take-home stops and a State payment starts. You still need €96,000.`
+3. `Dara’s take-home stops and a State payment starts. You still need €96,000.`
+4. `Niamh’s take-home stops and a survivor’s pension starts. You need €60,000, because your mortgage is cleared and your living costs drop.`
 
-Footnote, derived, one muted line (18/26 wide, 14/20 phone), **the one element not in a frame**: `Amounts are a year. Savings are used only to fill the gap, with no interest or inflation. State payments are as given and depend on each person’s PRSI record.` The last sentence needs the adviser's review before it ships.
+Answer pairs: `You have €6,000 a year left over.` / `There is nothing for your savings to fill.`; `You are €38,000 a year short.` / `Your savings would last 19 months.`; `You are €26,000 a year short.` / `Your savings would last 28 months.`; `You are €1,500 a year short.` / `Your savings would last beyond three years.`
+
+Household line in the header: the `householdLabel`, then `Your savings €60,000` (from `savings`).
+
+Footnote, derived, one muted line (18/26 wide, 14/20 phone), **the one element not in a frame**:
+
+> Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. State payments are as given and depend on each person’s PRSI record. When one income stops, the other person’s tax can change, so your take-home may differ from what is shown.
+
+The PRSI sentence is approved as written. The last sentence carries the approved meaning in this wording; if it is edited, the golden string changes with it.
 
 ### Accessibility
 
@@ -254,24 +269,24 @@ Footnote, derived, one muted line (18/26 wide, 14/20 phone), **the one element n
 
 ### Edge cases
 
-- One person: `cannotWork` is allowed (money in is the State payment only). `dies` is rejected.
-- Savings 0 with a gap: the strip is all short and line 2 is "There are no savings to fill it."
+- One person: `cannotWork` is allowed (what comes in is the State payment only). `dies` is rejected.
+- Savings 0 with a gap: the strip is all short and line 2 is "You have no savings to fill it."
 - Months between 35.5 and 36 round to 36: the strip is full and the label reads "36 months". At 36 exactly or more unrounded it is "Beyond three years".
-- **Money in equals needed (D7):** headline `Nothing left over, nothing short.`, no gap block, the tick at the end of the bar, the word "Tight" in amber beside the headline, and the strip as "Nothing to fill". Not drawn: build it plainly and report it.
+- **What comes in equals what you need (D7):** line 1 `You have exactly what you need.`, line 2 `There is nothing for your savings to fill.`, no gap block, the tick at the end of the bar, the word "Tight" in amber beside line 1, and the strip as "Nothing to fill". Not drawn: build it plainly and report it.
 - Money in above `scaleMax` cannot happen by construction. A long name wraps and never truncates.
 - Amounts of €1m and over: compact ("€1.2m") on labels only.
 
 ## Wiring
 
-Follow the sibling briefs' wiring, one file at a time, and resist a shared refactor in this change.
+Copy the future cost fund screen's wiring, one file at a time, and resist a shared refactor in this change.
 
 - `js/state.js`: `protectionGapInputs` in `createEmptyGenerated` and `normalizeGenerated` (mutual exclusions, `videoSummary` clearing), and the selected case in `normalizeModuleUi`.
 - `js/render.js`: an `isProtectionGapModule` check beside the other engine modules, and the mount. The assumptions and outputs cards still render from the engine's tables.
 - `js/app.js`: selected-case get and set with persistence and the read-only guard, a Dev Panel example payload using the four sample cases, and `hasCalculatedGeneratedOutputs`.
 - `js/presenter_catalogue.js`: kind `protection-gap`, cases and default case, stable ids.
 - `js/video_scene.js` and `js/codex_video_brief.js`: kind, label and the selected case's figures.
-- `dev/protection-gap-preview.html`, in the manner of `dev/repayment-module-preview.html`, with `?cases=`, `?preset=` (the sample, one person, no savings, beyond, left over, tight) and `?width=`.
-- `package.json`: `check:protection-gap`, `scripts/check-protection-gap.mjs`, listed wherever `check:house-purchase` is, including `.github/workflows/consumer-regression.yml` and `deploy-worker.yml`.
+- `dev/protection-gap-preview.html`, in the manner of its sibling preview pages, with `?cases=`, `?preset=` (the sample, one person, no savings, beyond, left over, tight) and `?width=`.
+- `package.json`: `check:protection-gap`, `scripts/check-protection-gap.mjs`, listed wherever the future cost fund check is, including `.github/workflows/consumer-regression.yml` and `deploy-worker.yml`.
 - No tax rule is copied or imported. Do not touch `docs/prompt-pack/`, the module manifest or the goal catalogue in this change.
 
 ## Tests
@@ -281,16 +296,17 @@ Follow the sibling briefs' wiring, one file at a time, and resist a shared refac
 3. **Scale.** `scaleMax` is 110,000 for the sample and the same in every case. Bar and strip widths are identical across cases for a given width.
 4. **Layout, in Node.** For all four cases at chart widths 1296, 1100, 800, 358 and 320: no two labels overlap, no label is crossed by a bar, tick or bracket, every box is inside the container, the State label is inside when it fits and below when it does not, and type never falls below 14px.
 5. **Layout switch.** Buttons are a rail at 1100, a row at 760 and a grid at 759. A 15px jitter around a line does not flip it. The selected case survives and the engine is not rerun.
-6. **Hard limit.** Render all four cases and scan visible text and every `aria-label` for cover, premium, policy, insurer, insurance, quote, "income protection", "serious illness", a product or provider name, the banned phrases above, "p.a.", gendered pronouns and any amount without a thousands separator. Reject each forbidden payload key with the exact message.
-7. **Words.** The four sample sentences and the four answer pairs equal their templates' output.
-8. **Motion discipline.** After any sequence of clicks, including a rapid one and one in a throttled tab, the drawn state equals a fresh render of the last case. With `prefers-reduced-motion` the new case is drawn at once.
-9. **Wiring.** Presenter case selection by id; the video scene and codex video brief each resolve the selected case's figures. Extend `check-video-scene.mjs` and `check-codex-video-brief.mjs`.
+6. **Hard limit.** Render all four cases and scan visible text and every `aria-label` for cover, premium, policy, insurer, insurance, quote, "income protection", "serious illness", a product or provider name, the banned phrases above, "p.a." and any amount without a thousands separator. Reject each forbidden payload key with the exact message.
+7. **Voice.** The same scan finds no "he", "she", "his", "her", "the household" or "the client" on screen, and finds "you" or "your" in the answer, the sentence and the footnote.
+8. **Words.** The four sample sentences, the four answer pairs, the four titles (`Today`, `Niamh cannot work`, `Dara cannot work`, `If Niamh died`) and the footnote equal their templates' output.
+9. **Motion discipline.** After any sequence of clicks, including a rapid one and one in a throttled tab, the drawn state equals a fresh render of the last case. With `prefers-reduced-motion` the new case is drawn at once.
+10. **Wiring.** Presenter case selection by id; the video scene and codex video brief each resolve the selected case's figures. Extend `check-video-scene.mjs` and `check-codex-video-brief.mjs`.
 
 Before finishing, run `npm run build`, `npm run check:protection-gap`, `check:video-scene`, `check:codex-video-brief` and `check:consumer-session-payload`. Then open `dev/protection-gap-preview.html` at 1920, 1366, 1024, 844 and 390 and look at it, because the frames have not been checked in a browser either. Only 1920 and 390 are drawn: report what looks wrong at the other widths rather than guessing.
 
 ## Out of scope
 
-- **Calculated take-home and State payments.** Needs an income type in the tax engine for an illness or survivor's payment, a per-person take-home under joint assessment, and a source for State rates. Until then these are stated, and the surviving partner's changed tax position is not recalculated.
+- **Calculated take-home and State payments.** In a plan they will come from the household cash flow result behind the same field names. That link is not built in Stage 1. Stated figures mean the other person's changed tax position (for example after a death) is not recalculated here, which is why the footnote says take-home may differ. Calculating State payments needs an income type in the tax engine, a per-person take-home under joint assessment, and a source for State rates.
 - **Duration limits and changes over time.** A State payment ending, the gap changing when a mortgage ends on a date, partial income loss, both people stopping, children.
 - **Savings growth, inflation, or savings used for anything else.**
 - **More than two people, or more than one event per case.**
