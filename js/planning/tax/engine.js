@@ -20,6 +20,8 @@ import { arfImputedHead } from './heads/arf_imputed.js';
 import { incomeTaxHead } from './heads/income_tax.js';
 import { uscHead } from './heads/usc.js';
 import { prsiHead } from './heads/prsi.js';
+import { capitalGainsHead } from './heads/capital_gains.js';
+import { IE_CGT_FIXED_RULES } from './rules_ie.js';
 
 export const TAX_STATUSES = Object.freeze([
   'single',
@@ -37,8 +39,18 @@ const TAX_ITEM_TYPES = Object.freeze([
   'rentalProfit'
 ]);
 
-/** Events a caller may enter in Phase 1. */
-const TAX_EVENT_TYPES = Object.freeze(['benefitCrystallisation']);
+/** Events a caller may enter: a pension crystallisation, or the sale of a property. */
+const TAX_EVENT_TYPES = Object.freeze(['benefitCrystallisation', 'propertyDisposal']);
+
+/** How a property was acquired. Only a purchase can qualify for the 2011 to 2014 relief. */
+const PROPERTY_ACQUIRED_BY = Object.freeze(['purchase', 'gift_or_inheritance']);
+
+/**
+ * Whether the property was the owner's home. `throughout` asserts full
+ * principal private residence relief; `part` and `unknown` tax the whole gain
+ * and say the tax may be lower (brief, decision 7: asserted, never inferred).
+ */
+const PROPERTY_HOME_USE = Object.freeze(['never', 'part', 'throughout', 'unknown']);
 
 /**
  * Types that belong to tax heads not built yet (brief, Part B). They are named
@@ -52,7 +64,6 @@ export const TAX_UNSUPPORTED_TYPES = Object.freeze([
   'fundDistribution',
   'shareDisposal',
   'dividend',
-  'propertyDisposal',
   'giftMade',
   'giftReceived',
   'inheritanceReceived',
@@ -62,7 +73,11 @@ export const TAX_UNSUPPORTED_TYPES = Object.freeze([
 /** Created by the engine from a crystallisation, never entered. */
 const ENGINE_ONLY_ITEM_TYPES = Object.freeze(['lumpSumScheduleE']);
 
-/** The fixed running order (brief, 3.1): pension events first, then income tax, USC and PRSI. */
+/**
+ * The fixed running order (brief, 3.1): pension events first, then income
+ * tax, USC and PRSI. Capital gains tax runs after them; it does not depend on
+ * income.
+ */
 const TAX_HEADS = Object.freeze([lumpSumHead, sftHead, arfImputedHead, incomeTaxHead, uscHead, prsiHead]);
 const PENSION_EVENT_HEADS = Object.freeze(TAX_HEADS.filter((head) => head.phase === 'pension_events'));
 
@@ -160,6 +175,63 @@ function checkItemType(type, fieldName, allowed) {
   }
 }
 
+function requireIsoDate(value, fieldName) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new Error(`${fieldName} must be a date written YYYY-MM-DD.`);
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new Error(`${fieldName} "${value}" is not a real date.`);
+  }
+  return value;
+}
+
+function normalizePropertyDisposal(raw, field, year, people, ids) {
+  const personId = typeof raw.personId === 'string' ? raw.personId.trim() : '';
+  if (personId === JOINT_PERSON_ID) {
+    if (people.length !== 2) {
+      throw new Error(`${field}.personId "${JOINT_PERSON_ID}" splits a sale between two people, but input.people lists one.`);
+    }
+  } else if (!ids.has(personId)) {
+    throw new Error(`${field}.personId must match an id in input.people, or be "${JOINT_PERSON_ID}".`);
+  }
+  const disposalDate = requireIsoDate(raw.disposalDate, `${field}.disposalDate`);
+  if (Number(disposalDate.slice(0, 4)) !== year) {
+    throw new Error(`${field}.disposalDate ${disposalDate} is not in the tax year ${year}.`);
+  }
+  const acquisitionDate = requireIsoDate(raw.acquisitionDate, `${field}.acquisitionDate`);
+  if (acquisitionDate > disposalDate) {
+    throw new Error(`${field}.acquisitionDate ${acquisitionDate} is after the disposalDate ${disposalDate}.`);
+  }
+  if (acquisitionDate < IE_CGT_FIXED_RULES.indexation.earliestSupportedAcquisition) {
+    throw new Error(
+      `${field}.acquisitionDate ${acquisitionDate} is before 6 April 1974. A gain on property owned since then `
+      + 'is worked out from its market value on that date, which is not supported.'
+    );
+  }
+  if (!PROPERTY_ACQUIRED_BY.includes(raw.acquiredBy)) {
+    throw new Error(`${field}.acquiredBy must be one of: ${PROPERTY_ACQUIRED_BY.join(', ')}.`);
+  }
+  const homeUse = typeof raw.homeUse === 'undefined' ? 'unknown' : raw.homeUse;
+  if (!PROPERTY_HOME_USE.includes(homeUse)) {
+    throw new Error(`${field}.homeUse must be one of: ${PROPERTY_HOME_USE.join(', ')}.`);
+  }
+  return {
+    type: raw.type,
+    personId,
+    disposalDate,
+    acquisitionDate,
+    proceeds: requireNonNegativeNumber(raw.proceeds, `${field}.proceeds`),
+    sellingCosts: typeof raw.sellingCosts === 'undefined'
+      ? 0
+      : requireNonNegativeNumber(raw.sellingCosts, `${field}.sellingCosts`),
+    acquisitionCost: requireNonNegativeNumber(raw.acquisitionCost, `${field}.acquisitionCost`),
+    acquiredBy: raw.acquiredBy,
+    homeUse
+  };
+}
+
 /**
  * Check one year's input and put it in the shape the heads read. Every error
  * names the field that caused it.
@@ -236,6 +308,9 @@ function normalizeTaxYearInput(input) {
       throw new Error(`${field} must be an object.`);
     }
     checkItemType(raw.type, `${field}.type`, TAX_EVENT_TYPES);
+    if (raw.type === 'propertyDisposal') {
+      return normalizePropertyDisposal(raw, field, year, people, ids);
+    }
     const personId = typeof raw.personId === 'string' ? raw.personId.trim() : '';
     if (!ids.has(personId)) {
       throw new Error(`${field}.personId must match an id in input.people.`);
@@ -508,7 +583,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
   const workingState = copyState(state, normalized.people.map((person) => person.id));
   const { people, personById } = buildPeople(normalized);
 
-  const crystallisations = normalized.events.map((event) => ({
+  const crystallisations = normalized.events.filter((event) => event.type === 'benefitCrystallisation').map((event) => ({
     personId: event.personId,
     year: normalized.year,
     fundValue: event.fundValue,
@@ -527,6 +602,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
     people,
     personById,
     crystallisations,
+    disposals: normalized.events.filter((event) => event.type === 'propertyDisposal'),
     state: workingState
   };
 
@@ -550,6 +626,10 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
     lines.push(...outcome.lines);
     disclosures.push(...outcome.disclosures);
   });
+
+  const capitalGains = capitalGainsHead.compute(context);
+  lines.push(...capitalGains.lines);
+  disclosures.push(...capitalGains.disclosures);
 
   const incomeTax = heads.incomeTax.total;
   const usc = heads.usc.total;
@@ -575,6 +655,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
 
   const lumpSumTax = crystallisations.reduce((total, record) => total + record.lumpSumTax, 0);
   const chargeableExcessTax = crystallisations.reduce((total, record) => total + (record.netCet || 0), 0);
+  const capitalGainsTax = capitalGains.outcome.total;
   const grossIncome = sumIncome(people, recurringGrossIncome);
   const recurringTax = incomeTax + usc + prsi - scheduleETax;
   const merged = mergeDisclosures(disclosures);
@@ -604,6 +685,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
     })),
     assessments: heads.incomeTax.assessments,
     crystallisations,
+    capitalGains: capitalGains.outcome,
     totals: {
       grossIncome,
       incomeTax,
@@ -611,8 +693,9 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
       prsi,
       lumpSumTax,
       chargeableExcessTax,
+      capitalGainsTax,
       lumpSumScheduleETax: scheduleETax,
-      totalTax: incomeTax + usc + prsi + lumpSumTax + chargeableExcessTax,
+      totalTax: incomeTax + usc + prsi + lumpSumTax + chargeableExcessTax + capitalGainsTax,
       // Income tax, USC and PRSI on the year's recurring income alone: what
       // the year would owe without the Schedule E part of a lump sum.
       recurring,
@@ -629,7 +712,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
 
 /* --------------------------------------------------------------- marginal */
 
-const MARGINAL_HEADS = Object.freeze(['incomeTax', 'usc', 'prsi', 'lumpSumTax', 'chargeableExcessTax']);
+const MARGINAL_HEADS = Object.freeze(['incomeTax', 'usc', 'prsi', 'lumpSumTax', 'chargeableExcessTax', 'capitalGainsTax']);
 
 function withDelta(input, delta) {
   if (!isPlainObject(delta)) {

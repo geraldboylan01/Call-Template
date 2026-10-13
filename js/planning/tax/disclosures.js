@@ -61,6 +61,35 @@ function capitalise(text) {
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }
 
+const MONTH_NAMES = Object.freeze([
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+]);
+
+/** "2026-10-07" as "7 October 2026". */
+function formatTaxDate(iso) {
+  const [year, month, day] = String(iso || '').split('-').map(Number);
+  if (!year || !month || !day) {
+    return String(iso || '');
+  }
+  return `${day} ${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+/** A share of a gain as a whole percentage, for example "52%". */
+function formatShare(share) {
+  return `${Math.round((Number(share) || 0) * 100)}%`;
+}
+
+/** The s.604A purchase dates from the rules, as dates in words. */
+function section604ADates(rules) {
+  const reliefDates = rules?.capitalGainsTax?.section604A;
+  return {
+    from: formatTaxDate(reliefDates?.acquiredFrom),
+    to: formatTaxDate(reliefDates?.acquiredTo),
+    years: reliefDates?.exemptYears
+  };
+}
+
 /**
  * Every code, in the order it is shown. `kind` says when it appears:
  * `standing` always with a tax figure, `status` as the one status line, and
@@ -292,6 +321,109 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
     kind: 'applied',
     label: 'Net cost of contributions',
     render: () => 'Net cost is after income tax relief at your top rate. USC and PRSI are still paid on pension contributions.'
+  },
+  CGT_RATE: {
+    kind: 'applied',
+    label: 'Capital gains tax',
+    render: ({ params, rules }) => (
+      `Capital gains tax on the sale is estimated at ${formatTaxRate(params?.rate)} of the gain above each owner's `
+      + `annual exemption of ${formatTaxEuro(params?.exemption ?? rules?.capitalGainsTax?.annualExemption)}.`
+    )
+  },
+  CGT_RATE_ANNOUNCED: {
+    kind: 'applied',
+    label: 'New capital gains tax rate',
+    render: ({ params }) => (
+      `The ${formatTaxRate(params?.rate)} rate was announced in ${params?.announcedBy} for sales from ${formatTaxDate(params?.effectiveFrom)}. `
+      + 'It could change before the Finance Act is passed.'
+    )
+  },
+  CGT_HOME_EXEMPT: {
+    kind: 'applied',
+    label: 'Your home',
+    render: () => 'No tax on the gain is included, because the property is taken to have been your only or main home for the whole time you owned it.'
+  },
+  CGT_HOME_PART: {
+    kind: 'applied',
+    label: 'Your former home',
+    render: () => 'As the property was your home for part of the time you owned it, part of the gain may be exempt. Your tax could be lower than the estimate shown.'
+  },
+  CGT_HOME_UNKNOWN: {
+    kind: 'applied',
+    label: 'If it was your home',
+    render: () => 'If this property was your home for part of the time you owned it, part of the gain may be exempt. Your tax could be lower than the estimate shown.'
+  },
+  CGT_INDEXATION: {
+    kind: 'applied',
+    label: 'Inflation relief',
+    render: ({ params }) => (
+      `What you paid in ${params?.period} is increased by Revenue's inflation multiplier of ${params?.multiplier} before the gain is worked out.`
+    )
+  },
+  CGT_INDEXATION_NO_GAIN: {
+    kind: 'applied',
+    label: 'Inflation relief',
+    render: ({ params }) => (
+      `After Revenue's inflation multiplier of ${params?.multiplier} for ${params?.period}, the sale makes neither a gain nor a loss for tax purposes.`
+    )
+  },
+  CGT_2011_2014: {
+    kind: 'applied',
+    label: 'Bought from 2011 to 2014',
+    render: ({ params, rules }) => {
+      const reliefDates = section604ADates(rules);
+      const share = Number(params?.share) || 0;
+      const lead = `Because you bought the property between ${reliefDates.from} and ${reliefDates.to}`;
+      const sentence = share >= 1
+        ? `${lead}, the whole gain is exempt.`
+        : `${lead} and have owned it for more than ${reliefDates.years} years, ${formatShare(share)} of the gain is exempt.`;
+      return `${sentence} This assumes you paid its full market value.`;
+    }
+  },
+  CGT_2011_2014_NOT_BOUGHT: {
+    kind: 'applied',
+    label: 'Bought from 2011 to 2014',
+    render: ({ rules }) => {
+      const reliefDates = section604ADates(rules);
+      return `The relief for property bought between ${reliefDates.from} and ${reliefDates.to} is not applied, because it covers only property bought at market value.`;
+    }
+  },
+  CGT_COSTS_ENTERED: {
+    kind: 'applied',
+    label: 'Costs deducted',
+    render: () => 'Only the price paid and the selling costs entered are deducted from the sale price. Buying costs such as stamp duty and legal fees, and money spent improving the property, would lower the tax.'
+  },
+  CGT_SCOPE: {
+    kind: 'applied',
+    label: 'What is assumed',
+    render: () => 'This assumes the property is not development land and is not sold to a family member or other connected person.'
+  },
+  CGT_JOINT_SPLIT: {
+    kind: 'applied',
+    label: 'Owned together',
+    render: () => 'The gain is split equally between you, and each of you has your own annual exemption.'
+  },
+  CGT_OTHER_GAINS: {
+    kind: 'applied',
+    label: 'Other gains and losses',
+    render: () => 'This assumes you have no gains or losses this year beyond those shown, and no unused losses from earlier years.'
+  },
+  CGT_LOSSES_USED: {
+    kind: 'applied',
+    label: 'Earlier losses',
+    render: ({ params }) => `Unused losses of ${formatTaxEuro(params?.amount)} from earlier years are set against the gain.`
+  },
+  CGT_LOSS_SPOUSE: {
+    kind: 'applied',
+    label: 'Losses between you',
+    render: ({ params }) => (
+      `A loss of ${formatTaxEuro(params?.amount)} made by one of you is set against the other's gains, as happens automatically when you are assessed jointly.`
+    )
+  },
+  CGT_LOSS_CARRIED: {
+    kind: 'applied',
+    label: 'Loss carried forward',
+    render: ({ params }) => `The loss of ${formatTaxEuro(params?.amount)} that is not used this year can be set against gains in later years.`
   }
 });
 
@@ -316,8 +448,8 @@ export const TAX_NOT_INCLUDED = Object.freeze([
   }),
   Object.freeze({
     id: 'investment_tax',
-    short: 'tax on savings and investments outside pensions',
-    text: 'Tax on savings and investments outside pensions: DIRT, exit tax, capital gains tax and dividends.'
+    short: 'tax on savings and investments outside pensions, other than capital gains tax on property',
+    text: 'Tax on savings and investments outside pensions: DIRT, exit tax, dividends, and capital gains tax on anything other than property.'
   }),
   Object.freeze({
     id: 'foreign',

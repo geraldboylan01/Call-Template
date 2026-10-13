@@ -14,6 +14,7 @@
  */
 
 import {
+  IE_CGT_FIXED_RULES,
   IE_LEGISLATED_SCHEDULES,
   IE_TAX_FIRST_YEAR,
   IE_TAX_RULES_BY_YEAR,
@@ -161,6 +162,46 @@ function resolvePrsiRate(year, catalogue = DEFAULT_IE_TAX_CATALOGUE) {
   });
 }
 
+/**
+ * The CGT rate schedule, checked: dates must rise and every entry needs a
+ * rate and a status. Disposals use the last entry on or before their date,
+ * so the final rate is held for later years like any Budget parameter.
+ */
+function validateCgtRateSchedule(schedule) {
+  if (!Array.isArray(schedule) || schedule.length === 0) {
+    throw new Error('capitalGainsTaxRate must be a non-empty array.');
+  }
+  schedule.forEach((entry, index) => {
+    const field = `capitalGainsTaxRate[${index}]`;
+    if (!entry || typeof entry !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.effectiveFrom || '')) {
+      throw new Error(`${field}.effectiveFrom must be a YYYY-MM-DD date.`);
+    }
+    if (typeof entry.rate !== 'number' || !(entry.rate >= 0 && entry.rate < 1)) {
+      throw new Error(`${field}.rate must be a rate between 0 and 1.`);
+    }
+    if (entry.status !== 'enacted' && entry.status !== 'announced') {
+      throw new Error(`${field}.status must be enacted or announced.`);
+    }
+    if (index > 0 && entry.effectiveFrom <= schedule[index - 1].effectiveFrom) {
+      throw new Error(`${field}.effectiveFrom must be later than ${schedule[index - 1].effectiveFrom}.`);
+    }
+  });
+  return schedule;
+}
+
+function buildCapitalGainsRules(block, catalogue) {
+  if (!block.capitalGainsTax) {
+    return null;
+  }
+  return Object.freeze({
+    ...block.capitalGainsTax,
+    rateSchedule: validateCgtRateSchedule(catalogue.schedules.capitalGainsTaxRate),
+    indexation: IE_CGT_FIXED_RULES.indexation,
+    section604A: IE_CGT_FIXED_RULES.section604A,
+    principalPrivateResidence: IE_CGT_FIXED_RULES.principalPrivateResidence
+  });
+}
+
 function latestRulesYear(year, rulesByYear) {
   const years = Object.keys(rulesByYear).map(Number).filter((candidate) => candidate <= year);
   if (years.length === 0) {
@@ -204,6 +245,7 @@ function buildResolvedRules(year, catalogue) {
     }),
     sft,
     sftBasis: sft.basis,
+    capitalGainsTax: buildCapitalGainsRules(block, catalogue),
     // What the standing disclosures say the law has already fixed, read from
     // the schedules so the sentence moves when the schedules do.
     legislatedChanges: Object.freeze({

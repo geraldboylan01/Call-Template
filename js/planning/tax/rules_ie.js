@@ -21,7 +21,7 @@
  * bump `IE_TAX_RULES_VERSION` and rerun the golden cases.
  */
 
-export const IE_TAX_RULES_VERSION = 'ie-tax-2026.1';
+export const IE_TAX_RULES_VERSION = 'ie-tax-2026.2';
 
 /** The first tax year the catalogue covers. Earlier years are refused. */
 export const IE_TAX_FIRST_YEAR = 2026;
@@ -94,6 +94,42 @@ export const IE_TAX_SOURCES = Object.freeze({
   pensionsManualChapter28: Object.freeze({
     title: 'Revenue Pensions Manual, Chapter 28 (imputed distributions)',
     url: 'https://www.revenue.ie/en/tax-professionals/tdm/pensions/chapter-28.pdf'
+  }),
+  revenueCgtCalculate: Object.freeze({
+    title: 'Revenue, how to calculate CGT (rates, the annual exemption and allowable costs)',
+    url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/how-to-calculate-cgt.aspx'
+  }),
+  revenueCgtLosses: Object.freeze({
+    title: 'Revenue, CGT: if you make a loss',
+    url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/if-you-make-a-loss.aspx'
+  }),
+  revenueCgtIndexation: Object.freeze({
+    title: 'Revenue, indexation relief',
+    url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/cgt-reliefs/inflation-relief.aspx'
+  }),
+  revenueCgtIndexationManual: Object.freeze({
+    title: 'Revenue, Tax and Duty Manual Part 19-02-13 (indexation, s.556)',
+    url: 'https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf'
+  }),
+  revenueCgtMultipliers: Object.freeze({
+    title: 'Revenue, CGT multiplier table',
+    url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/documents/cgtmult.pdf'
+  }),
+  financeAct2003Section65: Object.freeze({
+    title: 'Finance Act 2003, s.65 (the s.556 multiplier table for disposals from 2004)',
+    url: 'https://www.irishstatutebook.ie/2003/en/act/pub/0003/sec0065.html'
+  }),
+  revenueCgt604A: Object.freeze({
+    title: 'Revenue, property acquired between 7 December 2011 and 31 December 2014',
+    url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/cgt-reliefs/property-acquired-between-7-December-2011-and-31-December-2014.aspx'
+  }),
+  revenueCgt604AManual: Object.freeze({
+    title: 'Revenue, Tax and Duty Manual Part 19-07-03A (s.604A)',
+    url: 'https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-07-03a.pdf'
+  }),
+  revenuePpr: Object.freeze({
+    title: 'Revenue, Principal Private Residence relief',
+    url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/cgt-reliefs/principal-private-residence-ppr-relief.aspx'
   })
 });
 
@@ -219,6 +255,19 @@ export const IE_TAX_RULES_BY_YEAR = Object.freeze({
       /** CET is charged at the higher rate of income tax for the year. */
       rate: 'incomeTax.higherRate',
       sources: Object.freeze([S.revenueChargeableExcessTax, S.pensionsManualChapter25, S.pensionsManualChapter27])
+    }),
+
+    /**
+     * Capital gains tax on property. Added on 11 October 2026 as a new head;
+     * the values above were not touched. The rate itself changes by date, so
+     * it lives in `IE_LEGISLATED_SCHEDULES.capitalGainsTaxRate`.
+     */
+    capitalGainsTax: Object.freeze({
+      ruleId: 'ie.cgt.2026',
+      verifiedOn: '2026-10-11',
+      /** Per person, per year, after losses. Not transferable between spouses. */
+      annualExemption: 1_270,
+      sources: Object.freeze([S.revenueCgtCalculate, S.revenueCgtLosses])
     })
   })
 });
@@ -254,5 +303,110 @@ export const IE_LEGISLATED_SCHEDULES = Object.freeze({
     /** The first year the law indexes the threshold rather than fixing it. */
     indexedFromYear: 2030,
     indexationNote: 's.787O TCA: indexed to CSO average weekly earnings from 2030; cannot fall'
+  }),
+
+  /**
+   * The standard CGT rate, by the date of disposal. Development land keeps
+   * 33% and is not modelled. `status` follows the rules blocks: `announced`
+   * from Budget day, switched to `enacted` when the Finance Act passes.
+   *
+   * Revenue's history table prints the start of the 33% period as
+   * "6 December 2021"; the row before it ends on 5 December 2012, so 2012 is
+   * meant. Only disposals from 2026 are calculated, so this changes nothing.
+   */
+  capitalGainsTaxRate: Object.freeze([
+    Object.freeze({
+      ruleId: 'ie.cgt.rate.2012-12',
+      effectiveFrom: '2012-12-06',
+      rate: 0.33,
+      status: 'enacted',
+      source: S.revenueCgtCalculate
+    }),
+    Object.freeze({
+      ruleId: 'ie.cgt.rate.2026-10',
+      effectiveFrom: '2026-10-07',
+      rate: 0.31,
+      status: 'announced',
+      announcedBy: 'Budget 2027',
+      verifiedOn: '2026-10-11',
+      source: S.revenueCgtCalculate
+    })
+  ])
+});
+
+/**
+ * Multipliers for indexation relief on disposals in 2004 and later, by the
+ * tax year the expenditure was incurred (s.556(6A), inserted by s.65 Finance
+ * Act 2003). The table is closed: expenditure from 2003 has no indexation.
+ * Transcribed from the statute and checked against Revenue's multiplier table
+ * and the worked examples in Tax and Duty Manual Part 19-02-13 (1986/87 is
+ * 1.637, 2000/01 is 1.144, 1974/75 is 7.528).
+ *
+ * Tax years ran from 6 April to 5 April until 2001, which was a short year
+ * from 6 April to 31 December. Calendar years apply from 2002.
+ */
+const INDEXATION_MULTIPLIERS_BY_TAX_YEAR = Object.freeze([
+  [1974, 7.528], [1975, 6.080], [1976, 5.238], [1977, 4.490], [1978, 4.148],
+  [1979, 3.742], [1980, 3.240], [1981, 2.678], [1982, 2.253], [1983, 2.003],
+  [1984, 1.819], [1985, 1.713], [1986, 1.637], [1987, 1.583], [1988, 1.553],
+  [1989, 1.503], [1990, 1.442], [1991, 1.406], [1992, 1.356], [1993, 1.331],
+  [1994, 1.309], [1995, 1.277], [1996, 1.251], [1997, 1.232], [1998, 1.212],
+  [1999, 1.193], [2000, 1.144]
+]);
+
+function aprilToAprilPeriod([startYear, multiplier]) {
+  const endYear = startYear + 1;
+  return Object.freeze({
+    period: `${startYear}/${String(endYear).slice(2)}`,
+    from: `${startYear}-04-06`,
+    to: `${endYear}-04-05`,
+    multiplier
+  });
+}
+
+/**
+ * CGT rules fixed by statute for past dates. Budgets do not change these, so
+ * they sit outside the yearly blocks and are never projected.
+ */
+export const IE_CGT_FIXED_RULES = Object.freeze({
+  indexation: Object.freeze({
+    ruleId: 'ie.cgt.indexation.s556',
+    /** Costs from this date need the asset's market value on it, which is not modelled. */
+    earliestSupportedAcquisition: '1974-04-06',
+    /** Expenditure after this date is not indexed. */
+    lastIndexedExpenditure: '2002-12-31',
+    periods: Object.freeze([
+      ...INDEXATION_MULTIPLIERS_BY_TAX_YEAR.map(aprilToAprilPeriod),
+      Object.freeze({ period: '2001', from: '2001-04-06', to: '2001-12-31', multiplier: 1.087 }),
+      Object.freeze({ period: '2002', from: '2002-01-01', to: '2002-12-31', multiplier: 1.049 })
+    ]),
+    sources: Object.freeze([
+      S.financeAct2003Section65,
+      S.revenueCgtMultipliers,
+      S.revenueCgtIndexation,
+      S.revenueCgtIndexationManual
+    ])
+  }),
+
+  /**
+   * s.604A: land or buildings in the EEA bought between these dates, at
+   * market value (or for at least 75% of it from a relative). Held 4 to 7
+   * years and sold from 2018, the whole gain is exempt. Held longer, the
+   * exempt share is 7 years over the period of ownership.
+   */
+  section604A: Object.freeze({
+    ruleId: 'ie.cgt.s604a',
+    acquiredFrom: '2011-12-07',
+    acquiredTo: '2014-12-31',
+    exemptYears: 7,
+    minimumYears: 4,
+    /** Before this date the whole gain was exempt only after 7 years. */
+    minimumYearsFromDisposal: '2018-01-01',
+    sources: Object.freeze([S.revenueCgt604A, S.revenueCgt604AManual])
+  }),
+
+  principalPrivateResidence: Object.freeze({
+    ruleId: 'ie.cgt.ppr.s604',
+    sources: Object.freeze([S.revenuePpr])
   })
 });

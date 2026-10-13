@@ -12,6 +12,13 @@ import {
   resolveTaxRules
 } from './planning/tax/resolve.js';
 import { crystallise } from './planning/tax/heads/sft.js';
+import {
+  computeDisposalGain,
+  indexationMultiplier,
+  section604AShare,
+  yearsBetween
+} from './planning/tax/heads/capital_gains.js';
+import { IE_CGT_FIXED_RULES } from './planning/tax/rules_ie.js';
 import { arfImputedDistribution } from './planning/tax/heads/arf_imputed.js';
 import {
   TAX_DISCLOSURE_CATALOGUE,
@@ -69,6 +76,101 @@ const SP = 15563.6;
 
 const single = (id, age, extra = {}) => ({ id, age, ...extra });
 const item = (personId, type, amount) => ({ personId, type, amount });
+
+const sale = (fields) => ({ type: 'propertyDisposal', personId: 'a', acquiredBy: 'purchase', homeUse: 'never', ...fields });
+const couple = [single('a', 50), single('b', 50)];
+
+/**
+ * Capital gains tax on property. C1 to C3 are Revenue's own worked examples
+ * (Tax and Duty Manual Part 19-02-13, Examples 1, 4 and 5, all 2026 sales).
+ * The rest are worked by hand from the rules in `rules_ie.js`: 33% before
+ * 7 October 2026, 31% from then, and a €1,270 exemption per owner.
+ */
+const CGT_GOLDEN_CASES = Object.freeze([
+  {
+    id: 'C1',
+    note: 'TDM 19-02-13 Example 1: €10,000 paid in 1986/87, sold for €100,000. Gain €83,630; tax (83,630 - 1,270) x 33%',
+    command: 'year',
+    request: { input: { year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-06-01', proceeds: 100_000, acquisitionCost: 10_000, acquisitionDate: '1986-09-01' })] } },
+    expected: { capitalGainsTax: 27178.8, chargeableGain: 83630, multiplier: 1.637, lossesCarriedForward: { a: 0 } }
+  },
+  {
+    id: 'C2',
+    note: 'TDM 19-02-13 Example 4: €4,200 paid in 2000/01, sold for €4,000. Indexation cannot increase the loss: allowable loss €200',
+    command: 'year',
+    request: { input: { year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-06-01', proceeds: 4_000, acquisitionCost: 4_200, acquisitionDate: '2000-10-01' })] } },
+    expected: { capitalGainsTax: 0, chargeableGain: 0, multiplier: 1.144, lossesCarriedForward: { a: 200 } }
+  },
+  {
+    id: 'C3',
+    note: 'TDM 19-02-13 Example 5: €2,800 paid in 1986/87, sold for €4,000. Indexation turns the gain into a loss: no gain, no loss',
+    command: 'year',
+    request: { input: { year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-06-01', proceeds: 4_000, acquisitionCost: 2_800, acquisitionDate: '1986-09-01' })] } },
+    expected: { capitalGainsTax: 0, chargeableGain: 0, outcome: 'no_gain_no_loss', lossesCarriedForward: { a: 0 } }
+  },
+  {
+    id: 'C4a',
+    note: 'Sold 6 October 2026 at 33%: (320,000 - 6,000 - 250,000 - 1,270) x 33%',
+    command: 'year',
+    request: { input: { year: 2026, status: 'single', people: [single('a', 55)], events: [sale({ disposalDate: '2026-10-06', proceeds: 320_000, sellingCosts: 6_000, acquisitionCost: 250_000, acquisitionDate: '2005-05-01' })] } },
+    expected: { capitalGainsTax: 20700.9, chargeableGain: 64000, rate: 0.33 }
+  },
+  {
+    id: 'C4b',
+    note: 'The same sale on 7 October 2026, at the 31% rate announced in Budget 2027',
+    command: 'year',
+    request: { input: { year: 2026, status: 'single', people: [single('a', 55)], events: [sale({ disposalDate: '2026-10-07', proceeds: 320_000, sellingCosts: 6_000, acquisitionCost: 250_000, acquisitionDate: '2005-05-01' })] } },
+    expected: { capitalGainsTax: 19446.3, chargeableGain: 64000, rate: 0.31 }
+  },
+  {
+    id: 'C5',
+    note: 's.604A: bought 15 June 2013, sold 15 June 2027, exactly 14 years. 7/14 of the €150,000 gain is exempt: (75,000 - 1,270) x 31%',
+    command: 'year',
+    request: { input: { year: 2027, status: 'single', people: [single('a', 55)], events: [sale({ disposalDate: '2027-06-15', proceeds: 400_000, acquisitionCost: 250_000, acquisitionDate: '2013-06-15' })] } },
+    expected: { capitalGainsTax: 22856.3, chargeableGain: 75000, exemptShare: 0.5 }
+  },
+  {
+    id: 'C6',
+    note: 'C5 inherited rather than bought: s.604A needs a purchase at market value, so the whole gain is taxed',
+    command: 'year',
+    request: { input: { year: 2027, status: 'single', people: [single('a', 55)], events: [sale({ disposalDate: '2027-06-15', proceeds: 400_000, acquisitionCost: 250_000, acquisitionDate: '2013-06-15', acquiredBy: 'gift_or_inheritance' })] } },
+    expected: { capitalGainsTax: 46106.3, chargeableGain: 150000, exemptShare: 0 }
+  },
+  {
+    id: 'C7',
+    note: 'C4b owned jointly by a married couple in 2027: two exemptions, 2 x (32,000 - 1,270) x 31%',
+    command: 'year',
+    request: { input: { year: 2027, status: 'married_or_civil_partners', people: couple, events: [sale({ personId: 'joint', disposalDate: '2027-03-01', proceeds: 320_000, sellingCosts: 6_000, acquisitionCost: 250_000, acquisitionDate: '2005-05-01', homeUse: 'unknown' })] } },
+    expected: { capitalGainsTax: 19052.6, chargeableGain: 64000, lossesCarriedForward: { a: 0, b: 0 } }
+  },
+  {
+    id: 'C8',
+    note: 'The family home throughout: principal private residence relief asserted, no tax',
+    command: 'year',
+    request: { input: { year: 2027, status: 'single', people: [single('a', 55)], events: [sale({ disposalDate: '2027-03-01', proceeds: 650_000, acquisitionCost: 300_000, acquisitionDate: '2010-01-01', homeUse: 'throughout' })] } },
+    expected: { capitalGainsTax: 0, chargeableGain: 0 }
+  },
+  {
+    id: 'C9',
+    note: "Jointly assessed: a's €10,000 loss is set against b's €40,000 gain. (40,000 - 10,000 - 1,270) x 31%",
+    command: 'year',
+    request: { input: { year: 2027, status: 'married_or_civil_partners', people: couple, events: [
+      sale({ personId: 'a', disposalDate: '2027-03-01', proceeds: 190_000, acquisitionCost: 200_000, acquisitionDate: '2008-01-01' }),
+      sale({ personId: 'b', disposalDate: '2027-05-01', proceeds: 290_000, acquisitionCost: 250_000, acquisitionDate: '2009-01-01' })
+    ] } },
+    expected: { capitalGainsTax: 8906.3, lossesCarriedForward: { a: 0, b: 0 } }
+  },
+  {
+    id: 'C10',
+    note: 'A €30,000 loss carried in from earlier years against a €50,000 gain in 2028: (50,000 - 30,000 - 1,270) x 31%',
+    command: 'year',
+    request: {
+      state: { people: { a: { cgtLossesCarriedForward: 30_000 } } },
+      input: { year: 2028, status: 'single', people: [single('a', 62)], events: [sale({ disposalDate: '2028-04-01', proceeds: 300_000, acquisitionCost: 250_000, acquisitionDate: '2010-01-01' })] }
+    },
+    expected: { capitalGainsTax: 5806.3, chargeableGain: 50000, lossesCarriedForward: { a: 0 } }
+  }
+]);
 
 /**
  * The brief's golden cases (section 9), as requests the engine and the CLI
@@ -242,7 +344,8 @@ export const IE_TAX_GOLDEN_CASES = Object.freeze([
       adjustable: { split: [{ personId: 'a', type: 'arfDistribution', share: 1 }] }
     },
     expected: { amount: 10087.11, netIncome: 40000 }
-  }
+  },
+  ...CGT_GOLDEN_CASES
 ]);
 
 /** The golden case as the engine answers it, in the CLI's own output shape. */
@@ -319,6 +422,40 @@ function checkGoldenCrystallisation(goldenCase) {
   return { direct, result };
 }
 
+function checkGoldenCapitalGains(goldenCase) {
+  const outcome = runGoldenCaseInEngine(goldenCase);
+  const { result, nextState } = outcome;
+  const expected = goldenCase.expected;
+  const record = result.capitalGains.disposals[0];
+  assertCents(result.totals.capitalGainsTax, expected.capitalGainsTax, `${goldenCase.id} capital gains tax`);
+  assertCents(
+    result.capitalGains.disposals.reduce((total, entry) => total + entry.tax, 0),
+    expected.capitalGainsTax,
+    `${goldenCase.id} tax attributed to the sales`
+  );
+  assertCents(result.totals.totalTax, expected.capitalGainsTax, `${goldenCase.id} total tax is the CGT alone`);
+  assertCents(result.totals.netIncome, 0, `${goldenCase.id} a sale is not income`);
+  if (typeof expected.chargeableGain === 'number') {
+    assertCents(record.chargeableGain, expected.chargeableGain, `${goldenCase.id} chargeable gain`);
+  }
+  if (typeof expected.multiplier === 'number') {
+    assert(record.indexation.multiplier === expected.multiplier, `${goldenCase.id} multiplier ${record.indexation.multiplier}`);
+  }
+  if (typeof expected.rate === 'number') {
+    assert(record.rate === expected.rate, `${goldenCase.id} rate ${record.rate}`);
+  }
+  if (typeof expected.exemptShare === 'number') {
+    assertCents(record.section604A.exemptShare, expected.exemptShare, `${goldenCase.id} s.604A exempt share`);
+  }
+  if (expected.outcome) {
+    assert(record.outcome === expected.outcome, `${goldenCase.id} outcome ${record.outcome}`);
+  }
+  Object.entries(expected.lossesCarriedForward || {}).forEach(([personId, amount]) => {
+    assertCents(nextState.people[personId].cgtLossesCarriedForward, amount, `${goldenCase.id} losses carried forward for ${personId}`);
+  });
+  return result;
+}
+
 /** Every field an input can fail on, with the field its error must name. */
 const INVALID_INPUTS = [
   [{ year: 2025, status: 'single', people: [single('a', 60)] }, /year must be 2026 or later/],
@@ -339,7 +476,20 @@ const INVALID_INPUTS = [
   [{ year: 2026, status: 'single', people: [single('a', 60)], items: [item('a', 'employment', 100), item('a', 'employmentPensionContribution', 200)] }, /input\.people\[0\] \(a\) has an employmentPensionContribution/],
   [{ year: 2026, status: 'single', people: [single('a', 60)], events: [{ type: 'benefitCrystallisation', personId: 'a', fundValue: 100, lumpSum: 200 }] }, /input\.events\[0\]\.lumpSum/],
   [{ year: 2026, status: 'single', people: [single('a', 60)], events: [{ type: 'benefitCrystallisation', personId: 'x', fundValue: 100 }] }, /input\.events\[0\]\.personId/],
-  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [{ type: 'benefitCrystallisation', personId: 'a' }] }, /input\.events\[0\]\.fundValue/]
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [{ type: 'benefitCrystallisation', personId: 'a' }] }, /input\.events\[0\]\.fundValue/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2027-01-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01' })] }, /input\.events\[0\]\.disposalDate 2027-01-01 is not in the tax year 2026/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-02-30', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01' })] }, /input\.events\[0\]\.disposalDate "2026-02-30" is not a real date/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '01/01/2010' })] }, /input\.events\[0\]\.acquisitionDate must be a date written YYYY-MM-DD/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2026-06-01' })] }, /input\.events\[0\]\.acquisitionDate 2026-06-01 is after the disposalDate/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '1974-04-05' })] }, /input\.events\[0\]\.acquisitionDate 1974-04-05 is before 6 April 1974/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: -1, acquisitionCost: 1, acquisitionDate: '2010-01-01' })] }, /input\.events\[0\]\.proceeds/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionDate: '2010-01-01' })] }, /input\.events\[0\]\.acquisitionCost/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01', sellingCosts: -2 })] }, /input\.events\[0\]\.sellingCosts/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01', acquiredBy: 'bought' })] }, /input\.events\[0\]\.acquiredBy must be one of/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01', homeUse: 'sometimes' })] }, /input\.events\[0\]\.homeUse must be one of/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ personId: 'joint', disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01' })] }, /input\.events\[0\]\.personId "joint" splits a sale between two people/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], events: [sale({ personId: 'z', disposalDate: '2026-05-01', proceeds: 1, acquisitionCost: 1, acquisitionDate: '2010-01-01' })] }, /input\.events\[0\]\.personId must match/],
+  [{ year: 2026, status: 'single', people: [single('a', 60)], items: [item('a', 'propertyDisposal', 5)] }, /input\.items\[0\]\.type "propertyDisposal" is not a recognised type/]
 ];
 
 /** A deep freeze, so any attempt to change an argument throws in strict mode. */
@@ -755,7 +905,15 @@ export function runIeTaxTests() {
       SFT_HELD: { heldAmount: 2_800_000, years: [2031] },
       SFT_CET: { rate: 0.4 },
       SFT_CREDIT: { amount: 30_000 },
-      SFT_ALREADY_USED: { amount: 400_000 }
+      SFT_ALREADY_USED: { amount: 400_000 },
+      CGT_RATE: { rate: 0.31, exemption: 1_270 },
+      CGT_RATE_ANNOUNCED: { rate: 0.31, effectiveFrom: '2026-10-07', announcedBy: 'Budget 2027' },
+      CGT_INDEXATION: { period: '1986/87', multiplier: 1.637 },
+      CGT_INDEXATION_NO_GAIN: { period: '1986/87', multiplier: 1.637 },
+      CGT_2011_2014: { share: 0.5185 },
+      CGT_LOSSES_USED: { amount: 30_000 },
+      CGT_LOSS_SPOUSE: { amount: 10_000 },
+      CGT_LOSS_CARRIED: { amount: 200 }
     };
     Object.keys(TAX_DISCLOSURE_CATALOGUE).forEach((code) => {
       const { text } = renderTaxDisclosure({ code, params: params[code] || null }, { rules });
@@ -769,6 +927,114 @@ export function runIeTaxTests() {
     assert(TAX_NOT_INCLUDED.length === 11, 'eleven items are not included');
     assert(TAX_NOT_INCLUDED.every((entry) => !entry.text.includes('—')), 'no em dash in the not-included list');
     assert(!taxNotIncludedLine().includes('—'), 'no em dash in the compact line');
+  }));
+
+  CGT_GOLDEN_CASES.forEach((goldenCase) => {
+    cases.push(runCase(`${goldenCase.id}: capital gains tax on property to the cent`, () => {
+      checkGoldenCapitalGains(goldenCase);
+    }));
+  });
+
+  cases.push(runCase('CGT disclosures say what was applied and what was assumed', () => {
+    const codes = (id) => checkGoldenCapitalGains(golden(id)).disclosureCodes;
+    assert(codes('C1').includes('CGT_INDEXATION') && codes('C1').includes('CGT_COSTS_ENTERED'), 'C1 names indexation and the costs deducted');
+    assert(codes('C3').includes('CGT_INDEXATION_NO_GAIN'), 'C3 says there is no gain and no loss');
+    assert(codes('C2').includes('CGT_LOSS_CARRIED'), 'C2 carries its loss forward');
+    assert(!codes('C4a').includes('CGT_RATE_ANNOUNCED') && codes('C4b').includes('CGT_RATE_ANNOUNCED'), 'only the 31% rate is flagged as announced');
+    assert(codes('C5').includes('CGT_2011_2014'), 'C5 applies the 2011 to 2014 relief');
+    assert(codes('C6').includes('CGT_2011_2014_NOT_BOUGHT'), 'C6 says why the relief is not applied');
+    assert(codes('C7').includes('CGT_HOME_UNKNOWN') && codes('C7').includes('CGT_JOINT_SPLIT'), 'C7 flags a possible former home and the split');
+    assert(!codes('C1').includes('CGT_HOME_UNKNOWN'), 'a property never lived in raises no home note');
+    const c8 = codes('C8');
+    assert(c8.includes('CGT_HOME_EXEMPT') && !c8.includes('CGT_RATE') && !c8.includes('CGT_OTHER_GAINS'), 'the family home raises only its own line');
+    assert(codes('C9').includes('CGT_LOSS_SPOUSE'), 'C9 says a loss moved between spouses');
+    assert(codes('C10').includes('CGT_LOSSES_USED') && !codes('C10').includes('CGT_OTHER_GAINS'), 'C10 says earlier losses were used');
+    const rules = resolveTaxRules(2027);
+    const relief = renderTaxDisclosure({ code: 'CGT_2011_2014', params: { share: 0.5 } }, { rules }).text;
+    assert(relief.includes('7 December 2011 and 31 December 2014') && relief.includes('50% of the gain'), `relief wording: ${relief}`);
+    const whole = renderTaxDisclosure({ code: 'CGT_2011_2014', params: { share: 1 } }, { rules }).text;
+    assert(whole.includes('the whole gain is exempt'), `whole relief wording: ${whole}`);
+  }));
+
+  cases.push(runCase('Indexation multipliers follow the statute, by tax year of purchase', () => {
+    const rules = IE_CGT_FIXED_RULES.indexation;
+    assert(rules.periods.length === 29, '27 April-to-April years, then 2001 and 2002');
+    [
+      ['1974-04-06', 7.528, '1974/75'],
+      ['1975-04-05', 7.528, '1974/75'],
+      ['1975-04-06', 6.08, '1975/76'],
+      ['1986-09-01', 1.637, '1986/87'],
+      ['1999-12-31', 1.193, '1999/00'],
+      ['2001-04-05', 1.144, '2000/01'],
+      ['2001-04-06', 1.087, '2001'],
+      ['2001-12-31', 1.087, '2001'],
+      ['2002-01-01', 1.049, '2002'],
+      ['2002-12-31', 1.049, '2002'],
+      ['2003-01-01', 1, null],
+      ['2013-06-15', 1, null]
+    ].forEach(([date, multiplier, period]) => {
+      const found = indexationMultiplier(date, rules);
+      assert(found.multiplier === multiplier && found.period === period, `${date}: expected ${multiplier} (${period}), got ${found.multiplier} (${found.period})`);
+    });
+    assertThrows(() => indexationMultiplier('1974-04-05', rules), /before 6 April 1974/, 'before April 1974');
+    let previous = Infinity;
+    rules.periods.forEach((entry) => {
+      assert(entry.multiplier < previous && entry.multiplier > 1, `${entry.period} multipliers fall year by year`);
+      previous = entry.multiplier;
+    });
+  }));
+
+  cases.push(runCase('s.604A matches Revenue\'s examples and its date rules', () => {
+    const rules = IE_CGT_FIXED_RULES.section604A;
+    const share = (acquisitionDate, disposalDate, acquiredBy = 'purchase') => section604AShare({ acquisitionDate, disposalDate, acquiredBy }, rules);
+    // TDM 19-07-03A Example 2: 10 years, 7/10 of a €300,000 gain exempt.
+    assertCents(share('2012-03-01', '2022-03-01').exemptShare * 300_000, 210_000, 'ten years exactly');
+    // Revenue's example sells a day after the anniversary. Part years are
+    // counted exactly, so the relief is a little less, never more.
+    const printed = share('2012-03-01', '2022-03-02').exemptShare * 300_000;
+    assert(printed < 210_000 && printed > 209_900, `Example 2 as printed gives ${printed}`);
+    // Example 1: just over 7 years. Example 3: 6 years, sold after 2018.
+    assert(share('2014-03-01', '2021-03-01').exemptShare === 1, 'seven years exactly is fully exempt');
+    assert(share('2014-03-01', '2021-03-02').exemptShare > 0.999, 'Example 1 is all but fully exempt');
+    assert(share('2012-03-01', '2018-03-02').exemptShare === 1, 'Example 3: 4 to 7 years and sold from 2018');
+    assert(share('2014-03-01', '2017-03-02').exemptShare === 0, 'held 3 years: no relief');
+    assert(share('2012-03-01', '2017-03-02').exemptShare === 0, 'sold before 2018 after 5 years: no relief');
+    assert(share('2011-12-07', '2025-12-07').inWindow && share('2014-12-31', '2028-12-31').inWindow, 'both end dates are included');
+    assert(!share('2011-12-06', '2025-12-06').inWindow && !share('2015-01-01', '2029-01-01').inWindow, 'a day outside the dates is not');
+    assert(share('2013-06-15', '2027-06-15', 'gift_or_inheritance').exemptShare === 0, 'a gift or inheritance does not qualify');
+    assertCents(yearsBetween('2013-06-15', '2027-12-15'), 14 + 183 / 366, 'part years are measured in days of that year');
+    assertCents(yearsBetween('2012-02-29', '2013-02-28'), 1, 'a 29 February purchase reaches its anniversary on the 28th');
+  }));
+
+  cases.push(runCase('A loss is allowable only where a gain would be chargeable', () => {
+    const cgtRules = resolveTaxRules(2027).capitalGainsTax;
+    const base = { personId: 'a', disposalDate: '2027-06-01', proceeds: 200_000, sellingCosts: 0, acquisitionCost: 260_000, acquisitionDate: '2013-06-01', acquiredBy: 'purchase', homeUse: 'never' };
+    const relieved = computeDisposalGain(base, cgtRules);
+    assertCents(relieved.allowableLoss, 60_000 * (1 - 0.5), 'half the loss on a 14-year s.604A holding');
+    const home = computeDisposalGain({ ...base, acquisitionDate: '2005-06-01', homeUse: 'throughout' }, cgtRules);
+    assertCents(home.allowableLoss, 0, 'no allowable loss on an exempt home');
+  }));
+
+  cases.push(runCase('Losses carry between years through the state, and survive JSON', () => {
+    const loss = computeTaxYear({ input: { year: 2027, status: 'single', people: [single('a', 60)], events: [sale({ disposalDate: '2027-02-01', proceeds: 200_000, acquisitionCost: 230_000, acquisitionDate: '2008-01-01' })] } });
+    assertCents(loss.nextState.people.a.cgtLossesCarriedForward, 30_000, 'the loss is carried');
+    const roundTripped = JSON.parse(JSON.stringify(loss.nextState));
+    const gain = computeTaxYear({ state: roundTripped, input: golden('C10').request.input });
+    assertCents(gain.result.totals.capitalGainsTax, golden('C10').expected.capitalGainsTax, 'the carried loss is used the next year');
+    assertCents(gain.nextState.people.a.cgtLossesCarriedForward, 0, 'and used up');
+    const small = computeTaxYear({ state: { people: { a: { cgtLossesCarriedForward: 30_000 } } }, input: { year: 2028, status: 'single', people: [single('a', 62)], events: [sale({ disposalDate: '2028-04-01', proceeds: 260_000, acquisitionCost: 250_000, acquisitionDate: '2010-01-01' })] } });
+    assertCents(small.result.totals.capitalGainsTax, 0, 'losses come before the exemption');
+    assertCents(small.nextState.people.a.cgtLossesCarriedForward, 20_000, 'only what the gain needs is used');
+  }));
+
+  cases.push(runCase('A property sale works with marginalTax, leaves its arguments alone and does not change income tax', () => {
+    const input = deepFreeze({ year: 2027, status: 'single', people: [single('a', 55)], items: [item('a', 'employment', 80_000)] });
+    const delta = deepFreeze(sale({ disposalDate: '2027-06-15', proceeds: 400_000, acquisitionCost: 250_000, acquisitionDate: '2013-06-15' }));
+    const marginal = marginalTax({ input, delta });
+    assertCents(marginal.byHead.capitalGainsTax, 22856.3, 'the extra tax is the CGT');
+    assertCents(marginal.byHead.incomeTax, 0, 'no change to income tax');
+    assertCents(marginal.total, 22856.3, 'total');
+    assertCents(marginal.netIncomeChange, 0, 'a sale is not income');
   }));
 
   cases.push(runCase('A 60-year household projection with a solver every year runs quickly', () => {
