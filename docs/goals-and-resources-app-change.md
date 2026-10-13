@@ -1,6 +1,6 @@
 # Goals and resources: can the money do everything you want, and what has to give?
 
-Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are **provisional**. `js/future_cost_fund_math.js` is now on `main` (PR #55, merged 13 October 2026). Merge `main` into this branch, make the two changes below to the script, rerun it and replace the provisional figures. The module itself (payload, engine entry, screen, wiring) is not started.
+Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are from a run on merged `main` (13 October 2026, after PR #55), with pension money counted after income tax relief and goals taken in the planning method's order. The module itself (payload, engine entry, screen, wiring) is not started.
 
 ## Changes decided 13 October 2026, evening
 
@@ -22,7 +22,7 @@ This is a composition over three engines. It has no maths of its own.
 | Goal | Engine | How a lump sum changes it |
 |---|---|---|
 | Mortgage cleared by an age | `js/mortgage_math.js` | `oneOffOverpayment` at month 0, `overpaymentBenefit: 'lowerPayment'`, term set to clear by that age. The yearly change is 12 × (the engine's repayment − today's repayment). It can be negative. |
-| College, each child its own dated cost | `js/future_cost_fund_math.js` (branch `module/future-cost-fund`) | `lumpShare` of the cost funded today, the rest saved yearly from today. |
+| College, each child its own dated cost | `js/future_cost_fund_math.js` | `lumpShare` of the cost funded today, the rest saved yearly from today. |
 | Retirement on a household target | `js/pension_math.js` | The personal contribution is searched through `computePensionProjection` until `currentGapVsRequired` is 0, capped at the age-related relief limit. The search is in gross contributions. What the extra costs the household each year is that amount less the income tax relief on it, from `computeTaxYear` with and without it (or `marginalTax`). |
 
 ## Reference frames
@@ -46,7 +46,7 @@ Things to know before using them:
 
 `scripts/price-goal-cases.mjs` (`node scripts/price-goal-cases.mjs`, or `--json`). It carries the illustrative household as a constant, prices every way of using the cash through the three engines, and picks the four cases.
 
-**It imports `js/future_cost_fund_math.js`, which is on `module/future-cost-fund`. It does not run on this branch alone until that branch is merged into `main` and `main` is merged here.**
+It imports `js/future_cost_fund_math.js` (on `main` since PR #55) and the tax engine's `computeTaxYear`, which it uses to cost each year's contributions after income tax relief.
 
 ### The illustrative household
 
@@ -72,30 +72,32 @@ For each of the mortgage and the college fund: none, the cash that is left, or t
 | **Needed this year** | The mortgage's yearly change, plus what is saved yearly for each child, plus the extra pension contribution the search found **after income tax relief**, against the money left over each year. It is also the largest yearly need, because the college saving ends first. |
 | **Paid out over the life of the goals** | The mortgage with its lump sum over the whole loan, plus everything paid into the college fund, plus the household's own contributions to retirement (what it pays now and the extra), **after income tax relief**. Employer contributions are not the household's money and are not counted. |
 
-### What it found (illustrative, provisional)
+### What it found (illustrative)
 
-**Superseded on rerun.** These figures count pension contributions before relief and order goals by the stated priorities. Both change (see "Changes decided 13 October 2026, evening"). The order happens to be the same here, so only the pension change moves the figures.
+Run on merged `main`. Pension money is counted after income tax relief and goals are taken in the planning method's order, so these figures replace the earlier provisional ones. Only the pension change moved them: the order is the same as before.
 
 | | Result |
 |---|---|
 | Today's repayment | €2,471 a month. Cleared by 60 with no lump sum: €2,811 (+€4,081 a year) |
 | Lump sum that clears it by 60 at today's repayment | €45,974 |
 | College, both children, funded today | €59,635. Saved yearly from today instead: €6,716 a year |
-| Retirement at 62 on €50,000 | Pot needed €1,238,045 against €751,611 projected. Extra needed: €15,442 a year (10.29 points of salary each, inside the relief limit) |
+| Retirement at 62 on €50,000 | Pot needed €1,238,045 against €751,611 projected. Extra paid in: €15,442 a year gross (10.29 points of salary each, inside the relief limit). Income tax relief €6,177, so it costs the household €9,265 a year |
 | Retirement at 65 on €46,000 | Pot needed €917,710 against €935,292 projected: on track, nothing extra |
 
 | Case | Cash use | Needed this year | Against €6,000 | Paid out over the life |
 |---|---|---|---|---|
-| 1 | Cash stays as it is | €26,239 | short €20,239 | €1,013,011 |
-| 2 | €59,635 into the college fund | €19,523 | short €13,523 | €1,012,690 |
-| 3 | €60,000 into the mortgage | €20,913 (after €1,245 freed) | short €14,913 | €993,125 |
-| 4 | €45,974 into the mortgage, €14,026 into college | €20,579 | short €14,579 | €997,698 |
+| 1 | Cash stays as it is | €20,062 | short €14,062 | €834,168 |
+| 2 | €59,635 into the college fund (€365 left) | €13,346 | short €7,346 | €833,847 |
+| 3 | €60,000 into the mortgage | €14,736 (after €1,245 freed) | short €8,736 | €814,282 |
+| 4 | €45,974 into the mortgage, €14,026 into college | €14,402 | short €8,402 | €818,855 |
 
-Goals in order (college, mortgage, retirement): case 1 college partly covered, mortgage and retirement not covered. Cases 2, 3 and 4: college and mortgage covered, retirement partly covered.
+Paid out over the life, by goal: mortgage €505,947, €505,947, €486,060 and €490,709; college €59,957, €59,635, €59,957 and €59,881; retirement €268,265 in every case (the household's own contributions after relief, from €447,108 gross).
+
+Goals in the method's order. Case 1: the first child's college covered, the second child's partly covered, the mortgage and retirement not covered. Cases 2, 3 and 4: both children's college and the mortgage covered, retirement partly covered.
 
 The two measures disagree. Case 2 needs the least this year; case 3 pays out €19,565 less over the life of the goals, because €60,000 into the mortgage saves interest at 4% and €59,635 into college grows at 0.13%.
 
-The later option, priced beside every case: needed this year is €10,797, €4,081, €5,471 and €5,137 for cases 1 to 4, and paid out over the life is €733,555, €733,234, €713,669 and €718,242.
+The later option, priced beside every case: needed this year is €10,797, €4,081, €5,471 and €5,137 for cases 1 to 4, and paid out over the life is €666,495, €666,173, €646,608 and €651,181. At 65 on €46,000 retirement needs nothing extra, so cases 2, 3 and 4 are no longer short (€1,919, €529 and €863 to spare); case 1 is still short by €4,797.
 
 ## The contract (proposed, not built)
 
@@ -157,9 +159,9 @@ Everything on screen is addressed to the household as "you", and is derived from
 | Piece | Template |
 |---|---|
 | Question | Can your money do everything you want? |
-| Headline, short | You’re short by €20,239 a year |
+| Headline, short | You’re short by €8,402 a year |
 | Headline, left over | You have €1,919 a year to spare |
-| Support | Your goals need €20,579 a year against the €6,000 you have. With a lower repayment: …, counting the €1,245 a lower repayment frees. |
+| Support | Your goals need €14,402 a year against the €6,000 you have. With a lower repayment: …, counting the €1,245 a lower repayment frees. |
 | Case amount line | €45,974 and €14,026 from your cash. With none: Nothing from your cash. |
 | Case titles | Cash stays as it is; Fund college today; All cash into the mortgage; Mortgage, then college |
 | Goal rows | Your mortgage cleared by 60; College, first child; College, second child; You retire at 62 on €50,000 a year |
@@ -181,7 +183,7 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 7. **One-off money on its own.** Doing both goals from cash would need €105,609 against €60,000 now. The screen does not show that shortfall.
 8. **Retirement inside "paid out".** The household's own contributions are the same in every case at one target, so they lift the total without separating the cases. They are listed as a component so a screen can leave them out.
 9. **Frames: not redrawn yet, by decision.** C1 and C2 are stale against this brief, A, B and the phone frame are not redrawn on engine figures, C2 starts on the wrong case, and nothing has been checked in a browser. All of it waits on the red "short" state.
-10. **Provisional figures.** `module/future-cost-fund` is merged into `main` (PR #55). Merge `main` into this branch, make the two changes decided on 13 October, rerun the script and replace the provisional figures. `main` is not touched from this branch.
+10. **Figures rerun: done 13 October.** `module/future-cost-fund` is on `main` (PR #55); `main` was merged into this branch and the script rerun with both changes. Rerun it whenever the engines, the central assumptions or the illustrative household change. `main` is not touched from this branch.
 
 ## Out of scope
 

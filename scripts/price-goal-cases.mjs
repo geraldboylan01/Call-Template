@@ -9,6 +9,7 @@
  *   mortgage  js/mortgage_math.js         lump sum, lowerPayment, term = clear by 60
  *   pensions  js/pension_math.js          personal contribution searched until the gap closes
  *   college   js/future_cost_fund_math.js each child is its own dated cost
+ *   tax       js/planning/tax/engine.js   income tax relief on pension contributions
  *
  * Nothing here is a formula of its own. Every figure is an engine's output;
  * the only arithmetic done here is adding goals together and comparing them
@@ -17,9 +18,21 @@
  * NO SINGLE SCORE. Every case carries two measures side by side, "needed this
  * year" and "paid out over the life of the goals", and neither orders the
  * cases. They disagree: the use of cash that frees the most this year is not
- * the one that costs the least over the life of the goals. Case 1 is the
- * current position. The other three are the most different uses of cash, shown
+ * the one that costs the least over the life of the goals. Case 1 keeps the
+ * cash as it is. The other three are the most different uses of cash, shown
  * in order of how much they change from case 1.
+ *
+ * PENSION MONEY IS GROSS FOR GROWTH AND AFTER RELIEF FOR CASH FLOW. The search
+ * for the extra contribution is in gross terms, because the pot grows on
+ * everything paid in. Wherever a contribution is counted against the
+ * household's money (needed this year, paid out over the life of the goals,
+ * the ledger) it counts at its cost after income tax relief, from the tax
+ * engine. Employer contributions are not the household's money.
+ *
+ * GOAL ORDER IS THE PLANNING METHOD'S, fixed here and never taken from a
+ * payload: each child's college by start date, then the mortgage, then
+ * retirement. Protection and the emergency reserve come first and sit outside
+ * this module: the spare cash is already net of the reserve.
  *
  * Usage:
  *   node scripts/price-goal-cases.mjs            readable report
@@ -36,6 +49,7 @@ import {
 } from '../js/pension_math.js';
 import { computeFutureCostFundProjection } from '../js/future_cost_fund_math.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
+import { computeTaxYear } from '../js/planning/tax/engine.js';
 
 export const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
   label: 'Illustrative household, not real figures',
@@ -50,12 +64,8 @@ export const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
    */
   leftOverEachYear: 6_000,
 
-  /**
-   * The client's stated priorities, highest first. A payload field: it decides
-   * which goal takes the yearly money first, and so which goals read "covered",
-   * "partly covered" or "not covered". Never a position this script chose.
-   */
-  goalPriorities: Object.freeze(['college', 'mortgage', 'retirement']),
+  /** Married, jointly assessed. */
+  householdTaxStatus: 'married_or_civil_partners',
 
   mortgage: Object.freeze({
     currentBalance: 380_000,
@@ -220,7 +230,7 @@ function pensionPayload(target, extraPoints) {
     incomeMode: 'target',
     targetIncomeToday: target.targetIncomeToday,
     targetIncomeBasis: 'net',
-    householdTaxStatus: 'married_or_civil_partners',
+    householdTaxStatus: H.householdTaxStatus,
     pensions: H.people.map((person) => ({
       id: person.id,
       title: person.title,
@@ -235,6 +245,55 @@ function pensionPayload(target, extraPoints) {
   };
 }
 
+/**
+ * What the household's own contributions cost it each year, after income tax
+ * relief, from the tax engine. The pension engine says what goes in (gross, as
+ * it simulated it, capped each year at the relief limit); the tax engine says
+ * what that does to income tax: the household's tax with the contributions
+ * taken from pay and without. Everyone's contributions are in the same year, so
+ * the second income's band and the joint assessment are in the answer.
+ */
+function contributionCosts(debug) {
+  const scenarios = debug.memberScenarios.current;
+  const years = Math.max(...scenarios.map((scenario) => scenario.personalEurSeries.length)) - 1;
+  const gross = [];
+  const relief = [];
+  const cost = [];
+
+  for (let index = 0; index < years; index += 1) {
+    const year = H.currentYear + index;
+    const people = [];
+    const pay = [];
+    const withContributions = [];
+    let grossThisYear = 0;
+
+    scenarios.forEach((scenario) => {
+      const member = scenario.member;
+      if (year >= member.retirementYear) {
+        return;
+      }
+      const salary = member.currentSalary * (1 + member.wageGrowthRate) ** index;
+      const contribution = scenario.personalEurSeries[index + 1] || 0;
+      people.push({ id: member.id, age: member.currentAge + index });
+      pay.push({ personId: member.id, type: 'employment', amount: salary });
+      if (contribution > 0) {
+        withContributions.push({ personId: member.id, type: 'employmentPensionContribution', amount: contribution });
+        grossThisYear += contribution;
+      }
+    });
+
+    const status = debug.inputs.taxSetup.status;
+    const taxWith = computeTaxYear({ input: { year, status, people, items: [...pay, ...withContributions] } }).result.totals.totalTax;
+    const taxWithout = computeTaxYear({ input: { year, status, people, items: pay } }).result.totals.totalTax;
+    const reliefThisYear = taxWithout - taxWith;
+
+    gross.push(grossThisYear);
+    relief.push(reliefThisYear);
+    cost.push(grossThisYear - reliefThisYear);
+  }
+  return { gross, relief, cost };
+}
+
 function pensionRun(target, extraPoints) {
   const { debug } = computePensionProjection(pensionPayload(target, extraPoints));
   return {
@@ -243,17 +302,18 @@ function pensionRun(target, extraPoints) {
     requiredPot: debug.requiredPot,
     projectedPot: debug.projectedPotCurrent,
     status: debug.readinessStatus,
-    // What the household itself puts in, every year to retirement, as the
-    // engine simulated it (capped each year at the relief limit).
-    personalContributions: debug.currentScenario.personalEurSeries.reduce((sum, value) => sum + value, 0)
+    costs: contributionCosts(debug)
   };
 }
+
+const sumOf = (values) => values.reduce((sum, value) => sum + value, 0);
 
 /**
  * The extra personal contribution, in points of salary added to BOTH people,
  * that closes the gap against the household target. Searched through the
- * engine, never solved. Capped at the age-related relief limit the engine
- * already has; any gap left at the cap is reported.
+ * engine in GROSS terms, never solved. Capped at the age-related relief limit
+ * the engine already has; any gap left at the cap is reported. What the extra
+ * costs the household is the gross amount less its income tax relief.
  */
 export function priceRetirement(target) {
   const atToday = pensionRun(target, 0);
@@ -311,6 +371,11 @@ export function priceRetirement(target) {
   }
 
   const salaryTotal = H.people.reduce((sum, person) => sum + person.currentSalary, 0);
+  const yearlyExtra = result.costs.gross[0] - atToday.costs.gross[0];
+  const yearlyExtraTaxRelief = result.costs.relief[0] - atToday.costs.relief[0];
+  // What the extra costs each year after relief, year by year: the ledger's line.
+  const extraCostByYear = result.costs.cost.map((value, index) => value - (atToday.costs.cost[index] || 0));
+
   return {
     id: target.id,
     retirementAge: target.retirementAge,
@@ -319,16 +384,24 @@ export function priceRetirement(target) {
     projectedPotAtToday: atToday.projectedPot,
     onTrackAtToday: atToday.gap === 0,
     extraPoints,
-    yearlyExtra: extraPoints * salaryTotal,
+    // Gross: what goes into the pension, and what its pot grows on.
+    yearlyExtra,
+    yearlyExtraTaxRelief,
+    // After relief: what the household pays, and what is counted against its money.
+    yearlyExtraCost: yearlyExtra - yearlyExtraTaxRelief,
+    extraCostByYear,
     reachedCap,
     gapLeftOver: reachedCap ? result.gap : 0,
     // The household's own contributions to retirement over the years to
-    // retirement, with and without the extra the search found.
-    personalContributionsToday: atToday.personalContributions,
-    personalContributionsWithExtra: result.personalContributions,
-    extraOverTheLife: result.personalContributions - atToday.personalContributions,
+    // retirement: gross as the pension engine simulated them, and at their cost
+    // after income tax relief, with and without the extra the search found.
+    personalGrossToday: sumOf(atToday.costs.gross),
+    personalGrossWithExtra: sumOf(result.costs.gross),
+    personalCostToday: sumOf(atToday.costs.cost),
+    personalCostWithExtra: sumOf(result.costs.cost),
+    extraOverTheLife: sumOf(result.costs.cost) - sumOf(atToday.costs.cost),
     // Money the current contributions carry beyond the target: personal
-    // contributions could fall by this much a year and still close the gap.
+    // contributions could fall by this much a year (gross) and still close the gap.
     headroomYearly: lowestPoints < 0 ? -lowestPoints * salaryTotal : 0,
     capPointsAvailable: cap
   };
@@ -349,48 +422,52 @@ function describeUse(mortgageLump, collegeLump, wholeMortgage, wholeCollege) {
 }
 
 /**
- * Who gets the yearly money, in the client's stated order. A goal takes what
+ * Who gets the yearly money, in the planning method's order: each child's
+ * college by start date, then the mortgage, then retirement. A goal takes what
  * it needs from what is left, so a goal late in the order can be partly
  * covered or not covered at all. A goal needing nothing this year is covered.
+ * A lower mortgage repayment frees money, and that money is there for the goals.
  */
-function goalStates({ mortgageYearly, collegeYearly, pension }) {
+function goalStates({ mortgageYearly, college, pension }) {
   const freed = Math.max(0, -mortgageYearly);
   let remaining = H.leftOverEachYear + freed;
-  const needs = {
-    college: collegeYearly,
-    mortgage: Math.max(0, mortgageYearly),
-    retirement: pension.yearlyExtra
-  };
-  const states = {};
-  H.goalPriorities.forEach((goal) => {
-    const need = needs[goal];
-    const covered = Math.max(0, Math.min(need, remaining));
+
+  const goals = [
+    ...[...college.perChild]
+      .sort((a, b) => a.startsInYears - b.startsInYears)
+      .map((child) => ({ goal: child.id, title: `College, ${child.title.toLowerCase()}`, need: child.yearlyAmount })),
+    { goal: 'mortgage', title: `Mortgage cleared by ${H.mortgage.clearByAge}`, need: Math.max(0, mortgageYearly) },
+    { goal: 'retirement', title: 'Retirement', need: pension.yearlyExtraCost }
+  ];
+
+  return goals.map((entry) => {
+    const covered = Math.max(0, Math.min(entry.need, remaining));
     remaining -= covered;
-    let state = need <= 0.5 || covered >= need - 0.5 ? 'covered' : (covered <= 0 ? 'not' : 'partly');
+    let state = entry.need <= 0.5 || covered >= entry.need - 0.5 ? 'covered' : (covered <= 0 ? 'not' : 'partly');
     // Contributions at the relief limit that still leave a gap cannot read
     // "covered": the money is found and the target is still not met.
-    if (goal === 'retirement' && pension.reachedCap && pension.gapLeftOver > 0 && state === 'covered') {
+    if (entry.goal === 'retirement' && pension.reachedCap && pension.gapLeftOver > 0 && state === 'covered') {
       state = 'partly';
     }
-    states[goal] = { state, need, covered };
+    return { ...entry, covered, state };
   });
-  return states;
 }
 
 function priceAllocation({ mortgageLump, collegeLump }, wholeMortgage, wholeCollege, pension) {
   const mortgage = priceMortgage(mortgageLump);
   const college = priceCollege(wholeCollege.requiredToday > 0 ? collegeLump / wholeCollege.requiredToday : 0);
-  const neededThisYear = mortgage.yearlyChange + college.yearlyAmountNow + pension.yearlyExtra;
+  const neededThisYear = mortgage.yearlyChange + college.yearlyAmountNow + pension.yearlyExtraCost;
   const difference = neededThisYear - H.leftOverEachYear;
   const goalCount = (mortgageLump > 0.5 ? 1 : 0) + (college.lumpSumToday > 0.5 ? 1 : 0);
 
   // What leaves the household over the life of the three goals: the mortgage
   // with its lump sum, everything paid into the college fund, and the
-  // household's own contributions to retirement (what it pays now, and the extra).
+  // household's own contributions to retirement (what it pays now, and the
+  // extra) at their cost after income tax relief.
   const paidOutOverLife = {
     mortgage: mortgage.totalPaidOverTheLoan,
     college: college.paidIn,
-    retirement: pension.personalContributionsWithExtra
+    retirement: pension.personalCostWithExtra
   };
 
   return {
@@ -410,26 +487,23 @@ function priceAllocation({ mortgageLump, collegeLump }, wholeMortgage, wholeColl
       ...paidOutOverLife,
       total: paidOutOverLife.mortgage + paidOutOverLife.college + paidOutOverLife.retirement
     },
-    states: goalStates({
-      mortgageYearly: mortgage.yearlyChange,
-      collegeYearly: college.yearlyAmountNow,
-      pension
-    }),
-    ledger: buildLedger(mortgage, college, pension.yearlyExtra)
+    states: goalStates({ mortgageYearly: mortgage.yearlyChange, college, pension }),
+    ledger: buildLedger(mortgage, college, pension)
   };
 }
 
-/** The household's yearly needs, year by year, each goal as its own line. */
-function buildLedger(mortgage, college, pensionYearly) {
+/** The household's yearly needs, year by year, each goal as its own line, pension after relief. */
+function buildLedger(mortgage, college, pension) {
   const rows = [];
   for (let year = 0; year < LEDGER_YEARS; year += 1) {
     const children = college.perChild.map((child) => (year < child.savingYears ? child.yearlyAmount : 0));
-    const total = mortgage.yearlyChange + children.reduce((sum, amount) => sum + amount, 0) + pensionYearly;
+    const pensionCost = pension.extraCostByYear[year] || 0;
+    const total = mortgage.yearlyChange + children.reduce((sum, amount) => sum + amount, 0) + pensionCost;
     rows.push({
       year,
       mortgage: mortgage.yearlyChange,
       children,
-      pension: pensionYearly,
+      pension: pensionCost,
       total,
       difference: total - H.leftOverEachYear
     });
@@ -478,8 +552,8 @@ function enumerateUses(wholeMortgage, wholeCollege) {
 }
 
 /**
- * The most different uses of cash: the three that, together with the current
- * position, are furthest apart (the largest smallest gap between any two, in
+ * The most different uses of cash: the three that, together with the cash kept
+ * as it is, are furthest apart (the largest smallest gap between any two, in
  * euros moved into the mortgage and into college). Distance, not outcome, so
  * no score decides which cases are shown.
  */
@@ -537,6 +611,8 @@ const USE_TITLES = Object.freeze({
   'part/part': 'Cash split across both'
 });
 
+const STATE_WORDS = Object.freeze({ covered: 'covered', partly: 'partly covered', not: 'not covered' });
+
 /**
  * The words a case puts on screen, all addressed to the household as "you".
  * Derived from the figures here, never typed per case.
@@ -573,8 +649,9 @@ export function priceGoalCases() {
   const allUses = enumerateUses(wholeMortgage, wholeCollege);
   const priced = allUses.map((use) => priceAllocation(use, wholeMortgage, wholeCollege, pensionBase));
 
-  // Case 1 is the current position as built: the cash stays, and every goal
-  // is pursued from yearly money.
+  // Case 1 keeps the cash as it is, and every goal is pursued from yearly
+  // money. (In a plan the current position is "nothing changes", which belongs
+  // to the plan view, not to this module.)
   const current = priced.find((entry) => entry.mortgageLump === 0 && entry.collegeLump === 0);
   const others = chooseMostDifferent(priced, current, 3).sort(byHowMuchTheyChange);
 
@@ -631,7 +708,8 @@ function report(result) {
   out('Household');
   out(`  Spare cash (net of the emergency reserve)  ${eur(H.spareCash)}`);
   out(`  Left over each year (stated)                ${eur(H.leftOverEachYear)}`);
-  out(`  Priorities, highest first                   ${H.goalPriorities.join(', ')}`);
+  out('  Goals are taken in this order               each child\'s college by start date, the mortgage, retirement');
+  out(`  Tax                                         ${H.householdTaxStatus.replace(/_/g, ' ')}, assessed jointly`);
   out(`  Mortgage  ${eur(H.mortgage.currentBalance)} at ${(H.mortgage.annualInterestRate * 100).toFixed(1)}%, ${H.mortgage.remainingTermYears} years from ${H.mortgage.startDateIso}`);
   const today = result.mortgageToday;
   out(`            today's repayment ${eur(today.todayMonthlyPayment)} a month; ends ${today.todayPayoffDateIso}`);
@@ -648,10 +726,11 @@ function report(result) {
   [result.retirement.base, result.retirement.later].forEach((entry) => {
     out(`  From ${entry.retirementAge} on ${eur(entry.targetIncomeToday)}: pot needed ${eur(entry.requiredPotAtToday)}, projected at today's contributions ${eur(entry.projectedPotAtToday)}`
       + `${entry.onTrackAtToday ? ' (on track)' : ''}`);
-    out(`     extra a year needed: ${eur(entry.yearlyExtra)} (${(entry.extraPoints * 100).toFixed(2)} points of salary each)`
+    out(`     extra paid in (gross) ${eur(entry.yearlyExtra)} a year (${(entry.extraPoints * 100).toFixed(2)} points of salary each)`
       + `${entry.reachedCap ? `; at the relief limit the pot is still short by ${eur(entry.gapLeftOver)}` : ''}`);
+    out(`     income tax relief on it ${eur(entry.yearlyExtraTaxRelief)}, so it costs you ${eur(entry.yearlyExtraCost)} a year`);
     if (entry.headroomYearly > 0) {
-      out(`     contributions already above the target by about ${eur(entry.headroomYearly)} a year (reported, not counted as money to find)`);
+      out(`     contributions already above the target by about ${eur(entry.headroomYearly)} a year gross (reported, not counted as money to find)`);
     }
   });
   out('');
@@ -668,14 +747,14 @@ function report(result) {
     out(`     ${entry.words.support}`);
     out(`     Money now: mortgage ${eur(entry.mortgageLump)}, college ${eur(entry.collegeLump)}, cash left ${eur(entry.cashLeft)}`);
     out(`     Needed this year ${eur(entry.neededThisYear)}  |  paid out over the life of the goals ${eur(entry.paidOutOverLife.total)}`
-      + ` (mortgage ${eur(entry.paidOutOverLife.mortgage)}, college ${eur(entry.paidOutOverLife.college)}, retirement ${eur(entry.paidOutOverLife.retirement)})`);
-    out(`     Mortgage repayment ${eur(entry.mortgage.monthlyPayment)} a month (${signed(entry.mortgage.yearlyChange)} a year); college ${eur(entry.college.yearlyAmountNow)} a year; retirement extra ${eur(entry.pension.yearlyExtra)} a year`);
-    out(`     Goals in your order: ${H.goalPriorities.map((goal) => `${goal} ${entry.states[goal].state === 'covered' ? 'covered' : (entry.states[goal].state === 'partly' ? 'partly covered' : 'not covered')}`).join(', ')}`);
+      + ` (mortgage ${eur(entry.paidOutOverLife.mortgage)}, college ${eur(entry.paidOutOverLife.college)}, retirement after relief ${eur(entry.paidOutOverLife.retirement)})`);
+    out(`     Mortgage repayment ${eur(entry.mortgage.monthlyPayment)} a month (${signed(entry.mortgage.yearlyChange)} a year); college ${eur(entry.college.yearlyAmountNow)} a year; retirement extra ${eur(entry.pension.yearlyExtraCost)} a year after relief (${eur(entry.pension.yearlyExtra)} gross)`);
+    out(`     Goals in order: ${entry.states.map((goal) => `${goal.title.toLowerCase()} ${STATE_WORDS[goal.state]}`).join('; ')}`);
     const later = entry.laterRetirement;
     out(`     If you retire at ${later.retirementAge} on ${eur(later.targetIncomeToday)}: needed this year ${eur(later.neededThisYear)}, paid out over the life ${eur(later.paidOutOverLife.total)}`);
   });
   out('');
-  out('Ledger, year by year (mortgage change, each child, pension, total, against what is left over)');
+  out('Ledger, year by year (mortgage change, each child, pension after relief, total, against what is left over)');
   result.cases.forEach((entry) => {
     out(`  Case ${entry.number}`);
     entry.ledger.forEach((row) => {
