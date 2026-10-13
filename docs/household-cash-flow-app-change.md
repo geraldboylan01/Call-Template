@@ -1,6 +1,6 @@
 # Household cash flow: what is left each year, and what would change it
 
-Status: design chosen 2026-10-13 (the staircase on a wide screen, the single bar on a phone), decisions D1 to D6 settled 2026-10-13, not started. Stage 1 only.
+Status: design chosen 2026-10-13 (the staircase on a wide screen, the single bar on a phone), decisions D1 to D6 settled 2026-10-13 and D7 the same evening, not started. Stage 1 only.
 
 If this file ever conflicts with another copy of it on `main`, this branch's version wins (decided 2026-10-13).
 
@@ -52,6 +52,7 @@ It is used two ways at once. It is shared at 1920×1080 on a call while the advi
 | D4 | Module name | **Household cash flow**, kind `household-cash-flow`, id `household_cash_flow`. |
 | D5 | Voice | **"You" in all on-screen words.** Derived wording, headings, labels, the footnote and the assumptions table speak to the household as "you" and "your". |
 | D6 | Per-person take-home for a couple | **Settled: allocated by income share.** The engine assesses a couple's income tax jointly, as one figure, so per-person take-home needs an allocation rule. Each person's share is their income before tax over the household's. The output marks it `basis: 'allocated'` and the assumptions table says so. The rule is in "The model". |
+| D7 | Pension money: gross for growth, after relief for cash flow | **Settled 13 October, evening.** A contribution is drawn at its full amount on the Pensions line, because that is what goes into the pension, and the income tax relief on it shows as lower tax. What it costs the household is the difference, which is what moves left over. This is already how the model works; the assumptions wording below is corrected to say it. Any other module that sets a contribution against the household's money (goals and resources, the plan's resource ledger) uses the cost after relief; anything about pension growth uses the full amount. |
 
 ## What the sample does in the engine
 
@@ -213,7 +214,7 @@ Also:
 - `debug.cases[]`: `id`, `title`, `description`, `changes`, `lines[]` (`{ id, label, amount, shownAmount, deltaVsToday }`), `levels[]`, `sentence`, `taxBreakdown` (`incomeTax`, `usc`, `prsi`, per person where jointly assessed the income tax is the allocated share) and `disclosureCodes`.
 - `debug.assumptionsUsed`: `IE_TAX_RULES_VERSION` read at run time, the tax year, `PLANEIR_ASSUMPTIONS_VERSION`, the household tax status and whether it was defaulted, and `taxSourceByPerson`.
 - `debug.warnings[]`: a stated take-home that differs from the estimate by more than 15%. A warning, never a rejection, because a payslip is allowed to differ.
-- The assumptions table states, in plain words and in the second person: per-year figures in today's money; **which tax was used for each person** (the disclosure line, below); pension contributions are shown after tax relief; for a couple, income tax is assessed together, so each person's share is an allocation by income share and their take-home is marked `allocated` (D6); and amounts are rounded to the nearest €100. Use the engine's own disclosure text (`renderTaxDisclosures`) for the estimated parts and do not write tax sentences of your own.
+- The assumptions table states, in plain words and in the second person: per-year figures in today's money; **which tax was used for each person** (the disclosure line, below); pension contributions are shown in full, and the income tax relief on them shows as lower tax (D7); for a couple, income tax is assessed together, so each person's share is an allocation by income share and their take-home is marked `allocated` (D6); and amounts are rounded to the nearest €100. Use the engine's own disclosure text (`renderTaxDisclosures`) for the estimated parts and do not write tax sentences of your own.
 - `charts` carries **one** ordinary chart (the base case's lines in order, income at the left) for the surfaces with no module to draw for them, chiefly the video summary. This is what `repayment_case_module.js` does. The focused pane shows no charts card for this module.
 - `getHouseholdCashFlowCases(rawInputs)` returns `[{ id, title, description }]` for the presenter, like `getMortgageScenarioCases`.
 
@@ -488,10 +489,19 @@ Before finishing, run `npm run build`, `npm run check:household-cash-flow`, the 
 - **More than six lines, grouping, or a long tail called "Other".**
 - **A projection.** Anything beyond one year, inflation, drawdown, accounts. That is the multi-year cashflow module's brief.
 - **Where the money goes after the pension.** What the contribution is worth, its tax at retirement, or its growth. The retirement module owns that.
-- **Existing pension contributions in the household.** The base household takes none, so "10,000 more" means 10,000 on top of nothing, and a stated take-home must be one that has none deducted. Reject `employmentPensionContribution` in `income` until a case needs it.
+- **Existing pension contributions in the household, in this change.** The base household takes none, so "10,000 more" means 10,000 on top of nothing, and a stated take-home must be one that has none deducted. Reject `employmentPensionContribution` in `income`. **This is the first follow-up after the screen lands** (see "Follow-up: today's pension contributions"), because a plan's households usually pay into a pension today.
 - **A stated take-home that varies by month, or a bonus.** One figure a year per person.
 - **The other drawings.** The single bar at 1920, the stream, and the quarter-turned staircase for phones are not built. If a tablet in portrait needs something better than the bar, that is a new design.
 - **Consumer routing, voice, planner facts, manifest, playbook and goal catalogue entries.** Follow the retirement precedent: do not edit `docs/prompt-pack/`. The playbook, aliases, matrix and master prompt are updated separately once this lands, so they describe what the code does.
+
+## Follow-up: today's pension contributions
+
+Decided 13 October 2026, evening. A separate change, after the screen has landed and before the plan work, because the plan's illustrative household (Niamh and Dara) pays 5% and 4% today and this module cannot show it yet.
+
+- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so the Pensions column exists in today's case and tax and take-home follow it (D7).
+- An `extraPension` change adds to it. The sentence templates stay: "Paying €10,000 more into your pensions" is still the extra.
+- Decide in the plan, and say which: whether `statedTakeHome` is before or after today's contribution. A payslip's net pay is after it.
+- Give the field name, the validation strings and the new fixture in the plan, and wait for the go-ahead, as for the main change.
 
 ## When you finish
 
