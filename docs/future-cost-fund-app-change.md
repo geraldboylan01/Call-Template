@@ -1,6 +1,26 @@
 # Future cost fund: a dated cost, and the ways to have the money ready
 
-Status: design chosen (option A, "the hill"), assumptions settled 2026-10-13, not started. Stage 1 only.
+Status: design chosen (option A, "the hill"), assumptions settled 2026-10-13. **Engine, central assumptions and DIRT rule built (branch `module/future-cost-fund`); screen and wiring not started.** Stage 1 only.
+
+## Build status
+
+Built, in this order, with every figure in the Tests tables reproduced to the nearest €100:
+
+- `js/planning/planeir_assumptions.js`: the `cash` entry (0.2% gross), `assumptionRecord('cashRate')`, the `cashGrowthRate` label, version `planeir-assumptions-1.3.0`, approved 2026-10-13.
+- `js/planning/tax/rules_ie.js` and `resolve.js`: the `dirt` block (33%, `ie.dirt.2026`) and `IE_TAX_SOURCES.revenueDirt`. Main was already on `ie-tax-2026.2` when this landed (PR #54, capital gains tax), so `IE_TAX_RULES_VERSION` is `ie-tax-2026.3`. The capital gains entries are untouched. The catalogue fixture `scripts/fixtures/module-catalogue-authoring-identity.json` follows the assumptions version bump.
+- `js/future_cost_fund_math.js`: `normalizeFutureCostFundInputs`, `computeFutureCostFundProjection(rawInputs, { assumptions, calculationYear, taxCatalogue })`, `getFutureCostFundCases`, `getDefaultFutureCostFundScenarioId`. `taxCatalogue` is a second injection point beside `assumptions`, so a test can change the DIRT rule and watch the fund follow it.
+- `js/tests_future_cost_fund_math.js` (12 cases) and `scripts/check-future-cost-fund.mjs`, which proves the engine against a reference calculator that imports nothing from it and finds every amount by bisection. `npm run check:future-cost-fund`. The projection accepts a cost starting within 100 years, keeping each case to at most 130 annual rows with the 30-year cost duration limit.
+- Two DIRT tests in `js/tests_ie_tax.js`: 33% in 2026, held forward unchanged in 2031, and a changed catalogue rate moves nothing else.
+
+Differences from this brief:
+
+- `PLANEIR_ASSUMPTIONS.cash.basis` does **not** name the two banks. The brief's own rule is that no provider name reaches a client-facing string, and `assumptionRecord('cashRate').reason` is built from `basis`. The banks, rates, effective dates and URLs are in `cash.observed`, for the audit trail only. A test scans for it.
+- The model's rows are `{ yearIndex, openingBalance, payment, cost, closingBalance }` as specified. `openingBalance` is the previous closing balance grown by one year at the net rate.
+- DIRT was re-checked on Revenue's page on 2026-10-13: 33%, "Published: 24 April 2026". Budget 2027 coverage found did not mention DIRT. Revenue's page is the source; the Finance documents were not read.
+
+Not built: the screen, the layout function, motion, words, `state.js`/`render.js`/`app.js`/presenter/video wiring, the dev preview, and listing `check:future-cost-fund` in `.github/workflows/consumer-regression.yml` and `deploy-worker.yml`. `npm run build`, `check:video-scene` and `check:codex-video-brief` are untouched by this change and were not rerun here.
+
+One failure that predates this work: `scripts/check-module-catalogue-authoring.mjs` fails on a migration filename (`0019_add_application_voice_notes.sql` against the expected `0018_add_agent_application_requests.sql`), identically on unmodified `main`.
 
 ## Context
 
@@ -108,7 +128,7 @@ Do this first, in its own commit, because the engine depends on it.
    - The two observed rates with their effective dates and URLs, for the audit trail.
    - Bump `PLANEIR_ASSUMPTIONS_VERSION` to `planeir-assumptions-1.3.0` and `PLANEIR_ASSUMPTIONS_APPROVED_ON`.
    - Add `assumptionRecord('cashRate')` and an `ASSUMPTION_LABELS` entry (`cashGrowthRate`: "Interest on money held in cash") so the assumption has an approved consumer-safe name. Extend `scripts/check-planeir-assumptions.mjs`.
-2. **`js/planning/tax/rules_ie.js`.** A `dirt` block in the 2026 rules: `ruleId: 'ie.dirt.2026'`, `rate: 0.33`, its source, a new `IE_TAX_SOURCES.revenueDirt` entry pointing at Revenue's DIRT rate page. Update `verifiedOn`, bump `IE_TAX_RULES_VERSION` to `ie-tax-2026.2`, and rerun the golden cases. Add `dirt: block.dirt` to `buildResolvedRules` in `js/planning/tax/resolve.js`. Later years hold the latest block unchanged, which is the catalogue's existing policy for Budget-set rates. Nothing else in the tax engine starts using DIRT.
+2. **`js/planning/tax/rules_ie.js`.** A `dirt` block in the 2026 rules: `ruleId: 'ie.dirt.2026'`, `rate: 0.33`, its source, a new `IE_TAX_SOURCES.revenueDirt` entry pointing at Revenue's DIRT rate page. Update `verifiedOn`, bump `IE_TAX_RULES_VERSION` to `ie-tax-2026.3` (main was already on `ie-tax-2026.2` after the capital gains tax change), and rerun the golden cases. Add `dirt: block.dirt` to `buildResolvedRules` in `js/planning/tax/resolve.js`. Later years hold the latest block unchanged, which is the catalogue's existing policy for Budget-set rates. Nothing else in the tax engine starts using DIRT.
 3. **Do not touch house purchase in this change.** It carries its own 2% gross deposit default and its own 33%. See Out of scope.
 
 ## The contract
@@ -121,7 +141,7 @@ Add `generated.futureCostFundInputs`. Engine in `js/future_cost_fund_math.js`, r
 |---|---|---|
 | `costTitle` | string, required | Client-facing name of the cost, shown as the module heading. "College", "Care for Mam", "School fees". Trimmed, 1 to 60 characters. |
 | `costKind` | `'education'` or `'general'`, **required** | Picks the central price rate. No default. |
-| `startsInYears` | integer, required | Years from today until the cost's first year. At least 1. |
+| `startsInYears` | integer, required | Years from today until the cost's first year. 1 to 100. |
 | `durationYears` | integer, required | How many years the cost runs. 1 to 30. |
 | `annualCostToday` | number, required | One year of the cost in today's money. Greater than 0. |
 | `baseScenarioId` | string, optional | Must match a case id when present. Default is the first case. |

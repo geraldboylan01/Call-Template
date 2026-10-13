@@ -1037,6 +1037,35 @@ export function runIeTaxTests() {
     assertCents(marginal.netIncomeChange, 0, 'a sale is not income');
   }));
 
+  cases.push(runCase('DIRT is a catalogue rate: 33% in 2026, held forward unchanged in 2031', () => {
+    const base = resolveTaxRules(2026);
+    const later = resolveTaxRules(2031);
+    assert(base.dirt.rate === 0.33, 'DIRT 33% in 2026');
+    assert(base.dirt.ruleId === 'ie.dirt.2026', 'rule id');
+    assert(base.dirt.sources.length === 1 && /revenue\.ie/.test(base.dirt.sources[0].url), 'Revenue is the source');
+    assert(base.heldForward === false, '2026 is not held forward');
+    assert(later.dirt.rate === 0.33, 'DIRT 33% in 2031');
+    assert(later.heldForward === true && later.rulesYear === 2026, '2031 is held forward from the 2026 block');
+    assert(later.dirt === base.dirt, 'the held block is the same rule, not a copy');
+  }));
+
+  cases.push(runCase('A catalogue with another DIRT rate resolves to it, and nothing else in the year moves', () => {
+    const block = DEFAULT_IE_TAX_CATALOGUE.rulesByYear[2026];
+    const changed = {
+      ...DEFAULT_IE_TAX_CATALOGUE,
+      rulesByYear: {
+        ...DEFAULT_IE_TAX_CATALOGUE.rulesByYear,
+        2026: { ...block, dirt: { ...block.dirt, rate: 0.4 } }
+      }
+    };
+    const base = resolveTaxRules(2026);
+    const rules = resolveTaxRules(2026, { catalogue: changed });
+    assert(rules.dirt.rate === 0.4, 'the changed rate is read');
+    ['incomeTax', 'usc', 'prsi', 'lumpSum', 'capitalGainsTax'].forEach((key) => {
+      assert(JSON.stringify(rules[key]) === JSON.stringify(base[key]), `${key} must not move with DIRT`);
+    });
+  }));
+
   cases.push(runCase('A 60-year household projection with a solver every year runs quickly', () => {
     const elapsed = benchmarkSixtyYearProjection();
     console.info(`[IeTaxTests] 60-year household projection with a solver every year: ${elapsed} ms`);
