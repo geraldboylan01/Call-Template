@@ -1,6 +1,13 @@
 # Goals and resources: can the money do everything you want, and what has to give?
 
-Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are **provisional**: `js/future_cost_fund_math.js` is on `module/future-cost-fund` and not on `main` yet, so the script was run against that branch at `e38c38d`. Rerun it after the engine is merged and `main` is merged into this branch. The module itself (payload, engine entry, screen, wiring) is not started.
+Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are **provisional**. `js/future_cost_fund_math.js` is now on `main` (PR #55, merged 13 October 2026). Merge `main` into this branch, make the two changes below to the script, rerun it and replace the provisional figures. The module itself (payload, engine entry, screen, wiring) is not started.
+
+## Changes decided 13 October 2026, evening
+
+Both are written into the sections below. They change the script's figures, so rerun it before building the engine.
+
+1. **Pension money: gross for growth, after relief for cash flow.** The search for the extra contribution stays in gross terms, because the pot grows on everything paid in. Wherever a contribution is counted against the household's money (needed this year, paid out over the life of the goals, the yearly ledger) it counts at its cost after income tax relief, taken from the tax engine. In the illustration the extra €15,435 a year saves about €6,174 of income tax (checked with `computeTaxYear` on `main`), so it costs about €9,300 a year. This is the same convention as the household cash flow module, where €10,000 paid in shows as €10,000 into pensions and €4,000 less tax.
+2. **Goal order follows the planning method, not a stated priority.** The order is the one financial planners use to build a resource ledger (the CFP planning method): protection and the emergency reserve first (outside this module: the spare cash is already net of the reserve), then the goals that come soonest (each child's college, by start date), then the mortgage, then retirement. `goalPriorities` is removed from the payload. The engine applies the order and the assumptions table says so.
 
 ## Context
 
@@ -16,7 +23,7 @@ This is a composition over three engines. It has no maths of its own.
 |---|---|---|
 | Mortgage cleared by an age | `js/mortgage_math.js` | `oneOffOverpayment` at month 0, `overpaymentBenefit: 'lowerPayment'`, term set to clear by that age. The yearly change is 12 × (the engine's repayment − today's repayment). It can be negative. |
 | College, each child its own dated cost | `js/future_cost_fund_math.js` (branch `module/future-cost-fund`) | `lumpShare` of the cost funded today, the rest saved yearly from today. |
-| Retirement on a household target | `js/pension_math.js` | The personal contribution is searched through `computePensionProjection` until `currentGapVsRequired` is 0, capped at the age-related relief limit. |
+| Retirement on a household target | `js/pension_math.js` | The personal contribution is searched through `computePensionProjection` until `currentGapVsRequired` is 0, capped at the age-related relief limit. The search is in gross contributions. What the extra costs the household each year is that amount less the income tax relief on it, from `computeTaxYear` with and without it (or `marginalTax`). |
 
 ## Reference frames
 
@@ -43,7 +50,7 @@ Things to know before using them:
 
 ### The illustrative household
 
-Spare cash €60,000 (already net of the emergency reserve). €6,000 left over each year (stated). Mortgage €380,000 at 4.0% variable, 18 years from 2026-11-01, both people 45, cleared by 60 (a 15-year term). Niamh: salary €90,000, pot €100,000, 5% personal and 5% employer. Dara: salary €60,000, pot €40,000, 4% and 4%. Household target after tax in today's money, State Pension included: €50,000 from 62, with a later option of €46,000 from 65. Two children aged 10 and 8, four years each from 18, living at home at €5,000 a year each (the central college scenario, 4% education growth). Priorities, highest first: college, mortgage, retirement.
+Spare cash €60,000 (already net of the emergency reserve). €6,000 left over each year (stated). Mortgage €380,000 at 4.0% variable, 18 years from 2026-11-01, both people 45, cleared by 60 (a 15-year term). Niamh: salary €90,000, pot €100,000, 5% personal and 5% employer. Dara: salary €60,000, pot €40,000, 4% and 4%. Household target after tax in today's money, State Pension included: €50,000 from 62, with a later option of €46,000 from 65. Two children aged 10 and 8, four years each from 18, living at home at €5,000 a year each (the central college scenario, 4% education growth). Married, jointly assessed. Goals are taken in the method's order: college, then the mortgage, then retirement.
 
 ### The search
 
@@ -56,16 +63,18 @@ For each of the mortgage and the college fund: none, the cash that is left, or t
 
 ### Choosing the four cases
 
-**No single score decides it.** Case 1 is the current position: the cash stays as it is and every goal is pursued from yearly money. The other three are the **most different uses of cash**: the three that, with case 1, are furthest apart in euros moved into the mortgage and into college (the largest smallest gap between any two). They are shown in **order of how much they change from case 1**: euros moved, then goals touched. Nothing about their yearly need or total cost picks them or orders them.
+**No single score decides it.** Case 1 keeps the cash as it is, and every goal is pursued from yearly money. (In a plan, the current position is "nothing changes" and belongs to the plan view, not to this module.) The other three are the **most different uses of cash**: the three that, with case 1, are furthest apart in euros moved into the mortgage and into college (the largest smallest gap between any two). They are shown in **order of how much they change from case 1**: euros moved, then goals touched. Nothing about their yearly need or total cost picks them or orders them.
 
 ### Two measures, side by side, for every case
 
 | Measure | What it is |
 |---|---|
-| **Needed this year** | The mortgage's yearly change, plus what is saved yearly for each child, plus the extra pension contribution the search found, against the money left over each year. It is also the largest yearly need, because the college saving ends first. |
-| **Paid out over the life of the goals** | The mortgage with its lump sum over the whole loan, plus everything paid into the college fund, plus the household's own contributions to retirement (what it pays now and the extra). |
+| **Needed this year** | The mortgage's yearly change, plus what is saved yearly for each child, plus the extra pension contribution the search found **after income tax relief**, against the money left over each year. It is also the largest yearly need, because the college saving ends first. |
+| **Paid out over the life of the goals** | The mortgage with its lump sum over the whole loan, plus everything paid into the college fund, plus the household's own contributions to retirement (what it pays now and the extra), **after income tax relief**. Employer contributions are not the household's money and are not counted. |
 
 ### What it found (illustrative, provisional)
+
+**Superseded on rerun.** These figures count pension contributions before relief and order goals by the stated priorities. Both change (see "Changes decided 13 October 2026, evening"). The order happens to be the same here, so only the pension change moves the figures.
 
 | | Result |
 |---|---|
@@ -82,7 +91,7 @@ For each of the mortgage and the college fund: none, the cash that is left, or t
 | 3 | €60,000 into the mortgage | €20,913 (after €1,245 freed) | short €14,913 | €993,125 |
 | 4 | €45,974 into the mortgage, €14,026 into college | €20,579 | short €14,579 | €997,698 |
 
-Goals in the client's order (college, mortgage, retirement): case 1 college partly covered, mortgage and retirement not covered. Cases 2, 3 and 4: college and mortgage covered, retirement partly covered.
+Goals in order (college, mortgage, retirement): case 1 college partly covered, mortgage and retirement not covered. Cases 2, 3 and 4: college and mortgage covered, retirement partly covered.
 
 The two measures disagree. Case 2 needs the least this year; case 3 pays out €19,565 less over the life of the goals, because €60,000 into the mortgage saves interest at 4% and €59,635 into college grows at 0.13%.
 
@@ -96,7 +105,7 @@ The later option, priced beside every case: needed this year is €10,797, €4,
 |---|---|---|
 | `spareCash` | number, required | Cash available now, net of the emergency reserve. 0 or more. |
 | `leftOverEachYear` | number, required | What is left over each year. **Stated in Stage 1.** In a plan it comes from the Household cash flow result's left-over figure, and this field is replaced by that result. |
-| `goalPriorities` | array, required | `'college'`, `'mortgage'` and `'retirement'`, each once, highest first. The client's stated priorities decide which goal takes the yearly money first, and so which goals read covered, partly covered or not covered. The engine never orders them itself. |
+| `goalPriorities` | **removed** | Rejected if present: `generated.goalsAndResourcesInputs.goalPriorities is not accepted. Goals are taken in a fixed order: college, then the mortgage, then retirement.` See "Goal order". |
 | `mortgage` | object, required | `currentBalance`, `annualInterestRate`, `remainingTermYears`, `startDateIso`, `repaymentType: 'repayment'`, optional `fixedPaymentAmount`, plus `currentAge` and `clearByAge`. |
 | `pensions` | array, required | One entry per person: `id`, `title`, `currentAge`, `currentSalary`, `currentPot`, `personalPct`, `employerPct`, `includeStatePension`. Same validation as `pensionInputs.pensions`. |
 | `householdTaxStatus` | string | As `pensionInputs`. |
@@ -106,13 +115,24 @@ The later option, priced beside every case: needed this year is €10,797, €4,
 
 No growth, inflation, cash or DIRT rate is accepted. Rates are central.
 
+### Goal order
+
+The engine takes goals in the order the planning method uses for a resource ledger, so it decides which goals read covered, partly covered or not covered when money runs out:
+
+1. Protection and the emergency reserve. Outside this module: `spareCash` is already net of the reserve.
+2. The goals that come soonest: each child's college, in order of when it starts.
+3. The mortgage cleared by its age.
+4. Retirement.
+
+The order is fixed in the engine, never taken from the payload, and stated in the assumptions table (see Words). It is the same order the plan's resource ledger uses, so a goal never reads covered in this module and short in the plan.
+
 ### Where the mortgage fields come from
 
 Balance, rate and remaining term are already planner facts, so nothing new is asked: `mortgage_current_balance` (`/liabilities/*/currentBalance`), `mortgage_annual_interest_rate` (`/liabilities/*/annualInterestRate`) and `mortgage_remaining_term_months` (`/liabilities/*/remainingTermMonths`). `buildMortgageInput` in `js/planning/adapters/mortgage.js` already maps them: `remainingTermYears` is the months ÷ 12 and `startDateIso` is the plan's calculation date. This module reuses that adapter. What is new is `clearByAge`, which is the goal itself.
 
 ### Cases
 
-Not authored in this version. The engine derives four: case 1, the current position, then the three most different uses of cash in order of how much they change. The later retirement option is priced beside each.
+Not authored in this version. The engine derives four: case 1, the cash kept as it is, then the three most different uses of cash in order of how much they change. The later retirement option is priced beside each.
 
 ### What the engine returns
 
@@ -121,10 +141,10 @@ Not authored in this version. The engine derives four: case 1, the current posit
 - `id`, `title`, `cashUsed`, `cashLeft`.
 - `mortgage`: `lumpSum`, `monthlyPayment`, `todayMonthlyPayment`, `yearlyChange`, `payoffDateIso`, `totalPaidOverTheLoan`.
 - `college`: `lumpSumToday`, `yearlyAmountNow`, `paidIn`, and `perChild[]` with `lumpSumToday`, `yearlyAmount`, `savingYears`.
-- `pension`: `requiredPotAtToday`, `projectedPotAtToday`, `yearlyExtra`, `reachedCap`, `gapLeftOver`, `extraOverTheLife`, `headroomYearly`.
-- `neededThisYear`, `shortfall`, `spare`.
-- `paidOutOverLife`: `mortgage`, `college`, `retirement`, `total`.
-- `states`: per goal, in the client's priority order, covered, partly covered or not covered.
+- `pension`: `requiredPotAtToday`, `projectedPotAtToday`, `yearlyExtra` (gross, what goes into the pension), `yearlyExtraTaxRelief`, `yearlyExtraCost` (after relief, what the household pays), `reachedCap`, `gapLeftOver`, `extraOverTheLife`, `headroomYearly`.
+- `neededThisYear`, `shortfall`, `spare`. These use `yearlyExtraCost`.
+- `paidOutOverLife`: `mortgage`, `college`, `retirement` (the household's own contributions after relief), `total`.
+- `states`: per goal, in the method's order (see Goal order), covered, partly covered or not covered.
 - `ledger[]`: each year's mortgage change, each child, pension, total, and the difference from what is left over.
 - `laterRetirement`: the same measures at the later option.
 
@@ -145,21 +165,23 @@ Everything on screen is addressed to the household as "you", and is derived from
 | Goal rows | Your mortgage cleared by 60; College, first child; College, second child; You retire at 62 on €50,000 a year |
 | Panel titles | Your money now; Your money each year; What you have; What your goals need |
 | States | Covered, Partly covered, Not covered, always beside their colour |
+| Order line (assumptions table) | Your goals are taken in this order: the costs that come soonest, then your mortgage, then retirement. |
+| Pension line (assumptions table) | Pension contributions count at what they cost you after income tax relief. Your pension grows on the full amount paid in. |
 
 Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", or the name of any product or provider. The page says what is and what each case would change.
 
 ## Undecided
 
-1. **What "current position" means.** Built as "cash stays as it is, every goal still pursued from yearly money". The alternative is "nothing changes": an 18-year mortgage, no college fund, today's contributions, which would measure the shortfall against goals the household has not yet started.
+1. **What "current position" means: decided 13 October.** In a plan, the current position is "nothing changes" (today's mortgage, contributions and savings), and the plan view shows it. This module keeps case 1 as built ("cash stays as it is, every goal still pursued from yearly money") and does not call it the current position.
 2. **The later retirement option: decided.** It stays priced beside every case and is never attached to one. Each case differs by one thing, the use of cash. Combining a cash use with a later retirement belongs to the plan-level routes, which come later.
 3. **The side-by-side picture.** Both measures are built in the engine and not drawn. How "paid out over the life of the goals" sits on the screen without becoming a second headline is a design task, and it waits on the red "short" state, which is not designed.
-4. **Where the priorities come from.** Goals in the planner profile carry a `priority` (high, medium, low). Whether the adapter orders by that, and how ties are broken, is not decided. In Stage 1 the payload states the order.
+4. **Where the order comes from: decided 13 October.** From the planning method, fixed in the engine (see Goal order). The profile's `priority` (high, medium, low) does not order these goals.
 5. **Left over each year.** Stated and constant (nominal) for every year. In a plan it will be the Household cash flow result's left-over figure; the field name is taken from that module when it lands.
 6. **Part lump sums.** College takes an equal share across children; the pension search adds the same points of salary for both people from today. Per-person or per-child choices are not designed.
 7. **One-off money on its own.** Doing both goals from cash would need €105,609 against €60,000 now. The screen does not show that shortfall.
 8. **Retirement inside "paid out".** The household's own contributions are the same in every case at one target, so they lift the total without separating the cases. They are listed as a component so a screen can leave them out.
 9. **Frames: not redrawn yet, by decision.** C1 and C2 are stale against this brief, A, B and the phone frame are not redrawn on engine figures, C2 starts on the wrong case, and nothing has been checked in a browser. All of it waits on the red "short" state.
-10. **Provisional figures.** When `module/future-cost-fund` is merged into `main`, merge `main` into this branch, rerun the script and replace the provisional figures. `main` is not touched from this branch.
+10. **Provisional figures.** `module/future-cost-fund` is merged into `main` (PR #55). Merge `main` into this branch, make the two changes decided on 13 October, rerun the script and replace the provisional figures. `main` is not touched from this branch.
 
 ## Out of scope
 
