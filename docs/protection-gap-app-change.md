@@ -1,6 +1,6 @@
 # Protection gap: if one income stopped, how big is the hole and how long would savings fill it?
 
-Status: design chosen (option C, "the months", with the money-in bar split into the State floor and take-home), decisions confirmed 2026-10-13, not started. Stage 1 only. Build after the future cost fund screen has landed, and copy its wiring.
+Status: design chosen (option C, "the months", with the money-in bar split into the State floor and take-home), decisions confirmed 2026-10-13, not started. Stage 1 only. The engine can be built now; the screen and wiring wait for the future cost fund screen and copy its wiring (changed 13 October, evening).
 
 ## Context
 
@@ -61,7 +61,8 @@ Confirmed 2026-10-13 unless marked.
 
 ## Before you write code
 
-- Wait until the future cost fund screen has landed. It sets the pattern for wiring a new engine module. Pull `main`, then work on `module/protection-gap`. Do not build on another module's branch.
+- **The engine first, now.** `js/protection_gap_math.js`, `js/tests_protection_gap_math.js` and `scripts/check-protection-gap.mjs` touch no wiring, so they can be built before the future cost fund screen lands. Pull `main`, then work on `module/protection-gap`. Do not build on another module's branch.
+- **The screen and wiring wait** until the future cost fund screen has landed. It sets the pattern for wiring a new engine module.
 - Copy its wiring file by file: `js/state.js`, `js/render.js`, `js/app.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, its preview page, its check script, and the `package.json` and workflow lists. Reuse its motion rule, hysteresis and words check rather than writing new ones. Read `docs/future-cost-fund-app-change.md` for the discipline (a pure layout function, one motion clock, two fixtures).
 - Read `js/repayment_case_module.js` end to end. It is the closest precedent: same clock (`CLICK_MS`), same settling discipline, same `build...Module({ rawInputs, selectedCaseId, onSelectCase })` shape, same standalone preview (`dev/repayment-module-preview.html`).
 - Read `docs/household-cash-flow-app-change.md`. It will be the source of these figures in a plan, and it touches the same wiring files.
