@@ -1,6 +1,6 @@
 # Goals and resources: can the money do everything you want, and what has to give?
 
-Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are from a run on merged `main` (13 October 2026, after PR #55), with pension money counted after income tax relief and goals taken in the planning method's order. The module itself (payload, engine entry, screen, wiring) is not started.
+Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are from a run on merged `main` (13 October 2026, after PR #55), with pension money counted after income tax relief and goals taken in the planning method's order. The engine `js/goals_and_resources_math.js` is built and tested and runs in about 0.55 s. The screen and the wiring are not started.
 
 ## Changes decided 13 October 2026, evening
 
@@ -47,6 +47,14 @@ Things to know before using them:
 `scripts/price-goal-cases.mjs` (`node scripts/price-goal-cases.mjs`, or `--json`). It carries the illustrative household as a constant, prices every way of using the cash through the three engines, and picks the four cases.
 
 It imports `js/future_cost_fund_math.js` (on `main` since PR #55) and the tax engine's `computeTaxYear`, which it uses to cost each year's contributions after income tax relief.
+
+### The engine
+
+- `js/goals_and_resources_math.js`: `normalizeGoalsAndResourcesInputs`, `computeGoalsAndResourcesProjection(rawInputs, options)`, `getGoalsAndResourcesCases`, `getDefaultGoalsAndResourcesScenarioId`. Case ids are stable: `cash-stays`, `college-today`, `mortgage-all-cash`, `mortgage-then-college` for the sample household.
+- **A helper in the retirement module.** `computePersonalContributionCosts(rawInputs)` in `js/pension_math.js` is additive: what the household's own personal contributions cost each year after income tax relief, from the tax engine. It reuses the module's own item-building (`householdTaxItemsAtYear`, extracted from `buildContributionNetCosts`, so the two describe the same household) and its relief limit. Nothing the retirement module shows has changed. Its two tests are in `js/tests_pension_math.js`.
+- **The search.** The projected pot is exactly linear in the contribution below the relief cap (the same slope to the euro at every point), so a bracketed secant step closes the gap in two to four runs, with bisection only if a step leaves the bracket. The figures are exact to the euro.
+- **Tests.** `js/tests_goals_and_resources_math.js` (8 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. Under a second.
+- Not built: the screen, `state.js`/`render.js`/`app.js`/presenter/video wiring, and listing the check in the CI workflows.
 
 ### The illustrative household
 
@@ -99,9 +107,9 @@ The two measures disagree. Case 2 needs the least this year; case 3 pays out €
 
 The later option, priced beside every case: needed this year is €10,797, €4,081, €5,471 and €5,137 for cases 1 to 4, and paid out over the life is €666,495, €666,173, €646,608 and €651,181. At 65 on €46,000 retirement needs nothing extra, so cases 2, 3 and 4 are no longer short (€1,919, €529 and €863 to spare); case 1 is still short by €4,797.
 
-## The contract (proposed, not built)
+## The contract (engine built; screen and wiring not started)
 
-`generated.goalsAndResourcesInputs`. Engine in `js/goals_and_resources_math.js`, to be the script's logic moved into a function with the same outputs.
+`generated.goalsAndResourcesInputs`. Engine in `js/goals_and_resources_math.js`. `scripts/price-goal-cases.mjs` is a thin caller of it, so there is one implementation.
 
 | Field | Type | Rule |
 |---|---|---|

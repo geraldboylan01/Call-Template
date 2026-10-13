@@ -1,0 +1,276 @@
+// Goals and resources: the engine, proved against an independent reference.
+//
+// The reference below takes nothing from `js/goals_and_resources_math.js`.
+//
+//   mortgage   a plain annuity at a fixed number of months, never the mortgage
+//              engine's schedule
+//   college    each child rebuilt year by year, the amounts found by bisection,
+//              as scripts/check-future-cost-fund.mjs does
+//   pensions   the engine's own answer is run back through the retirement
+//              module: it must close the gap, and a hundredth of a point less
+//              must not. Relief is the tax engine's difference, taken directly.
+//   states     the yearly money handed out by hand, in the planning order
+//
+// This is how check-college-funding-audit.mjs and check-future-cost-fund.mjs
+// prove their engines.
+
+import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
+
+import { computeGoalsAndResourcesProjection } from '../js/goals_and_resources_math.js';
+import {
+  GOALS_AND_RESOURCES_EXPECTED,
+  GOALS_AND_RESOURCES_SAMPLE,
+  runGoalsAndResourcesTests
+} from '../js/tests_goals_and_resources_math.js';
+import { computePensionProjection } from '../js/pension_math.js';
+import { computeTaxYear } from '../js/planning/tax/engine.js';
+import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
+import { resolveTaxRules } from '../js/planning/tax/resolve.js';
+
+let failures = 0;
+
+function check(name, fn) {
+  try {
+    fn();
+    console.info(`[GoalsAndResourcesAudit] PASS: ${name}`);
+  } catch (error) {
+    failures += 1;
+    console.error(`[GoalsAndResourcesAudit] FAIL: ${name}\n    ${error.message}`);
+  }
+}
+
+const near = (actual, expected, tolerance, label) => {
+  assert.ok(Math.abs(actual - expected) <= tolerance, `${label}: ${actual} vs ${expected} (± ${tolerance})`);
+};
+
+const H = GOALS_AND_RESOURCES_SAMPLE;
+
+// ----------------------------------------------------------------- mortgage ---
+
+const annuity = (balance, annualRate, months) => {
+  const i = annualRate / 12;
+  return balance * i / (1 - (1 + i) ** -months);
+};
+const MONTHS_TODAY = Math.round(H.mortgage.remainingTermYears * 12);
+const MONTHS_CLEARED = (H.mortgage.clearByAge - H.mortgage.currentAge) * 12;
+const todayPayment = annuity(H.mortgage.currentBalance, H.mortgage.annualInterestRate, MONTHS_TODAY);
+const clearedPayment = (lump) => annuity(H.mortgage.currentBalance - lump, H.mortgage.annualInterestRate, MONTHS_CLEARED);
+
+// ------------------------------------------------------------------ college ---
+
+const PRICE_RATE = 0.04;
+const CASH_NET = 0.002 * (1 - 0.33);
+
+function simulate({ lump, yearly, startsIn, duration, annualCost }) {
+  let balance = 0;
+  let lowest = Infinity;
+  for (let year = 0; year < startsIn + duration; year += 1) {
+    if (year > 0) balance *= 1 + CASH_NET;
+    if (year === 0) balance += lump;
+    if (year < startsIn) balance += yearly;
+    if (year >= startsIn) balance -= annualCost * (1 + PRICE_RATE) ** year;
+    lowest = Math.min(lowest, balance);
+  }
+  return lowest;
+}
+
+function bisect(fn, low, high) {
+  let a = low;
+  let b = high;
+  for (let i = 0; i < 200; i += 1) {
+    const mid = (a + b) / 2;
+    if (fn(mid) >= 0) b = mid;
+    else a = mid;
+  }
+  return (a + b) / 2;
+}
+
+function collegeReference(shareOfCash, children) {
+  const duration = PLANEIR_ASSUMPTIONS.collegeFunding.durationYears;
+  const annualCost = 5_000;
+  const perChild = children.map((child) => {
+    const startsIn = 18 - child.age;
+    const required = bisect(
+      (lump) => simulate({ lump, yearly: 0, startsIn, duration, annualCost }),
+      0,
+      annualCost * duration * 4
+    );
+    return { startsIn, required };
+  });
+  const totalRequired = perChild.reduce((sum, child) => sum + child.required, 0);
+  const share = Math.min(1, shareOfCash / totalRequired);
+  const priced = perChild.map((child) => {
+    const lump = share * child.required;
+    const yearly = share >= 1
+      ? 0
+      : bisect(
+        (amount) => simulate({ lump, yearly: amount, startsIn: child.startsIn, duration, annualCost }),
+        0,
+        annualCost * duration * 4
+      );
+    return { ...child, lump, yearly, paidIn: lump + yearly * child.startsIn };
+  });
+  return {
+    totalRequired,
+    lump: priced.reduce((sum, child) => sum + child.lump, 0),
+    yearly: priced.reduce((sum, child) => sum + child.yearly, 0),
+    paidIn: priced.reduce((sum, child) => sum + child.paidIn, 0),
+    priced
+  };
+}
+
+// ----------------------------------------------------------------- pensions ---
+
+const pensionPayload = (target, extra) => ({
+  currentYear: 2026,
+  incomeMode: 'target',
+  targetIncomeToday: target.targetIncomeToday,
+  targetIncomeBasis: 'net',
+  householdTaxStatus: H.householdTaxStatus,
+  pensions: H.pensions.map((person) => ({
+    ...person,
+    retirementAge: target.retirementAge,
+    personalPct: Math.max(0, person.personalPct + extra)
+  }))
+});
+
+const incomeTaxFor = (extra) => computeTaxYear({
+  input: {
+    year: 2026,
+    status: H.householdTaxStatus,
+    people: H.pensions.map((person) => ({ id: person.id, age: person.currentAge })),
+    items: H.pensions.flatMap((person) => ([
+      { personId: person.id, type: 'employment', amount: person.currentSalary },
+      { personId: person.id, type: 'employmentPensionContribution', amount: (person.personalPct + extra) * person.currentSalary }
+    ]))
+  }
+}).result.totals.totalTax;
+
+// ------------------------------------------------------------------- checks ---
+
+const started = performance.now();
+const result = computeGoalsAndResourcesProjection(H);
+const elapsed = performance.now() - started;
+const { debug } = result;
+
+check('the central values the engine reads are the ones the brief settled', () => {
+  assert.equal(PLANEIR_ASSUMPTIONS.inflation.educationRate, PRICE_RATE);
+  assert.equal(PLANEIR_ASSUMPTIONS.cash.instantAccessGrossRate, 0.002);
+  assert.equal(resolveTaxRules(2026).dirt.rate, 0.33);
+});
+
+check('the whole run takes under a second', () => {
+  assert.ok(elapsed < 1000, `took ${elapsed.toFixed(0)} ms`);
+  console.info(`[GoalsAndResourcesAudit] the engine ran in ${elapsed.toFixed(0)} ms`);
+});
+
+check('mortgage: every repayment, lump sum and total matches a plain annuity', () => {
+  const i = H.mortgage.annualInterestRate / 12;
+  const whole = H.mortgage.currentBalance - todayPayment * (1 - (1 + i) ** -MONTHS_CLEARED) / i;
+  near(debug.wholeMortgageLump, whole, 0.01, 'the lump sum that clears it by 60 at today\'s repayment');
+  near(debug.mortgageToday.todayMonthlyPayment, todayPayment, 1e-6, 'today\'s repayment');
+  debug.cases.forEach((entry) => {
+    const payment = clearedPayment(entry.mortgageLump);
+    near(entry.mortgage.monthlyPayment, payment, 1e-6, `${entry.id}: repayment`);
+    near(entry.mortgage.yearlyChange, 12 * (payment - todayPayment), 0.01, `${entry.id}: yearly change`);
+    near(entry.mortgage.totalPaidOverTheLoan, entry.mortgageLump + payment * MONTHS_CLEARED, 0.5, `${entry.id}: paid over the loan`);
+  });
+});
+
+check('college: every lump sum, yearly amount and total paid in matches a year-by-year rebuild', () => {
+  const whole = collegeReference(Infinity, H.children);
+  near(debug.wholeCollege.requiredToday, whole.totalRequired, 0.01, 'both children funded today');
+  debug.cases.forEach((entry) => {
+    const reference = collegeReference(entry.collegeLump, H.children);
+    near(entry.college.lumpSumToday, reference.lump, 0.01, `${entry.id}: lump sum`);
+    near(entry.college.yearlyAmountNow, reference.yearly, 0.01, `${entry.id}: yearly`);
+    near(entry.college.paidIn, reference.paidIn, 0.05, `${entry.id}: paid in`);
+    entry.college.perChild.forEach((child, index) => {
+      near(child.yearlyAmount, reference.priced[index].yearly, 0.01, `${entry.id}: ${child.title} yearly`);
+    });
+  });
+});
+
+check('pensions: the engine\'s answer closes the gap, a hundredth of a point less does not', () => {
+  const base = debug.retirement.base;
+  const closed = computePensionProjection(pensionPayload(H.retirement, base.extraPoints)).debug;
+  assert.equal(closed.currentGapVsRequired, 0, 'closes at the engine\'s answer');
+  const rawGap = closed.requiredPot - closed.projectedPotCurrent;
+  assert.ok(rawGap <= closed.requiredPotDepletionTolerance && rawGap > closed.requiredPotDepletionTolerance - 1,
+    `the gap sits within a euro of the tolerance (${rawGap})`);
+  const short = computePensionProjection(pensionPayload(H.retirement, base.extraPoints - 0.0001)).debug;
+  assert.ok(short.currentGapVsRequired > 0, 'a hundredth of a point less does not close it');
+});
+
+check('pensions: the extra is gross, and its relief is the tax engine\'s difference', () => {
+  const base = debug.retirement.base;
+  const salary = H.pensions.reduce((sum, person) => sum + person.currentSalary, 0);
+  near(base.yearlyExtra, base.extraPoints * salary, 0.01, 'gross extra');
+  const relief = incomeTaxFor(0) - incomeTaxFor(base.extraPoints);
+  near(base.yearlyExtraTaxRelief, relief, 0.01, 'relief on the extra');
+  near(base.yearlyExtraCost, base.extraPoints * salary - relief, 0.01, 'cost after relief');
+});
+
+check('pensions: at the relief limit the gap left over is reported and the goal is not covered', () => {
+  const stretched = computeGoalsAndResourcesProjection({
+    ...H,
+    retirement: { retirementAge: 62, targetIncomeToday: 200_000 }
+  });
+  const base = stretched.debug.retirement.base;
+  assert.equal(base.reachedCap, true);
+  near(base.extraPoints, 0.25 - 0.05, 1e-9, 'the cap is the age band less the lower contribution');
+  assert.ok(base.gapLeftOver > 0, 'a gap is left');
+  const at = computePensionProjection(pensionPayload({ retirementAge: 62, targetIncomeToday: 200_000 }, base.extraPoints)).debug;
+  near(base.gapLeftOver, at.currentGapVsRequired, 1, 'the gap left over is the engine\'s');
+  stretched.debug.cases.forEach((entry) => {
+    const retirement = entry.states.find((goal) => goal.goal === 'retirement');
+    assert.notEqual(retirement.state, 'covered', `${entry.id}: retirement is not covered`);
+  });
+});
+
+check('states: the yearly money handed out by hand in the planning order', () => {
+  debug.cases.forEach((entry) => {
+    const mortgageYearly = 12 * (clearedPayment(entry.mortgageLump) - todayPayment);
+    const reference = collegeReference(entry.collegeLump, H.children);
+    const needs = [
+      reference.priced[0].yearly,
+      reference.priced[1].yearly,
+      Math.max(0, mortgageYearly),
+      entry.pension.yearlyExtraCost
+    ];
+    let remaining = H.leftOverEachYear + Math.max(0, -mortgageYearly);
+    const expected = needs.map((need, index) => {
+      const covered = Math.max(0, Math.min(need, remaining));
+      remaining -= covered;
+      let state = need <= 0.5 || covered >= need - 0.5 ? 'covered' : (covered <= 0 ? 'not' : 'partly');
+      if (index === 3 && entry.pension.reachedCap && state === 'covered') state = 'partly';
+      return state;
+    });
+    assert.deepEqual(entry.states.map((goal) => goal.state), expected, `${entry.id}: states`);
+  });
+});
+
+check('the brief\'s tables are reproduced to the euro', () => {
+  GOALS_AND_RESOURCES_EXPECTED.cases.forEach((want, index) => {
+    const entry = debug.cases[index];
+    assert.equal(entry.id, want.id);
+    assert.equal(Math.round(entry.neededThisYear), want.needed, `${want.id}: needed this year`);
+    assert.equal(Math.round(entry.paidOutOverLife.total), want.life, `${want.id}: paid out over the life`);
+    assert.equal(Math.round(entry.laterRetirement.neededThisYear), want.laterNeeded, `${want.id}: later needed`);
+    assert.equal(Math.round(entry.laterRetirement.paidOutOverLife.total), want.laterLife, `${want.id}: later paid out`);
+  });
+});
+
+// The unit suite, run here so one command proves both.
+const summary = runGoalsAndResourcesTests();
+if (summary.failed > 0) {
+  failures += summary.failed;
+}
+
+if (failures > 0) {
+  console.error(`[GoalsAndResourcesAudit] ${failures} check(s) failed.`);
+  process.exit(1);
+}
+
+console.info('[GoalsAndResourcesAudit] the engine matches the independent reference and the unit suite passes.');

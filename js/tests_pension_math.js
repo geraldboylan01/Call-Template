@@ -1,5 +1,6 @@
 import {
   computePensionProjection,
+  computePersonalContributionCosts,
   getPensionScenarioCases,
   normalizePensionInputs
 } from './pension_math.js';
@@ -1573,6 +1574,42 @@ export function runPensionMathTests() {
     const taxed = JSON.parse(JSON.stringify(normalizePensionInputs(TAXED_COUPLE_INPUTS)));
     assert(taxed.pensions[0].lumpSum.mode === 'max' && taxed.pensions[0].priorLumpSumsSince2005 === 50000, 'Member tax inputs are kept');
     assert(computePensionProjection(taxed).debug.requiredPot === computePensionProjection(TAXED_COUPLE_INPUTS).debug.requiredPot, 'A stored taxed payload computes the same');
+  }));
+
+  cases.push(runCase('Personal contributions cost what the retirement module says they cost, every working year', () => {
+    const costs = computePersonalContributionCosts(BASE_TARGET_INPUTS);
+    const projection = computePensionProjection(BASE_TARGET_INPUTS);
+    const [entry] = projection.debug.tax.contributionNetCosts;
+    assert(costs.available === true, 'A single earner has a tax setup');
+    assert(costs.years.length === 25, 'One entry for each year to retirement');
+    assertApprox(costs.years[0].gross, entry.current.contribution, 0.01, 'The first year puts in what the module says');
+    assertApprox(costs.years[0].relief, entry.current.relief, 0.01, 'The first year gets the relief the module says');
+    assertApprox(costs.years[0].cost, entry.current.annual, 0.01, 'The first year costs what the module says');
+    const simulated = projection.debug.currentScenario.personalEurSeries.reduce((sum, value) => sum + value, 0);
+    assertApprox(costs.totals.gross, simulated, 0.01, 'Gross is what the pension engine puts in');
+    assertApprox(costs.totals.cost, costs.totals.gross - costs.totals.relief, 0.01, 'Cost is gross less relief');
+    assert(costs.years.every((year) => year.relief > 0 && year.cost < year.gross), 'Every year gets relief');
+  }));
+
+  cases.push(runCase('A couple on the higher rate gets 40% relief on every personal contribution, jointly assessed', () => {
+    const couple = {
+      currentYear: 2026,
+      incomeMode: 'target',
+      targetIncomeToday: 60000,
+      householdTaxStatus: 'married_or_civil_partners',
+      pensions: [
+        { id: 'a', title: 'A', currentAge: 45, retirementAge: 62, currentSalary: 90000, currentPot: 100000, personalPct: 0.06, employerPct: 0.05 },
+        { id: 'b', title: 'B', currentAge: 45, retirementAge: 60, currentSalary: 80000, currentPot: 50000, personalPct: 0.05, employerPct: 0.05 }
+      ]
+    };
+    const costs = computePersonalContributionCosts(couple);
+    assert(costs.available === true && costs.status === 'married_or_civil_partners', 'Assessed jointly');
+    assert(costs.years.length === 17, 'Runs to the later retirement year');
+    assertApprox(costs.years[0].gross, 0.06 * 90000 + 0.05 * 80000, 0.01, 'Both people put in');
+    assertApprox(costs.years[0].relief, 0.4 * costs.years[0].gross, 0.01, 'Both are on the higher rate');
+    const last = costs.years[costs.years.length - 1];
+    assert(last.members.find((member) => member.id === 'b').gross === 0, 'The earlier retirement stops contributing');
+    assert(last.members.find((member) => member.id === 'a').gross > 0, 'The later retirement is still contributing');
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;
