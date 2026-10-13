@@ -46,6 +46,7 @@ import { IE_TAX_FIRST_YEAR } from './planning/tax/rules_ie.js';
 
 const FIELD = 'generated.futureCostFundInputs';
 const COST_KINDS = Object.freeze(['education', 'general']);
+const MAX_STARTS_IN_YEARS = 100;
 const MAX_DURATION_YEARS = 30;
 const MAX_TITLE_LENGTH = 60;
 const CLOSING_BALANCE_TOLERANCE_EUR = 0.01;
@@ -194,7 +195,8 @@ export function normalizeFutureCostFundInputs(raw) {
 
   const startsInYears = requireWholeYears(raw.startsInYears, 'startsInYears', {
     min: 1,
-    rangeText: ', at least 1'
+    max: MAX_STARTS_IN_YEARS,
+    rangeText: ` from 1 to ${MAX_STARTS_IN_YEARS}`
   });
   const durationYears = requireWholeYears(raw.durationYears, 'durationYears', {
     min: 1,
