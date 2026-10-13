@@ -30,7 +30,7 @@ Design canvas (private link): https://claude.ai/artifact/9gArzoeM5VZDqnHN5Ld5Fp
 
 Things to know before using them:
 
-- **They are stale against this brief.** C1 embeds the output for the *previous* illustrative household (pots €180,000 and €90,000, targets €45,000 and €42,000, cases ranked by yearly need). They need redrawing on the figures below, and they show only "needed this year". The two measures side by side are not drawn.
+- **They are stale against this brief, on purpose.** C1 embeds the output for the *previous* illustrative household (pots €180,000 and €90,000, targets €45,000 and €42,000, cases ranked by yearly need), and shows only "needed this year". They are **not redrawn yet, by decision**: every case is now short, and the red "short" state has not been designed. The frames are redrawn once that state exists, with both measures side by side. Until then the brief wins over the frames.
 - They embed the script's output as literals in their own script block, so they are a drawing of an engine answer, not a reference implementation.
 - They have not been opened and checked in a browser. Text fit and label collisions in the "money each year" ledger are unchecked.
 - Where this brief and a frame disagree, the brief wins. Tell me which.
@@ -151,15 +151,15 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 ## Undecided
 
 1. **What "current position" means.** Built as "cash stays as it is, every goal still pursued from yearly money". The alternative is "nothing changes": an 18-year mortgage, no college fund, today's contributions, which would measure the shortfall against goals the household has not yet started.
-2. **The later retirement option.** Built beside every case rather than attached to case 4, so the four cases differ only by cash use. Say if it should be one of the four.
-3. **The side-by-side picture.** Both measures are built in the engine and not drawn. How "paid out over the life of the goals" sits on the screen without becoming a second headline is a design task.
+2. **The later retirement option: decided.** It stays priced beside every case and is never attached to one. Each case differs by one thing, the use of cash. Combining a cash use with a later retirement belongs to the plan-level routes, which come later.
+3. **The side-by-side picture.** Both measures are built in the engine and not drawn. How "paid out over the life of the goals" sits on the screen without becoming a second headline is a design task, and it waits on the red "short" state, which is not designed.
 4. **Where the priorities come from.** Goals in the planner profile carry a `priority` (high, medium, low). Whether the adapter orders by that, and how ties are broken, is not decided. In Stage 1 the payload states the order.
 5. **Left over each year.** Stated and constant (nominal) for every year. In a plan it will be the Household cash flow result's left-over figure; the field name is taken from that module when it lands.
 6. **Part lump sums.** College takes an equal share across children; the pension search adds the same points of salary for both people from today. Per-person or per-child choices are not designed.
 7. **One-off money on its own.** Doing both goals from cash would need €105,609 against €60,000 now. The screen does not show that shortfall.
 8. **Retirement inside "paid out".** The household's own contributions are the same in every case at one target, so they lift the total without separating the cases. They are listed as a component so a screen can leave them out.
-9. **Frames.** C1 and C2 are stale against this brief; A, B and the phone frame are not redrawn on engine figures; C2 starts on the wrong case; nothing has been checked in a browser.
-10. **Provisional figures.** Rerun after `module/future-cost-fund` is merged into `main` and `main` is merged into this branch.
+9. **Frames: not redrawn yet, by decision.** C1 and C2 are stale against this brief, A, B and the phone frame are not redrawn on engine figures, C2 starts on the wrong case, and nothing has been checked in a browser. All of it waits on the red "short" state.
+10. **Provisional figures.** When `module/future-cost-fund` is merged into `main`, merge `main` into this branch, rerun the script and replace the provisional figures. `main` is not touched from this branch.
 
 ## Out of scope
 
