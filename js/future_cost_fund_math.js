@@ -81,17 +81,17 @@ function requireWholeYears(value, fieldName, { min, max = Infinity, rangeText })
 }
 
 /** "4%" when whole, otherwise at most two decimals ("0.2%", "0.13%"). */
-function percentText(decimal) {
+export function percentText(decimal) {
   const percent = decimal * 100;
   const rounded = Math.round(percent * 100) / 100;
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}%`;
 }
 
-function euroText(amount) {
+export function euroText(amount) {
   return `€${Math.round(amount).toLocaleString('en-IE')}`;
 }
 
-function roundToHundred(amount) {
+export function roundToHundred(amount) {
   return Math.round(amount / 100) * 100;
 }
 

@@ -18,6 +18,7 @@ import {
   designFixtureOptions,
   runFutureCostFundTests
 } from '../js/tests_future_cost_fund_math.js';
+import { runFutureCostFundViewTests } from '../js/tests_future_cost_fund_view.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 
@@ -199,10 +200,15 @@ check('the published tables in the spec are reproduced to the nearest €100', (
   assert.deepEqual(rows.map((row) => row[5]), FUTURE_COST_FUND_EXPECTED.central.growth);
 });
 
-// The unit suite, run here so one command proves both.
+// The unit suites, run here so one command proves the engine and the view.
 const summary = runFutureCostFundTests();
 if (summary.failed > 0) {
   failures += summary.failed;
+}
+
+const viewSummary = runFutureCostFundViewTests();
+if (viewSummary.failed > 0) {
+  failures += viewSummary.failed;
 }
 
 if (failures > 0) {
@@ -210,4 +216,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[FutureCostFundAudit] the engine matches the independent reference and the unit suite passes.');
+console.info('[FutureCostFundAudit] the engine matches the independent reference and the unit suites pass.');
