@@ -13,8 +13,8 @@
  * rebuilding the calculation engines.
  */
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.2.0';
-export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-07-30';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.3.0';
+export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-13';
 
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
   version: PLANEIR_ASSUMPTIONS_VERSION,
@@ -34,6 +34,37 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
     /** Education costs, deliberately higher than general inflation. */
     educationRate: 0.04,
     educationBasis: 'Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education planning.'
+  }),
+
+  cash: Object.freeze({
+    /** Gross, before DIRT. DIRT itself lives in the tax catalogue, not here. */
+    instantAccessGrossRate: 0.002,
+    basis: 'A 0.2% interest rate is used for money held in instant-access cash. It is the rounded average of the standard instant-access rates two large Irish retail banks quoted in October 2026, before DIRT.',
+    disclosure: 'This is a planning assumption, not a quoted rate. Banks can change instant-access rates at any time, and regular-saver and notice accounts pay more.',
+    /**
+     * The two rates the figure was averaged from, for the audit trail only.
+     * Nothing here reaches a client-facing string, which is why `basis` does
+     * not name the banks.
+     */
+    observed: Object.freeze([
+      Object.freeze({
+        provider: 'Bank of Ireland',
+        product: 'Instant Access Demand / Demand Deposit',
+        quotedRate: 0.001,
+        quotedAs: 'AER, variable, gross of DIRT',
+        effective: '2026-09-14',
+        url: 'https://personalbanking.bankofireland.com/save-and-invest/savings/bank-of-ireland-deposit-rates/'
+      }),
+      Object.freeze({
+        provider: 'AIB',
+        product: 'Personal Demand Deposit Account',
+        quotedRate: 0.0025,
+        quotedAs: 'AER and gross annual interest rate',
+        effective: '2025-05-13',
+        url: 'https://aib.ie/our-products/savings-and-deposits/Deposit-Rates'
+      })
+    ]),
+    checkedOn: '2026-10-13'
   }),
 
   collegeFunding: Object.freeze({
@@ -111,8 +142,13 @@ export function approvedCollegeScenarios() {
  * sees can name the assumption behind it and its version.
  */
 export function assumptionRecord(key) {
-  const { investment, inflation, collegeFunding, version } = PLANEIR_ASSUMPTIONS;
+  const { investment, inflation, collegeFunding, cash, version } = PLANEIR_ASSUMPTIONS;
   const records = {
+    cashRate: {
+      key: 'cashGrowthRate',
+      value: cash.instantAccessGrossRate,
+      reason: `${cash.basis} ${cash.disclosure} (${version})`
+    },
     investmentGrowth: {
       key: 'investmentGrowthRate',
       value: investment.nominalGrowthRate,
@@ -172,6 +208,7 @@ const ASSUMPTION_LABELS = Object.freeze({
   investmentGrowthRate: 'Long-run investment growth rate',
   inflationRate: 'General inflation rate',
   educationInflationRate: 'Education cost inflation rate',
+  cashGrowthRate: 'Interest on money held in cash',
   collegeStartAge: 'College starting age',
   collegeDurationYears: 'Number of years of college',
   collegeAnnualCostsToday: 'Standard college costs in today’s money',
