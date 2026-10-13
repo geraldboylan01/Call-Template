@@ -19,6 +19,7 @@ import {
   runFutureCostFundTests
 } from '../js/tests_future_cost_fund_math.js';
 import { runFutureCostFundViewTests } from '../js/tests_future_cost_fund_view.js';
+import { runFutureCostFundModuleTests } from '../js/tests_future_cost_fund_module.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 
@@ -211,9 +212,15 @@ if (viewSummary.failed > 0) {
   failures += viewSummary.failed;
 }
 
+// The module itself, driven against a small DOM shim and a fake clock.
+const moduleSummary = await runFutureCostFundModuleTests();
+if (moduleSummary.failed > 0) {
+  failures += moduleSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[FutureCostFundAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[FutureCostFundAudit] the engine matches the independent reference and the unit suites pass.');
+console.info('[FutureCostFundAudit] the engine matches the independent reference and the engine, view and module suites pass.');
