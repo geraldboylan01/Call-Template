@@ -1,6 +1,8 @@
 # Household cash flow: what is left each year, and what would change it
 
-Status: design chosen 2026-10-13 (the staircase on a wide screen, the single bar on a phone), decisions D1 to D5 settled 2026-10-13, D6 to confirm, not started. Stage 1 only.
+Status: design chosen 2026-10-13 (the staircase on a wide screen, the single bar on a phone), decisions D1 to D6 settled 2026-10-13, not started. Stage 1 only.
+
+If this file ever conflicts with another copy of it on `main`, this branch's version wins (decided 2026-10-13).
 
 ## Context
 
@@ -33,7 +35,7 @@ The canvas also holds frames you must **not** build: the single bar and the narr
 Five things to know before you use the frames:
 
 - They were drawn with **design fixture figures** (tax 48,000 and 44,000), not figures from the tax engine. See "What the sample does in the engine". Their numbers are not what the module will show with engine tax.
-- **Their words are superseded.** They were drawn before the voice was settled (D5) and speak about "Niamh and Dara" in the third person. Take geometry and structure from the frames and every word from this brief.
+- **Their words are superseded, and they are not being redrawn yet.** They were drawn before the voice was settled (D5) and speak about "Niamh and Dara" in the third person. They will be redrawn together with the red "short" state (D3), which is next. Until then take geometry and structure from the frames and every word from this brief, and where the two disagree the brief wins.
 - They were built in the design tool and have **not been opened and checked in a browser**. Treat them as a drawing, not a reference implementation.
 - They draw no footnote. One is required here (see Words), and it is the only element on screen that is not in a frame.
 - Where this brief and a frame disagree, the brief wins. Say which.
@@ -49,7 +51,7 @@ It is used two ways at once. It is shared at 1920×1080 on a call while the advi
 | D3 | A case that leaves less than nothing | **Rejected on the way in, for now.** The red "short" state is being designed. It must land **before the plan work**, because plans will read households that are short. |
 | D4 | Module name | **Household cash flow**, kind `household-cash-flow`, id `household_cash_flow`. |
 | D5 | Voice | **"You" in all on-screen words.** Derived wording, headings, labels, the footnote and the assumptions table speak to the household as "you" and "your". |
-| D6 | Per-person take-home for a couple | **To confirm.** The engine assesses a couple's income tax jointly, as one figure, so per-person take-home needs an allocation rule. The default is in "The model". It is a convention, labelled as one in the output. |
+| D6 | Per-person take-home for a couple | **Settled: allocated by income share.** The engine assesses a couple's income tax jointly, as one figure, so per-person take-home needs an allocation rule. Each person's share is their income before tax over the household's. The output marks it `basis: 'allocated'` and the assumptions table says so. The rule is in "The model". |
 
 ## What the sample does in the engine
 
@@ -211,7 +213,7 @@ Also:
 - `debug.cases[]`: `id`, `title`, `description`, `changes`, `lines[]` (`{ id, label, amount, shownAmount, deltaVsToday }`), `levels[]`, `sentence`, `taxBreakdown` (`incomeTax`, `usc`, `prsi`, per person where jointly assessed the income tax is the allocated share) and `disclosureCodes`.
 - `debug.assumptionsUsed`: `IE_TAX_RULES_VERSION` read at run time, the tax year, `PLANEIR_ASSUMPTIONS_VERSION`, the household tax status and whether it was defaulted, and `taxSourceByPerson`.
 - `debug.warnings[]`: a stated take-home that differs from the estimate by more than 15%. A warning, never a rejection, because a payslip is allowed to differ.
-- The assumptions table states, in plain words and in the second person: per-year figures in today's money; **which tax was used for each person** (the disclosure line, below); pension contributions are shown after tax relief; for a couple, income tax is assessed together and each person's share is an allocation; and amounts are rounded to the nearest €100. Use the engine's own disclosure text (`renderTaxDisclosures`) for the estimated parts and do not write tax sentences of your own.
+- The assumptions table states, in plain words and in the second person: per-year figures in today's money; **which tax was used for each person** (the disclosure line, below); pension contributions are shown after tax relief; for a couple, income tax is assessed together, so each person's share is an allocation by income share and their take-home is marked `allocated` (D6); and amounts are rounded to the nearest €100. Use the engine's own disclosure text (`renderTaxDisclosures`) for the estimated parts and do not write tax sentences of your own.
 - `charts` carries **one** ordinary chart (the base case's lines in order, income at the left) for the surfaces with no module to draw for them, chiefly the video summary. This is what `repayment_case_module.js` does. The focused pane shows no charts card for this module.
 - `getHouseholdCashFlowCases(rawInputs)` returns `[{ id, title, description }]` for the presenter, like `getMortgageScenarioCases`.
 
@@ -479,6 +481,7 @@ Before finishing, run `npm run build`, `npm run check:household-cash-flow`, the 
 ## Out of scope
 
 - **The short state, and lifting the D3 rejection.** A case that leaves less than nothing needs a drawn state: a red segment, the word "Short", an overflow past income on the bar, and a floor line below zero on the staircase. The design is under way. It is a separate change and **must land before the plan work**, because the protection gap and goals modules will read households that are short. Until then `status: 'short'` exists in the type and is unreachable.
+- **Redrawing the frames.** They are redrawn with the short state, in the second person. That is a design task, not a build one, and the build does not wait for it: this brief wins until it is done.
 - **The plan adapter.** `js/planning/adapters/household_cash_flow.js`, the module registry and manifest entries, routing, goal catalogue entries and anything that makes a plan call this module. `summary` is its input and is written here. Stated take-home arriving from a profile's income facts is the adapter's job.
 - **The money used to clear a loan.** "From savings" is wording only. The balance paid off, and what it does to savings, are not in the household's figures and are not shown. If a payoff amount arrives later it needs its own row and a disclosure, and it must never be added to the yearly picture.
 - **More kinds of change.** Cutting a cost, changing income, a second pension, a one-off: each needs wording drawn and approved before it is built. Only the two designed changes exist.
