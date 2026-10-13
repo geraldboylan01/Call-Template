@@ -246,7 +246,7 @@ const PENSION_AGE_BANDS = Object.freeze([
 ]);
 
 /** Earnings above this do not attract relief, whatever the age band allows. */
-const PENSION_EARNINGS_CAP = 115_000;
+export const PENSION_EARNINGS_CAP = 115_000;
 
 /**
  * The maximum relievable personal contribution rate for an age, as a
@@ -310,7 +310,7 @@ function ageBandPct(age) {
   return 0.40;
 }
 
-function maxRelievablePersonalContribution(age, salaryAtAge) {
+export function maxRelievablePersonalContribution(age, salaryAtAge) {
   return ageBandPct(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
 }
 

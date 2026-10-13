@@ -503,6 +503,27 @@ Decided 13 October 2026, evening. A separate change, after the screen has landed
 - Decide in the plan, and say which: whether `statedTakeHome` is before or after today's contribution. A payslip's net pay is after it.
 - Give the field name, the validation strings and the new fixture in the plan, and wait for the go-ahead, as for the main change.
 
+## Build notes (engine)
+
+Built on this branch, after merging main. Files: `js/household_cash_flow_math.js`, `js/tests_household_cash_flow_math.js`, `scripts/check-household-cash-flow.mjs`. Run it with `node scripts/check-household-cash-flow.mjs`. The npm script and the workflow lists wait for the wiring stage. `js/pension_math.js` now exports `PENSION_EARNINGS_CAP` and `maxRelievablePersonalContribution`.
+
+Settled while building, and these override anything above that reads differently:
+
+- **Relief limit.** An `extraPension` above the relievable maximum is refused, with a message naming the person and the limit. A `joint` contribution is split before the limit is applied. When today's contributions arrive, the limit applies to today's plus the extra. The tax engine itself relieves any contribution in full, so this guard is the only thing that stops an overstated saving.
+- **`summary`.** Each case also carries `pensionContributions: { gross, taxRelief, costAfterRelief }`. `outgoings.pensionContributions` stays the gross figure, so the invariants are as written.
+- **Base case.** A base case that carries changes is refused.
+- **Today's contributions.** An internal per-person field, 0, not accepted from a payload yet.
+- **`"joint"` in a one-person household** is mapped to that person, for income and as the default for `extraPension`. The engine refuses it for one person.
+- **"No second tax" is proved three ways**, because `computeTaxYear` has no catalogue seam to inject a test catalogue through: (1) the module's tax equals `computeTaxYear` at test time, (2) a scan of the module's source finds no tax import beyond the engine, resolver, disclosures and `IE_TAX_FIRST_YEAR`, and no rate, band or credit literal, (3) `taxFor` is the only seam and a payload cannot reach it. Test 6 above is superseded by this.
+
+Found while building:
+
+- A couple's `joint` contribution is relieved at each person's own marginal rate, so with a low earner it can save less than 40%.
+- The engine's `TAX_ESTIMATE` disclosure says tax figures are "rounded to the nearest euro", while this screen rounds to €100. Both appear in the assumptions table. That sentence is the shared engine's, so it is reported here and not reworded.
+- The engine's disclosures say "They" of tax figures. The words test allows that in engine-owned text and is strict about text this module writes.
+
+Not built: the screen, the wiring and the plan adapter.
+
 ## When you finish
 
 End with a contract summary for the prompt pack: field names, the model and the two change kinds, where tax comes from and what a stated take-home does, the allocation convention for couples, the `summary` shape and its invariants, the rounding rule, every validation string, the derived copy templates (in the second person) and the width switch, plus the Dev Panel examples. Keep to the repo's commit style: short plain-English commits describing what the client sees change.
