@@ -19,7 +19,7 @@ They are two modules because a rental's net income and the cash freed by downsiz
 
 Nothing in the app answers either question today. They do not overlap `house_purchase` (buying with savings) or `mortgage_analysis` (changing an existing mortgage).
 
-Reference frames, in the design canvas (private link: https://claude.ai/artifact/E51jWyHBiprkbuWUuAreb7):
+Reference frames, in the Claude Design canvas "Property decisions" (private link: https://claude.ai/artifact/E51jWyHBiprkbuWUuAreb7):
 
 | Frame | File | What it shows |
 |---|---|---|
@@ -54,7 +54,7 @@ Code can start without these. Each has a default that is used if I do not answer
 - Read `js/mortgage_math.js`: `computeMonthlyPayment(principal, annualInterestRate, monthCount)` (rate is a decimal, months an integer), `getMortgageScenarioCases`, `baseScenarioId` and the scenario error strings.
 - Read `js/scenario_cap.js`, the mortgage case-selection wiring in `js/app.js` (`setMortgageScenarioForModule`, `window.__setMortgageScenario`), `js/state.js` (`normalizeGenerated`, `normalizeModuleUi`, `mortgageScenarioId`) and `js/render.js` (`buildMortgageScenarioShell`).
 - Read `js/presenter_catalogue.js` (`moduleKind`, `scenarios`), `js/video_scene.js` (`getVideoModuleKind`) and `js/codex_video_brief.js`, because a module the presenter cannot select a case in, or the video cannot describe, is half a module.
-- `docs/future-cost-fund-app-change.md` is a sibling brief for a module that is not built yet. It has the same family, the same shell and the same wiring list. If it lands first, follow what it did. If it does not, do not wait for it, and **do not build a shared shell for the three modules in this change**. Resist the refactor. Tell me if a third module makes it worth extracting.
+- `docs/future-cost-fund-app-change.md` is a sibling brief for a module being built on the `future-cost-fund` branch. It has the same family, the same shell and the same wiring list. If it lands first, follow what it did. If it does not, do not wait for it, and **do not build a shared shell for the three modules in this change**. Resist the refactor. Tell me if a third module makes it worth extracting.
 - Then give me a short plan: final field names, the file list, how the selected case is persisted, and where the pure layout functions sit. **Wait for my go-ahead before implementing.**
 
 ## Part 1: what both modules share
@@ -447,7 +447,7 @@ Before finishing, run `npm run build`, both new `check:` scripts, `check:video-s
 ## Out of scope
 
 - **Intelligent scenarios.** Choosing cases from a household's profile, deriving any figure from planner facts, consumer routing, voice, the manifest, the playbook and goal catalogue entries. I am doing that separately, and both engines take plain stated figures so it can feed them later. Follow the retirement precedent: do not edit `docs/prompt-pack/`.
-- **Calculating tax.** `taxOnRentalProfitPerYear` and `taxOnGain` are stated. Do not call the tax engine. Deriving them is a later change on top of `docs/irish-tax-app-change.md`, whose Part B designs capital gains but is not built.
+- **Calculating tax.** `taxOnRentalProfitPerYear` and `taxOnGain` are stated in Stage 1. Do not call the tax engine. Deriving them is a later change, and it is no longer blocked: capital gains tax on a property sale is in the engine (`propertyDisposal`, PR #54, `docs/cgt-property-handback.md`). Its sample is a €320,000 sale with €6,000 of costs, the same as this module's. It is more than swapping one number, because the event needs a disposal date, an acquisition date and cost, how the property was acquired and whether it was ever a home, none of which this payload carries. Tax on the rental profit has to be attributed to one property, which means running the engine with and without it and taking the difference. That is a design decision for the later change, not this one.
 - **Trading down a rental** (sell this one, buy a smaller one). Parked. It needs a rent-for-each-euro assumption that does most of the work, and the cost and tax lines do not scale with price. If it is built, it is its own module with the assumptions visible and changeable on screen, not a variant of either of these.
 - **A link between the two modules**, for example the rental's "in hand" feeding the home. It needs the existing mortgage's remaining term, which the sample does not give.
 - **Amber and "tight".** Needs a threshold. Rental results are green, red, or level. I will draw those frames before they are built.
