@@ -30,7 +30,7 @@ import { euroText, percentText, roundToHundred } from './future_cost_fund_math.j
 export const SAMPLES_PER_YEAR = 8;
 
 /** Under this container width the narrow layout is used. */
-export const NARROW_BELOW_PX = 720;
+const NARROW_BELOW_PX = 720;
 
 /** The fund never reaches above this share of the axis, so labels have room. */
 export const PEAK_SHARE_OF_AXIS = 0.8;
@@ -125,7 +125,7 @@ function yearAdjective(count) {
  * and a browser. Digits and euro signs are wide in Manrope, so this leans wide:
  * a layout that clears this estimate clears the real text.
  */
-export function estimateTextWidth(text, fontPx, weight = 700) {
+function estimateTextWidth(text, fontPx, weight = 700) {
   return Math.ceil(String(text).length * fontPx * (weight >= 700 ? 0.62 : 0.58));
 }
 
@@ -162,7 +162,7 @@ export function chooseAxisMaximum(peak) {
  *
  * @param {object} projection what `computeFutureCostFundProjection` returned
  */
-export function readFundModel(projection) {
+function readFundModel(projection) {
   const { debug } = projection;
   const { inputs, costYears, cases, assumptionsUsed } = debug;
   return {
@@ -350,7 +350,7 @@ export function findForbiddenText(strings) {
  * The count is fixed, `columns x 9 + 1`, so two cases can be interpolated point
  * by point and the line travels instead of redrawing.
  */
-export function fundSampleValues(entry, rateNet, columns) {
+function fundSampleValues(entry, rateNet, columns) {
   const values = [];
   for (let year = 0; year < columns; year += 1) {
     const row = entry.rows[year];

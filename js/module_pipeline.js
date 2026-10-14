@@ -398,7 +398,7 @@ export function applyHousePurchaseProjectionToModule(module) {
   return projection;
 }
 
-export function applyFutureCostFundProjectionToModule(module) {
+function applyFutureCostFundProjectionToModule(module) {
   const projection = computeFutureCostFundProjection(module.generated.futureCostFundInputs);
 
   module.generated.assumptions = projection.assumptionsTable;
