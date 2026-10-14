@@ -18,6 +18,7 @@ import {
   runHomeTradeDownTests
 } from '../js/tests_home_trade_down_math.js';
 import { runHomeTradeDownViewTests } from '../js/tests_home_trade_down_view.js';
+import { runHomeTradeDownModuleTests } from '../js/tests_home_trade_down_module.js';
 
 let failures = 0;
 
@@ -215,9 +216,15 @@ if (viewSummary.failed > 0) {
   failures += viewSummary.failed;
 }
 
+// The module itself, driven against a small DOM shim and a fake clock.
+const moduleSummary = await runHomeTradeDownModuleTests();
+if (moduleSummary.failed > 0) {
+  failures += moduleSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[HomeTradeDownAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[HomeTradeDownAudit] the engine matches the independent reference and the engine and view suites pass.');
+console.info('[HomeTradeDownAudit] the engine matches the independent reference and the engine, view and module suites pass.');
