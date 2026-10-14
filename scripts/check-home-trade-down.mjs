@@ -17,6 +17,7 @@ import {
   HOME_TRADE_DOWN_SAMPLE,
   runHomeTradeDownTests
 } from '../js/tests_home_trade_down_math.js';
+import { runHomeTradeDownViewTests } from '../js/tests_home_trade_down_view.js';
 
 let failures = 0;
 
@@ -202,10 +203,16 @@ check('three hundred seeded households match the reference', () => {
   assert.ok(compared >= 200, `only ${compared} seeded households were comparable`);
 });
 
-// The unit suite, run here so one command proves the engine.
+// The unit suites, run here so one command proves the engine and the view.
 const summary = runHomeTradeDownTests();
 if (summary.failed > 0) {
   failures += summary.failed;
+}
+
+// The words and the geometry, asked without a browser.
+const viewSummary = runHomeTradeDownViewTests();
+if (viewSummary.failed > 0) {
+  failures += viewSummary.failed;
 }
 
 if (failures > 0) {
@@ -213,4 +220,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[HomeTradeDownAudit] the engine matches the independent reference and the engine suite passes.');
+console.info('[HomeTradeDownAudit] the engine matches the independent reference and the engine and view suites pass.');
