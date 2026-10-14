@@ -2903,27 +2903,7 @@ function buildContributionNetCosts(inputs) {
     return { entries: [], disclosures: [] };
   }
 
-  const items = [];
-  inputs.pensions.forEach((member) => {
-    const statePension = statePensionForMemberAtYear(inputs, member, year);
-    if (statePension > 0) {
-      items.push({ personId: member.id, type: 'statePension', amount: statePension });
-    }
-  });
-  earners.forEach((member) => {
-    items.push({ personId: member.id, type: 'employment', amount: member.currentSalary });
-  });
-  const rent = year >= inputs.incomeStartYear ? inputs.rentalIncomeToday * inflationFactorForYear(inputs, year) : 0;
-  if (rent > 0) {
-    items.push({ personId: setup.rentalOwnerId, type: 'rentalProfit', amount: rent });
-  }
-  inputs.otherIncomeSources.forEach((source, index) => {
-    const amount = incomeSourceAmountAtYear(inputs, source, year);
-    const treatment = setup.sources[index];
-    if (amount > 0 && treatment.itemType) {
-      items.push({ personId: treatment.ownerId, type: treatment.itemType, amount });
-    }
-  });
+  const items = householdTaxItemsAtYear(inputs, year);
 
   const contributions = earners.map((member) => {
     const age = ageAtYear(member, year, inputs.currentYear);
@@ -2972,6 +2952,112 @@ function buildContributionNetCosts(inputs) {
   });
 
   return { entries, disclosures };
+}
+
+/**
+ * The household's income in one year, in the tax engine's item shape, before
+ * any personal pension contribution comes off pay: State Pension, pay for
+ * whoever is still working (grown at the wage growth rate), rent and other
+ * income. `buildContributionNetCosts` costs the current year with this, and
+ * `computePersonalContributionCosts` costs every year with it, so the two can
+ * never describe different households.
+ */
+function householdTaxItemsAtYear(inputs, year) {
+  const setup = inputs.taxSetup;
+  const items = [];
+  inputs.pensions.forEach((member) => {
+    const statePension = statePensionForMemberAtYear(inputs, member, year);
+    if (statePension > 0) {
+      items.push({ personId: member.id, type: 'statePension', amount: statePension });
+    }
+  });
+  inputs.pensions
+    .filter((member) => member.currentSalary > 0 && year < member.retirementYear)
+    .forEach((member) => {
+      const salary = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
+      items.push({ personId: member.id, type: 'employment', amount: salary });
+    });
+  const rent = year >= inputs.incomeStartYear ? inputs.rentalIncomeToday * inflationFactorForYear(inputs, year) : 0;
+  if (rent > 0) {
+    items.push({ personId: setup.rentalOwnerId, type: 'rentalProfit', amount: rent });
+  }
+  inputs.otherIncomeSources.forEach((source, index) => {
+    const amount = incomeSourceAmountAtYear(inputs, source, year);
+    const treatment = setup.sources[index];
+    if (amount > 0 && treatment.itemType) {
+      items.push({ personId: treatment.ownerId, type: treatment.itemType, amount });
+    }
+  });
+  return items;
+}
+
+/**
+ * What the household's own personal pension contributions cost it, year by
+ * year, after income tax relief.
+ *
+ * The retirement module already costs a contribution this way for the current
+ * year (`debug.tax.contributionNetCosts`, one person at a time). This asks the
+ * same question of every working year and of the whole household at once, so a
+ * module that counts pension money against a household's money can count it at
+ * what it costs rather than at what goes in. The pot still grows on the gross
+ * amount; only the cash-flow view uses the cost.
+ *
+ * Per year:
+ *   gross   what the pension engine puts in for the household's own
+ *           contributions at the current rates, capped each year at the relief
+ *           limit. Employer contributions are not the household's money and
+ *           are not here.
+ *   relief  the household's income tax with nothing taken from pay for a
+ *           pension, less its income tax with these contributions taken from
+ *           pay, both from the tax engine for that year's household.
+ *   cost    gross less relief.
+ *
+ * `{ available: false }` when the payload carries no tax setup.
+ */
+export function computePersonalContributionCosts(rawInputs, { scenarioId = '' } = {}) {
+  const caseSet = buildPensionCaseSet(rawInputs);
+  const selectedCase = resolvePensionCase(caseSet, scenarioId);
+  const inputs = { ...selectedCase.inputs, taxSetup: buildPensionTaxSetup(selectedCase.inputs) };
+  const setup = inputs.taxSetup;
+  if (!setup.available) {
+    return { available: false, status: null, years: [], totals: { gross: 0, relief: 0, cost: 0 } };
+  }
+
+  const state = initialTaxState(inputs);
+  const lastYear = Math.max(...inputs.pensions.map((member) => member.retirementYear)) - 1;
+  const years = [];
+  const totals = { gross: 0, relief: 0, cost: 0 };
+
+  for (let year = inputs.currentYear; year <= lastYear; year += 1) {
+    const members = inputs.pensions.map((member) => ({
+      id: member.id,
+      title: member.title,
+      gross: contributionForMemberAtYear(member, inputs, year, 'current').personal
+    }));
+    const gross = members.reduce((sum, member) => sum + member.gross, 0);
+    const items = householdTaxItemsAtYear(inputs, year);
+    const people = taxPeopleAtYear(inputs, year);
+    const contributionItems = members
+      .filter((member) => member.gross > 0)
+      .map((member) => ({ personId: member.id, type: 'employmentPensionContribution', amount: member.gross }));
+
+    const taxWithout = computeTaxYear({
+      state,
+      input: { year, status: setup.status, people, items }
+    }).result.totals.totalTax;
+    const taxWith = computeTaxYear({
+      state,
+      input: { year, status: setup.status, people, items: [...items, ...contributionItems] }
+    }).result.totals.totalTax;
+    const relief = taxWithout - taxWith;
+
+    years.push({ year, members, gross, relief, cost: gross - relief });
+    totals.gross += gross;
+    totals.relief += relief;
+    totals.cost += gross - relief;
+  }
+
+  return { available: true, status: setup.status, years, totals };
 }
 
 function householdTaxStatusText(inputs) {
