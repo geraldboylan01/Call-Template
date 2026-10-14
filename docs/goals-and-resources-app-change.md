@@ -29,18 +29,11 @@ This is a composition over three engines. It has no maths of its own.
 
 Design canvas (private link): https://claude.ai/artifact/9gArzoeM5VZDqnHN5Ld5Fp
 
-| Frame | What it shows |
-|---|---|
-| `C1.dc.html` | 1920×1080, option C, engine-priced, case 1 selected |
-| `C2.dc.html` | 1920×1080, option C, second frame. It starts on case 4; case 3 was intended and the edit did not land |
-| `A`, `B` and `A on a phone` | Not chosen. Still on the first brief's placeholder figures, not engine-priced |
+**Approved 14 October 2026:** `C1.dc.html` (case 1), `C2.dc.html` (case 3) and `Phone.dc.html`, redrawn at the engine's figures with the short state. They are the reference for the screen. `A`, `B` and the first phone frame were not chosen and are left on the canvas as they were.
 
-Things to know before using them:
-
-- **They are stale against this brief, on purpose.** C1 embeds the output for the *previous* illustrative household (pots €180,000 and €90,000, targets €45,000 and €42,000, cases ranked by yearly need), and shows only "needed this year". They are **not redrawn yet, by decision**: every case is now short, and the red "short" state has not been designed. The frames are redrawn once that state exists, with both measures side by side. Until then the brief wins over the frames.
-- They embed the script's output as literals in their own script block, so they are a drawing of an engine answer, not a reference implementation.
-- They have not been opened and checked in a browser. Text fit and label collisions in the "money each year" ledger are unchecked.
-- Where this brief and a frame disagree, the brief wins. Tell me which.
+- The short state is as drawn: the part you do not have is a red outline with a light tint, and a solid red square sits beside the word ("Short by" beside the picture, the headline's square beside "You're short by"). Red is never alone. It is the household cash flow screen's treatment.
+- The frames embed the engine's output as literals in their own script block, so they are a drawing of an engine answer, not a reference implementation. The screen is built from the engine, not from them.
+- **Where this brief and a frame disagree, the brief wins.** One case so far: the first drawing of C1 carried "Niamh and Dara, both 45" in its header. The screen never names the household, and the approved frames have it removed.
 
 ## What is built
 
@@ -54,8 +47,32 @@ It imports `js/future_cost_fund_math.js` (on `main` since PR #55) and the tax en
 - **A helper in the retirement module.** `computePersonalContributionCosts(rawInputs)` in `js/pension_math.js` is additive: what the household's own personal contributions cost each year after income tax relief, from the tax engine. It reuses the module's own item-building (`householdTaxItemsAtYear`, extracted from `buildContributionNetCosts`, so the two describe the same household) and its relief limit. Nothing the retirement module shows has changed. Its two tests are in `js/tests_pension_math.js`.
 - **The search reads three fields** of `computePensionProjection(...).debug`: `requiredPot`, `projectedPotCurrent` and `requiredPotDepletionTolerance`, the ones the retirement module's own readiness reads. A test and a runtime guard fail with a clear message if any is ever missing or not a number.
 - **The search.** The projected pot is exactly linear in the contribution below the relief cap (the same slope to the euro at every point), so a bracketed secant step closes the gap in two to four runs, with bisection only if a step leaves the bracket. The figures are exact to the euro.
-- **Tests.** `js/tests_goals_and_resources_math.js` (8 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
-- Not built: the screen, `state.js`/`render.js`/`app.js`/presenter/video wiring, and listing the check in the CI workflows.
+- **Tests.** `js/tests_goals_and_resources_math.js` (11 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
+- **The projection is cached by payload** (`projectGoalsAndResources(rawInputs)`, six entries, keyed by both central versions and the payload; any call with options bypasses it). A projection is about half a second and the screen, the paste pipeline and the presenter all ask for the same one. The cached object is shared: read it, do not change it. Tested in `js/tests_goals_and_resources_math.js`.
+- Not built: `state.js`/`render.js`/`app.js`/presenter/video wiring, and listing the check in the CI workflows. See "The screen" below.
+
+### The screen
+
+Built on `module/goals-and-resources-screen`. Its own files only; every shared file is held until the property pull requests are merged (this module is last in the wiring queue).
+
+| File | What it is |
+|---|---|
+| `js/goals_and_resources_view.js` | Pure. The words, the geometry at every width, where each mark sits, the forbidden-text scan. Nothing in it needs a DOM. |
+| `js/goals_and_resources_module.js` | Draws what the view says. The 520 ms clock, `presenterSelectScenario`, `garState()`, `destroyGoalsAndResources()`. Follows `js/future_cost_fund_module.js`; the clock is copied, not shared. |
+| `styles/goals_and_resources.css` | The `.gar-` rules, as a block of their own. At wiring time they are appended to `styles/base.css` under the module prefix. |
+| `dev/goals-and-resources-preview.html` | The module alone, with `?preset=` (illustrative, one-child, four-children, mortgage-ends, spare, no-cash, no-later, stretched, stretched-rich), `?case=` and `?width=`. |
+| `js/tests_goals_and_resources_view.js`, `js/tests_goals_and_resources_module.js` | 15 and 19 cases. Run by `npm run check:goals-and-resources` with the engine suite. |
+
+What was decided building it:
+
+- **Three arrangements, two picture sizes.** The 1920 frame (the table of cases, the two panels, the goals beside the yearly picture) from a container width of 1740; the phone frame's pictures side by side with the goals under them from 760; the phone's single column under that. The pictures are the frame's size or the phone's size, so a resize inside an arrangement never rebuilds the screen. Only the 1920 and 390 frames were drawn; the side-by-side arrangement between them is those two frames' pieces reflowed, not a new design. Say if it should be drawn.
+- **The yearly picture has room for its note.** The picture is drawn on a 331 px scale and given 380 px, so that the "freed by a lower repayment" note under the line fits when what you have is the largest figure on the screen.
+- **A child is "first", "second", "third" by position.** The payload's child titles never reach a string, so a payload that names a child still produces a screen that does not.
+- **A target out of reach at the relief limit says so.** The engine downgrades such a goal from "covered" to "partly" (the money is found, the target is not met). "€18,000 of €18,000 a year" would be nonsense, so the row reads "At the most income tax relief allows, and still short of your target". The brief had no line for this; it is the only new sentence.
+- **The headline is the engine's.** `words.headline` and `words.support` are used as the engine gives them. In the cap case the headline can read "to spare" while the retirement row says the target is not met, because the headline counts money and the row counts the target. That is the engine's definition, not a screen choice.
+- **The cash lines are the frames', not `words.amountLine`.** "€59,635 into the college fund", "€45,974, then €14,026". The engine's `amountLine` ("from your cash") is unused by the screen.
+- **Nothing animates through CSS.** The only motion is the marks travelling between cases, on the module's clock. Opacity of every mark is a function of its painted size, so the settled frame equals a fresh render after any sequence of clicks.
+- **Checked in a browser.** Headless Chrome, 312 configurations (nine payload shapes, eight widths from 390 to 1920, every case) with the line boxes of every visible string tested for overlap and for leaving their panel, once in the fallback font and once in a wider one. No collision, nothing leaves its panel, no sideways scroll below 1700.
 
 ### The illustrative household
 
@@ -108,7 +125,7 @@ The two measures disagree. Case 2 needs the least this year; case 3 pays out €
 
 The later option, priced beside every case: needed this year is €10,797, €4,081, €5,471 and €5,137 for cases 1 to 4, and paid out over the life is €666,495, €666,173, €646,608 and €651,181. At 65 on €46,000 retirement needs nothing extra, so cases 2, 3 and 4 are no longer short (€1,919, €529 and €863 to spare); case 1 is still short by €4,797.
 
-## The contract (engine built; screen and wiring not started)
+## The contract (engine and screen built; wiring held)
 
 `generated.goalsAndResourcesInputs`. Engine in `js/goals_and_resources_math.js`. `scripts/price-goal-cases.mjs` is a thin caller of it, so there is one implementation.
 
@@ -173,7 +190,12 @@ Everything on screen is addressed to the household as "you", and is derived from
 | Headline, short | You’re short by €8,402 a year |
 | Headline, left over | You have €1,919 a year to spare |
 | Support | Your goals need €14,402 a year against the €6,000 you have. With a lower repayment: …, counting the €1,245 a lower repayment frees. |
-| Case amount line | €45,974 and €14,026 from your cash. With none: Nothing from your cash. |
+| Case amount line (engine) | €45,974 and €14,026 from your cash. With none: Nothing from your cash. |
+| Case amount line (screen) | Nothing from your cash; €59,635 into the college fund; €60,000 into the mortgage; €45,974, then €14,026. The frames' wording, built by the view. |
+| Beside the yearly picture | Short by / To spare, then the amount and "a year", with a square beside the word |
+| Quiet figures | Paid out over the life of your goals; If you retire at 65 on €46,000, then "€5,471 needed this year" and "still short by €4,797" or "€529 to spare" |
+| Goal detail | Paid today with €28,689; After €6,748 today; €2,397 of €3,113 a year; Repayment rises to / falls to / stays at €2,811 a month; after income tax relief; At the most income tax relief allows, and still short of your target |
+| Children | First child, Second child, Third child, Fourth child, by position, whatever the payload calls them |
 | Case titles | Cash stays as it is; Fund college today; All cash into the mortgage; Mortgage, then college |
 | Goal rows | Your mortgage cleared by 60; College, first child; College, second child; You retire at 62 on €50,000 a year |
 | Panel titles | Your money now; Your money each year; What you have; What your goals need |
@@ -188,13 +210,13 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 
 1. **What "current position" means: decided 13 October.** In a plan, the current position is "nothing changes" (today's mortgage, contributions and savings), and the plan view shows it. This module keeps case 1 as built ("cash stays as it is, every goal still pursued from yearly money") and does not call it the current position.
 2. **The later retirement option: decided.** It stays priced beside every case and is never attached to one. Each case differs by one thing, the use of cash. Combining a cash use with a later retirement belongs to the plan-level routes, which come later.
-3. **The side-by-side picture.** Both measures are built in the engine and not drawn. How "paid out over the life of the goals" sits on the screen without becoming a second headline is a design task, and it waits on the red "short" state, which is not designed.
+3. **The side-by-side picture: decided and drawn.** "Needed this year" is the headline figure of each case. "Paid out over the life of your goals" is a quieter second figure beneath it in the same case, never on the same scale and never added to it.
 4. **Where the order comes from: decided 13 October.** From the planning method, fixed in the engine (see Goal order). The profile's `priority` (high, medium, low) does not order these goals.
 5. **Left over each year.** Stated and constant (nominal) for every year. In a plan it will be the Household cash flow result's left-over figure; the field name is taken from that module when it lands.
 6. **Part lump sums.** College takes an equal share across children; the pension search adds the same points of salary for both people from today. Per-person or per-child choices are not designed.
 7. **One-off money on its own.** Doing both goals from cash would need €105,609 against €60,000 now. The screen does not show that shortfall.
 8. **Retirement inside "paid out".** The household's own contributions are the same in every case at one target, so they lift the total without separating the cases. They are listed as a component so a screen can leave them out.
-9. **Frames: not redrawn yet, by decision.** C1 and C2 are stale against this brief, A, B and the phone frame are not redrawn on engine figures, C2 starts on the wrong case, and nothing has been checked in a browser. All of it waits on the red "short" state.
+9. **Frames: redrawn and approved 14 October.** C1 (case 1), C2 (case 3) and Phone, with the short state. See Reference frames.
 10. **Figures rerun: done 13 October.** `module/future-cost-fund` is on `main` (PR #55); `main` was merged into this branch and the script rerun with both changes. Rerun it whenever the engines, the central assumptions or the illustrative household change. `main` is not touched from this branch.
 
 ## Out of scope

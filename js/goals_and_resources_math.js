@@ -1088,6 +1088,40 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
   };
 }
 
+/**
+ * The projection, cached by payload.
+ *
+ * A projection takes about half a second, and the screen, the paste pipeline
+ * and the presenter all ask for the same one, so the answer is kept for the
+ * payload that produced it. The key names both central versions, so a change
+ * to the assumptions or the tax rules is never served a stale answer. A call
+ * with options (a test injecting assumptions, or asking for the headroom) is
+ * never cached and never served from the cache.
+ *
+ * The object returned is shared: callers read it and do not change it.
+ */
+const PROJECTION_CACHE_SIZE = 6;
+const projectionCache = new Map();
+
+export function projectGoalsAndResources(rawInputs, options = {}) {
+  if (options && Object.keys(options).length > 0) {
+    return computeGoalsAndResourcesProjection(rawInputs, options);
+  }
+  const key = `${PLANEIR_ASSUMPTIONS.version}|${IE_TAX_RULES_VERSION}|${JSON.stringify(rawInputs)}`;
+  if (projectionCache.has(key)) {
+    const kept = projectionCache.get(key);
+    projectionCache.delete(key);
+    projectionCache.set(key, kept);
+    return kept;
+  }
+  const projection = computeGoalsAndResourcesProjection(rawInputs, options);
+  projectionCache.set(key, projection);
+  while (projectionCache.size > PROJECTION_CACHE_SIZE) {
+    projectionCache.delete(projectionCache.keys().next().value);
+  }
+  return projection;
+}
+
 /** `[{ id, title, description }]`, for the presenter and the case buttons. */
 export function getGoalsAndResourcesCases(rawInputs, options = {}) {
   return computeGoalsAndResourcesProjection(rawInputs, options).debug.cases.map((entry) => ({

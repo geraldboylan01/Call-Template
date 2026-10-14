@@ -3,7 +3,8 @@ import {
   computeGoalsAndResourcesProjection,
   getDefaultGoalsAndResourcesScenarioId,
   getGoalsAndResourcesCases,
-  normalizeGoalsAndResourcesInputs
+  normalizeGoalsAndResourcesInputs,
+  projectGoalsAndResources
 } from './goals_and_resources_math.js';
 import { computePensionProjection } from './pension_math.js';
 
@@ -226,6 +227,37 @@ export function runGoalsAndResourcesTests() {
       swapped.debug.cases[0].states.map((goal) => goal.goal).join(','),
       'child-1,child-2,mortgage,retirement',
       'children are ordered by start date, not by the order listed'
+    );
+  }));
+
+  cases.push(runCase('The cached projection is the same answer, keyed by payload, and options bypass it', () => {
+    const first = projectGoalsAndResources(GOALS_AND_RESOURCES_SAMPLE);
+    const again = projectGoalsAndResources({ ...GOALS_AND_RESOURCES_SAMPLE });
+    assert(first === again, 'an equal payload is served the kept projection');
+    assertEqual(
+      JSON.stringify(first.debug.cases.map((entry) => Math.round(entry.neededThisYear))),
+      JSON.stringify(computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE).debug.cases.map((entry) => Math.round(entry.neededThisYear))),
+      'and it is the answer the engine gives'
+    );
+
+    const other = projectGoalsAndResources({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 7_000 });
+    assert(other !== first, 'a different payload is a different projection');
+    assertEqual(other.debug.inputs.leftOverEachYear, 7_000, 'and it reflects the change');
+
+    // Options are never cached and never served from the cache.
+    const withOptions = projectGoalsAndResources(GOALS_AND_RESOURCES_SAMPLE, { includeHeadroom: true });
+    assert(withOptions !== first, 'a call with options is computed afresh');
+    assert(projectGoalsAndResources(GOALS_AND_RESOURCES_SAMPLE) === first, 'and does not displace the kept one');
+
+    // The cache is bounded: older payloads fall out, the answers stay right.
+    for (let extra = 0; extra < 8; extra += 1) {
+      projectGoalsAndResources({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 8_000 + extra });
+    }
+    const rebuilt = projectGoalsAndResources(GOALS_AND_RESOURCES_SAMPLE);
+    assertEqual(
+      Math.round(rebuilt.debug.cases[0].neededThisYear),
+      Math.round(first.debug.cases[0].neededThisYear),
+      'a payload that fell out of the cache is recomputed to the same figure'
     );
   }));
 

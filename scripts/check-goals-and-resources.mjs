@@ -23,6 +23,8 @@ import {
   GOALS_AND_RESOURCES_SAMPLE,
   runGoalsAndResourcesTests
 } from '../js/tests_goals_and_resources_math.js';
+import { runGoalsAndResourcesModuleTests } from '../js/tests_goals_and_resources_module.js';
+import { runGoalsAndResourcesViewTests } from '../js/tests_goals_and_resources_view.js';
 import { computePensionProjection } from '../js/pension_math.js';
 import { computeTaxYear } from '../js/planning/tax/engine.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
@@ -264,10 +266,22 @@ check('the brief\'s tables are reproduced to the euro', () => {
   });
 });
 
-// The unit suite, run here so one command proves both.
+// The unit suites, run here so one command proves the engine and the screen.
 const summary = runGoalsAndResourcesTests();
 if (summary.failed > 0) {
   failures += summary.failed;
+}
+
+// The screen's own decisions: words, geometry, label placement, no names.
+const viewSummary = runGoalsAndResourcesViewTests();
+if (viewSummary.failed > 0) {
+  failures += viewSummary.failed;
+}
+
+// The module itself, driven against a small DOM shim and a fake clock.
+const moduleSummary = await runGoalsAndResourcesModuleTests();
+if (moduleSummary.failed > 0) {
+  failures += moduleSummary.failed;
 }
 
 if (failures > 0) {
@@ -275,4 +289,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[GoalsAndResourcesAudit] the engine matches the independent reference and the unit suite passes.');
+console.info('[GoalsAndResourcesAudit] the engine matches the independent reference and the engine, view and module suites pass.');
