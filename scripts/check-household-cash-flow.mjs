@@ -21,6 +21,8 @@ import {
   designFixtureOptions,
   runHouseholdCashFlowTests
 } from '../js/tests_household_cash_flow_math.js';
+import { runHouseholdCashFlowViewTests } from '../js/tests_household_cash_flow_view.js';
+import { runHouseholdCashFlowModuleTests } from '../js/tests_household_cash_flow_module.js';
 import { computeTaxYear } from '../js/planning/tax/engine.js';
 
 let failures = 0;
@@ -375,10 +377,21 @@ check('the tax seam is the only way to replace the engine, and it is not reachab
   assert.equal(injected.summary.cases[0].outgoings.tax, 3_000, 'an injected tax is used');
 });
 
-// The unit suite, run here so one command proves both.
+// The unit suites, run here so one command proves the engine, the view and the module.
 const summary = runHouseholdCashFlowTests();
 if (summary.failed > 0) {
   failures += summary.failed;
+}
+
+const viewSummary = runHouseholdCashFlowViewTests();
+if (viewSummary.failed > 0) {
+  failures += viewSummary.failed;
+}
+
+// The module itself, driven against a small DOM shim and a fake clock.
+const moduleSummary = await runHouseholdCashFlowModuleTests();
+if (moduleSummary.failed > 0) {
+  failures += moduleSummary.failed;
 }
 
 if (failures > 0) {
@@ -386,4 +399,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[HouseholdCashFlowAudit] the engine matches the independent reference and the unit suite passes.');
+console.info('[HouseholdCashFlowAudit] the engine matches the independent reference and the engine, view and module suites pass.');

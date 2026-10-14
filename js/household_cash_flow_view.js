@@ -30,7 +30,7 @@ export const STAIRS_FROM_WIDTH = 848;
 export const BAR_BELOW_WIDTH = 832;
 
 /** With this much room the answer sits beside the staircase, not above it. */
-export const ANSWER_BESIDE_FROM = 1360;
+const ANSWER_BESIDE_FROM = 1360;
 
 const ANSWER_WIDTH = 328;
 const ANSWER_GAP = 48;
@@ -110,7 +110,7 @@ export function estimateTextWidth(text, fontPx, weight = 600) {
 }
 
 /** How many lines `text` takes in `width`, wrapping on spaces. At least one. */
-export function estimateLines(text, fontPx, width, weight = 600) {
+function estimateLines(text, fontPx, width, weight = 600) {
   const words = String(text).split(/\s+/).filter(Boolean);
   if (words.length === 0) return 1;
   let lines = 1;
