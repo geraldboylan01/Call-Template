@@ -52,8 +52,9 @@ It imports `js/future_cost_fund_math.js` (on `main` since PR #55) and the tax en
 
 - `js/goals_and_resources_math.js`: `normalizeGoalsAndResourcesInputs`, `computeGoalsAndResourcesProjection(rawInputs, options)`, `getGoalsAndResourcesCases`, `getDefaultGoalsAndResourcesScenarioId`. Case ids are stable: `cash-stays`, `college-today`, `mortgage-all-cash`, `mortgage-then-college` for the sample household.
 - **A helper in the retirement module.** `computePersonalContributionCosts(rawInputs)` in `js/pension_math.js` is additive: what the household's own personal contributions cost each year after income tax relief, from the tax engine. It reuses the module's own item-building (`householdTaxItemsAtYear`, extracted from `buildContributionNetCosts`, so the two describe the same household) and its relief limit. Nothing the retirement module shows has changed. Its two tests are in `js/tests_pension_math.js`.
+- **The search reads three fields** of `computePensionProjection(...).debug`: `requiredPot`, `projectedPotCurrent` and `requiredPotDepletionTolerance`, the ones the retirement module's own readiness reads. A test and a runtime guard fail with a clear message if any is ever missing or not a number.
 - **The search.** The projected pot is exactly linear in the contribution below the relief cap (the same slope to the euro at every point), so a bracketed secant step closes the gap in two to four runs, with bisection only if a step leaves the bracket. The figures are exact to the euro.
-- **Tests.** `js/tests_goals_and_resources_math.js` (8 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. Under a second.
+- **Tests.** `js/tests_goals_and_resources_math.js` (8 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
 - Not built: the screen, `state.js`/`render.js`/`app.js`/presenter/video wiring, and listing the check in the CI workflows.
 
 ### The illustrative household
@@ -116,7 +117,7 @@ The later option, priced beside every case: needed this year is €10,797, €4,
 | `spareCash` | number, required | Cash available now, net of the emergency reserve. 0 or more. |
 | `leftOverEachYear` | number, required | What is left over each year. **Stated in Stage 1.** In a plan it comes from the Household cash flow result's left-over figure, and this field is replaced by that result. |
 | `goalPriorities` | **removed** | Rejected if present: `generated.goalsAndResourcesInputs.goalPriorities is not accepted. Goals are taken in a fixed order: college, then the mortgage, then retirement.` See "Goal order". |
-| `mortgage` | object, required | `currentBalance`, `annualInterestRate`, `remainingTermYears`, `startDateIso`, `repaymentType: 'repayment'`, optional `fixedPaymentAmount`, plus `currentAge` and `clearByAge`. |
+| `mortgage` | object, required | `currentBalance`, `annualInterestRate`, `remainingTermYears`, `startDateIso`, `repaymentType: 'repayment'`, optional `fixedPaymentAmount`, plus `currentAge` and `clearByAge`. `clearByAge` is rejected only at or below `currentAge`. If the mortgage already ends by that age the goal is covered with nothing needed (see Cases). |
 | `pensions` | array, required | One entry per person: `id`, `title`, `currentAge`, `currentSalary`, `currentPot`, `personalPct`, `employerPct`, `includeStatePension`. Same validation as `pensionInputs.pensions`. |
 | `householdTaxStatus` | string | As `pensionInputs`. |
 | `retirement` | object, required | `retirementAge`, `targetIncomeToday`. The target is the household's, after tax, in today's money. |
@@ -143,6 +144,8 @@ Balance, rate and remaining term are already planner facts, so nothing new is as
 ### Cases
 
 Not authored in this version. The engine derives four: case 1, the cash kept as it is, then the three most different uses of cash in order of how much they change. The later retirement option is priced beside each.
+
+If the mortgage already ends by `clearByAge`, the goal is covered with nothing needed: no lump sum and no yearly change. The uses of cash that would have gone into the mortgage collapse into the others, so fewer than four cases is expected, and the screen says "Your mortgage already ends by {age}."
 
 ### What the engine returns
 
@@ -175,6 +178,7 @@ Everything on screen is addressed to the household as "you", and is derived from
 | Goal rows | Your mortgage cleared by 60; College, first child; College, second child; You retire at 62 on €50,000 a year |
 | Panel titles | Your money now; Your money each year; What you have; What your goals need |
 | States | Covered, Partly covered, Not covered, always beside their colour |
+| Mortgage that already ends | Your mortgage already ends by 60. |
 | Order line (assumptions table) | Your goals are taken in this order: the costs that come soonest, then your mortgage, then retirement. |
 | Pension line (assumptions table) | Pension contributions count at what they cost you after income tax relief. Your pension grows on the full amount paid in. |
 

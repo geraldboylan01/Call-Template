@@ -200,10 +200,6 @@ export function normalizeGoalsAndResourcesInputs(raw) {
     max: 100,
     text: `a whole age later than ${mortgage.currentAge}`
   });
-  if (mortgage.clearByAge - mortgage.currentAge >= mortgage.remainingTermYears) {
-    const endsAt = Math.round((mortgage.currentAge + mortgage.remainingTermYears) * 10) / 10;
-    throw new Error(`${FIELD}.mortgage.clearByAge must be earlier than the age the mortgage ends today (${endsAt}).`);
-  }
   try {
     normalizeMortgageInputs(mortgageEnginePayload(mortgage));
   } catch (error) {
@@ -297,6 +293,35 @@ export function normalizeGoalsAndResourcesInputs(raw) {
 
 // ------------------------------------------------------------------ engines ---
 
+/**
+ * The mortgage already ends by the goal's age, so there is nothing to clear and
+ * nothing to pay: no lump sum, no yearly change, and the goal reads covered.
+ * Every use of cash that would have gone into the mortgage collapses into the
+ * others, so fewer than four cases is expected.
+ */
+function mortgageAlreadyEnds(mortgage) {
+  return mortgage.clearByAge - mortgage.currentAge >= mortgage.remainingTermYears;
+}
+
+/**
+ * The fields of `computePensionProjection(...).debug` the search reads. The
+ * retirement module's own readiness reads the same ones. If it ever stops
+ * returning one as a number this engine stops with a clear message instead of
+ * searching on `undefined`.
+ */
+export const PENSION_DEBUG_FIELDS_READ = Object.freeze(['requiredPot', 'projectedPotCurrent', 'requiredPotDepletionTolerance']);
+
+function assertPensionDebugContract(debug) {
+  PENSION_DEBUG_FIELDS_READ.forEach((key) => {
+    if (!isFiniteNumber(debug && debug[key])) {
+      throw new Error(
+        `computePensionProjection no longer returns debug.${key} as a number (got ${typeof (debug && debug[key])}). `
+        + 'The goals and resources search reads it. Update js/goals_and_resources_math.js to match the retirement module.'
+      );
+    }
+  });
+}
+
 function calculationYearFor(inputs, options) {
   if (Number.isInteger(options.calculationYear)) {
     return options.calculationYear;
@@ -353,6 +378,23 @@ function pensionEnginePayload(inputs, target, extraPoints, year) {
 // ---- mortgage
 
 function priceMortgage(inputs, lumpSum, todaySchedule = null) {
+  if (mortgageAlreadyEnds(inputs.mortgage)) {
+    const ends = todaySchedule
+      || computeAmortizationMonthlySchedule(mortgageEnginePayload(inputs.mortgage, 0), { scenarioId: 'today' });
+    return {
+      lumpSum: 0,
+      alreadyEnds: true,
+      todayMonthlyPayment: ends.contractualPayment,
+      monthlyPayment: ends.contractualPayment,
+      yearlyChange: 0,
+      payoffDateIso: ends.payoffDateIso,
+      todayPayoffDateIso: ends.payoffDateIso,
+      termYears: inputs.mortgage.remainingTermYears,
+      balanceAfterLumpSum: inputs.mortgage.currentBalance,
+      totalPaidOverTheLoan: ends.totalPaidLifetime,
+      interestOverTheLoan: ends.totalInterestLifetime
+    };
+  }
   const raw = mortgageEnginePayload(inputs.mortgage, lumpSum);
   const today = todaySchedule || computeAmortizationMonthlySchedule(raw, { scenarioId: 'today' });
   const cleared = computeAmortizationMonthlySchedule(raw, { scenarioId: 'clear-by-age' });
@@ -380,6 +422,9 @@ function priceMortgage(inputs, lumpSum, todaySchedule = null) {
  * or three runs; a bracket bisection is kept for anything that is not straight.
  */
 function solveWholeMortgageLump(inputs) {
+  if (mortgageAlreadyEnds(inputs.mortgage)) {
+    return 0;
+  }
   const today = computeAmortizationMonthlySchedule(mortgageEnginePayload(inputs.mortgage, 0), { scenarioId: 'today' });
   const target = today.contractualPayment;
   const gap = (lump) => priceMortgage(inputs, lump, today).monthlyPayment - target;
@@ -469,11 +514,15 @@ function priceCollege(inputs, lumpShare, fundOptions) {
 
 function pensionRun(inputs, target, extraPoints, year) {
   const { debug } = computePensionProjection(pensionEnginePayload(inputs, target, extraPoints, year));
+  assertPensionDebugContract(debug);
+  const rawGap = debug.requiredPot - debug.projectedPotCurrent;
   return {
     x: extraPoints,
-    // The engine's own difference, unclamped: required less projected.
-    rawGap: debug.requiredPot - debug.projectedPotCurrent,
-    closed: debug.currentGapVsRequired === 0,
+    // The engine's own difference, unclamped: required less projected. The gap
+    // closes when it is no more than the engine's tolerance, which is exactly
+    // when the module reads "on track".
+    rawGap,
+    closed: rawGap <= debug.requiredPotDepletionTolerance,
     tolerance: debug.requiredPotDepletionTolerance,
     requiredPot: debug.requiredPot,
     projectedPot: debug.projectedPotCurrent
@@ -640,7 +689,8 @@ function enumerateUses(inputs, wholeMortgage, wholeCollege) {
       candidates.push({ mortgageLump, collegeLump });
     }
   };
-  const balance = inputs.mortgage.currentBalance;
+  // A mortgage that already ends by the goal's age takes no cash.
+  const balance = mortgageAlreadyEnds(inputs.mortgage) ? 0 : inputs.mortgage.currentBalance;
 
   // Each of the mortgage and the college fund: none, the cash that is left, or
   // the whole amount. "The cash that is left" is what the other goal has not
@@ -731,6 +781,7 @@ function goalStates(inputs, { mortgageYearly, college, pension }) {
       goal: 'mortgage',
       kind: 'mortgage',
       title: `Your mortgage cleared by ${inputs.mortgage.clearByAge}`,
+      note: mortgageAlreadyEnds(inputs.mortgage) ? `Your mortgage already ends by ${inputs.mortgage.clearByAge}.` : '',
       need: Math.max(0, mortgageYearly)
     },
     {
@@ -828,6 +879,7 @@ function caseWords(inputs, entry) {
     id: label.id,
     title: label.title,
     amountLine: lumps.length === 0 ? 'Nothing from your cash' : `${lumps.join(' and ')} from your cash`,
+    mortgageNote: mortgageAlreadyEnds(inputs.mortgage) ? `Your mortgage already ends by ${inputs.mortgage.clearByAge}.` : '',
     headline: entry.shortfall > 0
       ? `You’re short by ${eur(entry.shortfall)} a year`
       : `You have ${eur(entry.spare)} a year to spare`,
@@ -852,7 +904,9 @@ function buildAssumptionsTable(inputs, context) {
       ['Order of your goals', GOAL_ORDER_TEXT],
       ['Pension money', PENSION_TEXT],
       ['Mortgage', `${eur(inputs.mortgage.currentBalance)} at ${pct(inputs.mortgage.annualInterestRate)}, ${inputs.mortgage.remainingTermYears} years left, cleared by ${inputs.mortgage.clearByAge}`],
-      ['A lump sum into the mortgage', 'Lowers the repayment and keeps the term, so the mortgage is still cleared by that age'],
+      mortgageAlreadyEnds(inputs.mortgage)
+        ? ['Your mortgage', `Your mortgage already ends by ${inputs.mortgage.clearByAge}, so there is nothing to clear and no cash goes into it`]
+        : ['A lump sum into the mortgage', 'Lowers the repayment and keeps the term, so the mortgage is still cleared by that age'],
       ['College', `${inputs.children.length === 1 ? 'One child' : `${inputs.children.length} children`}, four years each from age ${PLANEIR_ASSUMPTIONS.collegeFunding.startAge}, living at home, ${eur(collegeCost().annualCostToday)} a year each in today’s money`],
       ['College cost growth', `${pct(fundAssumptions.priceGrowthRate)} a year`],
       ['Interest on money held in cash, after DIRT', `${pct(fundAssumptions.cashRateNet)} a year`],
@@ -1006,6 +1060,7 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
       inputs,
       calculationYear: year,
       goalOrder: ['college by start date', 'mortgage', 'retirement'],
+      mortgageAlreadyEnds: mortgageAlreadyEnds(inputs.mortgage),
       wholeMortgageLump: wholeMortgage,
       wholeCollege: {
         requiredToday: wholeCollege.requiredToday,

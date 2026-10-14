@@ -1,9 +1,11 @@
 import {
+  PENSION_DEBUG_FIELDS_READ,
   computeGoalsAndResourcesProjection,
   getDefaultGoalsAndResourcesScenarioId,
   getGoalsAndResourcesCases,
   normalizeGoalsAndResourcesInputs
 } from './goals_and_resources_math.js';
+import { computePensionProjection } from './pension_math.js';
 
 /**
  * The illustrative household every figure in the brief is proved against.
@@ -276,11 +278,6 @@ export function runGoalsAndResourcesTests() {
       'cleared by today'
     );
     assertThrows(
-      normalise({ mortgage: { ...base.mortgage, clearByAge: 70 } }),
-      `${FIELD}.mortgage.clearByAge must be earlier than the age the mortgage ends today (63).`,
-      'cleared after it ends'
-    );
-    assertThrows(
       normalise({ pensions: [] }),
       `${FIELD}.pensions must be an array of one or two people.`,
       'nobody'
@@ -342,6 +339,55 @@ export function runGoalsAndResourcesTests() {
     assert(pensionLine && /after income tax relief/.test(pensionLine[1]), 'the assumptions table says how pension money counts');
     const orderLine = result.assumptionsTable.rows.find((row) => row[0] === 'Order of your goals');
     assert(orderLine && /soonest, then your mortgage, then retirement/.test(orderLine[1]), 'the assumptions table says the order');
+  }));
+
+  cases.push(runCase('A mortgage that already ends by the goal\'s age is covered with nothing needed', () => {
+    const result = computeGoalsAndResourcesProjection({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      mortgage: { ...GOALS_AND_RESOURCES_SAMPLE.mortgage, clearByAge: 70 }
+    });
+    const { debug } = result;
+    assertEqual(debug.mortgageAlreadyEnds, true, 'flagged');
+    assert(debug.cases.length >= 1 && debug.cases.length < 4, 'fewer than four cases is fine');
+    debug.cases.forEach((entry) => {
+      assertEqual(entry.mortgageLump, 0, `${entry.id}: no cash into the mortgage`);
+      assertEqual(entry.mortgage.yearlyChange, 0, `${entry.id}: no yearly change`);
+      assertEqual(entry.states.find((goal) => goal.goal === 'mortgage').state, 'covered', `${entry.id}: covered`);
+      assertEqual(entry.words.mortgageNote, 'Your mortgage already ends by 70.', `${entry.id}: the sentence`);
+    });
+    assertEqual(debug.cases.map((entry) => entry.id).join(','), 'cash-stays,college-today', 'the uses collapse into the others');
+    assert(
+      result.assumptionsTable.rows.some((row) => row[0] === 'Your mortgage' && /already ends by 70/.test(row[1])),
+      'the assumptions table says so'
+    );
+    assertThrows(
+      () => normalizeGoalsAndResourcesInputs({
+        ...GOALS_AND_RESOURCES_SAMPLE,
+        mortgage: { ...GOALS_AND_RESOURCES_SAMPLE.mortgage, clearByAge: 45 }
+      }),
+      'generated.goalsAndResourcesInputs.mortgage.clearByAge must be a whole age later than 45.',
+      'only an age at or below today is rejected'
+    );
+  }));
+
+  cases.push(runCase('The retirement module still returns every field the search reads, as a number', () => {
+    const payload = {
+      currentYear: 2026,
+      incomeMode: 'target',
+      targetIncomeToday: 50_000,
+      targetIncomeBasis: 'net',
+      householdTaxStatus: 'married_or_civil_partners',
+      pensions: GOALS_AND_RESOURCES_SAMPLE.pensions.map((person) => ({ ...person, retirementAge: 62 }))
+    };
+    const { debug } = computePensionProjection(payload);
+    PENSION_DEBUG_FIELDS_READ.forEach((key) => {
+      assert(
+        typeof debug[key] === 'number' && Number.isFinite(debug[key]),
+        `computePensionProjection no longer returns debug.${key} as a number (got ${typeof debug[key]}). `
+        + 'The goals and resources search reads it. Update js/goals_and_resources_math.js to match the retirement module.'
+      );
+    });
+    assertEqual(PENSION_DEBUG_FIELDS_READ.join(','), 'requiredPot,projectedPotCurrent,requiredPotDepletionTolerance', 'the three fields, no more');
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;

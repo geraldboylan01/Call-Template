@@ -21,9 +21,9 @@
 
 import { computeGoalsAndResourcesProjection } from '../js/goals_and_resources_math.js';
 
-export const ILLUSTRATIVE_LABEL = 'Illustrative household, not real figures';
+const ILLUSTRATIVE_LABEL = 'Illustrative household, not real figures';
 
-export const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
+const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
   /** Spare cash, already net of the emergency reserve. */
   spareCash: 60_000,
   /**
@@ -58,7 +58,7 @@ export const ILLUSTRATIVE_HOUSEHOLD = Object.freeze({
 const eur = (amount) => `${amount < 0 ? '−' : ''}€${Math.abs(Math.round(amount)).toLocaleString('en-IE')}`;
 const signed = (amount) => `${amount < 0 ? '−' : '+'}${eur(Math.abs(amount))}`;
 
-export function priceGoalCases(options = {}) {
+function priceGoalCases(options = {}) {
   return computeGoalsAndResourcesProjection(ILLUSTRATIVE_HOUSEHOLD, { includeHeadroom: true, ...options });
 }
 
