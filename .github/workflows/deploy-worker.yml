@@ -329,6 +329,7 @@ jobs:
           set -euo pipefail
           npm run check:consumer
           npm run check:house-purchase
+          npm run check:future-cost-fund
           npm run check:module-media
           npm run check:video-summary
           npm run check:video-scene
