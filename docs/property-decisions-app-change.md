@@ -4,6 +4,37 @@ App change brief for Claude Code. Paste this whole file as the prompt. Suggested
 
 Status: designs chosen (A1 "cut down" and B1 "two blocks") and decisions made, not started. Written 13 October 2026, decisions recorded the same day. The build waits for the future cost fund screen to land on `main`, because it sets the wiring pattern (see Before you write code).
 
+## Build status
+
+Built on this branch, not wired: both engines, both views, both modules, their styles and their dev previews, each proved by its own check.
+
+| | Rental | Home |
+|---|---|---|
+| Engine | `js/rental_keep_or_sell_math.js` | `js/home_trade_down_math.js` |
+| View (words, geometry, label checks, no DOM) | `js/rental_keep_or_sell_view.js` | `js/home_trade_down_view.js` |
+| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/rental_keep_or_sell_module.js` | `js/home_trade_down_module.js` |
+| Suites | engine 13, view 12, module 14 | engine 14, view 13, module 14 |
+| Check | `node scripts/check-rental-keep-or-sell.mjs` | `node scripts/check-home-trade-down.mjs` |
+| Preview | `dev/rental-keep-or-sell-preview.html` | `dev/home-trade-down-preview.html` |
+| Styles | `.rks-` in `styles/base.css` | `.htd-` in `styles/base.css` |
+
+Each check runs its reference calculator (which imports nothing from the engine) and then all three suites. The rental reference works in whole cents. The home reference finds the loan by month-by-month bisection and confirms it with logarithms. Both run the sample, the edges and 300 seeded payloads. The stale-exports ratchet and the brand check pass, and `npm run build` leaves no tracked file changed.
+
+Not built, waiting for the protection gap pull request to merge: `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, the two cases in `scripts/check-video-scene.mjs` and `scripts/check-codex-video-brief.mjs`, `package.json` and the two workflows. The npm scripts `check:rental-keep-or-sell` and `check:home-trade-down` come with `package.json`. Until then the node commands above run the same checks.
+
+Decided for the video, which is not built: three figures that add up. Home: the money from selling after buying costs, plus the loan, is the home budget, all on the screen. Rental: the headline, what comes off, and the result, where "what comes off" is derived for the video only and named: "Loan repayments, running costs and tax" for Keep and "Selling costs, the loan and tax" for Sell. The engine already returns it as `comesOff` and `comesOffName` in `debug`, and no table or chart carries it.
+
+Differences from this brief as first written:
+
+- **Home: side by side from 1632 wide, not 1200.** The first block's label has to fit under the first block, and the smallest that block gets is a little over half of the bar. That needs a bar of about 840px beside a 380px year, so under 1632 the year sits under the home, in a chart capped at 720. The rental module still changes arrangement at 1200.
+- **Home: when the buying costs leave the first block too short to hold its label, the second label moves right** to clear it instead of meeting it. A first block of a sliver is checked.
+- **Home: "a budget above the current home" is refused by the normaliser,** not only by the projection, so the paste validator catches it. It compares the budget as shown with today's home to the euro.
+- **Rental: the scale tightens when a label would not fit** to the right of its bar. At the reference size nothing binds, so Sell still puts zero at 8% and the headline at 78%, and Keep puts zero at 12.4%. At 358, 720, 1000 and 1200 the bars are shorter and nothing is clipped. The headline line therefore moves between cases at those widths.
+- **Rental: the outputs table has no derived total.** One row per case, with the same five columns for both ("Rent or sale price", "Loan", "Running or selling costs", "Tax", "Net each year or in hand").
+- **Rental: a payload with a `scenarios` array is refused** as "not an input of this module".
+- **Both: the module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes.
+- **Styles:** the selected button's name is at 800, the zero and headline lines stop behind names and labels, and the two rental buttons sit side by side on a phone. The home buttons drop their second line on a phone, as the frame does.
+
 ## Context
 
 Two modules, built one after the other in this change. Each is complete without the other.
