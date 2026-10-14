@@ -18,12 +18,14 @@ import {
   section604AShare,
   yearsBetween
 } from './planning/tax/heads/capital_gains.js';
-import { IE_CGT_FIXED_RULES } from './planning/tax/rules_ie.js';
+import { IE_CGT_FIXED_RULES, IE_INVESTMENT_RULES } from './planning/tax/rules_ie.js';
+import { afterTaxInvestmentDisclosures, exitTaxRateOn } from './planning/tax/investment_funds.js';
 import { arfImputedDistribution } from './planning/tax/heads/arf_imputed.js';
 import {
   TAX_DISCLOSURE_CATALOGUE,
   TAX_NOT_INCLUDED,
   renderTaxDisclosure,
+  renderTaxDisclosures,
   taxNotIncludedLine
 } from './planning/tax/disclosures.js';
 import { computePensionProjection } from './pension_math.js';
@@ -913,7 +915,11 @@ export function runIeTaxTests() {
       CGT_2011_2014: { share: 0.5185 },
       CGT_LOSSES_USED: { amount: 30_000 },
       CGT_LOSS_SPOUSE: { amount: 10_000 },
-      CGT_LOSS_CARRIED: { amount: 200 }
+      CGT_LOSS_CARRIED: { amount: 200 },
+      PENSION_AT_RELIEF_LIMIT: { share: 0.25, earningsCap: 115_000 },
+      INVESTMENT_FUND_TAX: { rate: 0.38 },
+      INVESTMENT_FUND_TAX_ANNOUNCED: { rate: 0.35, effectiveFrom: '2027-01-01', announcedBy: 'Budget 2027', inForce: false },
+      INVESTMENT_ACCOUNT: { asOf: '2026-10-14' }
     };
     Object.keys(TAX_DISCLOSURE_CATALOGUE).forEach((code) => {
       const { text } = renderTaxDisclosure({ code, params: params[code] || null }, { rules });
@@ -1064,6 +1070,97 @@ export function runIeTaxTests() {
     ['incomeTax', 'usc', 'prsi', 'lumpSum', 'capitalGainsTax'].forEach((key) => {
       assert(JSON.stringify(rules[key]) === JSON.stringify(base[key]), `${key} must not move with DIRT`);
     });
+  }));
+
+  cases.push(runCase('Exit tax is read by date: 41% to 2025, 38% in 2026, 35% announced from 2027 and held after', () => {
+    const rules = resolveTaxRules(2026);
+    assert(exitTaxRateOn('2025-06-01', rules).rate === 0.41, '41% in 2025');
+    const now = exitTaxRateOn('2026-10-14', rules);
+    assert(now.rate === 0.38 && now.status === 'enacted' && now.enactedBy === 'Finance Act 2025', '38% in force, enacted');
+    assert(/revenue\.ie/.test(now.source.url), 'Revenue is the source for 38%');
+    const next = exitTaxRateOn('2027-01-01', rules);
+    assert(next.rate === 0.35 && next.status === 'announced' && next.announcedBy === 'Budget 2027', '35% from 1 January 2027, announced');
+    assert(exitTaxRateOn('2040-06-01', rules).rate === 0.35, 'the last rate is held');
+    assertThrows(() => exitTaxRateOn('2014-12-31', rules), /No exit tax rate is recorded/, 'before the first entry');
+    assertThrows(() => exitTaxRateOn('14/10/2026', rules), /YYYY-MM-DD/, 'a date in another format');
+    assert(rules.investmentFunds.deemedDisposal.everyYears === 8, 'the eight-year rule');
+    assert(JSON.stringify(resolveTaxRules(2031).investmentFunds) === JSON.stringify(rules.investmentFunds), 'held unchanged in later years');
+  }));
+
+  cases.push(runCase('Pension at the relief limit: the notes beside an after-tax investment, in October 2026', () => {
+    const rules = resolveTaxRules(2026);
+    const disclosures = afterTaxInvestmentDisclosures({
+      asOf: '2026-10-14',
+      rules,
+      pensionAtReliefLimit: true,
+      reliefLimit: { share: 0.25, earningsCap: 115_000 }
+    });
+    assert(JSON.stringify(disclosures.map((entry) => entry.code)) === JSON.stringify([
+      'PENSION_AT_RELIEF_LIMIT', 'INVESTMENT_FUND_TAX', 'INVESTMENT_FUND_TAX_ANNOUNCED', 'INVESTMENT_ACCOUNT'
+    ]), `codes: ${disclosures.map((entry) => entry.code)}`);
+    const texts = renderTaxDisclosures(disclosures, { rules }).map((entry) => entry.text);
+    const expected = [
+      'Your pension contributions are at the most income tax relief allows at your age, 25% of earnings up to €115,000. Money you invest beyond that gets no income tax relief.',
+      'Gains on investment funds, ETFs and investment life policies are taxed at 38% when you sell, and every eight years as if you had sold, even if you have not. Tax paid at each eight-year point is set against the tax due when you finally sell.',
+      'A cut to 35% from 1 January 2027 was announced in Budget 2027. It could change before the Finance Act is passed.',
+      'A new Investment Account was announced in Budget 2027 to open on 1 July 2027, taking up to €12,000 a year with no exit tax and no eight-year charge, and 1% a year on its value above €50,000. The details could change before they become law.'
+    ];
+    expected.forEach((text, index) => {
+      assert(texts[index] === text, `note ${index + 1}:\n  got      ${texts[index]}\n  expected ${text}`);
+    });
+    const plain = afterTaxInvestmentDisclosures({ asOf: '2026-10-14', rules, includeInvestmentAccount: false });
+    assert(JSON.stringify(plain.map((entry) => entry.code)) === JSON.stringify(['INVESTMENT_FUND_TAX', 'INVESTMENT_FUND_TAX_ANNOUNCED']), 'no pension note or account when not asked');
+    const noFigures = renderTaxDisclosures(afterTaxInvestmentDisclosures({ asOf: '2026-10-14', rules, pensionAtReliefLimit: true }), { rules })[0].text;
+    assert(noFigures === 'Your pension contributions are at the most income tax relief allows at your age. Money you invest beyond that gets no income tax relief.', `without the limit's figures: ${noFigures}`);
+    assertThrows(() => afterTaxInvestmentDisclosures({ asOf: '2026-10', rules }), /YYYY-MM-DD/, 'asOf must be a date');
+  }));
+
+  cases.push(runCase('In 2027 the announced 35% is the rate in force, and the note still says it is not yet law', () => {
+    const rules = resolveTaxRules(2027);
+    const texts = renderTaxDisclosures(afterTaxInvestmentDisclosures({ asOf: '2027-03-01', rules, includeInvestmentAccount: false }), { rules })
+      .map((entry) => entry.text);
+    assert(texts[0].includes('taxed at 35% when you sell'), `rate in force: ${texts[0]}`);
+    assert(texts[1] === 'The 35% rate was announced in Budget 2027 for gains from 1 January 2027. It could change before the Finance Act is passed.', `announced: ${texts[1]}`);
+  }));
+
+  cases.push(runCase('When the Finance Act passes, the not-yet-law notes fall away and the account note follows its start date', () => {
+    const schedules = DEFAULT_IE_TAX_CATALOGUE.schedules;
+    const enacted = {
+      ...DEFAULT_IE_TAX_CATALOGUE,
+      schedules: {
+        ...schedules,
+        investmentFundExitTaxRate: schedules.investmentFundExitTaxRate.map((entry) => (
+          entry.status === 'announced' ? { ...entry, status: 'enacted', enactedBy: 'Finance Act 2026' } : entry
+        ))
+      },
+      investmentRules: {
+        ...IE_INVESTMENT_RULES,
+        investmentAccount: { ...IE_INVESTMENT_RULES.investmentAccount, status: 'enacted' }
+      }
+    };
+    const before = resolveTaxRules(2026, { catalogue: enacted });
+    const beforeCodes = afterTaxInvestmentDisclosures({ asOf: '2026-10-14', rules: before }).map((entry) => entry.code);
+    assert(JSON.stringify(beforeCodes) === JSON.stringify(['INVESTMENT_FUND_TAX', 'INVESTMENT_ACCOUNT']), `codes: ${beforeCodes}`);
+    const opens = renderTaxDisclosures(afterTaxInvestmentDisclosures({ asOf: '2026-10-14', rules: before }), { rules: before })[1].text;
+    assert(opens === 'A new Investment Account opens on 1 July 2027, taking up to €12,000 a year with no exit tax and no eight-year charge, and 1% a year on its value above €50,000.', `before it opens: ${opens}`);
+    const after = resolveTaxRules(2027, { catalogue: enacted });
+    const open = renderTaxDisclosures(afterTaxInvestmentDisclosures({ asOf: '2027-08-01', rules: after }), { rules: after }).map((entry) => entry.text);
+    assert(open[0].includes('taxed at 35% when you sell'), `rate: ${open[0]}`);
+    assert(open[1] === 'The Investment Account takes up to €12,000 a year with no exit tax and no eight-year charge, and 1% a year on its value above €50,000.', `once open: ${open[1]}`);
+  }));
+
+  cases.push(runCase('An exit tax schedule the law could not produce is refused', () => {
+    const schedules = DEFAULT_IE_TAX_CATALOGUE.schedules;
+    const reversed = {
+      ...DEFAULT_IE_TAX_CATALOGUE,
+      schedules: { ...schedules, investmentFundExitTaxRate: [...schedules.investmentFundExitTaxRate].reverse() }
+    };
+    assertThrows(() => resolveTaxRules(2026, { catalogue: reversed }), /investmentFundExitTaxRate\[1\]\.effectiveFrom must be later/, 'dates must rise');
+    const unmarked = {
+      ...DEFAULT_IE_TAX_CATALOGUE,
+      schedules: { ...schedules, investmentFundExitTaxRate: [{ effectiveFrom: '2026-01-01', rate: 0.38 }] }
+    };
+    assertThrows(() => resolveTaxRules(2026, { catalogue: unmarked }), /status must be enacted or announced/, 'a rate needs a status');
   }));
 
   cases.push(runCase('A 60-year household projection with a solver every year runs quickly', () => {
