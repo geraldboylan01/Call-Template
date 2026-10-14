@@ -20,6 +20,7 @@ import {
 } from '../js/tests_protection_gap_math.js';
 import { runProtectionGapViewTests } from '../js/tests_protection_gap_view.js';
 import { runProtectionGapModuleTests } from '../js/tests_protection_gap_module.js';
+import { runProtectionGapWiringTests } from '../js/tests_protection_gap_wiring.js';
 
 const HORIZON_MONTHS = 36;
 const MAX_REFERENCE_MONTHS = 100_000;
@@ -213,12 +214,14 @@ check('the published sample table is reproduced', () => {
 });
 
 // The suites, run here so one command proves the engine, the screen's words and
-// geometry, and the module's clock and DOM. The wiring suite joins them when the
-// module is wired into the app.
+// geometry, the module's clock and DOM, and the wiring (paste pipeline, session
+// import and presenter catalogue). The video scene and the codex brief are proved
+// in check-video-scene.mjs and check-codex-video-brief.mjs.
 const suites = [
   ['engine', runProtectionGapTests()],
   ['view', runProtectionGapViewTests()],
-  ['module', await runProtectionGapModuleTests()]
+  ['module', await runProtectionGapModuleTests()],
+  ['wiring', runProtectionGapWiringTests()]
 ];
 suites.forEach(([name, summary]) => {
   if (summary.failed > 0) {
@@ -232,4 +235,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[ProtectionGapAudit] the engine matches the independent reference, and the engine, view and module suites pass.');
+console.info('[ProtectionGapAudit] the engine matches the independent reference, and the engine, view, module and wiring suites pass.');
