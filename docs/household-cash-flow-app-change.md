@@ -1,8 +1,26 @@
 # Household cash flow: what is left each year, and what would change it
 
-Status: design chosen 2026-10-13 (the staircase on a wide screen, the single bar on a phone), decisions D1 to D6 settled 2026-10-13 and D7 the same evening, not started. Stage 1 only.
+Status: design chosen 2026-10-13 (the staircase on a wide screen, the single bar on a phone), decisions D1 to D6 settled 2026-10-13 and D7 the same evening, built. Stage 1 only.
 
 If this file ever conflicts with another copy of it on `main`, this branch's version wins (decided 2026-10-13).
+
+## Build status
+
+Everything in Stage 1 is built, in two changes on `module/household-cash-flow`: the engine, then the screen and the wiring. The shortfall (D3) is the next change and is not in this one.
+
+- `js/household_cash_flow_math.js`: the engine, with `summary` for the plan. `js/household_cash_flow_view.js`: the words, the width switch and the geometry for both drawings, with no DOM so they are checked in Node. `js/household_cash_flow_module.js`: the drawing, its own 520ms clock and `presenterSelectScenario`.
+- State, paste pipeline, render, app, presenter catalogue, video scene and codex brief wiring, two Dev Panel examples, `dev/household-cash-flow-preview.html`, the `.hcf-` styles and the CI listing. The wiring followed "Wiring a new engine module" in `docs/future-cost-fund-app-change.md`, not this brief's own first list below.
+- `npm run check:household-cash-flow` runs the engine against its reference calculator and the engine, view, module and wiring suites. The video scene and codex brief are proved in `check-video-scene.mjs` and `check-codex-video-brief.mjs`.
+- The module was looked at in a browser at 1920 and at 390, through the preview page. It has not been looked at on a real phone.
+
+Differences from this brief as first written:
+
+- **Type floors.** The staircase's type follows the column down to the floors (16 for amounts, 14 for names, 13 for the delta line), with no lower clamp on the scale, so ten columns still fit their amounts at 848.
+- **The width is measured by a probe.** A zero-height strip as wide as the module's content box, because beside the answer the chart is only part of the content. The module keeps 28px of side padding, for an amount centred on a bar to reach a little past the plot.
+- **Today's label.** It is two lines at a wide pitch and three at a narrow one ("Today", "€9,200", "left over").
+- **A short case is refused in three places**, not one: the engine, the paste pipeline (which projects the payload before applying it) and the session importer (which drops it with a warning).
+- **Normalised inputs write back `householdTaxStatus` and `mappedFromJoint`**, so a saved payload normalises to itself. The test that proves it covers a status, no status, a stated take-home and a one-person household.
+- **Not built, as agreed:** the hover read-off (`attachScrub`), the plan adapter, the short state, and today's pension contributions.
 
 ## Context
 
@@ -430,6 +448,8 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 - Six outgoing lines on the narrowest wide screen (n = 10 at 832): names wrap to three lines, which is the layout test's worst case.
 
 ## Wiring
+
+**Superseded by the list in `docs/future-cost-fund-app-change.md`, "Wiring a new engine module", which is the one that was followed.** It lists every file in order and includes three this list missed: `js/module_pipeline.js`, the presenter hook in `js/app.js`, and the charts guard in `js/render.js`. The list below is what this brief first said and is kept for what it records about this module's own needs.
 
 Follow the mortgage wiring, one file at a time, and resist a shared refactor in this change.
 
