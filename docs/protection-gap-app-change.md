@@ -1,6 +1,33 @@
 # Protection gap: if one income stopped, how big is the hole and how long would savings fill it?
 
-Status: design chosen (option C, "the months", with the money-in bar split into the State floor and take-home), decisions confirmed 2026-10-13, not started. Stage 1 only. The engine can be built now; the screen and wiring wait for the future cost fund screen and copy its wiring (changed 13 October, evening).
+Status: design chosen (option C, "the months", with the money-in bar split into the State floor and take-home), decisions confirmed 2026-10-13. **Built: the engine, the screen and the app wiring (branch `module/protection-gap`).** Stage 1 only.
+
+## Build status
+
+Everything in Stage 1 is built, in the order of "Wiring a new engine module" in `docs/future-cost-fund-app-change.md`, each step with its own commit and its own check green.
+
+- `js/protection_gap_math.js`: the engine (stated take-home, State payment, savings; one event per case).
+- `js/protection_gap_view.js`: the words the screen adds, the geometry for any width, the button arrangement with hysteresis and where every label sits, with no DOM, so they are checked in Node.
+- `js/protection_gap_module.js`: the drawing, the 520ms clock and `presenterSelectScenario`.
+- State, paste pipeline (with the `ensureGenerated` refresh), render, app, presenter catalogue, video scene and codex brief wiring, the Dev Panel example, `dev/protection-gap-preview.html`, the `.pg-` styles and the CI listing.
+- `npm run check:protection-gap` runs five groups: the engine against its reference calculator (a month-by-month drain of the savings, 300 generated households), and the engine, view, module and wiring suites. The video scene and codex brief are proved in `check-video-scene.mjs` and `check-codex-video-brief.mjs`.
+
+Looked at in a real browser, from `dev/protection-gap-preview.html`: 1920, 1366, 1024, 844 and 390 wide, every case, and the motion. In a real tab a click moves the segments, the gap, the need tick and the green and red together over about 470ms on an ease-out and lands exactly on the new case's settled values. The words change in the click's own frame, and the bar and strip heights never move. A rapid click-through of eight cases ends on a fresh render of the last one.
+
+Differences from this brief as first written:
+
+- The wiring list is the section's, not this brief's own. It added `js/module_pipeline.js`, the presenter hook in `js/app.js`, the video and codex selection and the charts guard in `js/render.js`.
+- The strip has red only when something is short. A case with nothing to fill (left over, or tight) shows a neutral track and "Nothing to fill". The first build drew all of it red; this was found by looking at it.
+- The word "Tight" sits on the same line as the first line of the answer, in amber.
+- The strip's green is named "Filled by your savings" when it is long enough, and "Filled" when it is not. When it is shorter still, the end mark ("19 months") carries the meaning.
+- A State payment too narrow to hold its name is labelled just below the bar, at the start of its segment, with its amount. On a wide screen it is inside its segment.
+- Labels that would touch take a second row, and the rows are reserved for the worst case, so the container is the same height in every case.
+- In the rail arrangement the chart is the module's width less 496 (360 rail, 116 gap, 20 inset). Between 1100 and 1215 wide that leaves the chart under 720, so it uses the narrow type beside the rail. This is the arrangement the brief asked for; check it by eye if it ever looks cramped.
+- The video's summary is the engine's answer and sentence, not the model's, so the video says what the screen says.
+- `euroText` is exported from the engine, because the view formats amounts the same way.
+- The `ensureGenerated` refresh is in, although the engine reads no central assumption, so every engine module's derived tables follow one path.
+
+Not built, on purpose: the hover read-off the repayment module has, the tight state's own design (D7: it is built plainly and reported), and the consumer stage (module registry, manifest, playbook, routing, planner facts). `protection_analysis` and `docs/prompt-pack/` are untouched. The canvas frames still use the old third-person words; the words in this brief win.
 
 ## Context
 
