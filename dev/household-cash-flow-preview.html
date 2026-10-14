@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Household cash flow module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. Resize the window to
+         watch it change drawing at 848px, or pass ?width= to hold a width. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #070c10;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 72px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1920px; margin: 0 auto; }
+      #params { color: #a9b5bd; font: 13px/1.5 system-ui; margin: 0 0 18px; }
+      #params a { color: #6aa7c8; }
+    </style>
+  </head>
+  <body>
+    <p id="params"></p>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildHouseholdCashFlowModule } from '../js/household_cash_flow_module.js';
+      import { HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions } from '../js/tests_household_cash_flow_math.js';
+
+      const params = new URLSearchParams(location.search);
+      const preset = params.get('preset') || 'engine';
+      const caseId = params.get('case') || null;
+      const width = Number(params.get('width')) || 0;
+
+      const clone = (value) => JSON.parse(JSON.stringify(value));
+      const sample = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+
+      const stated = clone(sample);
+      stated.people[0].statedTakeHome = 50000;
+
+      const statedBoth = clone(sample);
+      statedBoth.people[0].statedTakeHome = 55000;
+      statedBoth.people[1].statedTakeHome = 60000;
+
+      const onePerson = {
+        householdTaxStatus: 'single',
+        people: [{ id: 'alex', age: 40 }],
+        income: [{ personId: 'joint', type: 'employment', amount: 90000 }],
+        outgoings: [
+          { id: 'rent', label: 'Rent', amount: 20000 },
+          { id: 'living', label: 'Living costs', amount: 30000 }
+        ],
+        scenarios: [
+          { id: 'today' },
+          { id: 'pension', changes: [{ type: 'extraPension', amount: 8000 }] },
+          { id: 'rent', changes: [{ type: 'clearOutgoing', outgoingId: 'rent' }] }
+        ]
+      };
+
+      const sixLines = clone(sample);
+      sixLines.outgoings = [
+        { id: 'mortgage', label: 'Mortgage', amount: 24000 },
+        { id: 'car', label: 'Car loan', amount: 6000 },
+        { id: 'food', label: 'Food', amount: 12000 },
+        { id: 'bills', label: 'Bills', amount: 8000 },
+        { id: 'children', label: 'Children', amount: 9000 },
+        { id: 'insurance', label: 'Insurance', amount: 3000 }
+      ];
+
+      const pensionOnly = clone(sample);
+      pensionOnly.scenarios = [sample.scenarios[0], sample.scenarios[2]];
+
+      const presets = {
+        // Nothing injected: the tax engine, the real picture.
+        engine: { raw: sample, options: {} },
+        // What the design frames were first drawn from: tax 48,000, then 44,000.
+        design: { raw: sample, options: designFixtureOptions() },
+        stated: { raw: stated, options: {} },
+        statedboth: { raw: statedBoth, options: {} },
+        oneperson: { raw: onePerson, options: {} },
+        sixlines: { raw: sixLines, options: {} },
+        pensiononly: { raw: pensionOnly, options: {} }
+      };
+
+      const chosen = presets[preset] || presets.engine;
+      const names = Object.keys(presets);
+      document.getElementById('params').innerHTML = 'preset: '
+        + names.map((name) => (name === preset
+          ? `<strong>${name}</strong>`
+          : `<a href="?preset=${name}${width ? `&width=${width}` : ''}">${name}</a>`)).join(' · ')
+        + ' &nbsp;|&nbsp; width: '
+        + [390, 844, 1000, 1366, 1920].map((value) => `<a href="?preset=${preset}&width=${value}">${value}</a>`).join(' · ')
+        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case';
+
+      const mount = document.getElementById('mount');
+      if (width) mount.style.maxWidth = `${width}px`;
+
+      const module = buildHouseholdCashFlowModule({
+        rawInputs: chosen.raw,
+        projectionOptions: chosen.options,
+        selectedCaseId: caseId
+      });
+      if (!module) {
+        mount.textContent = 'The payload could not be projected.';
+      } else {
+        mount.append(module);
+      }
+    </script>
+  </body>
+</html>
