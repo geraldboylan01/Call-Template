@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Future cost fund module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. Resize the window to
+         see it change layout at 720px. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #070c10;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 72px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1920px; margin: 0 auto; }
+      #params { color: #a9b5bd; font: 13px/1.5 system-ui; margin: 0 0 18px; }
+      #params a { color: #6aa7c8; }
+    </style>
+  </head>
+  <body>
+    <p id="params"></p>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildFutureCostFundModule } from '../js/future_cost_fund_module.js';
+      import { designFixtureOptions } from '../js/tests_future_cost_fund_math.js';
+
+      const params = new URLSearchParams(location.search);
+      const preset = params.get('preset') || 'central';
+      const caseId = params.get('case') || null;
+
+      const sample = {
+        costTitle: 'College',
+        costKind: 'education',
+        startsInYears: 8,
+        durationYears: 4,
+        annualCostToday: 15000,
+        scenarios: [
+          { id: 'lump', title: 'Lump sum today', lumpShare: 1 },
+          { id: 'yearly', title: 'Save every year', lumpShare: 0 },
+          { id: 'half', title: 'Half and half', lumpShare: 0.5 },
+          { id: 'delayed', title: 'Start in 3 years', lumpShare: 0, savingStartsInYears: 3 }
+        ]
+      };
+
+      const presets = {
+        // Nothing injected: the central assumptions, the real picture.
+        central: { raw: sample, options: {} },
+        // What the design frames were drawn from: prices 3%, savings 2%, no DIRT.
+        design: { raw: sample, options: designFixtureOptions() },
+        general: {
+          raw: { ...sample, costTitle: 'Care for Mam', costKind: 'general', startsInYears: 12, durationYears: 6 },
+          options: {}
+        },
+        short: {
+          raw: { ...sample, startsInYears: 1, durationYears: 1, scenarios: sample.scenarios.slice(0, 2) },
+          options: {}
+        },
+        long: { raw: { ...sample, startsInYears: 40, durationYears: 30 }, options: {} },
+        far: { raw: { ...sample, startsInYears: 25, durationYears: 1 }, options: {} },
+        large: { raw: { ...sample, annualCostToday: 1200000 }, options: {} },
+        two: { raw: { ...sample, scenarios: [sample.scenarios[0], sample.scenarios[1]] }, options: {} }
+      };
+
+      const chosen = presets[preset] || presets.central;
+      const names = Object.keys(presets);
+      document.getElementById('params').innerHTML = 'preset: '
+        + names.map((name) => (name === preset
+          ? `<strong>${name}</strong>`
+          : `<a href="?preset=${name}">${name}</a>`)).join(' · ')
+        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case';
+
+      const module = buildFutureCostFundModule({
+        rawInputs: chosen.raw,
+        projectionOptions: chosen.options,
+        selectedCaseId: caseId
+      });
+      if (!module) {
+        document.getElementById('mount').textContent = 'The payload could not be projected.';
+      } else {
+        document.getElementById('mount').append(module);
+      }
+    </script>
+  </body>
+</html>
