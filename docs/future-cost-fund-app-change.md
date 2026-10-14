@@ -1,26 +1,29 @@
 # Future cost fund: a dated cost, and the ways to have the money ready
 
-Status: design chosen (option A, "the hill"), assumptions settled 2026-10-13. **Engine, central assumptions and DIRT rule built (branch `module/future-cost-fund`); screen and wiring not started.** Stage 1 only.
+Status: design chosen (option A, "the hill"), assumptions settled 2026-10-13. **Built: the central assumptions, the engine, the screen and the app wiring (branch `future-cost-fund-screen`, after PR #55).** Stage 1 only.
 
 ## Build status
 
-Built, in this order, with every figure in the Tests tables reproduced to the nearest €100:
+Everything in Stage 1 is built. The engine and the central assumptions landed in PR #55 (see "Wiring a new engine module" for every file, in order). The screen and the wiring followed on `future-cost-fund-screen`:
 
-- `js/planning/planeir_assumptions.js`: the `cash` entry (0.2% gross), `assumptionRecord('cashRate')`, the `cashGrowthRate` label, version `planeir-assumptions-1.3.0`, approved 2026-10-13.
-- `js/planning/tax/rules_ie.js` and `resolve.js`: the `dirt` block (33%, `ie.dirt.2026`) and `IE_TAX_SOURCES.revenueDirt`. Main was already on `ie-tax-2026.2` when this landed (PR #54, capital gains tax), so `IE_TAX_RULES_VERSION` is `ie-tax-2026.3`. The capital gains entries are untouched. The catalogue fixture `scripts/fixtures/module-catalogue-authoring-identity.json` follows the assumptions version bump.
-- `js/future_cost_fund_math.js`: `normalizeFutureCostFundInputs`, `computeFutureCostFundProjection(rawInputs, { assumptions, calculationYear, taxCatalogue })`, `getFutureCostFundCases`, `getDefaultFutureCostFundScenarioId`. `taxCatalogue` is a second injection point beside `assumptions`, so a test can change the DIRT rule and watch the fund follow it.
-- `js/tests_future_cost_fund_math.js` (12 cases) and `scripts/check-future-cost-fund.mjs`, which proves the engine against a reference calculator that imports nothing from it and finds every amount by bisection. `npm run check:future-cost-fund`. The projection accepts a cost starting within 100 years, keeping each case to at most 130 annual rows with the 30-year cost duration limit.
-- Two DIRT tests in `js/tests_ie_tax.js`: 33% in 2026, held forward unchanged in 2031, and a changed catalogue rate moves nothing else.
+- `js/future_cost_fund_view.js`: the words, the geometry and where every label sits, with no DOM, so they are checked in Node.
+- `js/future_cost_fund_module.js`: the drawing, the 520ms clock and `presenterSelectScenario`.
+- State, paste pipeline, render, app, presenter, video scene and codex brief wiring, the Dev Panel example, `dev/future-cost-fund-preview.html`, the `.fcf-` styles and the CI listing.
+- `npm run check:future-cost-fund` runs four suites: the engine against its reference calculator, the view (words, geometry, label collisions at 358, 720, 1000 and 1776), the module (clock and DOM, driven with a DOM shim and fake timers) and the wiring (paste pipeline, session import, presenter catalogue). The video scene and codex brief are proved in `check-video-scene.mjs` and `check-codex-video-brief.mjs`.
 
-Differences from this brief:
+Differences from this brief as first written:
 
-- `PLANEIR_ASSUMPTIONS.cash.basis` does **not** name the two banks. The brief's own rule is that no provider name reaches a client-facing string, and `assumptionRecord('cashRate').reason` is built from `basis`. The banks, rates, effective dates and URLs are in `cash.observed`, for the audit trail only. A test scans for it.
-- The model's rows are `{ yearIndex, openingBalance, payment, cost, closingBalance }` as specified. `openingBalance` is the previous closing balance grown by one year at the net rate.
-- DIRT was re-checked on Revenue's page on 2026-10-13: 33%, "Published: 24 April 2026". Budget 2027 coverage found did not mention DIRT. Revenue's page is the source; the Finance documents were not read.
+- `PLANEIR_ASSUMPTIONS.cash.basis` does **not** name the two banks. No provider name reaches a client-facing string, and `assumptionRecord('cashRate').reason` is built from `basis`. The banks, rates, dates and URLs are in `cash.observed`, for the audit trail only.
+- `startsInYears` is 1 to 40, so a case has at most 70 columns, not 130.
+- The phone plot is **320** high, not 300. The fund peaks at 80% of the axis, so the top 20% is 64px, which is exactly the height of the cost panel's three-line header.
+- Axis names are spaced from the width of the widest name (every year, then every 2, 5, 10, 20 or 50) and never touch, instead of fixed tiers. The year the cost starts is always named.
+- The cost panel's header sits inside the panel when its title fits on one line, and in a row above the chart when it does not (a one-year cost, or a very large total).
+- Label order is as agreed: the yearly label is placed first, the lump label is stacked clear of it, and as a last resort the lump label sits inside the area just under the riser. A label wording that would reach the cost panel drops "You pay in".
+- Headlines describe the case ("Putting in €10,800 a year for 8 years covers the whole cost.") rather than instructing, and every on-screen word speaks to "you".
+- `js/module_pipeline.js` and the presenter hook in `js/app.js` were missing from the first wiring list. They are in the list below.
+- The hover read-off the repayment module gained later (`attachScrub`) is **not** in this change. It is a follow-up; the layout keeps the data it needs.
 
-Not built: the screen, the layout function, motion, words, `state.js`/`render.js`/`app.js`/presenter/video wiring, the dev preview, and listing `check:future-cost-fund` in `.github/workflows/consumer-regression.yml` and `deploy-worker.yml`. `npm run build`, `check:video-scene` and `check:codex-video-brief` are untouched by this change and were not rerun here.
-
-One failure that predates this work: `scripts/check-module-catalogue-authoring.mjs` fails on a migration filename (`0019_add_application_voice_notes.sql` against the expected `0018_add_agent_application_requests.sql`), identically on unmodified `main`.
+One failure that predates this work: `scripts/check-module-catalogue-authoring.mjs` fails on a migration filename (`0019_add_application_voice_notes.sql` against the expected `0018_add_agent_application_requests.sql`), identically on unmodified `main`. A separate change fixes it.
 
 ## Context
 
@@ -141,7 +144,7 @@ Add `generated.futureCostFundInputs`. Engine in `js/future_cost_fund_math.js`, r
 |---|---|---|
 | `costTitle` | string, required | Client-facing name of the cost, shown as the module heading. "College", "Care for Mam", "School fees". Trimmed, 1 to 60 characters. |
 | `costKind` | `'education'` or `'general'`, **required** | Picks the central price rate. No default. |
-| `startsInYears` | integer, required | Years from today until the cost's first year. 1 to 100. |
+| `startsInYears` | integer, required | Years from today until the cost's first year. 1 to 40. |
 | `durationYears` | integer, required | How many years the cost runs. 1 to 30. |
 | `annualCostToday` | number, required | One year of the cost in today's money. Greater than 0. |
 | `baseScenarioId` | string, optional | Must match a case id when present. Default is the first case. |
@@ -217,7 +220,7 @@ One element carries the screen: the fund. Everything else is quiet. In reading o
 
 ### The chart
 
-A single drawing, SVG, owned by the module. Build the **layout as a pure function** (`layoutFutureCostChart(model, width)` returning plain numbers and boxes) and keep DOM out of it, so geometry and label collisions can be tested in Node.
+A single drawing, SVG, owned by the module. The **layout is a pure function** (`layoutFutureCostChart(projection, { width })` in `js/future_cost_fund_view.js`, returning plain numbers and boxes) with no DOM in it, so geometry and label collisions are tested in Node.
 
 Coordinates, reference frame 1776 wide:
 
@@ -225,13 +228,13 @@ Coordinates, reference frame 1776 wide:
 |---|---|---|
 | Year columns | `N = startsInYears + durationYears`. `yearW = (width − gutter) / N` | gutter 96, N 12, yearW 140 |
 | `x(t)` | `gutter + yearW × t`. Flows happen on these boundaries. | |
-| Plot height | width 1200 and up: 540. 720 to 1199: 420. Under 720: 300. | 540 |
+| Plot height | width 1200 and up: 540. 720 to 1199: 420. Under 720: 320. | 540 |
 | `yMax` | Smallest of 1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8 × 10^k at or above **peak ÷ 0.8**, where peak is the largest opening balance **over all cases**. The fund never reaches above 80% of the axis, which leaves room for the cost panel header and the labels. Never per case, so the axis does not rescale on a click. | 100,000 at the design fixture, 120,000 at the central defaults |
 | Gridlines | Baseline (zero) and one at half of `yMax`. Labelled "€0" and, for 120,000, "€60,000". | |
 | Cost panel | Raised surface behind the cost years, `x(startsInYears)` to the right edge, full plot height, radius 12 | x 1216, w 560 |
 | Fund | Area at 30% blue, 3px blue line on top | |
-| Cost blocks | One per cost year. Left `x(s+k) + 6`, width `yearW − 12`, top at that year's opening balance, height `cost × scale`. 2px border at 92% text, 8% text fill, radius 4. Amount inside at 22/700 when the block is at least 72px wide, otherwise omitted and listed under the chart. | |
-| Axis | Ticks on every boundary, labels centred on them: "Today", "Year 1" … Cost years in full text colour and 700, others muted. Thin to every second label when `yearW` is under 56. | |
+| Cost blocks | One per cost year. Left `x(s+k) + inset`, width `yearW − 2 × inset`, where inset is 6 (2 on a phone) and shrinks to 10% of the column in a long run so a block never reaches zero. Top at that year's opening balance, height `cost × scale`. 2px border at 92% text, 8% text fill, radius 4. Amount inside at 22/700 when the block is at least 72px wide, otherwise omitted and listed under the chart. | |
+| Axis | Ticks on every boundary, labels centred on them: "Today", "Year 1" … Cost years in full text colour and 700, others muted. The step is the smallest of 1, 2, 5, 10, 20, 50 for which `step × yearW` is at least the width of the widest name, so two names never touch. The year the cost starts is always named, and any name that would crowd it gives way. | step 1 at 1776, 2 at 358 (12 columns) |
 
 The fund polyline has a fixed number of points per case so cases can be interpolated point by point. For each year `t`: the opening balance (before that year's flows), the closing balance (after payment and cost), then 7 interior points `closing × (1 + r)^(k/8)` for k = 1 to 7. Opening and closing share an `x`, which draws the riser. One final point at `x(N)`. That is `N × 9 + 1` points, all clamped at zero.
 
@@ -243,19 +246,19 @@ Text is always in text colours, never the series colour. Every label sits on its
 
 - **Lump sum** (when `lumpShare > 0`): "You pay in €86,100 today", starting 14px right of the first riser, 22/700.
 - **Yearly** (when `lumpShare < 1`): "You pay in €10,800 a year", or "and €5,400 a year" when the lump label is also showing. Right-aligned, ending 10px left of the anchor year `savingStartsInYears + ceil(n / 2)` (plus 1 when the lump label shows).
-- **Placement**: a label's top is the highest pixel row the line reaches under the label's span, minus 46px, so it never sits on the line however steeply the line climbs.
-- **Gap** (when `savingStartsInYears > 0`): "Nothing set aside for 3 years" in muted, just above the baseline in the empty years.
-- **The fund**: "Money in the fund, growing 0.13% a year", inside the area, near the baseline, at about the middle of the saving years. The rate is the after-DIRT rate and comes from the model.
-- **Cost panel header**: "The cost: €87,200 in total", then a green dot and "Covered by the fund".
+- **Placement, in this order.** The yearly label first. Then the lump label against the line. A label's top is the highest pixel row the line reaches under the label's span, minus 46px (30 on a phone), so it never sits on the line however steeply the line climbs. If the lump label would meet the yearly label it is stacked clear above it, and if there is no room above, it sits inside the area just under the riser's top edge. A wording that would reach the cost panel drops "You pay in".
+- **Gap** (when no lump sum is paid and `savingStartsInYears > 0`, and the empty years are wide enough to hold it): "Nothing set aside for 3 years" in muted, just above the baseline in the empty years.
+- **The fund**: "Your fund, growing 0.13% a year", inside the area, near the baseline, at about the middle of the saving years. The rate is the after-DIRT rate and comes from the model. In a short run it becomes "Your fund", and where even that does not fit it is left out.
+- **Cost panel header**: "What you need: €87,200 in total", then a green dot and "Covered by your fund".
 
 ### Narrow layout
 
 Frames `PhoneA` and `PhoneA2`. Same drawing, different constants and fewer words:
 
-- Plot 300 high, `yearW` 29, left inset 10, content width 358.
+- Plot 320 high, `yearW` 29, left inset 10, content width 358.
 - Blocks 25 wide (`yearW − 4`, left `+2`), no text inside. The yearly amounts go in one muted line under the chart: "The cost by year: year 8 €20,500, year 9 €21,300, year 10 €22,200, year 11 €23,100."
-- The cost panel header is three short lines: "The cost", "€87,200", green dot and "Covered". The full "Covered by the fund" moves under the chart.
-- Labels drop "You pay in" ("€86,100 today", "€10,800 a year", "and €5,400 a year") at 14/700. The fund label is two lines at 12/600: "In the fund, growing 0.13% a year". The gap label is two lines in a 80px box.
+- The cost panel header is three short lines: "What you need", "€87,200", green dot and "Covered". The full "Covered by your fund" moves under the chart.
+- Labels drop "You pay in" ("€86,100 today", "€10,800 a year", "and €5,400 a year") at 14/700. The fund label is two lines at 12/600: "Your fund, growing 0.13% a year". The gap label is two lines in a 80px box.
 - Axis labels on every second year only. Gridline labels at 11px.
 - Case buttons in a 2×2 grid, at least 72 tall, name 15/20, amount 13/18. Headline 20/26, support 14/20.
 - Between 720 and 1200 wide, use the desktop layout with the 420px plot. I have only drawn 1920 and 390, so check the rest by eye at 1366×768 and 1024 and tell me what looks wrong rather than guessing.
@@ -289,20 +292,20 @@ Case button amount line, derived:
 | yearly only | `€10,800 a year for 8 years` |
 | both | `€43,000 today and €5,400 a year` |
 
-Headline, derived (the verb agrees: "covers" for one thing, "cover" for two):
+Headline, derived. It describes the case and never instructs, the same form as the sibling modules, and the verb is always "covers":
 
 | Case | Sentence |
 |---|---|
-| lump sum only | `€86,100 set aside today covers the whole cost.` |
-| yearly only | `€10,800 a year for 8 years covers the whole cost.` |
-| yearly, delayed | `€17,300 a year for 5 years, starting in year 3, covers the whole cost.` |
-| both | `€43,000 today and €5,400 a year for 8 years cover the whole cost.` |
+| lump sum only | `Setting aside €86,100 today covers the whole cost.` |
+| yearly only | `Putting in €10,800 a year for 8 years covers the whole cost.` |
+| yearly, delayed | `Putting in €17,300 a year for 5 years, starting in year 3, covers the whole cost.` |
+| both | `Putting in €43,000 today and €5,400 a year for 8 years covers the whole cost.` |
 
-Support: `You pay in €86,500 and growth adds €700. Together that is the €87,200 the cost needs.` When growth rounds to zero: `You pay in €87,200, which is the whole €87,200 the cost needs.`
+Support: `You pay in €86,500 and growth adds €700. Together that is the €87,200 you need.` When growth rounds to zero: `You pay in €87,200, which is the whole €87,200 you need.`
 
 Fallback case titles when the payload gives none: `Lump sum today`, `Save every year`, `Part now, part each year`, `Start in {n} years`.
 
-Footnote, from the model and never typed: `€15,000 a year in today's money. Education costs rise 4% a year. Savings earn 0.2% a year before DIRT and 0.13% after DIRT at 33%. Amounts are rounded to the nearest €100.` For a general cost, "Prices rise 2% a year." replaces the education sentence.
+Footnote, from the model and never typed: `€15,000 a year in today’s money. Education costs rise 4% a year. Your savings earn 0.2% a year before DIRT, and 0.13% after DIRT at 33%. Amounts are rounded to the nearest €100.` For a general cost, "Prices rise 2% a year." replaces the education sentence.
 
 Subtitle: "A four-year cost starting in 8 years". Number words for 1 to 10, digits above, and "1 year" not "1 years".
 
@@ -320,24 +323,46 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 
 - `startsInYears` 1: one saving year. A yearly case is one payment.
 - `durationYears` 1: one block.
-- 25 or more columns: `yearW` shrinks, axis labels thin out, block amounts move to the list under the chart.
+- Up to 70 columns (a cost starting in 40 years and running for 30): `yearW` shrinks, axis names thin out by width, block insets shrink and block amounts move to the list under the chart.
 - Amounts of €1m and over: axis labels go compact ("€500k"), block labels follow the 72px rule.
 - A case that cannot be solved: rejected on the way in, never drawn.
 - `costTitle` 60 characters: wraps, never truncates.
 - Growth that rounds to zero: the zero-growth support sentence, and the fund label still names the rate.
 
-## Wiring
+## Wiring a new engine module
 
-Follow the mortgage wiring, one file at a time, and resist a shared refactor in this change.
+This is the list the next engine modules follow, instead of their own briefs' lists. It is every file this module touched, in the order it was done, with what each one needed. Each step ended with the module's own check green and its own commit, so a mistake is found one file after it was made.
 
-- Central assumptions first (above): `js/planning/planeir_assumptions.js`, `js/planning/tax/rules_ie.js`, `js/planning/tax/resolve.js`.
-- `js/state.js`: `futureCostFundInputs` in `createEmptyGenerated`, `normalizeGenerated` (including the mutual exclusions and the `videoSummary` clearing), and `futureCostFundScenarioId` in `normalizeModuleUi`.
-- `js/render.js`: an `isFutureCostFundModule` check where `isCollegeFundingModule` is checked, and the mount, in the manner of `buildMortgageScenarioShell`. The assumptions and outputs cards still render from the engine's tables.
-- `js/app.js`: selected-case get and set with persistence and the read-only guard, a Dev Panel example payload using the four sample cases, and `hasCalculatedGeneratedOutputs`.
-- `js/presenter_catalogue.js`: kind, cases and default case, with stable ids.
-- `js/video_scene.js` and `js/codex_video_brief.js`: kind, label and the selected case's figures.
-- `dev/future-cost-fund-preview.html`, in the manner of `dev/repayment-module-preview.html`, with `?cases=` and `?preset=` parameters for the central defaults, the design fixture, a general cost and a 25-column case.
-- `package.json`: `check:future-cost-fund`, `scripts/check-future-cost-fund.mjs`, listed wherever `check:house-purchase` is listed, including `.github/workflows/consumer-regression.yml` and `deploy-worker.yml`.
+Two things to know first.
+
+- **Copy the pattern, do not abstract it.** Eight files each keep their own list of engine keys, and each engine key clears every other one. A new module adds a line to each list. Resist a shared registry in the same change: it is a refactor of every existing module, and it belongs in its own pull request.
+- **`check:no-stale-exports` is a ratchet.** Anything exported that nothing outside its file imports fails it. Export a helper only when a second file uses it.
+
+| # | File | What it needed |
+|---|---|---|
+| 1 | `js/planning/planeir_assumptions.js` | Only if the module needs a rate that is not central yet. A new entry with a `basis`, a `disclosure` and its sources for the audit trail, a version bump and `APPROVED_ON`, an `assumptionRecord` key, and an `ASSUMPTION_LABELS` entry. The basis must not name a provider. |
+| 2 | `js/planning/tax/rules_ie.js`, `js/planning/tax/resolve.js`, `js/tests_ie_tax.js` | Only if the module needs a statutory rate. A new block in the year's rules with a `ruleId` and a source, an `IE_TAX_RULES_VERSION` bump, **and** the field added to `buildResolvedRules`, which lists what it returns explicitly, so a new block is invisible until it is added there. A test that the rate resolves, is held forward, and that changing it moves nothing else. |
+| 3 | `scripts/fixtures/module-catalogue-authoring-identity.json` | Follows an assumptions version bump: the version appears in the reason strings. |
+| 4 | `js/<module>_math.js` | The engine. A normaliser that throws with `generated.<key>.<field>` messages and refuses what must come from central assumptions. A projection returning `assumptionsTable`, `outputsTable`, `tables`, `charts` and `debug`. `get…Cases` and `getDefault…ScenarioId` for the presenter. The case cap from `js/scenario_cap.js`. An options argument for test injection that a payload cannot reach. |
+| 5 | `js/tests_<module>_math.js`, `scripts/check-<module>.mjs`, `package.json` | The unit suite, a reference calculator that imports nothing from the engine, and the `check:<module>` script. |
+| 6 | `js/<module>_view.js` | Everything the screen decides that is not a DOM node: the words, the geometry for any container width, and where each label sits, with the checks that nothing overlaps. Pure, so a check can ask it without a browser. |
+| 7 | `js/tests_<module>_view.js` | Copy, words scan, axis, blocks, label collisions at 358, 720, 1000 and 1776 wide over several payload shapes. |
+| 8 | `js/<module>_module.js` | The drawing: `build<Module>Module({ rawInputs, selectedCaseId, onSelectCase })` returning an element or `null`. The 520ms clock as a factory that takes its timers (token, settle timer, finished flag). `presenterSelectScenario(id)` on the root. No subtree rebuild on a click. Reduced motion read at click time. |
+| 9 | `styles/base.css` | A block under the module's own prefix, in the brand tokens at the top of the file. |
+| 10 | `dev/<module>-preview.html` | The module alone, with `?preset=` for the central figures, the design figures and the edge shapes. |
+| 11 | `js/tests_<module>_module.js` | The clock and the module run against a small DOM shim and fake time: a starved tab, a late frame, a click mid-travel, reduced motion, and after any sequence of clicks a screen equal to a fresh render of the last case. |
+| 12 | `js/state.js` | `createEmptyGenerated`; a tolerant session importer (cap with an import warning, drop what the engine refuses with a warning, never throw); the key in `normalizeGenerated`; the new module's `null` in **every higher-priority branch** of the exclusion chain, and its own branch at the end that derives `assumptions`, `outputs`, `tables` and `charts`; and `<module>ScenarioId` in `normalizeModuleUi`. |
+| 13 | `js/module_pipeline.js` | **Not in the first brief.** The import; the apply function that derives the tables and records the projection; a refresh in `ensureGenerated`, because the engine reads central assumptions that move between save and open; the validator; the key in `normalizePayload`; the new module's `null` in **every list that clears the other engine modules** and a branch of its own in `mergeGeneratedPatch`; and the branch in `applyNormalizedPayloadToModule`. The Dev Panel and `check-case-pack.mjs` both run this file. |
+| 14 | `js/app.js` | The in-memory map, its reset on a new session and its entry in the presenter snapshot's `mapKeys`; get and set for the selected case (remember, persist on `ui`, forget a case the payload no longer has, read-only guard); `window.__set…Scenario` and `window.__get…ScenarioForModule`; **the presenter hook, `setScenario`'s kind list, which was not in the first brief and throws for an unknown kind**; the Dev Panel example payload; `hasCalculatedGeneratedOutputs`; the lists that clear the other engines; and the module's id in `getCodexVideoActiveScenarios` and the scene manifest's `activeScenario`. |
+| 15 | `js/render.js` | The import; `is<Module>Module`; the label and token; the overview line; the heading; `blocksGeneratedTableEditing`; a shell builder beside `buildMortgageScenarioShell`; the mount in the generic grid; no charts card, in the grid and in the patch path (`patchCharts`), or the card reappears after the first click. |
+| 16 | `js/presenter_catalogue.js` | The kind in `moduleKind`, the cases in `scenarios`, and the default case. Case ids must be stable. |
+| 17 | `js/video_scene.js`, `js/codex_video_brief.js` | The kind and label; a resolve branch that shows the selected case's own figures (the figures that add up first, because a story shows three) and its own chart; the scenario key in `normalizeScenarioSelection`. |
+| 18 | `js/tests_<module>_wiring.js` | The paste pipeline accepts it and derives its tables; a rate or a fifth case is refused with the engine's message; setting it clears the others and the reverse; load refreshes; an import tolerates too many cases; the presenter catalogue lists it. |
+| 19 | `scripts/check-video-scene.mjs`, `scripts/check-codex-video-brief.mjs` | A case each, with a model-supplied output that must be replaced. |
+| 20 | `.github/workflows/consumer-regression.yml`, `.github/workflows/deploy-worker.yml` | `npm run check:<module>` beside `check:house-purchase`. |
+| 21 | `docs/<module>-app-change.md` | Build status, what differs from the brief, and this list. The contract summary goes in the pull request description. **Do not edit `docs/prompt-pack/`**: the playbook is written from the contract summary once the module lands. |
+
+What this list deliberately does not include, because a first release does not need it: `js/planning/module_registry.js`, the module manifest and playbook, consumer routing and the planner's facts. They are the consumer stage, and they come with a reviewed intake contract.
 
 ## Tests
 

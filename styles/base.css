@@ -10500,3 +10500,361 @@ body.overview-has-selection .toast-host {
 #clientVoiceNote[hidden] { display: none !important; }
 #clientVoiceNote .voice-download-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 #clientVoiceNote h4, #clientVoiceNote p { margin: 0; }
+
+/* ============================================================================
+   THE FUTURE COST FUND
+
+   The fund over the years, in the brand tokens at the top of this file. One
+   element carries the screen: the line. Everything around it stays quiet.
+   Blue marks the fund and the selected case; green appears once, as the dot
+   beside "Covered", and never without that word. Text stays in text colours.
+
+   Nothing animates through CSS. The only motion in this module is the fund
+   line travelling between cases, and that is driven by the module's own clock
+   so that it can be settled, cancelled and left alone under reduced motion.
+   ========================================================================= */
+
+.fcf {
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.fcf-title {
+  margin: 0;
+  font-size: clamp(28px, 3.4vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.14;
+}
+
+.fcf-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.25vw, 20px);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.fcf-cases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: clamp(8px, 1vw, 16px);
+  min-width: 0;
+}
+
+.fcf-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-ui);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.fcf-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.fcf-case:focus-visible {
+  outline: 2px solid var(--electric-blue);
+  outline-offset: 2px;
+}
+
+.fcf-case.is-active {
+  border-color: var(--electric-blue);
+  background: var(--bg-1);
+  box-shadow: 0 0 0 1px var(--electric-blue);
+}
+
+.fcf-case-name {
+  font-size: clamp(15px, 1.35vw, 22px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.fcf-case.is-active .fcf-case-name {
+  font-weight: 800;
+}
+
+.fcf-case-amount {
+  color: var(--muted);
+  font-size: clamp(13px, 1.1vw, 18px);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.fcf-headline {
+  margin: 0;
+  font-size: clamp(20px, 2.3vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.fcf-support {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.15vw, 22px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ chart */
+
+.fcf-chart {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.fcf-chart.has-header-row {
+  margin-top: 44px;
+}
+
+.fcf-panel {
+  position: absolute;
+  top: 0;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+
+.fcf-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.fcf-grid {
+  stroke: rgba(247, 244, 238, 0.12);
+  stroke-width: 1;
+}
+
+.fcf-base {
+  stroke: rgba(247, 244, 238, 0.32);
+  stroke-width: 1;
+}
+
+.fcf-area {
+  fill: rgba(106, 167, 200, 0.3);
+  stroke: none;
+}
+
+.fcf-line {
+  fill: none;
+  stroke: var(--electric-blue);
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.fcf-chart.is-narrow .fcf-line {
+  stroke-width: 2.5;
+}
+
+.fcf-grid-label {
+  position: absolute;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.fcf-chart.is-narrow .fcf-grid-label {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.fcf-block {
+  position: absolute;
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid rgba(247, 244, 238, 0.92);
+  border-radius: 4px;
+  background: rgba(247, 244, 238, 0.08);
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.fcf-chart.is-narrow .fcf-block {
+  border-radius: 3px;
+}
+
+.fcf-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-green);
+}
+
+.fcf-panel-head {
+  position: absolute;
+}
+
+.fcf-panel-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 30px;
+}
+
+.fcf-panel-amount {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 20px;
+}
+
+.fcf-panel-covered {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+
+.fcf-chart.is-narrow .fcf-panel-title {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.fcf-chart.is-narrow .fcf-panel-covered {
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.fcf-chart.is-narrow .fcf-panel-covered .fcf-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.fcf-panel-head.is-above {
+  text-align: right;
+}
+
+.fcf-panel-head.is-above .fcf-panel-covered {
+  justify-content: flex-end;
+}
+
+.fcf-label {
+  position: absolute;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 30px;
+  white-space: nowrap;
+}
+
+.fcf-label-muted {
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.fcf-label-fund {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.fcf-chart.is-narrow .fcf-label {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.fcf-chart.is-narrow .fcf-label-muted,
+.fcf-chart.is-narrow .fcf-label-fund {
+  font-size: 12px;
+  line-height: 16px;
+  white-space: normal;
+}
+
+.fcf-tick {
+  position: absolute;
+  width: 1px;
+  height: 8px;
+  background: rgba(247, 244, 238, 0.32);
+}
+
+.fcf-axis-label {
+  position: absolute;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.fcf-axis-label.is-cost {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.fcf-chart.is-narrow .fcf-axis-label {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.fcf-chart.is-narrow .fcf-axis-label.is-first {
+  transform: none;
+}
+
+/* ------------------------------------------------------------- under it */
+
+.fcf-covered {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.fcf-by-year {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.fcf-covered[hidden],
+.fcf-by-year[hidden] {
+  display: none;
+}
+
+.fcf-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(12px, 1vw, 18px);
+  font-weight: 500;
+  line-height: 1.45;
+}

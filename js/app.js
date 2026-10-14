@@ -76,6 +76,10 @@ import { runMortgageMathTests } from './tests_mortgage_math.js';
 import { runPensionMathTests } from './tests_pension_math.js';
 import { runIeTaxTests } from './tests_ie_tax.js';
 import { runCollegeFundingMathTests } from './tests_college_funding_math.js';
+import {
+  getDefaultFutureCostFundScenarioId,
+  getFutureCostFundCases
+} from './future_cost_fund_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
 import { validateOutputsBucketedPayload } from './outputs_bucketed_contract.js';
@@ -268,6 +272,7 @@ const appState = {
   housePurchaseScenarioByModuleId: new Map(),
   pbsScenarioByModuleId: new Map(),
   mortgageScenarioByModuleId: new Map(),
+  futureCostFundScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1555,6 +1560,30 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'future-cost-fund-college-demo',
+    label: 'Future Cost Fund: College in 8 Years',
+    payload: {
+      title: 'College - Ways to Have the Money Ready',
+      generated: {
+        summaryHtml: '<p>College starts in 8 years and runs for four. This shows what each way of saving would ask of you, and that every way covers the same cost: what changes is when the money leaves your hands.</p>',
+        futureCostFundInputs: {
+          costTitle: 'College',
+          costKind: 'education',
+          startsInYears: 8,
+          durationYears: 4,
+          annualCostToday: 15000,
+          baseScenarioId: 'lump-sum',
+          scenarios: [
+            { id: 'lump-sum', title: 'Lump sum today', lumpShare: 1 },
+            { id: 'every-year', title: 'Save every year', lumpShare: 0 },
+            { id: 'half-and-half', title: 'Half and half', lumpShare: 0.5 },
+            { id: 'start-later', title: 'Start in 3 years', lumpShare: 0, savingStartsInYears: 3 }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'college-funding-twins-demo',
     label: 'College Funding: Twins Scenario Demo',
     payload: {
@@ -2151,6 +2180,7 @@ function hasCalculatedGeneratedOutputs(module) {
     || generated.mortgageInputs
     || generated.loanInputs
     || generated.collegeFundingInputs
+    || generated.futureCostFundInputs
     || generated.housePurchaseInputs
     || generated.netRetirementInputs
   );
@@ -3115,6 +3145,7 @@ function applyUpdatedProjectionToModule({
     module.generated.mortgageInputs = null;
     module.generated.loanInputs = null;
     module.generated.collegeFundingInputs = null;
+    module.generated.futureCostFundInputs = null;
     applyNetRetirementProjectionToModule(module);
     return;
   }
@@ -4542,12 +4573,14 @@ function getCodexVideoActiveScenarios() {
     pbsScenarioId: {},
     pensionScenarioId: {},
     netRetirementScenarioId: {},
+    futureCostFundScenarioId: {},
     housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
     activeScenarios.pbsScenarioId[module.id] = getPbsScenarioForModule(module.id);
     activeScenarios.pensionScenarioId[module.id] = getPensionScenarioForModule(module.id);
     activeScenarios.netRetirementScenarioId[module.id] = getNetRetirementScenarioForModule(module.id);
+    activeScenarios.futureCostFundScenarioId[module.id] = getFutureCostFundScenarioForModule(module.id);
     activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
@@ -5874,6 +5907,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.housePurchaseScenarioByModuleId = new Map();
   appState.pbsScenarioByModuleId = new Map();
   appState.mortgageScenarioByModuleId = new Map();
+  appState.futureCostFundScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6504,6 +6538,7 @@ async function handleHousePurchaseEditor(moduleId, payload = {}) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.futureCostFundInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -6719,6 +6754,93 @@ function setMortgageScenarioForModule(moduleId, scenarioId) {
   const uiState = ensureModuleUi(module);
   if (uiState) {
     uiState.mortgageScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+/**
+ * THE SELECTED CASE OF A FUTURE COST FUND.
+ *
+ * The same trio as the mortgage module: the case is remembered in memory for
+ * the session, persisted on the module's ui for the next load, and forgotten
+ * (never shown) when the payload no longer contains it. Unlike mortgage there
+ * is nothing outside the module to patch on a click: its assumptions, outputs
+ * and tables list every case, so they do not follow the selection.
+ */
+function getFutureCostFundCasesForModule(module) {
+  if (!module?.generated?.futureCostFundInputs) {
+    return [];
+  }
+
+  try {
+    return getFutureCostFundCases(module.generated.futureCostFundInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getFutureCostFundScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getFutureCostFundCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.futureCostFundScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.futureCostFundScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.futureCostFundScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  // A remembered case that the payload no longer contains is forgotten rather
+  // than shown, so an edited module opens on its own base case.
+  appState.futureCostFundScenarioByModuleId.delete(moduleId);
+  try {
+    return getDefaultFutureCostFundScenarioId(module.generated.futureCostFundInputs) || cases[0].id;
+  } catch (_error) {
+    return cases[0].id;
+  }
+}
+
+function setFutureCostFundScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const nextCase = getFutureCostFundCasesForModule(module).find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getFutureCostFundScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.futureCostFundScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // The module has already moved its own line and words, on its own clock, and
+  // nothing else on the page follows the case. So there is nothing to patch and
+  // nothing to rebuild: rebuilding would replace the travel the client is
+  // watching.
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.futureCostFundScenarioId = nextCase.id;
   }
   module.updatedAt = nowIso();
   scheduleSessionSave();
@@ -7497,6 +7619,7 @@ function openVideoScene(moduleId) {
         pbsScenarioId: getPbsScenarioForModule(module.id),
         pensionScenarioId: appState.pensionScenarioByModuleId.get(module.id) || '',
         netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || '',
+        futureCostFundScenarioId: getFutureCostFundScenarioForModule(module.id),
         housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
@@ -9469,7 +9592,7 @@ function bindEvents() {
 // Presentation runs against a disposable session and disposable scenario maps.
 // Pending autosaves still refer to the original session, never this copy.
 function installLivePresenter() {
-  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
+  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
   window.planeirPresenter = installPresenter({
     session: () => appState.presenterSnapshot?.session || appState.session,
     root: () => ui.swipeStage.querySelector('.focused-module-card'),
@@ -9497,7 +9620,7 @@ function installLivePresenter() {
     async setScenario(module, scenarioId) {
       if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
       const root = ui.swipeStage.querySelector('.focused-module-card');
-      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan') {
+      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund') {
         const control = [...root.querySelectorAll('*')].find(el => typeof el.presenterSelectScenario === 'function');
         if (!control) throw new Error(`Scenario control is unavailable in ${module.label}.`);
         await control.presenterSelectScenario(scenarioId);
@@ -9693,6 +9816,10 @@ export async function initApp(options = {}) {
       setMortgageScenarioForModule(moduleId, scenarioId);
     };
     window.__getMortgageScenarioForModule = (moduleId) => getMortgageScenarioForModule(moduleId);
+    window.__setFutureCostFundScenario = (moduleId, scenarioId) => {
+      setFutureCostFundScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getFutureCostFundScenarioForModule = (moduleId) => getFutureCostFundScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runIeTaxTests = () => runIeTaxTests();
