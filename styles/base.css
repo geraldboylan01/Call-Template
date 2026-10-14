@@ -10859,6 +10859,446 @@ body.overview-has-selection .toast-host {
   line-height: 1.45;
 }
 
+/* ======================================================================
+   Household cash flow (.hcf-)
+
+   After everything you pay, what is left each year. A staircase on a wide
+   screen and a single bar on a phone, drawn by js/household_cash_flow_module.js
+   from the geometry in js/household_cash_flow_view.js. Every mark is placed
+   there; this block only dresses it.
+   ====================================================================== */
+
+.hcf {
+  --hcf-income: #7d8a92;
+  --hcf-cost: #434f58;
+  --hcf-changed: #3f7391;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  /* Amounts are centred on their bar and may reach a little past the plot. */
+  padding-inline: 28px;
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.hcf [hidden] {
+  display: none !important;
+}
+
+.hcf-probe {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.hcf-muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.35vw, 26px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-heading {
+  margin: 6px 0 0;
+  font-size: clamp(24px, 3.1vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.hcf-cases {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hcf-case {
+  appearance: none;
+  min-height: 64px;
+  padding: 8px 29px;
+  border: 1px solid rgba(247, 244, 238, 0.16);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: clamp(15px, 1.25vw, 24px);
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.hcf-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.hcf-case:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+/* The thicker border is the non-colour cue, with aria-pressed. The padding
+   gives back what the border takes, so the button is the same size selected. */
+.hcf-case.is-active {
+  padding: 8px 28px;
+  border: 2px solid var(--electric-blue);
+  background: rgba(106, 167, 200, 0.16);
+  color: var(--text);
+}
+
+.hcf.is-bar .hcf-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hcf.is-bar .hcf-case {
+  padding: 8px 13px;
+  font-size: 15px;
+}
+
+.hcf.is-bar .hcf-case.is-active {
+  padding: 8px 12px;
+}
+
+/* ------------------------------------------------------------------ answer */
+
+.hcf-stage {
+  display: block;
+  min-width: 0;
+}
+
+.hcf-stage.is-beside {
+  display: flex;
+  align-items: flex-end;
+  gap: 48px;
+}
+
+.hcf-answer {
+  display: flex;
+  flex-direction: column;
+}
+
+.hcf-stage.is-beside .hcf-answer {
+  width: 328px;
+  flex: none;
+}
+
+.hcf-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+
+.hcf-swatch.is-left_over {
+  background: var(--accent-green);
+}
+
+.hcf-swatch.is-tight {
+  background: var(--accent-amber);
+}
+
+.hcf-swatch.is-short {
+  background: var(--accent-red);
+}
+
+.hcf-figure {
+  margin-top: 12px;
+  font-size: clamp(44px, 4.2vw, 80px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.hcf-unit {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-monthly {
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: clamp(15px, 1.25vw, 24px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-sentence {
+  margin: 0;
+  font-size: clamp(18px, 2.1vw, 40px);
+  font-weight: 500;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.hcf.is-bar .hcf-sentence {
+  min-height: 5.6em;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.hcf-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.1vw, 18px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ chart */
+
+.hcf-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.hcf-floor {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.32);
+}
+
+.hcf-connector {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.3);
+}
+
+.hcf-bar {
+  position: absolute;
+  background: var(--hcf-cost);
+}
+
+.hcf-bar.is-income {
+  background: var(--hcf-income);
+}
+
+.hcf-bar.is-changed {
+  background: var(--hcf-changed);
+}
+
+.hcf-bar.is-left {
+  background: var(--accent-green);
+}
+
+/* Today's bar where it was: an outline, never a fill. */
+.hcf-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(247, 244, 238, 0.55);
+  pointer-events: none;
+}
+
+.hcf-amount {
+  position: absolute;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hcf-name {
+  position: absolute;
+  text-align: center;
+}
+
+.hcf-name-label {
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-name-delta {
+  margin-top: 6px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-amount.is-quiet,
+.hcf-name.is-quiet {
+  opacity: 0.55;
+}
+
+.hcf-key {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-key-swatch {
+  display: inline-block;
+  width: 36px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(247, 244, 238, 0.55);
+}
+
+.hcf-last-label {
+  position: absolute;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hcf-last-label-today {
+  color: var(--muted);
+}
+
+.hcf-end-mark {
+  position: absolute;
+  height: 3px;
+  background: var(--accent-amber);
+  opacity: 0;
+}
+
+/* -------------------------------------------------------------------- bar */
+
+.hcf-bar-head {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.hcf-bar-head-label {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.hcf-bar-head-amount {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.hcf-bar-rule {
+  position: absolute;
+  top: 32px;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.18);
+}
+
+.hcf-track {
+  position: absolute;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--bg-0);
+}
+
+.hcf-segment {
+  position: absolute;
+  left: 0;
+  background: var(--hcf-cost);
+}
+
+.hcf-segment.is-changed {
+  background: var(--hcf-changed);
+}
+
+.hcf-segment.is-left {
+  background: var(--accent-green);
+}
+
+.hcf-cleared-tick {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  background: var(--electric-blue);
+  opacity: 0;
+}
+
+.hcf-bar-end-mark {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  background: var(--accent-amber);
+  opacity: 0;
+}
+
+.hcf-row {
+  position: absolute;
+}
+
+.hcf-row-stub {
+  position: absolute;
+  top: 10px;
+  left: -16px;
+  width: 12px;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.4);
+}
+
+.hcf-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.hcf-row-name {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.hcf-row-leader {
+  flex: 1;
+  height: 1px;
+  align-self: flex-end;
+  margin-bottom: 5px;
+  border-bottom: 1px solid rgba(247, 244, 238, 0.14);
+}
+
+.hcf-row-amount {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.hcf-row-delta {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hcf * {
+    transition: none !important;
+  }
+}
+
 /* ======================================================= Protection gap (.pg-) */
 
 .pg {

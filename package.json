@@ -103,6 +103,8 @@
     "check:module-media": "node ./scripts/check-module-media-state.mjs",
     "check:house-purchase": "node ./scripts/check-house-purchase.mjs",
     "check:future-cost-fund": "node ./scripts/check-future-cost-fund.mjs",
+    "check:household-cash-flow": "node ./scripts/check-household-cash-flow.mjs",
+    "check:goals-and-resources": "node ./scripts/check-goals-and-resources.mjs",
     "check:module-input-contracts": "node ./scripts/check-module-input-contracts.mjs && node ./scripts/check-module-input-display.mjs && node ./scripts/check-direct-module-planning.mjs && node ./scripts/check-direct-module-live-path.mjs",
     "check:direct-module-planning": "node ./scripts/check-direct-module-planning.mjs",
     "check:ownership-model": "node ./scripts/check-ownership-model.mjs",

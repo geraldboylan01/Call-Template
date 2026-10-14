@@ -33,6 +33,7 @@ import {
 } from './liquidity_reserve.js';
 import { buildRepaymentCaseModule } from './repayment_case_module.js';
 import { buildFutureCostFundModule } from './future_cost_fund_module.js';
+import { buildHouseholdCashFlowModule } from './household_cash_flow_module.js';
 import {
   PBS_ASSET_SECTION_KEYS,
   resolveLiquidityReserveForPlan,
@@ -2157,6 +2158,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isHouseholdCashFlowModule(module)) {
+    return {
+      label: 'Household Cash Flow',
+      token: 'household-cash-flow'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2315,6 +2323,17 @@ function buildOverviewMetaItems(module, signalCounts) {
     }
     if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
       items.push(pluralizeOverview(inputs.scenarios.length, 'way'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'household-cash-flow') {
+    const inputs = module?.generated?.householdCashFlowInputs || {};
+    if (Array.isArray(inputs.people) && inputs.people.length > 0) {
+      items.push(pluralizeOverview(inputs.people.length, 'person', 'people'));
+    }
+    if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
+      items.push(pluralizeOverview(inputs.scenarios.length, 'case'));
     }
     return uniqueOverviewItems(items, 3, 22);
   }
@@ -2655,6 +2674,10 @@ function isFutureCostFundModule(module) {
   return Boolean(module?.generated?.futureCostFundInputs);
 }
 
+function isHouseholdCashFlowModule(module) {
+  return Boolean(module?.generated?.householdCashFlowInputs);
+}
+
 function isHousePurchaseModule(module) {
   return Boolean(module?.generated?.housePurchaseInputs);
 }
@@ -2762,6 +2785,13 @@ function getPlaybookDisplayContext(module) {
     return {
       key: 'futureCostFund',
       heading: 'Future Cost Fund'
+    };
+  }
+
+  if (isHouseholdCashFlowModule(module)) {
+    return {
+      key: 'householdCashFlow',
+      heading: 'Household Cash Flow'
     };
   }
 
@@ -3247,6 +3277,7 @@ function blocksGeneratedTableEditing(module) {
     || isNetRetirementModule(module)
     || isCollegeFundingModule(module)
     || isFutureCostFundModule(module)
+    || isHouseholdCashFlowModule(module)
     || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
@@ -7932,6 +7963,39 @@ function buildFutureCostFundShell(module) {
       onSelectCase: (caseId) => {
         if (typeof window.__setFutureCostFundScenario === 'function') {
           window.__setFutureCostFundScenario(module.id, caseId);
+        }
+      }
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * The household cash flow.
+ *
+ * Everything the client sees about what is left each year lives in the module:
+ * the case buttons, the answer, the staircase or the bar, and today's outlines.
+ * It owns its own clock, so a click moves the marks and rebuilds nothing, and it
+ * tells the app which case is selected only so that the case is remembered.
+ */
+function buildHouseholdCashFlowShell(module) {
+  const inputs = module?.generated?.householdCashFlowInputs;
+  if (!inputs) {
+    return null;
+  }
+
+  const remembered = typeof window.__getHouseholdCashFlowScenarioForModule === 'function'
+    ? window.__getHouseholdCashFlowScenarioForModule(module.id)
+    : '';
+
+  try {
+    return buildHouseholdCashFlowModule({
+      rawInputs: inputs,
+      selectedCaseId: remembered || null,
+      onSelectCase: (caseId) => {
+        if (typeof window.__setHouseholdCashFlowScenario === 'function') {
+          window.__setHouseholdCashFlowScenario(module.id, caseId);
         }
       }
     });
@@ -13133,6 +13197,13 @@ function buildGeneratedSection(module, {
     }
   }
 
+  if (isHouseholdCashFlowModule(displayModule)) {
+    const householdCashFlowShell = buildHouseholdCashFlowShell(module);
+    if (householdCashFlowShell) {
+      grid.appendChild(householdCashFlowShell);
+    }
+  }
+
   // NO CHARTS CARD FOR A REPAYMENT MODULE.
   //
   // It draws its own balance curve and its own year-by-year interest columns,
@@ -13193,8 +13264,10 @@ function buildGeneratedSection(module, {
   // NO CHARTS CARD FOR A FUTURE COST FUND either: the module draws the fund
   // itself, and the one chart in its payload is for the surfaces that cannot
   // (the video summary above all).
+  // NO CHARTS CARD FOR A HOUSEHOLD CASH FLOW either, for the same reason: the
+  // module draws the staircase or the bar, and its one chart is for the video.
   if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)
-    && !isFutureCostFundModule(displayModule)) {
+    && !isFutureCostFundModule(displayModule) && !isHouseholdCashFlowModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13380,7 +13453,8 @@ export function patchFocusedGeneratedCards({
   // A repayment module has no charts card to patch, and building one here
   // would put back the duplicate the module was built to remove -- visible
   // only after the first case click, which is the worst way to find it.
-  if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)) {
+  if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)
+    && !isHouseholdCashFlowModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
