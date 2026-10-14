@@ -18,6 +18,8 @@ import {
   PROTECTION_GAP_SAMPLE,
   runProtectionGapTests
 } from '../js/tests_protection_gap_math.js';
+import { runProtectionGapViewTests } from '../js/tests_protection_gap_view.js';
+import { runProtectionGapModuleTests } from '../js/tests_protection_gap_module.js';
 
 const HORIZON_MONTHS = 36;
 const MAX_REFERENCE_MONTHS = 100_000;
@@ -210,15 +212,24 @@ check('the published sample table is reproduced', () => {
   assert.equal(debug.scaleMax, PROTECTION_GAP_EXPECTED.scaleMax);
 });
 
-// The unit suite, run here so one command proves both.
-const summary = runProtectionGapTests();
-if (summary.failed > 0) {
-  failures += summary.failed;
-}
+// The suites, run here so one command proves the engine, the screen's words and
+// geometry, and the module's clock and DOM. The wiring suite joins them when the
+// module is wired into the app.
+const suites = [
+  ['engine', runProtectionGapTests()],
+  ['view', runProtectionGapViewTests()],
+  ['module', await runProtectionGapModuleTests()]
+];
+suites.forEach(([name, summary]) => {
+  if (summary.failed > 0) {
+    failures += summary.failed;
+    console.error(`[ProtectionGapAudit] the ${name} suite has ${summary.failed} failing test(s).`);
+  }
+});
 
 if (failures > 0) {
   console.error(`[ProtectionGapAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[ProtectionGapAudit] the engine matches the independent reference and the unit suite passes.');
+console.info('[ProtectionGapAudit] the engine matches the independent reference, and the engine, view and module suites pass.');

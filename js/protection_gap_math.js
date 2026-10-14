@@ -86,7 +86,8 @@ function isWholeEuros(value) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
-function euroText(amount) {
+/** `€96,000`: whole euros with thousands separators. The screen uses the same one. */
+export function euroText(amount) {
   return `€${String(Math.round(amount)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 }
 
