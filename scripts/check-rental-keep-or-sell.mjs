@@ -13,6 +13,7 @@ import {
   RENTAL_KEEP_OR_SELL_SAMPLE,
   runRentalKeepOrSellTests
 } from '../js/tests_rental_keep_or_sell_math.js';
+import { runRentalKeepOrSellViewTests } from '../js/tests_rental_keep_or_sell_view.js';
 
 let failures = 0;
 
@@ -138,10 +139,16 @@ check('three hundred seeded payloads match the reference', () => {
   }
 });
 
-// The unit suite, run here so one command proves the engine.
+// The unit suites, run here so one command proves the engine and the view.
 const summary = runRentalKeepOrSellTests();
 if (summary.failed > 0) {
   failures += summary.failed;
+}
+
+// The words and the geometry, asked without a browser.
+const viewSummary = runRentalKeepOrSellViewTests();
+if (viewSummary.failed > 0) {
+  failures += viewSummary.failed;
 }
 
 if (failures > 0) {
@@ -149,4 +156,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine suite passes.');
+console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine and view suites pass.');
