@@ -379,7 +379,7 @@ function labelWidth(k, title, amountText) {
 /**
  * Where the labels on the bar go, for one set of drawn values.
  *
- * `values` is `[...segment widths, needX, fillWidth]` in px. A segment whose
+ * `values` is `[...segment widths, needX, fillWidth, shortWidth]` in px. A segment whose
  * text fits is labelled inside it; one that does not (the State payment on a
  * phone) is labelled just below the bar, at its start.
  */
@@ -491,13 +491,17 @@ export function layoutProtectionGap(projection, { width, mode = null } = {}) {
   let rowsAbove = 1;
   let rowsBelow = 1;
   cases.forEach((entry) => {
+    // Green runs for the months savings last. Red is the rest, and only when
+    // something is short: a case with nothing to fill shows neither.
     const fillWidth = entry.status !== 'short'
       ? 0
       : (entry.beyond ? chartWidth : entry.months * cell);
+    const shortWidth = entry.status === 'short' ? chartWidth - fillWidth : 0;
     values[entry.id] = [
       ...entry.segments.map((segment) => segment.amount * pxPerEuro),
       entry.needed * pxPerEuro,
-      fillWidth
+      fillWidth,
+      shortWidth
     ];
     const copy = buildProtectionGapCopy(projection, entry.id, { narrow });
     const plan = planBarLabels(base, copy, values[entry.id]);
@@ -592,7 +596,7 @@ export function placeBarLabels(layout, caseId, values, copy) {
 export function placeStripWords(layout, values, copy) {
   const { k, chartWidth, slots } = layout;
   const fillWidth = values[slots.length + 1];
-  const shortWidth = Math.max(0, chartWidth - fillWidth);
+  const shortWidth = values[slots.length + 2];
   const fits = (candidates, available) => candidates.find(
     (text) => estimateTextWidth(text, k.stripFont, 600) + (2 * k.stripPad) <= available
   ) || null;

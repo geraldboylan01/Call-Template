@@ -235,7 +235,8 @@ export function runProtectionGapViewTests() {
           assert(geometry.needX <= layout.chartWidth + 1e-6, `${label}/${entry.id}: the tick is inside the chart`);
           const words = placeStripWords(layout, values, buildProtectionGapCopy(projection, entry.id, { narrow: layout.narrow }));
           assert(words.fillWidth >= 0 && words.fillWidth <= layout.chartWidth + 1e-6, `${label}/${entry.id}: green inside the strip`);
-          assertWithin(words.fillWidth + words.shortWidth, layout.chartWidth, 1e-6, `${label}/${entry.id}: green and red make the strip`);
+          const stripUsed = entry.status === 'short' ? layout.chartWidth : 0;
+          assertWithin(words.fillWidth + words.shortWidth, stripUsed, 1e-6, `${label}/${entry.id}: green and red make the strip when something is short, and neither otherwise`);
         });
       });
     });
@@ -252,6 +253,7 @@ export function runProtectionGapViewTests() {
     assertWithin(wordsFor('niamh-died').fillWidth, layout.chartWidth, 1e-9, 'beyond fills the strip');
     assertEqual(wordsFor('niamh-died').shortWidth, 0, 'no red when beyond');
     assertEqual(wordsFor('today').fillWidth, 0, 'no green when nothing is short');
+    assertEqual(wordsFor('today').shortWidth, 0, 'and no red either');
     assertEqual(wordsFor('today').end, null, 'no end mark');
     assertEqual(wordsFor('today').nothing.text, 'Nothing to fill', 'words when nothing is short');
 

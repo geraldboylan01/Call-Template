@@ -475,6 +475,8 @@ export async function runProtectionGapModuleTests() {
       assertEqual(findAll(beyond, 'pg-short')[0].style.width, '0px', 'no red when beyond');
 
       const today = mount();
+      assertEqual(findAll(today, 'pg-fill')[0].style.width, '0px', 'no green when nothing is short');
+      assertEqual(findAll(today, 'pg-short')[0].style.width, '0px', 'and no red');
       assertEqual(findAll(today, 'pg-end')[0].hidden, true, 'no end mark when nothing is short');
       assertEqual(findAll(today, 'pg-word-nothing')[0].hidden, false, 'nothing to fill is said');
       assertEqual(findAll(today, 'pg-word-nothing')[0].textContent, 'Nothing to fill', 'in those words');

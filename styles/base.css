@@ -10995,7 +10995,11 @@ body.overview-has-selection .toast-host {
   line-height: 1.15;
 }
 
-.pg-line1,
+/* Line 1 and the status word sit on one line; line 2 starts the next. */
+.pg-line1 {
+  display: inline;
+}
+
 .pg-line2 {
   display: block;
 }
