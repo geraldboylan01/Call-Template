@@ -246,7 +246,9 @@ function normalizeIncome(raw, people) {
     }
 
     let personId = typeof rawItem.personId === 'string' ? rawItem.personId.trim() : '';
-    let mappedFromJoint = false;
+    // Kept when a normalised payload is normalised again, where the id is
+    // already the person's and the "joint" it came from is no longer there.
+    let mappedFromJoint = rawItem.mappedFromJoint === true;
     if (personId === JOINT && people.length === 1) {
       // The engine refuses "joint" for one person. In a one-person household it
       // means that person, so say so here rather than let the engine refuse it.
@@ -585,6 +587,9 @@ export function normalizeHouseholdCashFlowInputs(raw) {
   checkReliefLimits(scenarios, people, gross, earnings, todayContributions);
 
   return {
+    // Written back under the input's own name, so a saved payload reads the same
+    // when it is normalised again. Null means it was not given.
+    householdTaxStatus: taxStatusDefaulted ? null : taxStatus,
     taxStatus,
     taxStatusDefaulted,
     people,

@@ -31,6 +31,10 @@ import {
   normalizeFutureCostFundInputs
 } from './future_cost_fund_math.js';
 import {
+  computeHouseholdCashFlowProjection,
+  normalizeHouseholdCashFlowInputs
+} from './household_cash_flow_math.js';
+import {
   computeMortgageProjection,
   normalizeMortgageInputs
 } from './mortgage_math.js';
@@ -150,6 +154,16 @@ export function ensureGenerated(module) {
       applyFutureCostFundProjectionToModule(module);
     } catch (error) {
       console.warn('[CallCanvas] future cost fund projection could not be refreshed', error);
+    }
+  }
+  // Refreshed on every load, because the household's tax is the engine's and
+  // the tax rules can move between the day a module was saved and the day it
+  // is opened.
+  if (module.generated.householdCashFlowInputs) {
+    try {
+      applyHouseholdCashFlowProjectionToModule(module);
+    } catch (error) {
+      console.warn('[CallCanvas] household cash flow projection could not be refreshed', error);
     }
   }
 }
@@ -413,6 +427,27 @@ function applyFutureCostFundProjectionToModule(module) {
   host.recordProjection(module.id, {
     calculator: 'futureCostFund',
     inputs: cloneSessionValue(module.generated.futureCostFundInputs),
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
+function applyHouseholdCashFlowProjectionToModule(module) {
+  const projection = computeHouseholdCashFlowProjection(module.generated.householdCashFlowInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.tables = projection.tables;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  host.recordProjection(module.id, {
+    calculator: 'householdCashFlow',
+    inputs: cloneSessionValue(module.generated.householdCashFlowInputs),
     debug: projection.debug
   });
 
@@ -1874,6 +1909,14 @@ function validateFutureCostFundInputsPayload(futureCostFundInputs) {
   return normalizeFutureCostFundInputs(futureCostFundInputs);
 }
 
+function validateHouseholdCashFlowInputsPayload(householdCashFlowInputs) {
+  const normalized = normalizeHouseholdCashFlowInputs(householdCashFlowInputs);
+  // A case that leaves less than nothing is found only when the engine projects
+  // it, and it is refused here rather than half applied.
+  computeHouseholdCashFlowProjection(normalized);
+  return normalized;
+}
+
 function validateNetRetirementInputsPayload(netRetirementInputs) {
   return normalizeNetRetirementInputs(netRetirementInputs);
 }
@@ -1991,6 +2034,10 @@ export function normalizePayload(payload) {
       generatedPatch.futureCostFundInputs = validateFutureCostFundInputsPayload(payload.generated.futureCostFundInputs);
     }
 
+    if ('householdCashFlowInputs' in payload.generated) {
+      generatedPatch.householdCashFlowInputs = validateHouseholdCashFlowInputsPayload(payload.generated.householdCashFlowInputs);
+    }
+
     if ('netRetirementInputs' in payload.generated) {
       generatedPatch.netRetirementInputs = validateNetRetirementInputsPayload(payload.generated.netRetirementInputs);
     }
@@ -2043,6 +2090,7 @@ export function clearGeneratedForVideoSummary(module) {
   module.generated.loanInputs = null;
   module.generated.collegeFundingInputs = null;
   module.generated.futureCostFundInputs = null;
+  module.generated.householdCashFlowInputs = null;
   module.generated.housePurchaseInputs = null;
   module.generated.netRetirementInputs = null;
   module.generated.education = null;
@@ -2088,6 +2136,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2109,6 +2158,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2127,6 +2177,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.netRetirementInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.education = null;
       module.generated.report = null;
       clearVideoSummaryForGeneratedModule(module);
@@ -2143,6 +2194,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -2160,6 +2212,26 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
+      module.generated.householdCashFlowInputs = null;
+      module.generated.housePurchaseInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+      module.generated.outputsBucketed = null;
+      clearVideoSummaryForGeneratedModule(module);
+    }
+  }
+
+  if ('householdCashFlowInputs' in generatedPatch) {
+    module.generated.householdCashFlowInputs = generatedPatch.householdCashFlowInputs;
+    if (generatedPatch.householdCashFlowInputs) {
+      module.generated.pbsInputs = null;
+      module.generated.liquidityPlan = null;
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.futureCostFundInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2178,6 +2250,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -2193,6 +2266,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2209,6 +2283,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.mortgageInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2226,6 +2301,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.report = null;
@@ -2242,6 +2318,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2295,6 +2372,7 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
     const hasCollegeFundingInputsPatch = 'collegeFundingInputs' in normalizedPayload.generated;
     const hasHousePurchaseInputsPatch = 'housePurchaseInputs' in normalizedPayload.generated;
     const hasFutureCostFundInputsPatch = 'futureCostFundInputs' in normalizedPayload.generated;
+    const hasHouseholdCashFlowInputsPatch = 'householdCashFlowInputs' in normalizedPayload.generated;
     const hasNetRetirementInputsPatch = 'netRetirementInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
     const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
@@ -2326,6 +2404,8 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
       module.ui.housePurchaseEditor = null;
     } else if (hasFutureCostFundInputsPatch && module.generated.futureCostFundInputs) {
       applyFutureCostFundProjectionToModule(module);
+    } else if (hasHouseholdCashFlowInputsPatch && module.generated.householdCashFlowInputs) {
+      applyHouseholdCashFlowProjectionToModule(module);
     }
   }
 }

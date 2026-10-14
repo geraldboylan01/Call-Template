@@ -553,10 +553,30 @@ export function runHouseholdCashFlowTests() {
   }));
 
   cases.push(runCase('Normalising is idempotent and the presenter hooks read the same cases', () => {
+    // Every shape: a couple with a status, one with no status given, a stated
+    // take-home, and one person whose "joint" income was mapped.
+    const shapes = [
+      HOUSEHOLD_CASH_FLOW_SAMPLE,
+      payload((p) => {
+        delete p.householdTaxStatus;
+      }),
+      payload((p) => {
+        p.people[0].statedTakeHome = 50_000;
+      }),
+      {
+        householdTaxStatus: 'single',
+        people: [{ id: 'alex', age: 40 }],
+        income: [{ personId: 'joint', type: 'employment', amount: 80_000 }],
+        outgoings: [{ id: 'rent', label: 'Rent', amount: 20_000 }],
+        scenarios: [{ id: 'today' }, { id: 'pension', changes: [{ type: 'extraPension', amount: 5_000 }] }]
+      }
+    ];
+    shapes.forEach((shape, index) => {
+      const first = normalizeHouseholdCashFlowInputs(shape);
+      const second = normalizeHouseholdCashFlowInputs(first);
+      assertEqual(JSON.stringify(second), JSON.stringify(first), `shape ${index + 1} normalises to itself`);
+    });
     const once = normalizeHouseholdCashFlowInputs(HOUSEHOLD_CASH_FLOW_SAMPLE);
-    const twice = normalizeHouseholdCashFlowInputs(once);
-    assertEqual(JSON.stringify(twice.scenarios), JSON.stringify(once.scenarios), 'cases');
-    assertEqual(JSON.stringify(twice.outgoings), JSON.stringify(once.outgoings), 'outgoings');
     assertEqual(getDefaultHouseholdCashFlowScenarioId(HOUSEHOLD_CASH_FLOW_SAMPLE), 'today', 'default case');
     const list = getHouseholdCashFlowCases(HOUSEHOLD_CASH_FLOW_SAMPLE);
     assertEqual(list.length, 4, 'four cases');

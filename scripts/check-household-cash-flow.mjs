@@ -23,6 +23,7 @@ import {
 } from '../js/tests_household_cash_flow_math.js';
 import { runHouseholdCashFlowViewTests } from '../js/tests_household_cash_flow_view.js';
 import { runHouseholdCashFlowModuleTests } from '../js/tests_household_cash_flow_module.js';
+import { runHouseholdCashFlowWiringTests } from '../js/tests_household_cash_flow_wiring.js';
 import { computeTaxYear } from '../js/planning/tax/engine.js';
 
 let failures = 0;
@@ -394,9 +395,15 @@ if (moduleSummary.failed > 0) {
   failures += moduleSummary.failed;
 }
 
+// The paste pipeline, the session importer and the presenter catalogue.
+const wiringSummary = runHouseholdCashFlowWiringTests();
+if (wiringSummary.failed > 0) {
+  failures += wiringSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[HouseholdCashFlowAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[HouseholdCashFlowAudit] the engine matches the independent reference and the engine, view and module suites pass.');
+console.info('[HouseholdCashFlowAudit] the engine matches the independent reference and the engine, view, module and wiring suites pass.');

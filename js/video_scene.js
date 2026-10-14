@@ -1,6 +1,7 @@
 import { computePensionProjection } from './pension_math.js';
 import { computeCollegeFundingProjection } from './college_funding_math.js';
 import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
+import { computeHouseholdCashFlowProjection } from './household_cash_flow_math.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
@@ -93,6 +94,9 @@ export function getVideoModuleKind(module) {
   }
   if (generated.futureCostFundInputs) {
     return { id: 'future-cost-fund', label: 'Future cost fund' };
+  }
+  if (generated.householdCashFlowInputs) {
+    return { id: 'household-cash-flow', label: 'Household cash flow' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -254,6 +258,58 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
       resolved.generated.tables = projection.tables;
       resolved.generated.charts = projection.charts;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'household-cash-flow') {
+      // The video shows the case that is selected on screen: its own figures and
+      // its own bars, not today's. Today stays the base case, because a case's
+      // changes are measured against it.
+      const requestedId = asTrimmedText(activeScenario.householdCashFlowScenarioId);
+      const projection = computeHouseholdCashFlowProjection(generated.householdCashFlowInputs);
+      const cases = projection.debug.cases;
+      const known = cases.find((entry) => entry.id === requestedId);
+      const selected = known || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
+      const index = cases.findIndex((entry) => entry.id === selected.id);
+      const row = projection.summary.cases[index];
+      const shown = (amount) => Math.round(amount / 100) * 100;
+      // The figures that add up come first: what comes in, what goes out and
+      // what is left, because a story shows only the first few. Anything that is
+      // nothing in this case is left out.
+      const figures = [
+        ['Your income before tax (€)', shown(row.income.total)],
+        ['Goes out (€)', selected.shownIncome - selected.shownLeftOver],
+        ['Left over (€)', selected.shownLeftOver],
+        ['Tax (€)', shown(row.outgoings.tax)],
+        ['Pensions (€)', shown(row.outgoings.pensionContributions)],
+        ['Other outgoings (€)', shown(row.outgoings.statedTotal)]
+      ].filter(([, value]) => value !== 0);
+      const drawn = projection.debug.drawnLines;
+      const chart = {
+        title: 'Where a year of your income goes',
+        subtitle: `For “${selected.title}”.`,
+        type: 'bar',
+        labels: ['Your income before tax', ...drawn.map((line) => line.label), 'Left over'],
+        datasets: [{
+          label: 'A year',
+          data: [
+            selected.shownIncome,
+            ...drawn.map((line) => selected.lines.find((entry) => entry.id === line.id).shownAmount),
+            selected.shownLeftOver
+          ]
+        }],
+        display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: 'A year' }
+      };
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = [chart];
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },

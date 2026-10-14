@@ -102,6 +102,30 @@ const futureCostFundInputs = {
   ]
 };
 
+const householdCashFlowInputs = {
+  householdTaxStatus: 'married_or_civil_partners',
+  people: [
+    { id: 'niamh', age: 45, label: 'Niamh' },
+    { id: 'dara', age: 45, label: 'Dara' }
+  ],
+  income: [
+    { personId: 'niamh', type: 'employment', amount: 75000 },
+    { personId: 'dara', type: 'employment', amount: 75000 }
+  ],
+  outgoings: [
+    { id: 'mortgage', label: 'Mortgage', amount: 30000 },
+    { id: 'car', label: 'Car loan', amount: 6000 },
+    { id: 'living', label: 'Living costs', amount: 48000 },
+    { id: 'children', label: 'Children', amount: 9000 },
+    { id: 'insurance', label: 'Insurance', amount: 3000 }
+  ],
+  scenarios: [
+    { id: 'today' },
+    { id: 'clear-car', changes: [{ type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' }] },
+    { id: 'pension', changes: [{ type: 'extraPension', amount: 10000 }] }
+  ]
+};
+
 function makeHousePurchaseInputs() {
   return {
     ...createDefaultHousePurchaseInputs('2026-07-12'),
@@ -338,6 +362,30 @@ const cases = [
       assert(!/Lump sum today/.test(labels), 'A case with no lump sum must not show one');
       const pays = manifest.story.metrics.find((metric) => /You pay in/.test(metric.label));
       assert(pays.rawValue === 86500, `Expected the yearly case to pay in 86,500 (got ${pays.rawValue})`);
+    }
+  },
+  {
+    name: 'Household cash flow shows the selected case, with its own figures and its own bars',
+    module: baseModule('cash-1', 'Household cash flow', {
+      summaryHtml: '<p>What is left each year.</p>',
+      householdCashFlowInputs,
+      // A calculated module's stored tables are never trusted.
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      charts: []
+    }),
+    activeScenario: { householdCashFlowScenarioId: 'pension' },
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'household-cash-flow', 'Expected household cash flow module kind');
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected household cash flow projection to resolve');
+      assert(manifest.source.activeScenario.id === 'pension', 'Expected the selected household cash flow case');
+      assert(manifest.story.charts.length > 0, 'Expected the cash flow chart');
+      const labels = manifest.story.metrics.map((metric) => metric.label).join(' | ');
+      assert(!labels.includes('MODEL-SUPPLIED'), 'Expected model-supplied outputs to be replaced');
+      assert(/Left over/.test(labels) && /Goes out/.test(labels), `Expected the case's figures (${labels})`);
+      const left = manifest.story.metrics.find((metric) => /Left over/.test(metric.label));
+      const today = manifest.story.metrics.find((metric) => /income before tax/i.test(metric.label));
+      assert(today.rawValue === 150000, `Expected income of 150,000 (got ${today.rawValue})`);
+      assert(left.rawValue > 0 && left.rawValue < 9200, `Expected the pension case to leave less than today (got ${left.rawValue})`);
     }
   },
   {
