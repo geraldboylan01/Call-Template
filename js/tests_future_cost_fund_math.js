@@ -323,7 +323,7 @@ export function runFutureCostFundTests() {
     });
     assertThrows(
       normalise({ startsInYears: 2.5 }),
-      'generated.futureCostFundInputs.startsInYears must be a whole number of years from 1 to 100.',
+      'generated.futureCostFundInputs.startsInYears must be a whole number of years from 1 to 40.',
       'a fractional start'
     );
     assertThrows(
@@ -346,17 +346,17 @@ export function runFutureCostFundTests() {
   cases.push(runCase('Projection years are bounded before calculating or allocating rows', () => {
     const projection = computeFutureCostFundProjection({
       ...FUTURE_COST_FUND_SAMPLE,
-      startsInYears: 100,
+      startsInYears: 40,
       durationYears: 30
     }, { calculationYear: 2026 });
     checkInvariants(projection, 'maximum supported years');
     projection.debug.cases.forEach((entry) => {
-      assertEqual(entry.rows.length, 130, 'the maximum number of annual rows');
+      assertEqual(entry.rows.length, 70, 'the maximum number of annual rows');
     });
 
-    [101, 1_000_000_000, Number.MAX_SAFE_INTEGER].forEach((startsInYears) => {
+    [41, 100, 1_000_000_000, Number.MAX_SAFE_INTEGER].forEach((startsInYears) => {
       const payload = { ...FUTURE_COST_FUND_SAMPLE, startsInYears };
-      const message = 'generated.futureCostFundInputs.startsInYears must be a whole number of years from 1 to 100.';
+      const message = 'generated.futureCostFundInputs.startsInYears must be a whole number of years from 1 to 40.';
       assertThrows(() => normalizeFutureCostFundInputs(payload), message, `normalising a ${startsInYears}-year start`);
       assertThrows(() => computeFutureCostFundProjection(payload), message, `projecting a ${startsInYears}-year start`);
     });

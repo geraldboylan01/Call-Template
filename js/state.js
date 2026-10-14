@@ -6,6 +6,10 @@ import {
   normalizeHousePurchaseInputs,
   computeHousePurchaseProjection
 } from './house_purchase/engine.js';
+import {
+  normalizeFutureCostFundInputs,
+  computeFutureCostFundProjection
+} from './future_cost_fund_math.js';
 
 const STORAGE_KEY = 'call_canvas_session_current';
 const LEGACY_STORAGE_KEY = 'call-template-session-v1';
@@ -695,6 +699,39 @@ function firstDefinedNumber(source, keys) {
   }
 
   return undefined;
+}
+
+/**
+ * The future cost fund's inputs, as a session carries them.
+ *
+ * Tolerant on the way in, like the other capped arrays: an over-cap list of
+ * cases is cut with an import warning and never thrown over, because a link
+ * that was valid when it was published is a promise already kept. What the
+ * engine will not read at all (a rate in the payload, a case that cannot be
+ * solved) is dropped with a warning and the module simply has no inputs.
+ */
+function normalizeFutureCostFundSessionInputs(futureCostFundInputs) {
+  if (!futureCostFundInputs || typeof futureCostFundInputs !== 'object' || Array.isArray(futureCostFundInputs)) {
+    return null;
+  }
+
+  const candidate = Array.isArray(futureCostFundInputs.scenarios)
+    ? {
+      ...futureCostFundInputs,
+      scenarios: capImportedScenarioCases(
+        futureCostFundInputs.scenarios,
+        MAX_MODULE_SCENARIO_CASES,
+        'futureCostFundInputs.scenarios'
+      )
+    }
+    : futureCostFundInputs;
+
+  try {
+    return normalizeFutureCostFundInputs(candidate);
+  } catch (error) {
+    recordSessionImportWarning(`futureCostFundInputs could not be read and was left out: ${error.message}`);
+    return null;
+  }
 }
 
 function normalizeCollegeFundingInputs(collegeFundingInputs) {
@@ -1670,6 +1707,7 @@ export function createEmptyGenerated() {
     liquidityPlan: null,
     pensionInputs: null,
     collegeFundingInputs: null,
+    futureCostFundInputs: null,
     housePurchaseInputs: null,
     netRetirementInputs: null,
     mortgageInputs: null,
@@ -1696,6 +1734,7 @@ export function normalizeGenerated(generated) {
     liquidityPlan: normalizeLiquidityPlan(generated.liquidityPlan || generated.liquidity),
     pensionInputs: normalizePensionInputs(generated.pensionInputs),
     collegeFundingInputs: normalizeCollegeFundingInputs(generated.collegeFundingInputs || generated.collegeFunding),
+    futureCostFundInputs: normalizeFutureCostFundSessionInputs(generated.futureCostFundInputs),
     housePurchaseInputs: normalizeHousePurchaseInputs(generated.housePurchaseInputs, { allowPartial: true }),
     netRetirementInputs: normalizeNetRetirementInputs(generated.netRetirementInputs || generated.netCashflowInputs),
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
@@ -1713,6 +1752,7 @@ export function normalizeGenerated(generated) {
     normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -1734,6 +1774,7 @@ export function normalizeGenerated(generated) {
     normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -1743,6 +1784,7 @@ export function normalizeGenerated(generated) {
     normalized.pbsInputs = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -1754,6 +1796,7 @@ export function normalizeGenerated(generated) {
     normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
@@ -1761,11 +1804,13 @@ export function normalizeGenerated(generated) {
   } else if (normalized.pensionInputs || normalized.mortgageInputs || normalized.loanInputs) {
     normalized.liquidityPlan = null;
     normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.education = null;
   } else if (normalized.collegeFundingInputs) {
     normalized.liquidityPlan = null;
+    normalized.futureCostFundInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.education = null;
@@ -1774,6 +1819,7 @@ export function normalizeGenerated(generated) {
     normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
     normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
@@ -1782,6 +1828,31 @@ export function normalizeGenerated(generated) {
     normalized.outputsBucketed = null;
     try {
       const projection = computeHousePurchaseProjection(normalized.housePurchaseInputs);
+      normalized.assumptions = projection.assumptionsTable;
+      normalized.outputs = projection.outputsTable;
+      normalized.tables = projection.tables;
+      normalized.charts = projection.charts;
+    } catch (_error) {
+      // Never preserve model-supplied calculations for a runtime-owned module.
+      normalized.assumptions = { columns: [], rows: [] };
+      normalized.outputs = { columns: [], rows: [] };
+      normalized.tables = [];
+      normalized.charts = [];
+    }
+  } else if (normalized.futureCostFundInputs) {
+    normalized.pbsInputs = null;
+    normalized.liquidityPlan = null;
+    normalized.pensionInputs = null;
+    normalized.collegeFundingInputs = null;
+    normalized.housePurchaseInputs = null;
+    normalized.netRetirementInputs = null;
+    normalized.mortgageInputs = null;
+    normalized.loanInputs = null;
+    normalized.education = null;
+    normalized.report = null;
+    normalized.outputsBucketed = null;
+    try {
+      const projection = computeFutureCostFundProjection(normalized.futureCostFundInputs);
       normalized.assumptions = projection.assumptionsTable;
       normalized.outputs = projection.outputsTable;
       normalized.tables = projection.tables;
@@ -1935,6 +2006,9 @@ function normalizeModuleUi(ui) {
       : '',
     mortgageScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.mortgageScenarioId === 'string'
       ? ui.mortgageScenarioId.trim()
+      : '',
+    futureCostFundScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.futureCostFundScenarioId === 'string'
+      ? ui.futureCostFundScenarioId.trim()
       : '',
     housePurchaseEditor: normalizedHousePurchaseEditor
   };
