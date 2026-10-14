@@ -34,6 +34,7 @@ import {
 import { buildRepaymentCaseModule } from './repayment_case_module.js';
 import { buildFutureCostFundModule } from './future_cost_fund_module.js';
 import { buildHouseholdCashFlowModule } from './household_cash_flow_module.js';
+import { buildProtectionGapModule } from './protection_gap_module.js';
 import {
   PBS_ASSET_SECTION_KEYS,
   resolveLiquidityReserveForPlan,
@@ -2165,6 +2166,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isProtectionGapModule(module)) {
+    return {
+      label: 'Protection Gap',
+      token: 'protection-gap'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2329,6 +2337,17 @@ function buildOverviewMetaItems(module, signalCounts) {
 
   if (moduleKind.token === 'household-cash-flow') {
     const inputs = module?.generated?.householdCashFlowInputs || {};
+    if (Array.isArray(inputs.people) && inputs.people.length > 0) {
+      items.push(pluralizeOverview(inputs.people.length, 'person', 'people'));
+    }
+    if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
+      items.push(pluralizeOverview(inputs.scenarios.length, 'case'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'protection-gap') {
+    const inputs = module?.generated?.protectionGapInputs || {};
     if (Array.isArray(inputs.people) && inputs.people.length > 0) {
       items.push(pluralizeOverview(inputs.people.length, 'person', 'people'));
     }
@@ -2678,6 +2697,10 @@ function isHouseholdCashFlowModule(module) {
   return Boolean(module?.generated?.householdCashFlowInputs);
 }
 
+function isProtectionGapModule(module) {
+  return Boolean(module?.generated?.protectionGapInputs);
+}
+
 function isHousePurchaseModule(module) {
   return Boolean(module?.generated?.housePurchaseInputs);
 }
@@ -2792,6 +2815,13 @@ function getPlaybookDisplayContext(module) {
     return {
       key: 'householdCashFlow',
       heading: 'Household Cash Flow'
+    };
+  }
+
+  if (isProtectionGapModule(module)) {
+    return {
+      key: 'protectionGap',
+      heading: 'Protection Gap'
     };
   }
 
@@ -3278,6 +3308,7 @@ function blocksGeneratedTableEditing(module) {
     || isCollegeFundingModule(module)
     || isFutureCostFundModule(module)
     || isHouseholdCashFlowModule(module)
+    || isProtectionGapModule(module)
     || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
@@ -7996,6 +8027,37 @@ function buildHouseholdCashFlowShell(module) {
       onSelectCase: (caseId) => {
         if (typeof window.__setHouseholdCashFlowScenario === 'function') {
           window.__setHouseholdCashFlowScenario(module.id, caseId);
+        }
+      }
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * The protection gap's shell: the module itself, which holds the case buttons,
+ * the answer, the bar, the months strip and the footnote. It owns its own
+ * clock, so a click moves the marks and rebuilds nothing, and it tells the app
+ * which case is selected only so that the case is remembered.
+ */
+function buildProtectionGapShell(module) {
+  const inputs = module?.generated?.protectionGapInputs;
+  if (!inputs) {
+    return null;
+  }
+
+  const remembered = typeof window.__getProtectionGapScenarioForModule === 'function'
+    ? window.__getProtectionGapScenarioForModule(module.id)
+    : '';
+
+  try {
+    return buildProtectionGapModule({
+      rawInputs: inputs,
+      selectedCaseId: remembered || null,
+      onSelectCase: (caseId) => {
+        if (typeof window.__setProtectionGapScenario === 'function') {
+          window.__setProtectionGapScenario(module.id, caseId);
         }
       }
     });
@@ -13204,6 +13266,13 @@ function buildGeneratedSection(module, {
     }
   }
 
+  if (isProtectionGapModule(displayModule)) {
+    const protectionGapShell = buildProtectionGapShell(module);
+    if (protectionGapShell) {
+      grid.appendChild(protectionGapShell);
+    }
+  }
+
   // NO CHARTS CARD FOR A REPAYMENT MODULE.
   //
   // It draws its own balance curve and its own year-by-year interest columns,
@@ -13266,8 +13335,11 @@ function buildGeneratedSection(module, {
   // (the video summary above all).
   // NO CHARTS CARD FOR A HOUSEHOLD CASH FLOW either, for the same reason: the
   // module draws the staircase or the bar, and its one chart is for the video.
+  // NO CHARTS CARD FOR A PROTECTION GAP either: the module draws the bar and the
+  // months strip itself, and its one chart is for the video.
   if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)
-    && !isFutureCostFundModule(displayModule) && !isHouseholdCashFlowModule(displayModule)) {
+    && !isFutureCostFundModule(displayModule) && !isHouseholdCashFlowModule(displayModule)
+    && !isProtectionGapModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13454,7 +13526,7 @@ export function patchFocusedGeneratedCards({
   // would put back the duplicate the module was built to remove -- visible
   // only after the first case click, which is the worst way to find it.
   if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)
-    && !isHouseholdCashFlowModule(displayModule)) {
+    && !isHouseholdCashFlowModule(displayModule) && !isProtectionGapModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
