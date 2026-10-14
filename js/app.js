@@ -84,6 +84,10 @@ import {
   getDefaultHouseholdCashFlowScenarioId,
   getHouseholdCashFlowCases
 } from './household_cash_flow_math.js';
+import {
+  getDefaultProtectionGapScenarioId,
+  getProtectionGapCases
+} from './protection_gap_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
 import { validateOutputsBucketedPayload } from './outputs_bucketed_contract.js';
@@ -278,6 +282,7 @@ const appState = {
   mortgageScenarioByModuleId: new Map(),
   futureCostFundScenarioByModuleId: new Map(),
   householdCashFlowScenarioByModuleId: new Map(),
+  protectionGapScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1662,6 +1667,40 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'protection-gap-demo',
+    label: 'Protection Gap: If One Income Stopped',
+    payload: {
+      title: 'Protection Gap - If One Income Stopped',
+      generated: {
+        summaryHtml: '<p>This shows how big the gap would be each year if one of your incomes stopped, and how many months your savings would fill it. Take-home pay and State payments are as given.</p>',
+        protectionGapInputs: {
+          householdLabel: 'Niamh and Dara, both 45',
+          people: [
+            { id: 'niamh', label: 'Niamh', takeHome: 57000 },
+            { id: 'dara', label: 'Dara', takeHome: 45000 }
+          ],
+          needed: 96000,
+          savings: 60000,
+          scenarios: [
+            { id: 'today' },
+            { id: 'niamh-cannot-work', event: { type: 'cannotWork', personId: 'niamh', statePayment: 13000 } },
+            { id: 'dara-cannot-work', event: { type: 'cannotWork', personId: 'dara', statePayment: 13000 } },
+            {
+              id: 'niamh-died',
+              event: {
+                type: 'dies',
+                personId: 'niamh',
+                survivorsPension: 13500,
+                neededAfter: 60000,
+                neededBecause: ['mortgageCleared', 'livingCostsLower']
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'college-funding-twins-demo',
     label: 'College Funding: Twins Scenario Demo',
     payload: {
@@ -2260,6 +2299,7 @@ function hasCalculatedGeneratedOutputs(module) {
     || generated.collegeFundingInputs
     || generated.futureCostFundInputs
     || generated.householdCashFlowInputs
+    || generated.protectionGapInputs
     || generated.housePurchaseInputs
     || generated.netRetirementInputs
   );
@@ -3226,6 +3266,7 @@ function applyUpdatedProjectionToModule({
     module.generated.collegeFundingInputs = null;
     module.generated.futureCostFundInputs = null;
     module.generated.householdCashFlowInputs = null;
+    module.generated.protectionGapInputs = null;
     applyNetRetirementProjectionToModule(module);
     return;
   }
@@ -4655,6 +4696,7 @@ function getCodexVideoActiveScenarios() {
     netRetirementScenarioId: {},
     futureCostFundScenarioId: {},
     householdCashFlowScenarioId: {},
+    protectionGapScenarioId: {},
     housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
@@ -4663,6 +4705,7 @@ function getCodexVideoActiveScenarios() {
     activeScenarios.netRetirementScenarioId[module.id] = getNetRetirementScenarioForModule(module.id);
     activeScenarios.futureCostFundScenarioId[module.id] = getFutureCostFundScenarioForModule(module.id);
     activeScenarios.householdCashFlowScenarioId[module.id] = getHouseholdCashFlowScenarioForModule(module.id);
+    activeScenarios.protectionGapScenarioId[module.id] = getProtectionGapScenarioForModule(module.id);
     activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
@@ -5991,6 +6034,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.mortgageScenarioByModuleId = new Map();
   appState.futureCostFundScenarioByModuleId = new Map();
   appState.householdCashFlowScenarioByModuleId = new Map();
+  appState.protectionGapScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6623,6 +6667,7 @@ async function handleHousePurchaseEditor(moduleId, payload = {}) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -7012,6 +7057,92 @@ function setHouseholdCashFlowScenarioForModule(moduleId, scenarioId) {
   const uiState = ensureModuleUi(module);
   if (uiState) {
     uiState.householdCashFlowScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+/**
+ * THE PROTECTION GAP'S SELECTED CASE.
+ *
+ * The same trio as the household cash flow: the case is remembered in memory
+ * for the session, persisted on the module's ui for the next load, and
+ * forgotten (never shown) when the payload no longer contains it. There is
+ * nothing outside the module to patch on a click: its tables list every case.
+ */
+function getProtectionGapCasesForModule(module) {
+  if (!module?.generated?.protectionGapInputs) {
+    return [];
+  }
+
+  try {
+    return getProtectionGapCases(module.generated.protectionGapInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getProtectionGapScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getProtectionGapCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.protectionGapScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.protectionGapScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.protectionGapScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  // A remembered case that the payload no longer contains is forgotten rather
+  // than shown, so an edited module opens on its own base case.
+  appState.protectionGapScenarioByModuleId.delete(moduleId);
+  try {
+    return getDefaultProtectionGapScenarioId(module.generated.protectionGapInputs) || cases[0].id;
+  } catch (_error) {
+    return cases[0].id;
+  }
+}
+
+function setProtectionGapScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const nextCase = getProtectionGapCasesForModule(module).find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getProtectionGapScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.protectionGapScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // The module has already moved its own marks and words, on its own clock, and
+  // nothing else on the page follows the case. So there is nothing to patch and
+  // nothing to rebuild: rebuilding would replace the travel the client is
+  // watching.
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.protectionGapScenarioId = nextCase.id;
   }
   module.updatedAt = nowIso();
   scheduleSessionSave();
@@ -7792,6 +7923,7 @@ function openVideoScene(moduleId) {
         netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || '',
         futureCostFundScenarioId: getFutureCostFundScenarioForModule(module.id),
         householdCashFlowScenarioId: getHouseholdCashFlowScenarioForModule(module.id),
+        protectionGapScenarioId: getProtectionGapScenarioForModule(module.id),
         housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
@@ -9764,7 +9896,7 @@ function bindEvents() {
 // Presentation runs against a disposable session and disposable scenario maps.
 // Pending autosaves still refer to the original session, never this copy.
 function installLivePresenter() {
-  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
+  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'protectionGapScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
   window.planeirPresenter = installPresenter({
     session: () => appState.presenterSnapshot?.session || appState.session,
     root: () => ui.swipeStage.querySelector('.focused-module-card'),
@@ -9792,7 +9924,7 @@ function installLivePresenter() {
     async setScenario(module, scenarioId) {
       if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
       const root = ui.swipeStage.querySelector('.focused-module-card');
-      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow') {
+      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow' || module.kind === 'protection-gap') {
         const control = [...root.querySelectorAll('*')].find(el => typeof el.presenterSelectScenario === 'function');
         if (!control) throw new Error(`Scenario control is unavailable in ${module.label}.`);
         await control.presenterSelectScenario(scenarioId);
@@ -9996,6 +10128,10 @@ export async function initApp(options = {}) {
       setHouseholdCashFlowScenarioForModule(moduleId, scenarioId);
     };
     window.__getHouseholdCashFlowScenarioForModule = (moduleId) => getHouseholdCashFlowScenarioForModule(moduleId);
+    window.__setProtectionGapScenario = (moduleId, scenarioId) => {
+      setProtectionGapScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getProtectionGapScenarioForModule = (moduleId) => getProtectionGapScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runIeTaxTests = () => runIeTaxTests();

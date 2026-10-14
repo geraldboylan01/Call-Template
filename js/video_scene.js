@@ -2,6 +2,7 @@ import { computePensionProjection } from './pension_math.js';
 import { computeCollegeFundingProjection } from './college_funding_math.js';
 import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
 import { computeHouseholdCashFlowProjection } from './household_cash_flow_math.js';
+import { computeProtectionGapProjection } from './protection_gap_math.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
@@ -97,6 +98,9 @@ export function getVideoModuleKind(module) {
   }
   if (generated.householdCashFlowInputs) {
     return { id: 'household-cash-flow', label: 'Household cash flow' };
+  }
+  if (generated.protectionGapInputs) {
+    return { id: 'protection-gap', label: 'Protection gap' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -310,6 +314,57 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
       resolved.generated.tables = projection.tables;
       resolved.generated.charts = [chart];
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'protection-gap') {
+      // The video shows the case that is selected on screen: its own figures,
+      // its own answer and its own sentence, not the first case's. The engine
+      // wrote those words, so the video says what the screen says.
+      const requestedId = asTrimmedText(activeScenario.protectionGapScenarioId);
+      const projection = computeProtectionGapProjection(generated.protectionGapInputs);
+      const cases = projection.debug.cases;
+      const known = cases.find((entry) => entry.id === requestedId);
+      const selected = known || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
+      // The figures that add up come first: what comes in, what you need and
+      // the gap, because a story shows only the first few. Anything that is
+      // nothing in this case is left out.
+      let savingsLast = null;
+      if (selected.beyond) {
+        savingsLast = ['Savings last', 'Beyond three years'];
+      } else if (selected.months !== null) {
+        savingsLast = ['Savings last (months)', selected.months];
+      }
+      const figures = [
+        ['What comes in (€)', selected.moneyIn],
+        ['What you need (€)', selected.needed],
+        selected.gap > 0 ? ['Gap (€)', selected.gap] : ['Left over (€)', selected.spare],
+        savingsLast
+      ].filter((entry) => entry && entry[1] !== 0);
+      const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const chart = {
+        title: 'What comes in and what you need',
+        subtitle: `A year, for “${selected.title}”.`,
+        type: 'bar',
+        labels: ['What comes in', 'What you need'],
+        datasets: [{ label: 'A year', data: [selected.moneyIn, selected.needed] }],
+        display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: '€ a year' }
+      };
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = [chart];
+      resolved.generated.summaryHtml = `<p>${escapeHtml(selected.headline.line1)} ${escapeHtml(selected.headline.line2)}</p>`
+        + `<p>${escapeHtml(selected.sentence)}</p>`;
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },

@@ -126,6 +126,31 @@ const householdCashFlowInputs = {
   ]
 };
 
+const protectionGapInputs = {
+  householdLabel: 'Niamh and Dara, both 45',
+  people: [
+    { id: 'niamh', label: 'Niamh', takeHome: 57000 },
+    { id: 'dara', label: 'Dara', takeHome: 45000 }
+  ],
+  needed: 96000,
+  savings: 60000,
+  scenarios: [
+    { id: 'today' },
+    { id: 'niamh-cannot-work', event: { type: 'cannotWork', personId: 'niamh', statePayment: 13000 } },
+    { id: 'dara-cannot-work', event: { type: 'cannotWork', personId: 'dara', statePayment: 13000 } },
+    {
+      id: 'niamh-died',
+      event: {
+        type: 'dies',
+        personId: 'niamh',
+        survivorsPension: 13500,
+        neededAfter: 60000,
+        neededBecause: ['mortgageCleared', 'livingCostsLower']
+      }
+    }
+  ]
+};
+
 function makeHousePurchaseInputs() {
   return {
     ...createDefaultHousePurchaseInputs('2026-07-12'),
@@ -386,6 +411,44 @@ const cases = [
       const today = manifest.story.metrics.find((metric) => /income before tax/i.test(metric.label));
       assert(today.rawValue === 150000, `Expected income of 150,000 (got ${today.rawValue})`);
       assert(left.rawValue > 0 && left.rawValue < 9200, `Expected the pension case to leave less than today (got ${left.rawValue})`);
+    }
+  },
+  {
+    name: 'Protection gap shows the selected case, with its own figures, its own answer and its own bars',
+    module: baseModule('gap-1', 'Protection gap', {
+      summaryHtml: '<p>MODEL-SUPPLIED summary.</p>',
+      protectionGapInputs,
+      // A calculated module's stored tables are never trusted.
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      charts: []
+    }),
+    activeScenario: { protectionGapScenarioId: 'niamh-cannot-work' },
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'protection-gap', 'Expected protection gap module kind');
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected protection gap projection to resolve');
+      assert(manifest.source.activeScenario.id === 'niamh-cannot-work', 'Expected the selected protection gap case');
+      assert(manifest.story.charts.length > 0, 'Expected the protection gap chart');
+      const labels = manifest.story.metrics.map((metric) => metric.label).join(' | ');
+      assert(!labels.includes('MODEL-SUPPLIED'), 'Expected model-supplied outputs to be replaced');
+      assert(/What comes in/.test(labels) && /What you need/.test(labels) && /Gap/.test(labels), `Expected the case's figures (${labels})`);
+      const comesIn = manifest.story.metrics.find((metric) => /What comes in/.test(metric.label));
+      const gap = manifest.story.metrics.find((metric) => /Gap/.test(metric.label));
+      assert(comesIn.rawValue === 58000, `Expected 58,000 to come in (got ${comesIn.rawValue})`);
+      assert(gap.rawValue === 38000, `Expected a gap of 38,000 (got ${gap.rawValue})`);
+      const text = JSON.stringify(manifest.story);
+      assert(!text.includes('MODEL-SUPPLIED'), 'Expected the model-supplied summary to be replaced');
+      assert(/You are €38,000 a year short/.test(text), 'Expected the engine\'s answer in the story');
+      assert(!/\bcover\b|premium/i.test(text), 'The story must never mention cover or a premium');
+    }
+  },
+  {
+    name: 'Protection gap with a case that does not exist falls back to the base case',
+    module: baseModule('gap-2', 'Protection gap', { protectionGapInputs, charts: [] }),
+    activeScenario: { protectionGapScenarioId: 'no-such-case' },
+    verify(manifest) {
+      assert(manifest.source.activeScenario.id === 'today', 'Expected the base case');
+      const left = manifest.story.metrics.find((metric) => /Left over/.test(metric.label));
+      assert(left && left.rawValue === 6000, `Expected 6,000 left over today (got ${left && left.rawValue})`);
     }
   },
   {

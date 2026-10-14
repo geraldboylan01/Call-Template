@@ -11298,3 +11298,441 @@ body.overview-has-selection .toast-host {
     transition: none !important;
   }
 }
+
+/* ======================================================= Protection gap (.pg-) */
+
+.pg {
+  --pg-floor: rgba(106, 167, 200, 0.66);
+  --pg-earn: rgba(106, 167, 200, 0.38);
+  --pg-short: rgba(201, 111, 98, 0.42);
+  --pg-filled: rgba(102, 184, 158, 0.5);
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 28px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.pg--rail {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  column-gap: 116px;
+  align-items: start;
+  padding-right: 20px;
+}
+
+.pg-rail,
+.pg-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pg--rail .pg-rail {
+  gap: 48px;
+}
+
+.pg-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.pg-household {
+  margin: 10px 0 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 38px;
+}
+
+.pg-household[hidden],
+.pg-status[hidden],
+.pg-seg-l2[hidden],
+.pg-seg-text[hidden],
+.pg-label[hidden],
+.pg-bracket[hidden],
+.pg-word[hidden],
+.pg-end[hidden],
+.pg-end-tick[hidden] {
+  display: none;
+}
+
+.pg-savings {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.pg-cases {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pg--row .pg-cases {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pg--grid .pg-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pg-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  align-items: center;
+  padding: 6px 24px;
+  border: 1px solid rgba(247, 244, 238, 0.16);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.pg-case:hover {
+  border-color: rgba(247, 244, 238, 0.34);
+  color: var(--text);
+}
+
+.pg-case:focus-visible {
+  outline: 3px solid var(--electric-blue);
+  outline-offset: 3px;
+}
+
+/* The same outer size selected or not: the thicker edge is an inset shadow. */
+.pg-case.is-active {
+  border-color: var(--electric-blue);
+  background: rgba(106, 167, 200, 0.14);
+  box-shadow: inset 0 0 0 1px var(--electric-blue);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.pg-headline {
+  margin: 0;
+  font-size: clamp(30px, 2.7vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+/* Line 1 and the status word sit on one line; line 2 starts the next. */
+.pg-line1 {
+  display: inline;
+}
+
+.pg-line2 {
+  display: block;
+}
+
+.pg-status {
+  display: inline-block;
+  margin-left: 14px;
+  color: var(--accent-amber);
+  font-size: 0.5em;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.pg-sentence {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: clamp(16px, 1.35vw, 26px);
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+.pg-block {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pg-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.pg-bar,
+.pg-strip {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.pg-track,
+.pg-strip-track {
+  position: absolute;
+  left: 0;
+  background: var(--bg-1);
+}
+
+.pg-seg,
+.pg-gap,
+.pg-fill,
+.pg-short,
+.pg-divider,
+.pg-bracket,
+.pg-need-tick,
+.pg-end-tick,
+.pg-axis-tick {
+  position: absolute;
+}
+
+.pg-seg {
+  overflow: hidden;
+  box-shadow: inset 1px 0 0 var(--bg-0);
+}
+
+.pg-seg-floor {
+  background: var(--pg-floor);
+}
+
+.pg-seg-takeHome {
+  background: var(--pg-earn);
+}
+
+.pg-seg-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 360px;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.pg-seg-floor .pg-seg-text {
+  width: 220px;
+  padding: 0 14px;
+}
+
+.pg-seg-l1,
+.pg-seg-l2 {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.pg-seg-floor .pg-seg-l1,
+.pg-seg-floor .pg-seg-l2 {
+  font-size: 16px;
+  line-height: 18px;
+}
+
+.pg-seg-amount {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+}
+
+.pg-seg-floor .pg-seg-amount {
+  font-size: 26px;
+  line-height: 30px;
+}
+
+.pg-gap {
+  background: var(--pg-short);
+}
+
+.pg.is-left-over .pg-gap {
+  background: var(--pg-filled);
+}
+
+.pg-bracket {
+  box-sizing: border-box;
+  border: 2px solid rgba(247, 244, 238, 0.55);
+  border-bottom: none;
+}
+
+.pg-need-tick,
+.pg-end-tick {
+  width: 2px;
+  background: var(--text);
+}
+
+.pg-label {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.pg-label-title {
+  display: block;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.pg-label[data-key='gap'] .pg-label-title {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pg-label-amount {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 36px;
+}
+
+.pg-label[data-key^='seg'] .pg-label-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pg-label[data-key^='seg'] .pg-label-amount {
+  font-size: 22px;
+  line-height: 26px;
+}
+
+.pg-scale {
+  position: absolute;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.pg-scale-start {
+  left: 0;
+}
+
+.pg-scale-end {
+  right: 0;
+}
+
+.pg-fill {
+  background: var(--pg-filled);
+}
+
+.pg-short {
+  background: var(--pg-short);
+}
+
+.pg-divider {
+  width: 1px;
+  background: rgba(247, 244, 238, 0.12);
+}
+
+.pg-divider.is-year {
+  background: rgba(247, 244, 238, 0.4);
+}
+
+.pg-word {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  font-size: 30px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pg-end {
+  position: absolute;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-end-lead {
+  display: block;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 24px;
+}
+
+.pg-end-text {
+  display: block;
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 72px;
+}
+
+.pg-axis-tick {
+  width: 1px;
+  height: 10px;
+  background: rgba(247, 244, 238, 0.5);
+}
+
+.pg-axis-name {
+  position: absolute;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.pg-axis-name.is-center {
+  transform: translateX(-50%);
+}
+
+.pg-axis-name.is-right {
+  transform: translateX(-100%);
+}
+
+.pg-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+
+/* The phone: smaller type, the same drawing. */
+.pg.is-narrow .pg-kicker { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-household { font-size: 20px; line-height: 28px; margin-top: 2px; }
+.pg.is-narrow .pg-savings { font-size: 16px; line-height: 22px; margin-top: 2px; }
+.pg.is-narrow .pg-case { min-height: 56px; padding: 6px 14px; font-size: 16px; }
+.pg.is-narrow .pg-headline { font-size: 28px; line-height: 34px; }
+.pg.is-narrow .pg-status { margin-left: 10px; }
+.pg.is-narrow .pg-sentence { font-size: 16px; line-height: 22px; }
+.pg.is-narrow .pg-caption { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-seg-text { width: 200px; padding: 0 8px; }
+.pg.is-narrow .pg-seg-l1,
+.pg.is-narrow .pg-seg-l2 { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-seg-amount,
+.pg.is-narrow .pg-seg-floor .pg-seg-amount { font-size: 20px; line-height: 24px; }
+.pg.is-narrow .pg-label-title { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-label[data-key='gap'] .pg-label-title { font-size: 15px; }
+.pg.is-narrow .pg-label-amount { font-size: 20px; line-height: 26px; }
+.pg.is-narrow .pg-label[data-key^='seg'] .pg-label-title { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-label[data-key^='seg'] .pg-label-amount { font-size: 18px; line-height: 22px; }
+.pg.is-narrow .pg-scale { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-word { font-size: 16px; }
+.pg.is-narrow .pg-end-lead { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-end-text { font-size: 32px; line-height: 40px; }
+.pg.is-narrow .pg-axis-name { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-footnote { font-size: 14px; line-height: 20px; }

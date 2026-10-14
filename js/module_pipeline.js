@@ -35,6 +35,10 @@ import {
   normalizeHouseholdCashFlowInputs
 } from './household_cash_flow_math.js';
 import {
+  computeProtectionGapProjection,
+  normalizeProtectionGapInputs
+} from './protection_gap_math.js';
+import {
   computeMortgageProjection,
   normalizeMortgageInputs
 } from './mortgage_math.js';
@@ -164,6 +168,16 @@ export function ensureGenerated(module) {
       applyHouseholdCashFlowProjectionToModule(module);
     } catch (error) {
       console.warn('[CallCanvas] household cash flow projection could not be refreshed', error);
+    }
+  }
+  // Refreshed on every load too, so every engine module's derived tables follow
+  // one path. The protection gap reads no central assumption, so today this
+  // changes nothing; it is here so that stays true if one is ever added.
+  if (module.generated.protectionGapInputs) {
+    try {
+      applyProtectionGapProjectionToModule(module);
+    } catch (error) {
+      console.warn('[CallCanvas] protection gap projection could not be refreshed', error);
     }
   }
 }
@@ -448,6 +462,27 @@ function applyHouseholdCashFlowProjectionToModule(module) {
   host.recordProjection(module.id, {
     calculator: 'householdCashFlow',
     inputs: cloneSessionValue(module.generated.householdCashFlowInputs),
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
+function applyProtectionGapProjectionToModule(module) {
+  const projection = computeProtectionGapProjection(module.generated.protectionGapInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.tables = projection.tables;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  host.recordProjection(module.id, {
+    calculator: 'protectionGap',
+    inputs: cloneSessionValue(module.generated.protectionGapInputs),
     debug: projection.debug
   });
 
@@ -1917,6 +1952,14 @@ function validateHouseholdCashFlowInputsPayload(householdCashFlowInputs) {
   return normalized;
 }
 
+function validateProtectionGapInputsPayload(protectionGapInputs) {
+  const normalized = normalizeProtectionGapInputs(protectionGapInputs);
+  // The engine's own refusals (a death with one person, a higher need after a
+  // death) are found when it projects, and are refused here, not half applied.
+  computeProtectionGapProjection(normalized);
+  return normalized;
+}
+
 function validateNetRetirementInputsPayload(netRetirementInputs) {
   return normalizeNetRetirementInputs(netRetirementInputs);
 }
@@ -2038,6 +2081,10 @@ export function normalizePayload(payload) {
       generatedPatch.householdCashFlowInputs = validateHouseholdCashFlowInputsPayload(payload.generated.householdCashFlowInputs);
     }
 
+    if ('protectionGapInputs' in payload.generated) {
+      generatedPatch.protectionGapInputs = validateProtectionGapInputsPayload(payload.generated.protectionGapInputs);
+    }
+
     if ('netRetirementInputs' in payload.generated) {
       generatedPatch.netRetirementInputs = validateNetRetirementInputsPayload(payload.generated.netRetirementInputs);
     }
@@ -2091,6 +2138,7 @@ export function clearGeneratedForVideoSummary(module) {
   module.generated.collegeFundingInputs = null;
   module.generated.futureCostFundInputs = null;
   module.generated.householdCashFlowInputs = null;
+  module.generated.protectionGapInputs = null;
   module.generated.housePurchaseInputs = null;
   module.generated.netRetirementInputs = null;
   module.generated.education = null;
@@ -2137,6 +2185,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2159,6 +2208,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2178,6 +2228,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.housePurchaseInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.education = null;
       module.generated.report = null;
       clearVideoSummaryForGeneratedModule(module);
@@ -2195,6 +2246,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -2213,6 +2265,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2225,6 +2278,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   if ('householdCashFlowInputs' in generatedPatch) {
     module.generated.householdCashFlowInputs = generatedPatch.householdCashFlowInputs;
     if (generatedPatch.householdCashFlowInputs) {
+      module.generated.protectionGapInputs = null;
       module.generated.pbsInputs = null;
       module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
@@ -2232,6 +2286,26 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.housePurchaseInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+      module.generated.outputsBucketed = null;
+      clearVideoSummaryForGeneratedModule(module);
+    }
+  }
+
+  if ('protectionGapInputs' in generatedPatch) {
+    module.generated.protectionGapInputs = generatedPatch.protectionGapInputs;
+    if (generatedPatch.protectionGapInputs) {
+      module.generated.pbsInputs = null;
+      module.generated.liquidityPlan = null;
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2251,6 +2325,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -2267,6 +2342,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2284,6 +2360,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2302,6 +2379,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.report = null;
@@ -2319,6 +2397,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2373,6 +2452,7 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
     const hasHousePurchaseInputsPatch = 'housePurchaseInputs' in normalizedPayload.generated;
     const hasFutureCostFundInputsPatch = 'futureCostFundInputs' in normalizedPayload.generated;
     const hasHouseholdCashFlowInputsPatch = 'householdCashFlowInputs' in normalizedPayload.generated;
+    const hasProtectionGapInputsPatch = 'protectionGapInputs' in normalizedPayload.generated;
     const hasNetRetirementInputsPatch = 'netRetirementInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
     const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
@@ -2406,6 +2486,8 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
       applyFutureCostFundProjectionToModule(module);
     } else if (hasHouseholdCashFlowInputsPatch && module.generated.householdCashFlowInputs) {
       applyHouseholdCashFlowProjectionToModule(module);
+    } else if (hasProtectionGapInputsPatch && module.generated.protectionGapInputs) {
+      applyProtectionGapProjectionToModule(module);
     }
   }
 }
