@@ -22,7 +22,7 @@ export const RENTAL_KEEP_OR_SELL_SAMPLE = Object.freeze({
   taxOnGain: 21_000
 });
 
-export const RENTAL_KEEP_OR_SELL_EXPECTED = Object.freeze({
+const RENTAL_KEEP_OR_SELL_EXPECTED = Object.freeze({
   keep: Object.freeze({
     names: ['Rent', 'Loan repayments', 'Running costs', 'Tax on the rental profit', 'Net each year'],
     amounts: [18_000, 13_000, 2_500, 3_700, -1_200],
