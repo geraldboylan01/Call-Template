@@ -246,6 +246,7 @@ function buildResolvedRules(year, catalogue) {
     sft,
     sftBasis: sft.basis,
     capitalGainsTax: buildCapitalGainsRules(block, catalogue),
+    dirt: block.dirt,
     // What the standing disclosures say the law has already fixed, read from
     // the schedules so the sentence moves when the schedules do.
     legislatedChanges: Object.freeze({

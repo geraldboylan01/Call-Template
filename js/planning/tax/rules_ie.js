@@ -21,7 +21,7 @@
  * bump `IE_TAX_RULES_VERSION` and rerun the golden cases.
  */
 
-export const IE_TAX_RULES_VERSION = 'ie-tax-2026.2';
+export const IE_TAX_RULES_VERSION = 'ie-tax-2026.3';
 
 /** The first tax year the catalogue covers. Earlier years are refused. */
 export const IE_TAX_FIRST_YEAR = 2026;
@@ -130,6 +130,10 @@ export const IE_TAX_SOURCES = Object.freeze({
   revenuePpr: Object.freeze({
     title: 'Revenue, Principal Private Residence relief',
     url: 'https://www.revenue.ie/en/gains-gifts-and-inheritance/cgt-reliefs/principal-private-residence-ppr-relief.aspx'
+  }),
+  revenueDirt: Object.freeze({
+    title: 'Revenue, Deposit Interest Retention Tax (DIRT)',
+    url: 'https://www.revenue.ie/en/additional-incomes/dirt/who-is-charged-dirt.aspx'
   })
 });
 
@@ -268,6 +272,24 @@ export const IE_TAX_RULES_BY_YEAR = Object.freeze({
       /** Per person, per year, after losses. Not transferable between spouses. */
       annualExemption: 1_270,
       sources: Object.freeze([S.revenueCgtCalculate, S.revenueCgtLosses])
+    }),
+
+    /**
+     * Deposit Interest Retention Tax on interest a deposit account pays an
+     * Irish resident. Added on 13 October 2026 as a new head; nothing above was
+     * touched. The tax engine does not compute DIRT. The catalogue holds the
+     * rate so that every module that grows cash reads one number.
+     *
+     * Revenue's DIRT page (published 24 April 2026) gives 33%, deducted by the
+     * deposit taker when interest is credited. Budget 2027 (6 October 2026)
+     * coverage did not mention it. Exemptions (over 65, incapacity) and
+     * special savings accounts are not modelled.
+     */
+    dirt: Object.freeze({
+      ruleId: 'ie.dirt.2026',
+      verifiedOn: '2026-10-13',
+      rate: 0.33,
+      sources: Object.freeze([S.revenueDirt])
     })
   })
 });

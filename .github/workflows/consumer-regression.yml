@@ -37,6 +37,7 @@ jobs:
       - name: Check existing calculation and presentation contracts
         run: |
           npm run check:house-purchase
+          npm run check:future-cost-fund
           npm run check:module-media
           npm run check:video-summary
           npm run check:video-scene

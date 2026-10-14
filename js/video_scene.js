@@ -1,5 +1,6 @@
 import { computePensionProjection } from './pension_math.js';
 import { computeCollegeFundingProjection } from './college_funding_math.js';
+import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
@@ -89,6 +90,9 @@ export function getVideoModuleKind(module) {
   }
   if (generated.netRetirementInputs) {
     return { id: 'net-retirement', label: 'Net retirement cash flow' };
+  }
+  if (generated.futureCostFundInputs) {
+    return { id: 'future-cost-fund', label: 'Future cost fund' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -216,6 +220,43 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
           id: projection.debug?.scenarioId || scenarioId || 'base',
           title: projection.debug?.scenario?.title || 'Current cash-flow case'
         },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'future-cost-fund') {
+      // The video shows the case that is selected on screen: its own figures
+      // and its own fund line, not the first case's.
+      const requestedId = asTrimmedText(activeScenario.futureCostFundScenarioId);
+      const base = computeFutureCostFundProjection(generated.futureCostFundInputs);
+      const known = base.debug.cases.find((entry) => entry.id === requestedId);
+      const selected = known || base.debug.cases.find((entry) => entry.id === base.debug.baseScenarioId) || base.debug.cases[0];
+      const projection = selected.id === base.debug.baseScenarioId
+        ? base
+        : computeFutureCostFundProjection({ ...generated.futureCostFundInputs, baseScenarioId: selected.id });
+      const row = projection.outputsTable.rows[projection.debug.cases.findIndex((entry) => entry.id === selected.id)] || [];
+      // The figures that add up come first: what the client pays in, what
+      // growth adds, and the total, because a story shows only the first few.
+      // What the case asks of them, a lump sum or a yearly amount, follows, and
+      // anything that is nothing in this case is left out.
+      const order = ['You pay in', 'Growth', 'Total cost', 'Lump sum today', 'Yearly saving', 'Years of saving'];
+      const rank = (column) => {
+        const found = order.findIndex((name) => column.startsWith(name));
+        return found < 0 ? order.length : found;
+      };
+      const figures = projection.outputsTable.columns.slice(1)
+        .map((column, index) => [column, row[index + 1]])
+        .filter(([, value]) => value !== 0)
+        .sort((a, b) => rank(a[0]) - rank(b[0]));
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = projection.charts;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
         projectionDebug: projection.debug,
         calculationStatus: 'resolved'
       };
