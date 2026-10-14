@@ -32,6 +32,7 @@ import {
   resolveLiquidityReservePolicy
 } from './liquidity_reserve.js';
 import { buildRepaymentCaseModule } from './repayment_case_module.js';
+import { buildFutureCostFundModule } from './future_cost_fund_module.js';
 import {
   PBS_ASSET_SECTION_KEYS,
   resolveLiquidityReserveForPlan,
@@ -2149,6 +2150,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isFutureCostFundModule(module)) {
+    return {
+      label: 'Future Cost Fund',
+      token: 'future-cost-fund'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2296,6 +2304,17 @@ function buildOverviewMetaItems(module, signalCounts) {
     }
     if (signalCounts.charts > 0) {
       items.push(pluralizeOverview(signalCounts.charts, 'chart'));
+    }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'future-cost-fund') {
+    const inputs = module?.generated?.futureCostFundInputs || {};
+    if (Number.isFinite(inputs.startsInYears) && inputs.startsInYears > 0) {
+      items.push(`Starts in ${inputs.startsInYears}y`);
+    }
+    if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
+      items.push(pluralizeOverview(inputs.scenarios.length, 'way'));
     }
     return uniqueOverviewItems(items, 3, 22);
   }
@@ -2632,6 +2651,10 @@ function isCollegeFundingModule(module) {
   return Boolean(module?.generated?.collegeFundingInputs);
 }
 
+function isFutureCostFundModule(module) {
+  return Boolean(module?.generated?.futureCostFundInputs);
+}
+
 function isHousePurchaseModule(module) {
   return Boolean(module?.generated?.housePurchaseInputs);
 }
@@ -2732,6 +2755,13 @@ function getPlaybookDisplayContext(module) {
     return {
       key: 'netRetirement',
       heading: 'Net Retirement Cash Flow'
+    };
+  }
+
+  if (isFutureCostFundModule(module)) {
+    return {
+      key: 'futureCostFund',
+      heading: 'Future Cost Fund'
     };
   }
 
@@ -3216,6 +3246,7 @@ function blocksGeneratedTableEditing(module) {
     isPensionModule(module)
     || isNetRetirementModule(module)
     || isCollegeFundingModule(module)
+    || isFutureCostFundModule(module)
     || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
@@ -7868,6 +7899,39 @@ function buildMortgageScenarioShell(module) {
         // outside this module. The module has already moved its own figures.
         if (typeof window.__setMortgageScenario === 'function') {
           window.__setMortgageScenario(module.id, caseId);
+        }
+      }
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * The future cost fund.
+ *
+ * Everything the client sees about the ways to have the money ready lives in
+ * the module: the case buttons, the answer, the fund line and the cost blocks.
+ * It owns its own clock, so a click moves the line and rebuilds nothing, and
+ * it tells the app which case is selected only so that the case is remembered.
+ */
+function buildFutureCostFundShell(module) {
+  const inputs = module?.generated?.futureCostFundInputs;
+  if (!inputs) {
+    return null;
+  }
+
+  const remembered = typeof window.__getFutureCostFundScenarioForModule === 'function'
+    ? window.__getFutureCostFundScenarioForModule(module.id)
+    : '';
+
+  try {
+    return buildFutureCostFundModule({
+      rawInputs: inputs,
+      selectedCaseId: remembered || null,
+      onSelectCase: (caseId) => {
+        if (typeof window.__setFutureCostFundScenario === 'function') {
+          window.__setFutureCostFundScenario(module.id, caseId);
         }
       }
     });
@@ -13062,6 +13126,13 @@ function buildGeneratedSection(module, {
     }
   }
 
+  if (isFutureCostFundModule(displayModule)) {
+    const futureCostFundShell = buildFutureCostFundShell(module);
+    if (futureCostFundShell) {
+      grid.appendChild(futureCostFundShell);
+    }
+  }
+
   // NO CHARTS CARD FOR A REPAYMENT MODULE.
   //
   // It draws its own balance curve and its own year-by-year interest columns,
@@ -13119,7 +13190,11 @@ function buildGeneratedSection(module, {
       }));
     });
   }
-  if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)) {
+  // NO CHARTS CARD FOR A FUTURE COST FUND either: the module draws the fund
+  // itself, and the one chart in its payload is for the surfaces that cannot
+  // (the video summary above all).
+  if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)
+    && !isFutureCostFundModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13305,7 +13380,7 @@ export function patchFocusedGeneratedCards({
   // A repayment module has no charts card to patch, and building one here
   // would put back the duplicate the module was built to remove -- visible
   // only after the first case click, which is the worst way to find it.
-  if (patchCharts && !isMortgageModule(displayModule)) {
+  if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
