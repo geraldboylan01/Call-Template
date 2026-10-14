@@ -5,6 +5,7 @@ import { getMortgageScenarioCases, computeMortgageComparison, computeMortgagePro
 import { resolveLiquidityReserveForPlan, normalizeSectionToken } from './module_pipeline.js';
 import { getFutureCostFundCases } from './future_cost_fund_math.js';
 import { getHouseholdCashFlowCases } from './household_cash_flow_math.js';
+import { getProtectionGapCases } from './protection_gap_math.js';
 
 const CATALOGUE_VERSION = 1;
 const plainText = (v) => String(v ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -41,7 +42,7 @@ function moduleSource(module) {
   return { title: (module.title || '').trim(), generated, hiddenCardIds: module.ui?.hiddenCardIds || [], cardOrder: module.ui?.cardOrder || [] };
 }
 export function moduleKind(g) {
-  for (const [key, kind] of Object.entries({ report: 'report', liquidityPlan: 'liquidity', outputsBucketed: 'balance-sheet', mortgageInputs: 'mortgage', loanInputs: 'loan', pensionInputs: 'pension', netRetirementInputs: 'net-retirement', futureCostFundInputs: 'future-cost-fund', householdCashFlowInputs: 'household-cash-flow', housePurchaseInputs: 'house-purchase', education: 'education' })) {
+  for (const [key, kind] of Object.entries({ report: 'report', liquidityPlan: 'liquidity', outputsBucketed: 'balance-sheet', mortgageInputs: 'mortgage', loanInputs: 'loan', pensionInputs: 'pension', netRetirementInputs: 'net-retirement', futureCostFundInputs: 'future-cost-fund', householdCashFlowInputs: 'household-cash-flow', protectionGapInputs: 'protection-gap', housePurchaseInputs: 'house-purchase', education: 'education' })) {
     if (g[key]) return kind;
   }
   return 'analysis';
@@ -52,6 +53,7 @@ function scenarios(g, kind) {
   if (kind === 'net-retirement') return getNetRetirementScenarioCases(g.netRetirementInputs);
   if (kind === 'future-cost-fund') return getFutureCostFundCases(g.futureCostFundInputs);
   if (kind === 'household-cash-flow') return getHouseholdCashFlowCases(g.householdCashFlowInputs);
+  if (kind === 'protection-gap') return getProtectionGapCases(g.protectionGapInputs);
   if (kind === 'mortgage' || kind === 'loan') return getMortgageScenarioCases(g.loanInputs || g.mortgageInputs, { defaultLoanKind: kind });
   return [];
 }
@@ -71,7 +73,7 @@ export function buildPresentationCatalogue(session) {
       scenarioScope: 'this-module-only', updatesOtherModules: false,
       assumptions: (g.assumptions?.rows || []).map(row => row.map(plainText)),
       capabilities: { wholeModule: true, scenarioSelection: cases.length > 0, calculatorChartPoints: false, authoredReportSubtargets: Boolean(g.report) },
-      defaultScenarioId: g.mortgageInputs?.baseScenarioId || g.loanInputs?.baseScenarioId || g.futureCostFundInputs?.baseScenarioId || g.householdCashFlowInputs?.baseScenarioId || g.pensionInputs?.baseScenarioId || g.netRetirementInputs?.baseScenarioId || cases[0]?.id || null,
+      defaultScenarioId: g.mortgageInputs?.baseScenarioId || g.loanInputs?.baseScenarioId || g.futureCostFundInputs?.baseScenarioId || g.householdCashFlowInputs?.baseScenarioId || g.protectionGapInputs?.baseScenarioId || g.pensionInputs?.baseScenarioId || g.netRetirementInputs?.baseScenarioId || cases[0]?.id || null,
       scenarios: cases.map(s => ({ id: s.id, label: s.title, description: plainText(s.description || s.summaryHtml), supportedActions: ['state'] })) };
     if (kind === 'mortgage' || kind === 'loan') {
       try {
