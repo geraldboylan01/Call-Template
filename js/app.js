@@ -4573,12 +4573,14 @@ function getCodexVideoActiveScenarios() {
     pbsScenarioId: {},
     pensionScenarioId: {},
     netRetirementScenarioId: {},
+    futureCostFundScenarioId: {},
     housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
     activeScenarios.pbsScenarioId[module.id] = getPbsScenarioForModule(module.id);
     activeScenarios.pensionScenarioId[module.id] = getPensionScenarioForModule(module.id);
     activeScenarios.netRetirementScenarioId[module.id] = getNetRetirementScenarioForModule(module.id);
+    activeScenarios.futureCostFundScenarioId[module.id] = getFutureCostFundScenarioForModule(module.id);
     activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
@@ -7617,6 +7619,7 @@ function openVideoScene(moduleId) {
         pbsScenarioId: getPbsScenarioForModule(module.id),
         pensionScenarioId: appState.pensionScenarioByModuleId.get(module.id) || '',
         netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || '',
+        futureCostFundScenarioId: getFutureCostFundScenarioForModule(module.id),
         housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
