@@ -50,8 +50,15 @@ export const GAR_WORDS = Object.freeze({
   leftOver: 'Left over',
   shortBy: 'Short by',
   toSpare: 'To spare',
-  atTheLimit: 'At the most income tax relief allows, and still short of your target',
+  atTheLimit: 'At the most income tax relief allows, and still short of your target.',
   groupLabel: 'Ways to use your cash'
+});
+
+/** The word beside the square in the yearly picture, by what the money amounts to. */
+const YEAR_LABELS = Object.freeze({
+  short: GAR_WORDS.shortBy,
+  spare: GAR_WORDS.toSpare,
+  left: GAR_WORDS.leftOver
 });
 
 /**
@@ -193,21 +200,6 @@ function buildGoal(goal, entry, debug, children) {
   };
 }
 
-/** What a case does with the cash, in a short line. */
-function describeCash(entry) {
-  const mortgage = entry.mortgageLump > 0.5 ? { goal: 'mortgage', amount: eur(entry.mortgageLump) } : null;
-  const college = entry.collegeLump > 0.5 ? { goal: 'college', amount: eur(entry.collegeLump) } : null;
-  if (!mortgage && !college) return 'Nothing from your cash';
-  if (!mortgage || !college) {
-    const only = mortgage || college;
-    return `${only.amount} into the ${only.goal === 'mortgage' ? 'mortgage' : 'college fund'}`;
-  }
-  const collegeFirst = entry.id === 'college-then-mortgage';
-  return collegeFirst
-    ? `${college.amount}, then ${mortgage.amount}`
-    : `${mortgage.amount}, then ${college.amount}`;
-}
-
 /**
  * The model the screen draws, from one projection. One entry per case; the
  * yearly axis maximum is over every case so the scale never moves.
@@ -215,7 +207,9 @@ function describeCash(entry) {
 export function buildGarModel(projection) {
   const { debug } = projection;
   const { inputs } = debug;
-  const later = debug.retirement.later || null;
+  const laterLabel = debug.cases[0] && debug.cases[0].laterRetirement
+    ? debug.cases[0].laterRetirement.words.label
+    : '';
   const leftOver = inputs.leftOverEachYear;
 
   const cases = debug.cases.map((entry) => {
@@ -225,27 +219,28 @@ export function buildGarModel(projection) {
     const haveTotal = leftOver + freed;
     const short = Math.max(0, needTotal - haveTotal);
     const spare = Math.max(0, haveTotal - needTotal);
-    const isShort = short > 0.5;
-    const laterShort = entry.laterRetirement ? entry.laterRetirement.shortfall > 0.5 : false;
+    // What the yearly money amounts to is the engine's to say, so the screen and
+    // the presenter cannot disagree: short, spare (every goal covered), or left
+    // over (money found and a goal still not met).
+    const { state } = entry.words;
+    const laterWords = entry.laterRetirement ? entry.laterRetirement.words : null;
 
     return {
       id: entry.id,
       title: entry.title,
-      cashLine: describeCash(entry),
+      cashLine: entry.words.amountLine,
       needed: eur(entry.neededThisYear),
       neededNote: freed > 0.5 ? `after ${eur(freed)} freed` : '',
       paid: eur(entry.paidOutOverLife.total),
-      later: entry.laterRetirement
+      later: laterWords
         ? {
           needed: eur(entry.laterRetirement.neededThisYear),
-          neededLine: `${eur(entry.laterRetirement.neededThisYear)} needed this year`,
-          result: laterShort
-            ? `still short by ${eur(entry.laterRetirement.shortfall)}`
-            : `${eur(entry.laterRetirement.spare)} to spare`,
-          kind: laterShort ? 'short' : 'spare'
+          neededLine: laterWords.neededLine,
+          result: laterWords.result,
+          kind: laterWords.state
         }
         : null,
-      headline: { text: entry.words.headline, kind: isShort ? 'short' : 'spare' },
+      headline: { text: entry.words.headline, kind: state },
       support: entry.words.support,
       now: {
         cash: inputs.spareCash,
@@ -264,9 +259,9 @@ export function buildGarModel(projection) {
         needTotal,
         short,
         spare,
-        kind: isShort ? 'short' : 'spare',
-        label: isShort ? GAR_WORDS.shortBy : GAR_WORDS.toSpare,
-        amountText: eur(isShort ? short : spare),
+        kind: state,
+        label: YEAR_LABELS[state],
+        amountText: eur(state === 'short' ? short : spare),
         haveText: eur(haveTotal),
         needText: eur(needTotal),
         freedNote: freed > 0.5 ? `${eur(freed)} freed by a lower repayment` : '',
@@ -285,9 +280,9 @@ export function buildGarModel(projection) {
     haveNow: inputs.spareCash > 0,
     labels: {
       needed: `Needed this year, against the ${eur(leftOver)} you have`,
-      later: later ? `If you retire at ${later.retirementAge} on ${eur(later.targetIncomeToday)}` : ''
+      later: laterLabel
     },
-    hasLater: Boolean(later) && cases.every((entry) => entry.later),
+    hasLater: laterLabel !== '' && cases.every((entry) => entry.later),
     goalCount: cases.reduce((most, entry) => Math.max(most, entry.year.goals.length), 0)
   };
 }
@@ -433,7 +428,7 @@ export function plotLabels(entry) {
     year: `Your money each year: you have ${entry.year.haveText} a year and your goals need ${entry.year.needText} a year. `
       + (entry.year.kind === 'short'
         ? `You’re short by ${entry.year.amountText} a year.`
-        : `You have ${entry.year.amountText} a year to spare.`)
+        : `You have ${entry.year.amountText} a year ${entry.year.kind === 'spare' ? 'to spare' : 'left over'}.`)
   };
 }
 

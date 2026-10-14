@@ -47,7 +47,7 @@ It imports `js/future_cost_fund_math.js` (on `main` since PR #55) and the tax en
 - **A helper in the retirement module.** `computePersonalContributionCosts(rawInputs)` in `js/pension_math.js` is additive: what the household's own personal contributions cost each year after income tax relief, from the tax engine. It reuses the module's own item-building (`householdTaxItemsAtYear`, extracted from `buildContributionNetCosts`, so the two describe the same household) and its relief limit. Nothing the retirement module shows has changed. Its two tests are in `js/tests_pension_math.js`.
 - **The search reads three fields** of `computePensionProjection(...).debug`: `requiredPot`, `projectedPotCurrent` and `requiredPotDepletionTolerance`, the ones the retirement module's own readiness reads. A test and a runtime guard fail with a clear message if any is ever missing or not a number.
 - **The search.** The projected pot is exactly linear in the contribution below the relief cap (the same slope to the euro at every point), so a bracketed secant step closes the gap in two to four runs, with bisection only if a step leaves the bracket. The figures are exact to the euro.
-- **Tests.** `js/tests_goals_and_resources_math.js` (11 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
+- **Tests.** `js/tests_goals_and_resources_math.js` (12 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
 - **The projection is cached by payload** (`projectGoalsAndResources(rawInputs)`, six entries, keyed by both central versions and the payload; any call with options bypasses it). A projection is about half a second and the screen, the paste pipeline and the presenter all ask for the same one. The cached object is shared: read it, do not change it. Tested in `js/tests_goals_and_resources_math.js`.
 - Not built: `state.js`/`render.js`/`app.js`/presenter/video wiring, and listing the check in the CI workflows. See "The screen" below.
 
@@ -59,9 +59,9 @@ Built on `module/goals-and-resources-screen`. Its own files only; every shared f
 |---|---|
 | `js/goals_and_resources_view.js` | Pure. The words, the geometry at every width, where each mark sits, the forbidden-text scan. Nothing in it needs a DOM. |
 | `js/goals_and_resources_module.js` | Draws what the view says. The 520 ms clock, `presenterSelectScenario`, `garState()`, `destroyGoalsAndResources()`. Follows `js/future_cost_fund_module.js`; the clock is copied, not shared. |
-| `styles/goals_and_resources.css` | The `.gar-` rules, as a block of their own. At wiring time they are appended to `styles/base.css` under the module prefix. |
+| `styles/goals_and_resources.css` | The `.gar-` rules, as a block of their own for now. **At wiring time they move into `styles/base.css` like the other modules' and this file is deleted** (decided 14 October). The preview then links `base.css` alone. |
 | `dev/goals-and-resources-preview.html` | The module alone, with `?preset=` (illustrative, one-child, four-children, mortgage-ends, spare, no-cash, no-later, stretched, stretched-rich), `?case=` and `?width=`. |
-| `js/tests_goals_and_resources_view.js`, `js/tests_goals_and_resources_module.js` | 15 and 19 cases. Run by `npm run check:goals-and-resources` with the engine suite. |
+| `js/tests_goals_and_resources_view.js`, `js/tests_goals_and_resources_module.js` | 17 and 20 cases. Run by `npm run check:goals-and-resources` with the engine suite. |
 
 What was decided building it:
 
@@ -69,8 +69,8 @@ What was decided building it:
 - **The yearly picture has room for its note.** The picture is drawn on a 331 px scale and given 380 px, so that the "freed by a lower repayment" note under the line fits when what you have is the largest figure on the screen.
 - **A child is "first", "second", "third" by position.** The payload's child titles never reach a string, so a payload that names a child still produces a screen that does not.
 - **A target out of reach at the relief limit says so.** The engine downgrades such a goal from "covered" to "partly" (the money is found, the target is not met). "€18,000 of €18,000 a year" would be nonsense, so the row reads "At the most income tax relief allows, and still short of your target". The brief had no line for this; it is the only new sentence.
-- **The headline is the engine's.** `words.headline` and `words.support` are used as the engine gives them. In the cap case the headline can read "to spare" while the retirement row says the target is not met, because the headline counts money and the row counts the target. That is the engine's definition, not a screen choice.
-- **The cash lines are the frames', not `words.amountLine`.** "€59,635 into the college fund", "€45,974, then €14,026". The engine's `amountLine` ("from your cash") is unused by the screen.
+- **One source for the words, decided 14 October.** The screen and the presenter show the same strings, so the view builds none of its own: the engine's `words.amountLine`, `words.headline`, `words.support` and `laterRetirement.words` (label, needed line, result) are read as given. `words.amountLine` now carries the frames' wording. `words.state` (`short`, `spare`, `left`) says what the yearly money amounts to.
+- **"To spare" only when every goal is covered, decided 14 October.** Money left over with a goal still not met (only possible for retirement at the relief limit) reads "You have €X a year left over", the support line reads "Your retirement target is not met, even at the most income tax relief allows.", and the picture's word is "Left over". The later option's line follows the same rule ("€X left over"). The square for that state is amber, the colour already used for "Partly covered". The brief did not say; change it if it should be another colour.
 - **Nothing animates through CSS.** The only motion is the marks travelling between cases, on the module's clock. Opacity of every mark is a function of its painted size, so the settled frame equals a fresh render after any sequence of clicks.
 - **Checked in a browser.** Headless Chrome, 312 configurations (nine payload shapes, eight widths from 390 to 1920, every case) with the line boxes of every visible string tested for overlap and for leaving their panel, once in the fallback font and once in a wider one. No collision, nothing leaves its panel, no sideways scroll below 1700.
 
@@ -188,13 +188,13 @@ Everything on screen is addressed to the household as "you", and is derived from
 |---|---|
 | Question | Can your money do everything you want? |
 | Headline, short | You’re short by €8,402 a year |
-| Headline, left over | You have €1,919 a year to spare |
-| Support | Your goals need €14,402 a year against the €6,000 you have. With a lower repayment: …, counting the €1,245 a lower repayment frees. |
-| Case amount line (engine) | €45,974 and €14,026 from your cash. With none: Nothing from your cash. |
-| Case amount line (screen) | Nothing from your cash; €59,635 into the college fund; €60,000 into the mortgage; €45,974, then €14,026. The frames' wording, built by the view. |
-| Beside the yearly picture | Short by / To spare, then the amount and "a year", with a square beside the word |
-| Quiet figures | Paid out over the life of your goals; If you retire at 65 on €46,000, then "€5,471 needed this year" and "still short by €4,797" or "€529 to spare" |
-| Goal detail | Paid today with €28,689; After €6,748 today; €2,397 of €3,113 a year; Repayment rises to / falls to / stays at €2,811 a month; after income tax relief; At the most income tax relief allows, and still short of your target |
+| Headline, money left over and every goal covered | You have €1,919 a year to spare |
+| Headline, money left over and a goal not met | You have €1,203 a year left over. Only possible for retirement at the income tax relief limit. |
+| Support | Your goals need €14,402 a year against the €6,000 you have. With a lower repayment: …, counting the €1,245 a lower repayment frees. When money is left over and a goal is not met: Your retirement target is not met, even at the most income tax relief allows. |
+| Case amount line | Nothing from your cash; €59,635 into the college fund; €60,000 into the mortgage; €45,974, then €14,026 (in the order the cash is taken: the mortgage first, the college first only where it is filled first). One source: `words.amountLine`, read by the screen and by the presenter's case list. |
+| Beside the yearly picture | Short by, To spare (every goal covered) or Left over (a goal not met), then the amount and "a year", with a square beside the word: red, green or amber |
+| Quiet figures | Paid out over the life of your goals; If you retire at 65 on €46,000, then "€5,471 needed this year" and "still short by €4,797", "€529 to spare" (every goal covered) or "€529 left over" (a goal not met). One source: `laterRetirement.words`. |
+| Goal detail | Paid today with €28,689; After €6,748 today; €2,397 of €3,113 a year; Repayment rises to / falls to / stays at €2,811 a month; after income tax relief; At the most income tax relief allows, and still short of your target. (approved 14 October) |
 | Children | First child, Second child, Third child, Fourth child, by position, whatever the payload calls them |
 | Case titles | Cash stays as it is; Fund college today; All cash into the mortgage; Mortgage, then college |
 | Goal rows | Your mortgage cleared by 60; College, first child; College, second child; You retire at 62 on €50,000 a year |

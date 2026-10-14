@@ -622,8 +622,9 @@ export function buildGoalsAndResourcesModule({
 
     setText(ui.headline, entry.headline.text);
     setText(ui.support, entry.support);
-    ui.status.classList.toggle('is-short', entry.headline.kind === 'short');
-    ui.status.classList.toggle('is-spare', entry.headline.kind !== 'short');
+    ['short', 'spare', 'left'].forEach((kind) => {
+      ui.status.classList.toggle(`is-${kind}`, entry.headline.kind === kind);
+    });
 
     if (ui.quiet) {
       setText(ui.quiet.paidValue, entry.paid);

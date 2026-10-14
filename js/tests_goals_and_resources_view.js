@@ -150,6 +150,63 @@ export function runGoalsAndResourcesViewTests() {
     });
   }));
 
+  cases.push(runCase('The screen reads the engine\'s words and builds none of its own', () => {
+    GAR_STRESS_SHAPES.forEach((shape) => {
+      const projection = projectGoalsAndResources(shape.payload);
+      const model = modelFor(shape.payload);
+      model.cases.forEach((entry, index) => {
+        const { words, laterRetirement } = projection.debug.cases[index];
+        assertEqual(entry.title, words.title, `${shape.name} ${entry.id}: the title`);
+        assertEqual(entry.cashLine, words.amountLine, `${shape.name} ${entry.id}: the amount line`);
+        assertEqual(entry.headline.text, words.headline, `${shape.name} ${entry.id}: the headline`);
+        assertEqual(entry.headline.kind, words.state, `${shape.name} ${entry.id}: what it amounts to`);
+        assertEqual(entry.support, words.support, `${shape.name} ${entry.id}: the support line`);
+        if (laterRetirement) {
+          assertEqual(entry.later.result, laterRetirement.words.result, `${shape.name} ${entry.id}: the later result`);
+          assertEqual(entry.later.neededLine, laterRetirement.words.neededLine, `${shape.name} ${entry.id}: the later needed line`);
+          assertEqual(entry.later.kind, laterRetirement.words.state, `${shape.name} ${entry.id}: the later state`);
+          assertEqual(model.labels.later, laterRetirement.words.label, `${shape.name}: the later label`);
+        }
+      });
+    });
+  }));
+
+  cases.push(runCase('"To spare" is only said when every goal is covered; otherwise it is "left over"', () => {
+    const atTheLimit = modelFor(GAR_STRESS_SHAPES.find(
+      (shape) => shape.name === 'a target out of reach at the relief limit, with the money to pay in the most'
+    ).payload);
+    atTheLimit.cases.forEach((entry) => {
+      assertEqual(entry.headline.kind, 'left', `${entry.id}: left over`);
+      assert(/^You have €[\d,]+ a year left over$/.test(entry.headline.text), `${entry.id}: ${entry.headline.text}`);
+      assertEqual(entry.support, 'Your retirement target is not met, even at the most income tax relief allows.', `${entry.id}: support`);
+      assertEqual(entry.year.label, GAR_WORDS.leftOver, `${entry.id}: the word beside the picture`);
+      assertEqual(entry.year.kind, 'left', `${entry.id}: the picture's state`);
+      const labels = plotLabels(entry);
+      assert(/left over\.$/.test(labels.year) && !/to spare/.test(labels.year), `${entry.id}: the accessible name (${labels.year})`);
+      assert(entry.later.result.endsWith('to spare') || entry.later.result.endsWith('left over'), `${entry.id}: later result`);
+    });
+
+    // The later option follows the same rule when its own target is out of reach.
+    const laterAtTheLimit = modelFor({
+      ...SAMPLE,
+      leftOverEachYear: 30_000,
+      laterRetirement: { retirementAge: 58, targetIncomeToday: 200_000 }
+    });
+    laterAtTheLimit.cases.forEach((entry) => {
+      assertEqual(entry.later.kind, 'left', `${entry.id}: the later option is left over`);
+      assert(/^€[\d,]+ left over$/.test(entry.later.result), `${entry.id}: ${entry.later.result}`);
+    });
+
+    // And nowhere on the screen does a goal that is not met sit beside "to spare".
+    GAR_STRESS_SHAPES.forEach((shape) => {
+      modelFor(shape.payload).cases.forEach((entry) => {
+        if (entry.year.goals.every((goal) => goal.state === 'covered')) return;
+        assert(entry.headline.kind !== 'spare', `${shape.name} ${entry.id}: not "to spare" with a goal unmet`);
+        assert(entry.year.label !== GAR_WORDS.toSpare, `${shape.name} ${entry.id}: the picture does not say "To spare"`);
+      });
+    });
+  }));
+
   cases.push(runCase('Every goal row is the engine\'s state, in order, with its own words', () => {
     const model = modelFor(SAMPLE);
     const rows = (id) => byId(model, id).year.goals.map((goal) => [

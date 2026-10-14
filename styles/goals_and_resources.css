@@ -179,6 +179,10 @@
   background: var(--accent-green);
 }
 
+.gar-status.is-left {
+  background: var(--accent-amber);
+}
+
 .gar-headline {
   margin: 0;
   font-size: 30px;
@@ -259,6 +263,11 @@
 .gar-sq-left {
   border-color: var(--accent-green);
   background: rgba(102, 184, 158, 0.18);
+}
+
+.gar-sq.is-left {
+  border-color: var(--accent-amber);
+  background: rgba(212, 166, 79, 0.18);
 }
 
 /* ----------------------------------------------------------------- panels */

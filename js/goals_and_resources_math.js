@@ -865,29 +865,83 @@ function measure(inputs, priced, pension, ledgerYears) {
 // -------------------------------------------------------------------- words ---
 
 /**
+ * What a case's yearly money amounts to, in one word the screen can colour:
+ *
+ *  - `short`   the goals need more than you have
+ *  - `spare`   money is left over and EVERY goal is covered
+ *  - `left`    money is left over and a goal is still not met. This is only
+ *              possible for retirement at the income tax relief limit, where
+ *              the money is found and the target is not reached. It must never
+ *              read "to spare".
+ */
+function yearlyState(entry) {
+  if (entry.shortfall > 0.5) return 'short';
+  return entry.states.every((goal) => goal.state === 'covered') ? 'spare' : 'left';
+}
+
+/** The sentence for a target that is out of reach at the relief limit. */
+const TARGET_NOT_MET_TEXT = 'Your retirement target is not met, even at the most income tax relief allows.';
+
+/**
  * The words a case puts on screen, all addressed to the household as "you",
  * derived from the figures and never typed per case.
+ *
+ * ONE SOURCE. The screen and the presenter show these strings and build none
+ * of their own: the case title, the amount line, the headline and the support
+ * line, and the later option's label, needed line and result.
  */
 function caseWords(inputs, entry) {
   const label = USE_LABELS[`${entry.use.mortgage}/${entry.use.college}`]
     || { id: 'cash-used-differently', title: 'Cash used a different way' };
-  const lumps = [];
-  if (entry.mortgageLump > 0.5) lumps.push(eur(entry.mortgageLump));
-  if (entry.collegeLump > 0.5) lumps.push(eur(entry.collegeLump));
+  const mortgage = entry.mortgageLump > 0.5
+    ? { amount: eur(entry.mortgageLump), into: 'the mortgage' }
+    : null;
+  const college = entry.collegeLump > 0.5
+    ? { amount: eur(entry.collegeLump), into: 'the college fund' }
+    : null;
+  const lumps = label.id === 'college-then-mortgage' ? [college, mortgage] : [mortgage, college];
+  const used = lumps.filter(Boolean);
+  let amountLine = 'Nothing from your cash';
+  if (used.length === 1) amountLine = `${used[0].amount} into ${used[0].into}`;
+  if (used.length === 2) amountLine = `${used[0].amount}, then ${used[1].amount}`;
+
   const freed = Math.max(0, -entry.mortgage.yearlyChange);
+  const state = yearlyState(entry);
+  const headline = {
+    short: `You’re short by ${eur(entry.shortfall)} a year`,
+    spare: `You have ${eur(entry.spare)} a year to spare`,
+    left: `You have ${eur(entry.spare)} a year left over`
+  }[state];
+  // The same figure as "needed this year", so the headline, the support line
+  // and the case's measures never state two different needs.
+  const needs = `Your goals need ${eur(entry.neededThisYear)} a year `
+    + `against the ${eur(inputs.leftOverEachYear)} you have`
+    + `${freed > 0 ? `, counting the ${eur(freed)} a lower repayment frees` : ''}.`;
+
   return {
     id: label.id,
     title: label.title,
-    amountLine: lumps.length === 0 ? 'Nothing from your cash' : `${lumps.join(' and ')} from your cash`,
+    amountLine,
     mortgageNote: mortgageAlreadyEnds(inputs.mortgage) ? `Your mortgage already ends by ${inputs.mortgage.clearByAge}.` : '',
-    headline: entry.shortfall > 0
-      ? `You’re short by ${eur(entry.shortfall)} a year`
-      : `You have ${eur(entry.spare)} a year to spare`,
-    // The same figure as "needed this year", so the headline, the support line
-    // and the case's measures never state two different needs.
-    support: `Your goals need ${eur(entry.neededThisYear)} a year `
-      + `against the ${eur(inputs.leftOverEachYear)} you have`
-      + `${freed > 0 ? `, counting the ${eur(freed)} a lower repayment frees` : ''}.`
+    state,
+    headline,
+    support: state === 'left' ? TARGET_NOT_MET_TEXT : needs
+  };
+}
+
+/** The later retirement option's line, by the same rule as the headline. */
+function laterWords(later) {
+  const state = yearlyState(later);
+  const result = {
+    short: `still short by ${eur(later.shortfall)}`,
+    spare: `${eur(later.spare)} to spare`,
+    left: `${eur(later.spare)} left over`
+  }[state];
+  return {
+    label: `If you retire at ${later.retirementAge} on ${eur(later.targetIncomeToday)}`,
+    neededLine: `${eur(later.neededThisYear)} needed this year`,
+    state,
+    result
   };
 }
 
@@ -1036,7 +1090,15 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
           paidOutOverLife: withLater.paidOutOverLife,
           states: withLater.states,
           pension: withLater.pension,
-          ledger: withLater.ledger
+          ledger: withLater.ledger,
+          words: laterWords({
+            retirementAge: pensionLater.retirementAge,
+            targetIncomeToday: pensionLater.targetIncomeToday,
+            neededThisYear: withLater.neededThisYear,
+            shortfall: withLater.shortfall,
+            spare: withLater.spare,
+            states: withLater.states
+          })
         }
         : null
     };

@@ -487,6 +487,38 @@ export async function runGoalsAndResourcesModuleTests() {
     }
   }));
 
+  cases.push(runCase('Money left over with a goal not met says "left over", in amber, with the target sentence', () => {
+    const env = installDom();
+    try {
+      const raw = {
+        ...GOALS_AND_RESOURCES_SAMPLE,
+        leftOverEachYear: 30_000,
+        retirement: { retirementAge: 55, targetIncomeToday: 200_000 }
+      };
+      [1776, 390].forEach((widthHint) => {
+        const root = mount({ rawInputs: raw, widthHint });
+        assert(hasClass(findAll(root, 'gar-status')[0], 'is-left'), `${widthHint}: the headline square is amber`);
+        assert(!hasClass(findAll(root, 'gar-status')[0], 'is-spare'), `${widthHint}: and not green`);
+        assertEqual(findAll(root, 'gar-headline')[0].textContent, 'You have €1,203 a year left over', `${widthHint}: headline`);
+        assertEqual(
+          findAll(root, 'gar-support')[0].textContent,
+          'Your retirement target is not met, even at the most income tax relief allows.',
+          `${widthHint}: support`
+        );
+        assertEqual(findAll(root, 'gar-short-word')[0].textContent, 'Left over', `${widthHint}: the picture's word`);
+        const goalDetails = findAll(root, 'gar-goal-detail').map((node) => node.textContent);
+        assert(
+          goalDetails.some((text) => text === 'At the most income tax relief allows, and still short of your target.'),
+          `${widthHint}: the retirement row carries the approved sentence`
+        );
+        const problems = findForbiddenText(visibleStrings(root), { names: NAMES });
+        assert(problems.length === 0, `${widthHint}: ${problems.join('; ')}`);
+      });
+    } finally {
+      env.restore();
+    }
+  }));
+
   cases.push(runCase('Goals not covered are drawn as an outline above the line and covered goals as solid ones below it', () => {
     const env = installDom();
     try {

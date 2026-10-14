@@ -365,12 +365,101 @@ export function runGoalsAndResourcesTests() {
     result.debug.cases.forEach((entry) => {
       assert(/\byou\b|\byour\b|you’re/i.test(entry.words.headline), `${entry.id}: headline is in "you"`);
       assert(/\byour\b/i.test(entry.words.support), `${entry.id}: support is in "you"`);
-      assert(/your cash/i.test(entry.words.amountLine), `${entry.id}: amount line is in "you"`);
+      assert(
+        /^Nothing from your cash$|^€[\d,]+ into the (mortgage|college fund)$|^€[\d,]+, then €[\d,]+$/.test(entry.words.amountLine),
+        `${entry.id}: the amount line is one of the agreed shapes (${entry.words.amountLine})`
+      );
     });
     const pensionLine = result.assumptionsTable.rows.find((row) => row[0] === 'Pension money');
     assert(pensionLine && /after income tax relief/.test(pensionLine[1]), 'the assumptions table says how pension money counts');
     const orderLine = result.assumptionsTable.rows.find((row) => row[0] === 'Order of your goals');
     assert(orderLine && /soonest, then your mortgage, then retirement/.test(orderLine[1]), 'the assumptions table says the order');
+  }));
+
+  cases.push(runCase('The words are the engine\'s alone: the amount line, the headline, the support and the later line', () => {
+    const result = projection();
+    const lines = result.debug.cases.map((entry) => entry.words.amountLine);
+    assertEqual(
+      lines.join(' | '),
+      'Nothing from your cash | €59,635 into the college fund | €60,000 into the mortgage | €45,974, then €14,026',
+      'the amount lines are the frames\' wording'
+    );
+    assertEqual(
+      getGoalsAndResourcesCases(GOALS_AND_RESOURCES_SAMPLE).map((entry) => entry.description).join(' | '),
+      lines.join(' | '),
+      'the presenter\'s case list carries the same strings'
+    );
+    // Two lumps read in the order they are taken: the mortgage first (the sample's
+    // fourth case, above), except where the college is filled first.
+    const older = computeGoalsAndResourcesProjection({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      spareCash: 50_000,
+      mortgage: { ...GOALS_AND_RESOURCES_SAMPLE.mortgage, currentBalance: 450_000 },
+      children: [
+        { ...GOALS_AND_RESOURCES_SAMPLE.children[0], age: 17 },
+        { ...GOALS_AND_RESOURCES_SAMPLE.children[1], age: 15 }
+      ]
+    }).debug.cases;
+    const collegeFirst = older.find((entry) => entry.words.id === 'college-then-mortgage');
+    assert(collegeFirst, 'this household has a case that fills college first');
+    assertEqual(collegeFirst.words.amountLine, '€45,745, then €4,255', 'college first, then the mortgage');
+    assertEqual(Math.round(collegeFirst.collegeLump), 45_745, 'and the first amount is the college lump');
+
+    // Short: every case of the sample.
+    result.debug.cases.forEach((entry) => {
+      assertEqual(entry.words.state, 'short', `${entry.id}: short`);
+      assert(/^You’re short by €[\d,]+ a year$/.test(entry.words.headline), `${entry.id}: the short headline`);
+    });
+    assertEqual(result.debug.cases[0].laterRetirement.words.result, 'still short by €4,797', 'later: short');
+    assertEqual(result.debug.cases[1].laterRetirement.words.result, '€1,919 to spare', 'later: to spare');
+    assertEqual(result.debug.cases[0].laterRetirement.words.label, 'If you retire at 65 on €46,000', 'the later label');
+    assertEqual(result.debug.cases[0].laterRetirement.words.neededLine, '€10,797 needed this year', 'the later needed line');
+
+    // Spare, with every goal covered: "to spare".
+    const spare = computeGoalsAndResourcesProjection({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 26_000 });
+    spare.debug.cases.forEach((entry) => {
+      assertEqual(entry.words.state, 'spare', `${entry.id}: spare`);
+      assert(/^You have €[\d,]+ a year to spare$/.test(entry.words.headline), `${entry.id}: "to spare"`);
+      assert(entry.states.every((goal) => goal.state === 'covered'), `${entry.id}: every goal is covered`);
+    });
+
+    // Left over with a goal still not met (the relief limit): never "to spare".
+    const atTheLimit = computeGoalsAndResourcesProjection({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      leftOverEachYear: 30_000,
+      retirement: { retirementAge: 55, targetIncomeToday: 200_000 }
+    });
+    atTheLimit.debug.cases.forEach((entry) => {
+      assertEqual(entry.words.state, 'left', `${entry.id}: left over`);
+      assert(/^You have €[\d,]+ a year left over$/.test(entry.words.headline), `${entry.id}: the headline (${entry.words.headline})`);
+      assertEqual(
+        entry.words.support,
+        'Your retirement target is not met, even at the most income tax relief allows.',
+        `${entry.id}: the support line`
+      );
+      assert(entry.spare > 0.5, `${entry.id}: there is money left over`);
+      assert(!/to spare/.test(`${entry.words.headline} ${entry.words.support}`), `${entry.id}: not "to spare"`);
+    });
+
+    // The later option follows the same rule: its own target out of reach at the limit.
+    const laterAtTheLimit = computeGoalsAndResourcesProjection({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      leftOverEachYear: 30_000,
+      laterRetirement: { retirementAge: 58, targetIncomeToday: 200_000 }
+    });
+    laterAtTheLimit.debug.cases.forEach((entry) => {
+      assertEqual(entry.laterRetirement.words.state, 'left', `${entry.id}: the later option is left over`);
+      assert(/^€[\d,]+ left over$/.test(entry.laterRetirement.words.result), `${entry.id}: later result (${entry.laterRetirement.words.result})`);
+    });
+
+    // And a case that is short at the limit is still short: the rule is not hidden by the cap.
+    const shortAtTheLimit = computeGoalsAndResourcesProjection({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      retirement: { retirementAge: 55, targetIncomeToday: 200_000 }
+    });
+    shortAtTheLimit.debug.cases.forEach((entry) => {
+      assertEqual(entry.words.state, 'short', `${entry.id}: short at the limit`);
+    });
   }));
 
   cases.push(runCase('A mortgage that already ends by the goal\'s age is covered with nothing needed', () => {
