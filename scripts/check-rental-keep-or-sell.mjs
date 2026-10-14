@@ -14,6 +14,7 @@ import {
   runRentalKeepOrSellTests
 } from '../js/tests_rental_keep_or_sell_math.js';
 import { runRentalKeepOrSellViewTests } from '../js/tests_rental_keep_or_sell_view.js';
+import { runRentalKeepOrSellModuleTests } from '../js/tests_rental_keep_or_sell_module.js';
 
 let failures = 0;
 
@@ -151,9 +152,15 @@ if (viewSummary.failed > 0) {
   failures += viewSummary.failed;
 }
 
+// The module itself, driven against a small DOM shim and a fake clock.
+const moduleSummary = await runRentalKeepOrSellModuleTests();
+if (moduleSummary.failed > 0) {
+  failures += moduleSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[RentalKeepOrSellAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine and view suites pass.');
+console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine, view and module suites pass.');
