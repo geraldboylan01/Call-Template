@@ -11,6 +11,7 @@ const ASSET_EXTENSIONS = new Set([
   '.gif',
   '.svg',
   '.webp',
+  '.mp4',
   '.ico'
 ]);
 const MODULE_EXTENSIONS = new Set([
