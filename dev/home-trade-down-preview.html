@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Home trade down module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. Resize the window to
+         see it change arrangement at 1632px. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #070c10;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 72px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1920px; margin: 0 auto; }
+      #params { color: #a9b5bd; font: 13px/1.5 system-ui; margin: 0 0 18px; }
+      #params a { color: #6aa7c8; }
+    </style>
+  </head>
+  <body>
+    <p id="params"></p>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildHomeTradeDownModule } from '../js/home_trade_down_module.js';
+      import { HOME_TRADE_DOWN_SAMPLE } from '../js/tests_home_trade_down_math.js';
+
+      const params = new URLSearchParams(location.search);
+      const preset = params.get('preset') || 'sample';
+      const caseId = params.get('case') || null;
+
+      const sample = JSON.parse(JSON.stringify(HOME_TRADE_DOWN_SAMPLE));
+
+      const presets = {
+        // The figures the design was drawn from: four cases, a stay and three moves.
+        sample,
+        // A move that repays as much as today: nothing is freed.
+        nothingfreed: {
+          ...sample,
+          newLoanTermYears: 5,
+          baseScenarioId: 'stay',
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'same', kind: 'move', annualRepayment: 30000 }
+          ]
+        },
+        // The buying costs have taken nearly all the money from selling: the
+        // first block is a sliver and the second label moves clear of the first.
+        sliver: {
+          ...sample,
+          buyingCosts: 354000,
+          baseScenarioId: 'stay',
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'a', kind: 'move', annualRepayment: 18000 },
+            { id: 'b', kind: 'move', annualRepayment: 0 }
+          ]
+        },
+        // A long term at a higher rate.
+        longterm: {
+          ...sample,
+          newLoanTermYears: 35,
+          newLoanAnnualRate: 0.0475,
+          baseScenarioId: 'stay',
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'a', kind: 'move', annualRepayment: 9000 },
+            { id: 'b', kind: 'move', annualRepayment: 15000 }
+          ]
+        },
+        // Large figures: the labels are the widest they get.
+        large: {
+          homeValue: 4850000,
+          mortgageBalance: 1900000,
+          currentAnnualRepayments: 142000,
+          sellingCosts: 97000,
+          buyingCosts: 61000,
+          newLoanTermYears: 20,
+          newLoanAnnualRate: 0.04,
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'a', kind: 'move', annualRepayment: 60000 },
+            { id: 'b', kind: 'move', annualRepayment: 0 }
+          ]
+        },
+        // Two cases only.
+        two: {
+          ...sample,
+          baseScenarioId: 'stay',
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'repay-18000', kind: 'move', annualRepayment: 18000 }
+          ]
+        },
+        // One case: no buttons.
+        one: { ...sample, baseScenarioId: 'stay', scenarios: [{ id: 'stay', kind: 'stay' }] },
+        // The payload names a move as the case to open on.
+        movefirst: { ...sample, baseScenarioId: 'repay-18000' }
+      };
+
+      const chosen = presets[preset] || presets.sample;
+      const names = Object.keys(presets);
+      document.getElementById('params').innerHTML = 'preset: '
+        + names.map((name) => (name === preset
+          ? `<strong>${name}</strong>`
+          : `<a href="?preset=${name}">${name}</a>`)).join(' · ')
+        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case';
+
+      const module = buildHomeTradeDownModule({
+        rawInputs: chosen,
+        selectedCaseId: caseId
+      });
+      if (!module) {
+        document.getElementById('mount').textContent = 'The payload could not be projected.';
+      } else {
+        document.getElementById('mount').append(module);
+      }
+    </script>
+  </body>
+</html>
