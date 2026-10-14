@@ -89,6 +89,19 @@ const collegeFundingInputs = {
   ]
 };
 
+const futureCostFundInputs = {
+  costTitle: 'College',
+  costKind: 'education',
+  startsInYears: 8,
+  durationYears: 4,
+  annualCostToday: 15000,
+  baseScenarioId: 'lump-sum',
+  scenarios: [
+    { id: 'lump-sum', title: 'Lump sum today', lumpShare: 1 },
+    { id: 'every-year', title: 'Save every year', lumpShare: 0 }
+  ]
+};
+
 function makeHousePurchaseInputs() {
   return {
     ...createDefaultHousePurchaseInputs('2026-07-12'),
@@ -302,6 +315,29 @@ const cases = [
       assert(manifest.source.moduleKind === 'college-funding', 'Expected college funding module kind');
       assert(manifest.source.calculationStatus === 'resolved', 'Expected college funding projection to resolve');
       assert(manifest.story.charts.length > 0, 'Expected college funding chart');
+    }
+  },
+  {
+    name: 'Future cost fund shows the selected case, with its own figures and its own fund line',
+    module: baseModule('fund-1', 'College', {
+      summaryHtml: '<p>Ways to have the money ready.</p>',
+      futureCostFundInputs,
+      // A calculated module's stored tables are never trusted.
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      charts: []
+    }),
+    activeScenario: { futureCostFundScenarioId: 'every-year' },
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'future-cost-fund', 'Expected future cost fund module kind');
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected future cost fund projection to resolve');
+      assert(manifest.source.activeScenario.id === 'every-year', 'Expected the selected future cost fund case');
+      assert(manifest.story.charts.length > 0, 'Expected the fund chart');
+      const labels = manifest.story.metrics.map((metric) => metric.label).join(' | ');
+      assert(!labels.includes('MODEL-SUPPLIED'), 'Expected model-supplied outputs to be replaced');
+      assert(/You pay in/.test(labels) && /Growth/.test(labels), `Expected the selected case's figures (${labels})`);
+      assert(!/Lump sum today/.test(labels), 'A case with no lump sum must not show one');
+      const pays = manifest.story.metrics.find((metric) => /You pay in/.test(metric.label));
+      assert(pays.rawValue === 86500, `Expected the yearly case to pay in 86,500 (got ${pays.rawValue})`);
     }
   },
   {

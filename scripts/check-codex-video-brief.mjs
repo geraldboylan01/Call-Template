@@ -202,6 +202,38 @@ assert(housePurchaseBriefModule.activeScenario.housePurchaseScenarioOverrides.ta
 assert(housePurchaseBriefModule.generated.housePurchaseResult, 'Codex brief must include the runtime semantic house-purchase result.');
 assert(!JSON.stringify(housePurchaseBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied house-purchase calculations.');
 
+const futureCostFundBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Future Cost Fund Client',
+    order: ['fund'],
+    modules: [{
+      id: 'fund',
+      title: 'College',
+      generated: {
+        futureCostFundInputs: {
+          costTitle: 'College',
+          costKind: 'education',
+          startsInYears: 8,
+          durationYears: 4,
+          annualCostToday: 15000,
+          scenarios: [
+            { id: 'lump-sum', title: 'Lump sum today', lumpShare: 1 },
+            { id: 'start-later', title: 'Start in 3 years', lumpShare: 0, savingStartsInYears: 3 }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { futureCostFundScenarioId: new Map([['fund', 'start-later']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const futureCostFundBriefModule = futureCostFundBrief.call.modules[0];
+assert(futureCostFundBriefModule.moduleKind === 'future-cost-fund', 'Codex brief must recognize a future cost fund module.');
+assert(futureCostFundBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the future cost fund projection.');
+assert(futureCostFundBriefModule.activeScenario.id === 'start-later', 'Codex brief must name the selected future cost fund case.');
+assert(!JSON.stringify(futureCostFundBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied future cost fund outputs.');
+
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');
 assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');

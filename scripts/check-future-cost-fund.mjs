@@ -20,6 +20,7 @@ import {
 } from '../js/tests_future_cost_fund_math.js';
 import { runFutureCostFundViewTests } from '../js/tests_future_cost_fund_view.js';
 import { runFutureCostFundModuleTests } from '../js/tests_future_cost_fund_module.js';
+import { runFutureCostFundWiringTests } from '../js/tests_future_cost_fund_wiring.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 
@@ -218,9 +219,15 @@ if (moduleSummary.failed > 0) {
   failures += moduleSummary.failed;
 }
 
+// The paste pipeline, the session importer and the presenter catalogue.
+const wiringSummary = runFutureCostFundWiringTests();
+if (wiringSummary.failed > 0) {
+  failures += wiringSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[FutureCostFundAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[FutureCostFundAudit] the engine matches the independent reference and the engine, view and module suites pass.');
+console.info('[FutureCostFundAudit] the engine matches the independent reference and the engine, view, module and wiring suites pass.');

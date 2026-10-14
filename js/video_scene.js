@@ -236,9 +236,19 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
         ? base
         : computeFutureCostFundProjection({ ...generated.futureCostFundInputs, baseScenarioId: selected.id });
       const row = projection.outputsTable.rows[projection.debug.cases.findIndex((entry) => entry.id === selected.id)] || [];
+      // The figures that add up come first: what the client pays in, what
+      // growth adds, and the total, because a story shows only the first few.
+      // What the case asks of them, a lump sum or a yearly amount, follows, and
+      // anything that is nothing in this case is left out.
+      const order = ['You pay in', 'Growth', 'Total cost', 'Lump sum today', 'Yearly saving', 'Years of saving'];
+      const rank = (column) => {
+        const found = order.findIndex((name) => column.startsWith(name));
+        return found < 0 ? order.length : found;
+      };
       const figures = projection.outputsTable.columns.slice(1)
         .map((column, index) => [column, row[index + 1]])
-        .filter(([, value]) => value !== 0);
+        .filter(([, value]) => value !== 0)
+        .sort((a, b) => rank(a[0]) - rank(b[0]));
 
       resolved.generated.assumptions = projection.assumptionsTable;
       resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
