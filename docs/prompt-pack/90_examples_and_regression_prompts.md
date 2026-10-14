@@ -25,6 +25,7 @@ For each prompt below:
 - Pass only if SECTION 2 starts with `{` and ends with `}` as one complete top-level object.
 - PBS outputs pass only if the summary section uses `key: "summary"`, the exact row label `Net worth`, and `subtotalLabel: "Net worth"`.
 - House Purchase outputs pass only if `generated` contains exactly `summaryHtml` and `housePurchaseInputs`; all results remain runtime-owned.
+- Future Cost Fund outputs pass only if `generated` contains exactly `summaryHtml` and `futureCostFundInputs`, no rate field appears, and no case states a euro amount.
 - Fresh-start House Purchase outputs pass only when `lendingCategory` and each applicant's `schemeBuyerStatus` remain separate.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.
@@ -383,6 +384,29 @@ Prompt:
 Checks:
 - placeholder start date only if needed
 - correct loan wording in summary
+
+## Future Cost Fund Regression Prompts
+
+### FUND-1
+Prompt:
+`Use the future cost fund playbook. College in 8 years for four years, 15000 a year in today's money. Show a lump sum, saving every year, half and half, and starting in 3 years.`
+
+Checks:
+- `generated` contains exactly `summaryHtml` and `futureCostFundInputs`
+- `costKind` is `"education"`, `startsInYears` 8, `durationYears` 4, `annualCostToday` 15000
+- four cases with unique ids: `lumpShare` 1, 0 and 0.5, and 0 with `savingStartsInYears` 3
+- no euro amount in any case, and no rate field anywhere in the payload
+- NOTES does not estimate the amounts; the app calculates them
+
+### FUND-2
+Prompt:
+`Use the future cost fund playbook. Care for her mother from about five years out, for three years, roughly 24000 a year today. Assume savings earn 3 percent. What if they save 5000 a year?`
+
+Checks:
+- `costKind` is `"general"`
+- no `savingsGrowthRate` or other rate field; NOTES says the 3% is not used because rates are central
+- no case carries a stated amount; NOTES says a stated saving amount is not modelled and names the closest case
+- `summaryHtml` speaks to the client as `you` and never says `you should`, `best` or `we recommend`
 
 ## Education Regression Prompts
 

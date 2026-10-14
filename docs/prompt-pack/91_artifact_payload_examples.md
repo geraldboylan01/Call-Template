@@ -654,6 +654,32 @@ House Purchase examples must contain only `generated.summaryHtml` and `generated
 }
 ```
 
+## Future Cost Fund
+
+One dated cost and the ways of having the money ready. A case says how the cost is funded, never how much: the app solves the lump sum and the yearly amount. No rate is ever in the payload. `costKind` is `general` here, so prices rise at the central 2% rather than the education rate.
+
+```json
+{
+  "title": "Care for Mam - Ways to Have the Money Ready",
+  "generated": {
+    "summaryHtml": "<p>Care for your mother is expected to start in 5 years and run for three, at about €24,000 a year in today's money. This shows four ways of having that money ready, and every way covers the same cost: what changes is when the money leaves your hands. Start with the buttons, then follow your fund to the year the care begins.</p>",
+    "futureCostFundInputs": {
+      "costTitle": "Care for Mam",
+      "costKind": "general",
+      "startsInYears": 5,
+      "durationYears": 3,
+      "annualCostToday": 24000,
+      "scenarios": [
+        { "id": "lump-sum", "title": "Lump sum today", "lumpShare": 1 },
+        { "id": "every-year", "title": "Save every year", "lumpShare": 0 },
+        { "id": "part-now", "title": "Part now, part each year", "lumpShare": 0.5 },
+        { "id": "start-later", "title": "Start in 2 years", "lumpShare": 0, "savingStartsInYears": 2 }
+      ]
+    }
+  }
+}
+```
+
 ## Education
 
 ```json

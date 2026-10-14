@@ -27,6 +27,8 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `charts`
 - `pensionInputs`
 - `netRetirementInputs`
+- `collegeFundingInputs`
+- `futureCostFundInputs`
 - `housePurchaseInputs`
 - `mortgageInputs`
 - `loanInputs`
@@ -80,6 +82,7 @@ Playbooks should only emit the subset they are responsible for.
 - Retirement: `generated.pensionInputs.rentalIncomeScenarios` holds at most 4 cases.
 - Net Retirement Cash Flow: `generated.netRetirementInputs.scenarios` holds at most 4 cases.
 - College Funding: `generated.collegeFundingInputs.scenarios` holds at most 4 cases, which is exactly what the at-home / away-from-home shorthand produces. Do not combine the shorthand with an explicit `scenarios` array.
+- Future Cost Fund: `generated.futureCostFundInputs.scenarios` holds 1 to 4 cases, enforced by the engine: a fifth is rejected with `generated.futureCostFundInputs.scenarios supports at most 4 cases; received 5.`
 - Case `id` values must be unique inside a module. A repeated id breaks case selection.
 - Every case carries its own fully recalculated figures. Nothing is inherited from the case before it.
 - An over-limit payload is rejected with a validation error naming the module and the case count, rather than rendering a partial set.
@@ -219,6 +222,22 @@ Playbooks should only emit the subset they are responsible for.
 - Shorthand at-home/away inputs are also supported: `atHomeAnnualCostTodayPerChild`, `awayAnnualCostTodayPerChild`, and `carSupportTodayPerChild`. These produce four standard scenarios, which fills the 4-case limit, so do not send them alongside an explicit `scenarios` array.
 - The runtime validates unique child ids, non-negative current ages, start age greater than current age, positive durations, non-negative inflation, and plain numeric money inputs.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
+
+## Future Cost Fund Support
+- Use `generated.futureCostFundInputs`. The only other `generated` key for this playbook is `summaryHtml`.
+- Runtime-supported keys:
+  - `costTitle`: string, 1 to 60 characters
+  - `costKind`: `"education"` or `"general"`, required, no default
+  - `startsInYears`: whole number, 1 to 40
+  - `durationYears`: whole number, 1 to 30
+  - `annualCostToday`: number greater than 0, in today's money
+  - `baseScenarioId`: optional, must match a case id
+  - `scenarios`: 1 to 4 cases
+- Each case supports `id` (required, unique), `title`, `description`, `lumpShare` (0 to 1, default 0) and `savingStartsInYears` (whole number, default 0, less than `startsInYears` unless `lumpShare` is 1). Any other case key is rejected.
+- Rates are central, never in the payload. `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` and `dirtRate` are each rejected with `generated.futureCostFundInputs.<field> is not accepted. Rates are set centrally in the Planéir assumptions.`
+- The runtime takes education costs at 4% a year and general costs at 2%, holds the fund in cash at 0.2% before DIRT with DIRT at 33% from the Irish tax catalogue, puts every flow at the start of a year, and solves each case's lump sum and yearly amount so the fund closes at zero in the last cost year.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables` and `generated.charts`, and draws its own screen; the playbook should not hand-build those fields.
+- Not modelled: money already set aside, a stated saving amount, investing the fund, grants, and more than one cost per module.
 
 ## House Purchase Support
 - Use `generated.housePurchaseInputs`.
