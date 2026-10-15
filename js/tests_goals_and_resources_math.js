@@ -5,7 +5,13 @@ import {
   getGoalsAndResourcesCases,
   normalizeGoalsAndResourcesInputs
 } from './goals_and_resources_math.js';
-import { computePensionProjection } from './pension_math.js';
+import {
+  PENSION_EARNINGS_CAP,
+  computePensionProjection,
+  computePersonalContributionCosts,
+  maxRelievableContributionRatePercent,
+  normalizePensionInputs
+} from './pension_math.js';
 import { renderTaxDisclosures } from './planning/tax/disclosures.js';
 import { resolveTaxRules } from './planning/tax/resolve.js';
 
@@ -394,6 +400,33 @@ export function runGoalsAndResourcesTests() {
     }))
   }).debug.currentGapVsRequired === 0;
 
+  /**
+   * The relief ceiling, worked out here from the pension rules and not from the
+   * engine: each working year's relievable euro amount (the age band's share of
+   * the salary, up to the earnings cap) as a share of that year's salary, less
+   * what is paid in; the largest over the years, then over the people.
+   */
+  const expectedCeiling = (pensions, retirementAge) => {
+    const members = normalizePensionInputs({
+      currentYear: 2026,
+      incomeMode: 'target',
+      targetIncomeToday: 1,
+      targetIncomeBasis: 'net',
+      householdTaxStatus: pensions.length > 1 ? 'married_or_civil_partners' : 'single',
+      pensions: pensions.map((entry) => ({ ...entry, retirementAge }))
+    }).pensions;
+    return Math.max(...members.map((member) => {
+      let room = 0;
+      for (let year = 0; year < retirementAge - member.currentAge; year += 1) {
+        const salary = member.currentSalary * (1 + member.wageGrowthRate) ** year;
+        const share = (maxRelievableContributionRatePercent(member.currentAge + year) / 100)
+          * Math.min(salary, PENSION_EARNINGS_CAP) / salary;
+        room = Math.max(room, share - member.personalPct);
+      }
+      return room;
+    }));
+  };
+
   /** One person already at today's limit (25% at 49) who will reach the 30%, 35% and 40% bands. */
   const atTodaysLimit = withoutLater({
     ...GOALS_AND_RESOURCES_SAMPLE,
@@ -414,8 +447,10 @@ export function runGoalsAndResourcesTests() {
     assert(base.extraPoints > 0, `the search found an extra (${base.extraPoints})`);
     assertEqual(base.gapLeftOver, 0, 'no gap is left');
     assert(closesAt(atTodaysLimit, atTodaysLimit.retirement, base.extraPoints), 'the retirement module agrees it closes');
-    // Room is the 40% band at the last working age (64) less the 25% paid in.
-    assertWithin(base.capPointsAvailable, 0.15, 1e-9, 'the ceiling is from the whole schedule');
+    // Room is the best year's relievable share of salary less the 25% paid in:
+    // the 40% band from 60, over a salary that has grown past the €115,000 cap.
+    assertWithin(base.capPointsAvailable, expectedCeiling(atTodaysLimit.pensions, 65), 1e-9, 'the ceiling is from the whole schedule');
+    assert(base.capPointsAvailable > 0.05, 'later bands do add room beyond today\'s nothing');
     assertEqual(base.disclosures.length, 0, 'and there is nothing to say about money beyond the limit');
   }));
 
@@ -434,9 +469,73 @@ export function runGoalsAndResourcesTests() {
     const { base } = computeGoalsAndResourcesProjection(couple).debug.retirement;
     assertEqual(base.reachedCap, false, 'not at the limit: Una can pay in more');
     assert(closesAt(couple, couple.retirement, base.extraPoints), 'and it closes');
-    // The most that helps is the larger of the two people's room: Una at 59
-    // gets the 40% band, 34 points more than her 6%.
-    assertWithin(base.capPointsAvailable, 0.34, 1e-9, 'the ceiling is the larger headroom');
+    // The most that helps is the larger of the two people's room: Una, still
+    // under the cap, reaches the 40% band at 60, 34 points more than her 6%.
+    assertWithin(base.capPointsAvailable, expectedCeiling(couple.pensions, 65), 1e-9, 'the ceiling is the larger headroom');
+    assertWithin(base.capPointsAvailable, 0.34, 1e-9, 'which is Una\'s 34 points');
+  }));
+
+  cases.push(runCase('The relief ceiling counts the earnings cap: points above it change nothing and are not offered', () => {
+    // €230,000 is above the €115,000 earnings cap, so relief is the age band's
+    // share of €115,000, not of the salary: at 45 that is €28,750, which is
+    // 12.5% of €230,000, so 7.5 points on the 5% paid in, not the 20 the band
+    // alone suggests. Later bands raise it, and wage growth lowers it as a
+    // share of a rising salary.
+    const highEarner = withoutLater({
+      ...atTodaysLimit,
+      mortgage: { ...atTodaysLimit.mortgage, currentAge: 45, clearByAge: 60 },
+      pensions: [{
+        id: 'ciara', title: 'Ciara', currentAge: 45, currentSalary: 230_000, currentPot: 300_000,
+        personalPct: 0.05, employerPct: 0.05, includeStatePension: true
+      }],
+      retirement: { retirementAge: 65, targetIncomeToday: 200_000 }
+    });
+    const { base } = computeGoalsAndResourcesProjection(highEarner).debug.retirement;
+    assertEqual(base.reachedCap, true, 'a target this size is out of reach at the limit');
+
+    const expected = expectedCeiling(highEarner.pensions, 65);
+    assertWithin(base.capPointsAvailable, expected, 1e-9, 'the ceiling is from each year\'s salary and the cap');
+    assertEqual(base.extraPoints, base.capPointsAvailable, 'at the limit the points are the ceiling');
+    assert(base.capPointsAvailable > 0.075, 'later bands do add room beyond this year\'s 7.5 points');
+    assert(base.capPointsAvailable < 0.15, `and it is nowhere near the 35 points of the age band alone (${base.capPointsAvailable})`);
+
+    // The properties that make it the ceiling: nothing above it changes anything,
+    // and a little under it still does.
+    const gapAt = (extra) => {
+      const { debug } = computePensionProjection({
+        currentYear: 2026,
+        incomeMode: 'target',
+        targetIncomeToday: highEarner.retirement.targetIncomeToday,
+        targetIncomeBasis: 'net',
+        householdTaxStatus: highEarner.householdTaxStatus,
+        pensions: highEarner.pensions.map((entry) => ({
+          ...entry,
+          retirementAge: 65,
+          personalPct: entry.personalPct + extra
+        }))
+      });
+      return debug.requiredPot - debug.projectedPotCurrent;
+    };
+    assertWithin(gapAt(base.capPointsAvailable + 0.05), gapAt(base.capPointsAvailable), 1e-6, 'points above it change nothing');
+    assert(gapAt(base.capPointsAvailable - 0.005) > gapAt(base.capPointsAvailable) + 1, 'points just under it still do');
+
+    // The euro amounts beside the points are the capped ones: this year at the
+    // age band's share of €115,000, and the year the 40% band starts at €46,000.
+    const costs = computePersonalContributionCosts({
+      currentYear: 2026,
+      incomeMode: 'target',
+      targetIncomeToday: highEarner.retirement.targetIncomeToday,
+      targetIncomeBasis: 'net',
+      householdTaxStatus: highEarner.householdTaxStatus,
+      pensions: highEarner.pensions.map((entry) => ({
+        ...entry,
+        retirementAge: 65,
+        personalPct: entry.personalPct + base.extraPoints
+      }))
+    });
+    assertWithin(costs.years[0].gross, 0.25 * PENSION_EARNINGS_CAP, 0.01, 'this year\'s contribution is the capped €28,750');
+    assertWithin(base.yearlyExtra, 0.25 * PENSION_EARNINGS_CAP - 0.05 * 230_000, 0.01, 'and the extra shown is that less what is paid in');
+    assertWithin(costs.years[15].gross, 0.4 * PENSION_EARNINGS_CAP, 0.01, 'from 60 it is the capped €46,000');
   }));
 
   cases.push(runCase('The limit is still reported when no later band helps', () => {
