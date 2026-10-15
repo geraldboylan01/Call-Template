@@ -151,6 +151,17 @@ const protectionGapInputs = {
   ]
 };
 
+const rentalKeepOrSellInputs = {
+  rentPerYear: 18000,
+  loanRepaymentsPerYear: 13000,
+  runningCostsPerYear: 2500,
+  taxOnRentalProfitPerYear: 3700,
+  salePrice: 320000,
+  sellingCosts: 6000,
+  loanBalance: 180000,
+  taxOnGain: 21000
+};
+
 function makeHousePurchaseInputs() {
   return {
     ...createDefaultHousePurchaseInputs('2026-07-12'),
@@ -449,6 +460,52 @@ const cases = [
       assert(manifest.source.activeScenario.id === 'today', 'Expected the base case');
       const left = manifest.story.metrics.find((metric) => /Left over/.test(metric.label));
       assert(left && left.rawValue === 6000, `Expected 6,000 left over today (got ${left && left.rawValue})`);
+    }
+  },
+  {
+    name: 'Rental keep or sell shows the selected case, with three figures that add up and its own sentence',
+    module: baseModule('rental-1', 'Rental keep or sell', {
+      summaryHtml: '<p>MODEL-SUPPLIED summary.</p>',
+      rentalKeepOrSellInputs,
+      // A calculated module's stored tables are never trusted.
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      charts: []
+    }),
+    activeScenario: { rentalKeepOrSellScenarioId: 'sell' },
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'rental-keep-or-sell', 'Expected rental keep or sell module kind');
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected rental keep or sell projection to resolve');
+      assert(manifest.source.activeScenario.id === 'sell', 'Expected the selected rental case');
+      assert(manifest.story.charts.length > 0, 'Expected the rental chart');
+      const labels = manifest.story.metrics.map((metric) => metric.label).join(' | ');
+      assert(!labels.includes('MODEL-SUPPLIED'), 'Expected model-supplied outputs to be replaced');
+      assert(/Selling costs, the loan and tax/.test(labels), `Expected what comes off, named (${labels})`);
+      const price = manifest.story.metrics.find((metric) => /^Sale price/.test(metric.label));
+      const comesOff = manifest.story.metrics.find((metric) => /Selling costs, the loan and tax/.test(metric.label));
+      const inHand = manifest.story.metrics.find((metric) => /^In hand/.test(metric.label));
+      assert(price.rawValue === 320000, `Expected a sale price of 320,000 (got ${price.rawValue})`);
+      assert(comesOff.rawValue === 207000, `Expected 207,000 to come off (got ${comesOff.rawValue})`);
+      assert(inHand.rawValue === 113000, `Expected 113,000 in hand (got ${inHand.rawValue})`);
+      assert(price.rawValue - comesOff.rawValue === inHand.rawValue, 'The three figures must add up');
+      const text = JSON.stringify(manifest.story);
+      assert(!text.includes('MODEL-SUPPLIED'), 'Expected the model-supplied summary to be replaced');
+      assert(/is what you would have in hand/.test(text), 'Expected the module\'s own sentence in the story');
+      assert(!/\bwe\b|\bour\b/i.test(text), 'The story must speak to "you"');
+    }
+  },
+  {
+    name: 'Rental keep or sell opens on Keep, with a shortfall as a negative figure that still adds up',
+    module: baseModule('rental-2', 'Rental keep or sell', { rentalKeepOrSellInputs, charts: [] }),
+    activeScenario: { rentalKeepOrSellScenarioId: 'no-such-case' },
+    verify(manifest) {
+      assert(manifest.source.activeScenario.id === 'keep', 'Expected the base case');
+      const rent = manifest.story.metrics.find((metric) => /^Rent/.test(metric.label));
+      const comesOff = manifest.story.metrics.find((metric) => /Loan repayments, running costs and tax/.test(metric.label));
+      const net = manifest.story.metrics.find((metric) => /^Net each year/.test(metric.label));
+      assert(rent && comesOff && net, 'Expected rent, what comes off and the net each year');
+      assert(comesOff.rawValue === 19200, `Expected 19,200 to come off (got ${comesOff.rawValue})`);
+      assert(net.rawValue === -1200, `Expected a net of minus 1,200 (got ${net.rawValue})`);
+      assert(rent.rawValue - comesOff.rawValue === net.rawValue, 'The three figures must add up');
     }
   },
   {
