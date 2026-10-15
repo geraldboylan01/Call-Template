@@ -21,6 +21,8 @@
     "check:advisor-browser-auth": "node ./scripts/check-advisor-browser-auth.mjs",
     "generate:brand": "node ./scripts/generate-planeir-brand-assets.mjs",
     "check:brand": "node ./scripts/check-brand.mjs",
+    "generate:product-previews": "node ./scripts/create-product-preview-videos.mjs",
+    "check:homepage-module-videos": "node ./scripts/check-homepage-module-videos.mjs",
     "generate:advisor-auth": "node ./scripts/generate-advisor-auth.mjs",
     "generate:consumer-key": "node ./scripts/generate-consumer-data-key.mjs",
     "generate:consumer-invite": "node ./scripts/generate-consumer-invite.mjs",
