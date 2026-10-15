@@ -15,6 +15,7 @@ import {
 } from '../js/tests_rental_keep_or_sell_math.js';
 import { runRentalKeepOrSellViewTests } from '../js/tests_rental_keep_or_sell_view.js';
 import { runRentalKeepOrSellModuleTests } from '../js/tests_rental_keep_or_sell_module.js';
+import { runRentalKeepOrSellWiringTests } from '../js/tests_rental_keep_or_sell_wiring.js';
 
 let failures = 0;
 
@@ -158,9 +159,15 @@ if (moduleSummary.failed > 0) {
   failures += moduleSummary.failed;
 }
 
+// The paste pipeline, the session importer and the presenter catalogue.
+const wiringSummary = runRentalKeepOrSellWiringTests();
+if (wiringSummary.failed > 0) {
+  failures += wiringSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[RentalKeepOrSellAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine, view and module suites pass.');
+console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine, view, module and wiring suites pass.');
