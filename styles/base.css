@@ -11984,7 +11984,9 @@ body.overview-has-selection .toast-host {
   color: var(--muted);
   font-size: 25px;
   font-weight: 500;
-  white-space: nowrap;
+  /* A name that is too long wraps to a second line. The layout sizes the box
+     for it, so it is never cut off. */
+  white-space: normal;
 }
 
 .rks-name.is-start,
@@ -11994,6 +11996,10 @@ body.overview-has-selection .toast-host {
 }
 
 .rks-chart.is-narrow .rks-name {
+  /* A name sits on its bar. When the box is two lines tall for a long name, a
+     short one is not left hanging at the top of it. */
+  display: flex;
+  align-items: flex-end;
   padding-right: 6px;
   background: var(--bg-1);
   font-size: 16px;
@@ -12033,6 +12039,30 @@ body.overview-has-selection .toast-host {
 .rks-chart.is-narrow .rks-word {
   margin-left: 6px;
   font-size: 14px;
+}
+
+/* On a very narrow chart the word sits under the number, so the bars keep
+   their room. */
+.rks-chart.is-stacked .rks-label {
+  white-space: normal;
+}
+
+.rks-chart.is-stacked .rks-value,
+.rks-chart.is-stacked .rks-word {
+  display: block;
+}
+
+.rks-chart.is-stacked .rks-value {
+  line-height: 22px;
+}
+
+.rks-chart.is-stacked .rks-word {
+  margin-left: 0;
+  line-height: 16px;
+}
+
+.rks-chart.is-stacked .rks-word[hidden] {
+  display: none;
 }
 
 .rks-footnote {

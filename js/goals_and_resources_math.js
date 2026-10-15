@@ -37,6 +37,18 @@
  * contribution is counted against the household's money it counts at its cost
  * after income tax relief. Employer contributions are not the household's money.
  *
+ * THE RELIEF LIMIT RISES WITH AGE, so the search ceiling is the room across
+ * the whole schedule to retirement (each person's limit in their last working
+ * year), not today's age band, and the limit is reported only when nothing
+ * later helps. When it is reached and the target is still out of reach, the
+ * notes beside money invested outside a pension are carried in the output.
+ *
+ * COVERAGE IS JUDGED YEAR BY YEAR. What is left over is fixed and a pension
+ * saving rises with wages, so a goal met this year can be short later. The
+ * ledger runs to the last year any goal is active (the mortgage's term, each
+ * child's college start, retirement and the later option's retirement), and a
+ * goal is covered only if it is met in every year it needs money.
+ *
  * GOAL ORDER is the planning method's and is fixed here, never taken from a
  * payload: each child's college by start date, then the mortgage, then
  * retirement. Protection and the emergency reserve come first and sit outside
@@ -48,6 +60,7 @@
 
 import { computeAmortizationMonthlySchedule, normalizeMortgageInputs } from './mortgage_math.js';
 import {
+  PENSION_EARNINGS_CAP,
   computePensionProjection,
   computePersonalContributionCosts,
   maxRelievableContributionRatePercent,
@@ -55,7 +68,9 @@ import {
 } from './pension_math.js';
 import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
 import { PLANEIR_ASSUMPTIONS } from './planning/planeir_assumptions.js';
-import { IE_TAX_RULES_VERSION } from './planning/tax/rules_ie.js';
+import { afterTaxInvestmentDisclosures } from './planning/tax/investment_funds.js';
+import { resolveTaxRules } from './planning/tax/resolve.js';
+import { IE_TAX_FIRST_YEAR, IE_TAX_RULES_VERSION } from './planning/tax/rules_ie.js';
 
 const FIELD = 'generated.goalsAndResourcesInputs';
 const MAX_CHILDREN = 4;
@@ -64,7 +79,7 @@ const MAX_PEOPLE = 2;
 const SAME_USE_WITHIN_EUR = 1_000;
 /** A search stops once the gap sits inside (−1, 0] euros of the engine's own threshold. */
 const SEARCH_AIM_EUR = 0.5;
-const SEARCH_MAX_STEPS = 14;
+const SEARCH_MAX_STEPS = 20;
 
 const REFUSED_RATE_FIELDS = Object.freeze([
   'priceGrowthRate',
@@ -329,6 +344,24 @@ function calculationYearFor(inputs, options) {
   return Number(inputs.mortgage.startDateIso.slice(0, 4));
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The date the calculation is as of: `options.calculationDate` when one is
+ * given, else the mortgage's start date (the date its balance is stated at,
+ * and the one the calculation year comes from). Never earlier than the first
+ * year the tax catalogue covers.
+ */
+function calculationDateFor(inputs, options, year) {
+  const given = typeof options.calculationDate === 'string' && ISO_DATE.test(options.calculationDate)
+    ? options.calculationDate
+    : null;
+  const started = ISO_DATE.test(inputs.mortgage.startDateIso) ? inputs.mortgage.startDateIso : `${year}-01-01`;
+  const first = `${IE_TAX_FIRST_YEAR}-01-01`;
+  const date = given || started;
+  return date < first ? first : date;
+}
+
 function mortgageEnginePayload(mortgage, lumpSum = 0) {
   const targetTermYears = mortgage.clearByAge - mortgage.currentAge;
   return {
@@ -533,52 +566,117 @@ function pensionRun(inputs, target, extraPoints, year) {
  * Solve for the contribution (points of salary added for everyone) at which the
  * engine's own gap sits just inside its tolerance, from points already run.
  *
- * The projected pot is a straight line in the contribution (the same slope to
- * the euro at every point below the relief cap) and the required pot barely
- * curves, so the gap is nearly straight and a secant step lands within a euro
- * in two or three runs. The gap only falls as the contribution rises, so a
- * bracket is kept between the largest point that does not close and the
- * smallest that does, and a step that falls outside it is halved instead. The
- * answer is always a point the engine itself says closes.
+ * `points` must hold one run that does not close the gap and one that does, in
+ * the order of the contribution. The gap only falls as the contribution rises,
+ * and it is a straight line only while no year's relief limit binds; past that
+ * it bends (more contribution buys less) and may go flat. So this does not
+ * trust a straight line: it keeps a bracket and takes the Illinois step, which
+ * is the straight-line step with the retained end's value halved whenever the
+ * same end is kept twice, so it closes in a handful of runs on a line, a bend
+ * or a flat tail alike. It aims half a euro inside the threshold and stops at
+ * the first point the engine itself says closes within a euro of it.
  */
 function solveContribution(runAt, points, minX, maxX) {
   const f = (run) => run.rawGap - run.tolerance;
+  const tight = (run) => f(run) <= 0 && f(run) > -1;
   const evaluated = [...points];
 
-  for (let step = 0; step < SEARCH_MAX_STEPS; step += 1) {
-    const closed = evaluated.filter((run) => f(run) <= 0);
-    const open = evaluated.filter((run) => f(run) > 0);
-    const hi = closed.length ? closed.reduce((best, run) => (run.x < best.x ? run : best)) : null;
-    const lo = open.length ? open.reduce((best, run) => (run.x > best.x ? run : best)) : null;
-    if (hi && f(hi) > -1) {
-      return hi;
-    }
+  const already = evaluated.find(tight);
+  if (already) {
+    return already;
+  }
+  const closedPoints = evaluated.filter((run) => f(run) <= 0);
+  const openPoints = evaluated.filter((run) => f(run) > 0);
+  if (closedPoints.length === 0 || openPoints.length === 0) {
+    // Nothing to bracket: the nearest end of the range, run once.
+    return closedPoints[0] || runAt(maxX);
+  }
 
-    const pair = hi && lo ? [lo, hi] : evaluated.slice(-2);
-    const slope = (f(pair[1]) - f(pair[0])) / (pair[1].x - pair[0].x);
-    let x = Number.isFinite(slope) && slope !== 0 ? pair[1].x - (f(pair[1]) + SEARCH_AIM_EUR) / slope : NaN;
-    const low = lo ? lo.x : minX;
-    const high = hi ? hi.x : maxX;
-    if (!(x > low && x < high)) {
-      x = (low + high) / 2;
+  let hi = closedPoints.reduce((best, run) => (run.x < best.x ? run : best));
+  let lo = openPoints.filter((run) => run.x < hi.x).reduce((best, run) => (run.x > best.x ? run : best), openPoints[0]);
+  let gLo = f(lo) + SEARCH_AIM_EUR;
+  let gHi = f(hi) + SEARCH_AIM_EUR;
+  let kept = 0;
+
+  for (let step = 0; step < SEARCH_MAX_STEPS; step += 1) {
+    let x = hi.x - (gHi * (hi.x - lo.x)) / (gHi - gLo);
+    if (!(x > lo.x && x < hi.x)) {
+      x = (lo.x + hi.x) / 2;
     }
-    evaluated.push(runAt(x));
+    x = Math.min(maxX, Math.max(minX, x));
+    const run = runAt(x);
+    evaluated.push(run);
+    if (tight(run)) {
+      return run;
+    }
+    if (f(run) > 0) {
+      lo = run;
+      gLo = f(run) + SEARCH_AIM_EUR;
+      if (kept === -1) gHi /= 2;
+      kept = -1;
+    } else {
+      hi = run;
+      gHi = f(run) + SEARCH_AIM_EUR;
+      if (kept === 1) gLo /= 2;
+      kept = 1;
+    }
   }
 
   const closedNow = evaluated.filter((run) => f(run) <= 0);
-  return closedNow.length
-    ? closedNow.reduce((best, run) => (run.x < best.x ? run : best))
-    : evaluated[evaluated.length - 1];
+  return closedNow.reduce((best, run) => (run.x < best.x ? run : best));
 }
 
-function priceRetirement(inputs, target, year, { includeHeadroom }) {
+/**
+ * The most points of salary, added for everyone, that can still change what
+ * anyone pays in: beyond it every person is at the relief limit in every
+ * working year, so more points do nothing.
+ *
+ * The limit rises with age, and a person pays in until the year before they
+ * retire, so their headroom is the limit in that last working year less what
+ * they already pay in, not the limit in today's age band. A person who is at
+ * today's limit but will reach a higher band still has room. The household's
+ * ceiling is the largest of its people's, because one person's contributions
+ * can rise while another's cannot.
+ */
+function reliefCeilingPoints(inputs, target) {
+  return Math.max(...inputs.pensions.map((person) => {
+    const lastWorkingAge = Math.max(person.currentAge, target.retirementAge - 1);
+    const limit = maxRelievableContributionRatePercent(lastWorkingAge) / 100;
+    return Math.max(0, limit - person.personalPct);
+  }));
+}
+
+/**
+ * What a household at the relief limit must be told about money that goes
+ * beyond it: the notes for an after-tax investment, from the tax rules as of
+ * the calculation date. Carried in the output for a screen to render with
+ * `renderTaxDisclosures`; none when the target is met.
+ *
+ * The limit's figures are given only when the people share one limit: two
+ * people in different age bands have two, and the note then says no figure
+ * rather than the wrong one.
+ */
+function reliefLimitDisclosures(inputs, { asOf, year }) {
+  const shares = new Set(inputs.pensions.map(
+    (person) => maxRelievableContributionRatePercent(person.currentAge)
+  ));
+  const [only] = [...shares];
+  return afterTaxInvestmentDisclosures({
+    asOf,
+    rules: resolveTaxRules(Math.max(IE_TAX_FIRST_YEAR, year)),
+    pensionAtReliefLimit: true,
+    ...(shares.size === 1 && Number.isFinite(only)
+      ? { reliefLimit: { share: only / 100, earningsCap: PENSION_EARNINGS_CAP } }
+      : {})
+  });
+}
+
+function priceRetirement(inputs, target, year, { includeHeadroom, asOf }) {
   const runAt = (x) => pensionRun(inputs, target, x, year);
   const f = (run) => run.rawGap - run.tolerance;
   const atToday = runAt(0);
   const costsToday = computePersonalContributionCosts(pensionEnginePayload(inputs, target, 0, year));
-  const capPoints = Math.min(...inputs.pensions.map(
-    (person) => maxRelievableContributionRatePercent(person.currentAge) / 100 - person.personalPct
-  ));
+  const capPoints = reliefCeilingPoints(inputs, target);
 
   let extraPoints = 0;
   let result = atToday;
@@ -588,33 +686,19 @@ function priceRetirement(inputs, target, year, { includeHeadroom }) {
     if (capPoints <= 0) {
       reachedCap = true;
     } else {
-      // Two points make a straight line: today, and a probe inside the cap.
-      const probe = runAt(Math.min(capPoints, 0.05));
-      const points = [atToday, probe];
-      if (!probe.closed) {
-        if (probe.x >= capPoints) {
-          reachedCap = true;
-          result = probe;
-          extraPoints = probe.x;
-        } else {
-          const slope = (f(probe) - f(atToday)) / (probe.x - atToday.x);
-          const guess = probe.x - (f(probe) + SEARCH_AIM_EUR) / slope;
-          if (!(guess < capPoints)) {
-            // The line closes beyond the cap, or does not close: run the cap itself.
-            const atCap = runAt(capPoints);
-            points.push(atCap);
-            if (!atCap.closed) {
-              reachedCap = true;
-              result = atCap;
-              extraPoints = capPoints;
-            }
-          } else {
-            points.push(runAt(guess));
-          }
-        }
-      }
-      if (!reachedCap) {
-        result = solveContribution(runAt, points, 0, capPoints);
+      // The most that can help is run first: if it does not close the gap,
+      // nothing within the relief limit does, and the limit is reached. If it
+      // does, the answer lies between today and it, and the search closes in.
+      // (The pot is no longer a straight line in the contribution once some
+      // year's relief limit binds, so a straight-line guess past the first
+      // probe cannot be trusted to bracket the answer.)
+      const atCap = runAt(capPoints);
+      if (!atCap.closed) {
+        reachedCap = true;
+        result = atCap;
+        extraPoints = capPoints;
+      } else {
+        result = solveContribution(runAt, [atToday, atCap], 0, capPoints);
         extraPoints = result.x;
       }
     }
@@ -660,6 +744,8 @@ function priceRetirement(inputs, target, year, { includeHeadroom }) {
     extraCostByYear: costsWithExtra.years.map((entry, index) => entry.cost - costOf(costsToday, index)),
     reachedCap,
     gapLeftOver: reachedCap ? Math.max(0, result.rawGap) : 0,
+    // Notes for money beyond the limit, only when the target is out of reach at it.
+    disclosures: reachedCap && result.rawGap > 0 ? reliefLimitDisclosures(inputs, { asOf, year }) : [],
     // The household's own contributions over the years to retirement: gross as
     // the pension engine simulated them, and at their cost after relief.
     personalGrossToday: costsToday.totals.gross,
@@ -760,60 +846,103 @@ function byHowMuchTheyChange(a, b) {
 }
 
 /**
- * Who gets the yearly money, in the planning method's order. A goal takes what
- * it needs from what is left, so a goal late in the order can be partly
- * covered or not covered. A goal needing nothing this year is covered. A lower
- * mortgage repayment frees money, and that money is there for the goals.
+ * Who gets the yearly money, in the planning method's order, year by year.
+ *
+ * Each year the household has what is left over, plus what a lower mortgage
+ * repayment frees that year. A goal takes what it needs from what remains, in
+ * the planning order, so a goal late in the order can be partly covered or not
+ * covered. The ledger is the year-by-year record of what each goal needs, and a
+ * goal's state is read from every year it needs anything:
+ *
+ *  - covered   it is met in every year it needs money (or never needs any)
+ *  - not       it is not met in any of them, with nothing put towards it
+ *  - partly    anything else, including a goal met this year that a rising
+ *              cost (wage growth) or a later goal's start leaves short later
+ *
+ * `need` and `covered` are this year's, which is what the screen's picture
+ * shows; `firstShortYear` is the first year (0 is this year) a goal is not
+ * fully met, or null.
  */
-function goalStates(inputs, { mortgageYearly, college, pension }) {
-  const freed = Math.max(0, -mortgageYearly);
-  let remaining = inputs.leftOverEachYear + freed;
+function goalStates(inputs, { college, pension, ledger }) {
+  const ordered = college.perChild
+    .map((child, index) => ({ child, index }))
+    .sort((a, b) => a.child.startsInYears - b.child.startsInYears);
   const goals = [
-    ...[...college.perChild]
-      .sort((a, b) => a.startsInYears - b.startsInYears)
-      .map((child) => ({
-        goal: child.id,
-        kind: 'college',
-        title: `College, ${child.title.toLowerCase()}`,
-        need: child.yearlyAmount
-      })),
+    ...ordered.map(({ child, index }) => ({
+      goal: child.id,
+      kind: 'college',
+      title: `College, ${child.title.toLowerCase()}`,
+      needs: ledger.map((row) => row.children[index] || 0)
+    })),
     {
       goal: 'mortgage',
       kind: 'mortgage',
       title: `Your mortgage cleared by ${inputs.mortgage.clearByAge}`,
       note: mortgageAlreadyEnds(inputs.mortgage) ? `Your mortgage already ends by ${inputs.mortgage.clearByAge}.` : '',
-      need: Math.max(0, mortgageYearly)
+      needs: ledger.map((row) => Math.max(0, row.mortgage))
     },
     {
       goal: 'retirement',
       kind: 'retirement',
       title: `You retire at ${pension.retirementAge} on ${eur(pension.targetIncomeToday)} a year`,
-      need: pension.yearlyExtraCost
+      needs: ledger.map((row) => row.pension)
     }
   ];
 
-  return goals.map((entry) => {
-    const covered = Math.max(0, Math.min(entry.need, remaining));
-    remaining -= covered;
-    let state = entry.need <= 0.5 || covered >= entry.need - 0.5 ? 'covered' : (covered <= 0 ? 'not' : 'partly');
+  // The planning order, year by year: what each goal gets from what is left.
+  const gets = goals.map(() => []);
+  ledger.forEach((row, year) => {
+    let remaining = inputs.leftOverEachYear + Math.max(0, -row.mortgage);
+    goals.forEach((entry, index) => {
+      const got = Math.max(0, Math.min(entry.needs[year], remaining));
+      remaining -= got;
+      gets[index].push(got);
+    });
+  });
+
+  return goals.map((entry, index) => {
+    const active = entry.needs
+      .map((need, year) => ({ year, need, got: gets[index][year] }))
+      .filter((row) => row.need > 0.5);
+    const short = active.filter((row) => row.got < row.need - 0.5);
+    let state = 'covered';
+    if (short.length > 0) {
+      state = active.every((row) => row.got <= 0) ? 'not' : 'partly';
+    }
     // Contributions at the relief limit that still leave a gap cannot read
     // "covered": the money is found and the target is still not met.
     if (entry.kind === 'retirement' && pension.reachedCap && pension.gapLeftOver > 0 && state === 'covered') {
       state = 'partly';
     }
-    return { ...entry, covered, state, stateWord: STATE_WORDS[state] };
+    const { needs, ...rest } = entry;
+    return {
+      ...rest,
+      need: needs[0],
+      covered: gets[index][0],
+      firstShortYear: short.length > 0 ? short[0].year : null,
+      state,
+      stateWord: STATE_WORDS[state]
+    };
   });
 }
 
+/**
+ * What each goal needs, year by year, from this year to the last year any goal
+ * is active: the mortgage until it is cleared, each child's saving until their
+ * college starts, and the pension until retirement (the later option's too).
+ * After the mortgage is cleared the ledger carries nothing for it.
+ */
 function buildLedger(inputs, mortgage, college, pension, years) {
+  const mortgageYears = inputs.mortgage.clearByAge - inputs.mortgage.currentAge;
   const rows = [];
   for (let year = 0; year < years; year += 1) {
     const children = college.perChild.map((child) => (year < child.savingYears ? child.yearlyAmount : 0));
     const pensionCost = pension.extraCostByYear[year] || 0;
-    const total = mortgage.yearlyChange + sumOf(children) + pensionCost;
+    const mortgageChange = year < mortgageYears ? mortgage.yearlyChange : 0;
+    const total = mortgageChange + sumOf(children) + pensionCost;
     rows.push({
       year,
-      mortgage: mortgage.yearlyChange,
+      mortgage: mortgageChange,
       children,
       pension: pensionCost,
       total,
@@ -851,14 +980,15 @@ function measure(inputs, priced, pension, ledgerYears) {
     college: priced.college.paidIn,
     retirement: pension.personalCostWithExtra
   };
+  const ledger = buildLedger(inputs, priced.mortgage, priced.college, pension, ledgerYears);
   return {
     pension,
     neededThisYear,
     shortfall: Math.max(0, difference),
     spare: Math.max(0, -difference),
     paidOutOverLife: { ...paidOut, total: paidOut.mortgage + paidOut.college + paidOut.retirement },
-    states: goalStates(inputs, { mortgageYearly: priced.mortgage.yearlyChange, college: priced.college, pension }),
-    ledger: buildLedger(inputs, priced.mortgage, priced.college, pension, ledgerYears)
+    states: goalStates(inputs, { college: priced.college, pension, ledger }),
+    ledger
   };
 }
 
@@ -986,6 +1116,7 @@ function buildCharts(inputs, cases) {
  * @param {number} [options.calculationYear] The tax year; defaults to the year of the mortgage start date.
  * @param {object} [options.taxCatalogue] Test injection for the college engine's DIRT rule.
  * @param {boolean} [options.includeHeadroom] Also report how far current contributions sit above the target.
+ * @param {string} [options.calculationDate] YYYY-MM-DD the relief-limit notes are raised as of; defaults to the mortgage start date.
  */
 export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
   const inputs = normalizeGoalsAndResourcesInputs(rawInputs);
@@ -996,16 +1127,25 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
     ...(options.taxCatalogue ? { taxCatalogue: options.taxCatalogue } : {})
   };
   const includeHeadroom = options.includeHeadroom === true;
-  const ledgerYears = inputs.mortgage.clearByAge - inputs.mortgage.currentAge;
+  const asOf = calculationDateFor(inputs, options, year);
 
   const todaySchedule = computeAmortizationMonthlySchedule(mortgageEnginePayload(inputs.mortgage, 0), { scenarioId: 'today' });
   const wholeMortgage = solveWholeMortgageLump(inputs);
   const wholeCollege = priceCollege(inputs, 1, fundOptions);
 
-  const pensionBase = priceRetirement(inputs, { id: 'retire-base', ...inputs.retirement }, year, { includeHeadroom });
+  const pensionBase = priceRetirement(inputs, { id: 'retire-base', ...inputs.retirement }, year, { includeHeadroom, asOf });
   const pensionLater = inputs.laterRetirement
-    ? priceRetirement(inputs, { id: 'retire-later', ...inputs.laterRetirement }, year, { includeHeadroom })
+    ? priceRetirement(inputs, { id: 'retire-later', ...inputs.laterRetirement }, year, { includeHeadroom, asOf })
     : null;
+
+  // The ledger runs to the last year any goal is active: the mortgage's term,
+  // the youngest child's college start, and retirement, the later option's too.
+  const ledgerYears = Math.max(
+    inputs.mortgage.clearByAge - inputs.mortgage.currentAge,
+    ...inputs.children.map((child) => collegeCost().startAge - child.age),
+    pensionBase.extraCostByYear.length,
+    pensionLater ? pensionLater.extraCostByYear.length : 0
+  );
 
   const uses = enumerateUses(inputs, wholeMortgage, wholeCollege.requiredToday)
     .map((use) => priceUse(inputs, use, wholeMortgage, wholeCollege, todaySchedule, fundOptions));
@@ -1059,6 +1199,11 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
     debug: {
       inputs,
       calculationYear: year,
+      // What a screen needs to render the relief-limit notes with
+      // `renderTaxDisclosures`: the date they were raised as of, and the year
+      // whose rules resolve them. Not part of any figure.
+      calculationDateIso: asOf,
+      taxRulesYear: Math.max(IE_TAX_FIRST_YEAR, year),
       goalOrder: ['college by start date', 'mortgage', 'retirement'],
       mortgageAlreadyEnds: mortgageAlreadyEnds(inputs.mortgage),
       wholeMortgageLump: wholeMortgage,

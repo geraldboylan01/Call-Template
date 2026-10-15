@@ -34,7 +34,7 @@ For each prompt below:
 - PBS multi-case outputs pass only if every alternative carries all six sections and reconciles to its own `Gross assets`, `Total liabilities`, and `Net worth`.
 - Fail if a case is written as a change note against another case instead of a complete case.
 - Fail if a multi-case payload stops before the final closing brace.
-- Pass only if NOTES carries one line per case with that case's headline number.
+- Pass only if NOTES carries one line per case with that case's headline number, except where the playbook says the app solves the amounts (Future Cost Fund): then one line per case naming what it does, with no estimated amount.
 
 ## Summary Clarity Checklist
 Every regression output should pass this client-clarity test:

@@ -7,6 +7,12 @@ import {
 import { drainSessionImportWarnings, normalizeGenerated } from './state.js';
 import { buildPresentationCatalogue } from './presenter_catalogue.js';
 import { PROTECTION_GAP_SAMPLE } from './tests_protection_gap_math.js';
+import {
+  PROTECTION_GAP_BANNED_PHRASES,
+  PROTECTION_GAP_PROVIDER_NAMES,
+  computeProtectionGapProjection,
+  protectionGapSummaryHtml
+} from './protection_gap_math.js';
 
 /**
  * THE MODULE, WIRED INTO THE APP, WITHOUT THE APP.
@@ -176,6 +182,35 @@ export function runProtectionGapWiringTests() {
     assert(module.generated.protectionGapInputs, 'the protection gap is set again');
   }));
 
+  cases.push(runCase('The summary is the engine\'s: one from a payload, a session or a patch on its own is replaced', () => {
+    const expected = protectionGapSummaryHtml(computeProtectionGapProjection(SAMPLE));
+    const shown = expected.replace(/<[^>]*>/g, ' ');
+    [...PROTECTION_GAP_BANNED_PHRASES, ...PROTECTION_GAP_PROVIDER_NAMES].forEach((pattern) => {
+      assert(!pattern.test(shown), `the engine's summary never matches ${pattern}`);
+    });
+
+    const pasted = paste(createBlankModule(), { summaryHtml: '<p>The best income protection policy for you.</p>', protectionGapInputs: SAMPLE });
+    assertEqual(pasted.generated.summaryHtml, expected, 'replaced on paste');
+    assertEqual(paste(createBlankModule(), { protectionGapInputs: SAMPLE }).generated.summaryHtml, expected, 'written on paste when none is sent');
+
+    const imported = normalizeGenerated({ summaryHtml: '<p>Your premium would be low.</p>', protectionGapInputs: SAMPLE });
+    assertEqual(imported.summaryHtml, expected, 'replaced on import');
+
+    // A summary sent on its own to the module, after it exists, including one
+    // whose words are split by markup or hidden behind character references.
+    const existing = paste(createBlankModule(), { protectionGapInputs: SAMPLE });
+    ['<p>Buy c<span></span>over now.</p>', '<p>p&period;a&period;</p>', '<p>Ask Z&#x75;rich.</p>'].forEach((html) => {
+      applyNormalizedPayloadToModule(existing, normalizePayload({ generated: { summaryHtml: html } }));
+      assertEqual(existing.generated.summaryHtml, expected, `replaced when sent on its own: ${html}`);
+    });
+
+    const loaded = createBlankModule();
+    loaded.generated.protectionGapInputs = JSON.parse(JSON.stringify(SAMPLE));
+    loaded.generated.summaryHtml = '<p>Ask your insurer for a quote.</p>';
+    ensureGenerated(loaded);
+    assertEqual(loaded.generated.summaryHtml, expected, 'replaced on load');
+  }));
+
   cases.push(runCase('Loading a module refreshes its derived tables', () => {
     const module = createBlankModule();
     module.generated.protectionGapInputs = JSON.parse(JSON.stringify(SAMPLE));
@@ -213,6 +248,23 @@ export function runProtectionGapWiringTests() {
     });
     assertEqual(lone.protectionGapInputs, null, 'a death with one person is dropped, not drawn');
     assert(drainSessionImportWarnings().some((text) => /needs two people/.test(text)), 'with its reason');
+
+    // A summary saved beside inputs that cannot be read goes with them, so it
+    // never shows on the generic module left behind.
+    [
+      'bad',
+      { ...SAMPLE, coverAmount: 1 }
+    ].forEach((protectionGapInputs) => {
+      const dropped = normalizeGenerated({ protectionGapInputs, summaryHtml: '<p>The best Zurich insurance policy.</p>' });
+      assertEqual(dropped.protectionGapInputs, null, `unreadable inputs are dropped: ${JSON.stringify(protectionGapInputs).slice(0, 20)}`);
+      assertEqual(dropped.summaryHtml, '', 'and the saved summary with them');
+      assert(drainSessionImportWarnings().some((text) => /protection gap summary was left out with its inputs/.test(text)), 'which is recorded');
+    });
+    assertEqual(
+      normalizeGenerated({ protectionGapInputs: null, summaryHtml: '<p>A plain summary.</p>' }).summaryHtml,
+      '<p>A plain summary.</p>',
+      'a module with no protection gap keeps its own summary'
+    );
   }));
 
   cases.push(runCase('A saved session normalises to the same inputs again', () => {

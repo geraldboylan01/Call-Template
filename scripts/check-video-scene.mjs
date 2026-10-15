@@ -401,6 +401,25 @@ const cases = [
     }
   },
   {
+    name: 'A future cost fund far in the future keeps its whole horizon in the video chart',
+    module: baseModule('fund-2', 'College', {
+      futureCostFundInputs: { ...futureCostFundInputs, startsInYears: 18 }
+    }),
+    activeScenario: { futureCostFundScenarioId: 'every-year' },
+    verify(manifest) {
+      const chart = manifest.story.charts[0];
+      assert(chart, 'Expected the fund chart');
+      assert(chart.labels.length <= 14, `Expected at most 14 points (got ${chart.labels.length})`);
+      assert(chart.labels[0] === 'Today', `Expected the chart to start today (${chart.labels[0]})`);
+      assert(chart.labels.includes('Year 18'), `Expected the year the cost starts (${chart.labels.join(', ')})`);
+      assert(chart.labels[chart.labels.length - 1] === 'Year 21', `Expected the last cost year (${chart.labels.join(', ')})`);
+      const data = chart.datasets[0].data;
+      assert(data.length === chart.labels.length, 'Expected one value per point');
+      const peak = Math.max(...data);
+      assert(data[chart.labels.indexOf('Year 18')] === peak, 'Expected the fund to peak when the cost starts');
+    }
+  },
+  {
     name: 'Household cash flow shows the selected case, with its own figures and its own bars',
     module: baseModule('cash-1', 'Household cash flow', {
       summaryHtml: '<p>What is left each year.</p>',
@@ -530,6 +549,29 @@ const cases = [
       assert(rent && comesOff && net, 'Expected rent, what comes off and the net each year');
       assert(comesOff.rawValue === 19200, `Expected 19,200 to come off (got ${comesOff.rawValue})`);
       assert(net.rawValue === -1200, `Expected a net of minus 1,200 (got ${net.rawValue})`);
+      assert(rent.rawValue - comesOff.rawValue === net.rawValue, 'The three figures must add up');
+    }
+  },
+  {
+    name: 'Rental keep or sell with cents: the three figures shown still add up',
+    module: baseModule('rental-3', 'Rental keep or sell', {
+      rentalKeepOrSellInputs: {
+        ...rentalKeepOrSellInputs,
+        rentPerYear: 100.4,
+        loanRepaymentsPerYear: 33.4,
+        runningCostsPerYear: 33.4,
+        taxOnRentalProfitPerYear: 33.4
+      },
+      charts: []
+    }),
+    activeScenario: { rentalKeepOrSellScenarioId: 'keep' },
+    verify(manifest) {
+      const rent = manifest.story.metrics.find((metric) => /^Rent/.test(metric.label));
+      const comesOff = manifest.story.metrics.find((metric) => /Loan repayments, running costs and tax/.test(metric.label));
+      const net = manifest.story.metrics.find((metric) => /^Net each year/.test(metric.label));
+      assert(rent.rawValue === 100, `Expected a rent of 100 (got ${rent.rawValue})`);
+      assert(comesOff.rawValue === 99, `Expected 99 to come off, as shown (got ${comesOff.rawValue})`);
+      assert(net.rawValue === 1, `Expected a net of 1, derived from the rows shown (got ${net.rawValue})`);
       assert(rent.rawValue - comesOff.rawValue === net.rawValue, 'The three figures must add up');
     }
   },

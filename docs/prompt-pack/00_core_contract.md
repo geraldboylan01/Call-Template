@@ -113,6 +113,7 @@ Several playbooks support switchable cases. The same limits apply everywhere.
 - Keep per-case copy to one or two sentences. Three or four full cases already make a long payload, and long case notes are what stop it finishing.
 - Finish the JSON object. If a multi-case payload is running long, shorten the case notes and the summary, never the sections, and never stop before the closing braces.
 - In NOTES, give one line per case with that case's headline number, so the comparison reads without opening the module.
+  - Exception: where the selected playbook says the app solves each case's amounts (Future Cost Fund), name what each case does instead, for example `lump sum today` or `save every year from year 3`. Never estimate an amount the app calculates.
 
 ## Client Explanation Standard
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.

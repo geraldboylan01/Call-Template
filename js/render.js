@@ -13280,7 +13280,8 @@ function buildGeneratedSection(module, {
   } else {
     grid.appendChild(buildSummaryCard(generated.summaryHtml, {
       module,
-      readOnly,
+      // The protection gap's summary is written by its engine, so it has no edit.
+      readOnly: readOnly || isProtectionGapModule(displayModule),
       onEditGeneratedText
     }));
   }
