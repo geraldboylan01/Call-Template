@@ -444,6 +444,38 @@ const cases = [
     }
   },
   {
+    name: 'Household cash flow figures are the shown ones, so what goes out is the sum of the lines the screen draws',
+    module: baseModule('cash-3', 'Household cash flow', {
+      householdCashFlowInputs: {
+        ...householdCashFlowInputs,
+        // Each line rounds to the nearest 100 on its own: 1,449 and 1,449 are
+        // 1,400 and 1,400 on the screen (2,800), though their total rounds to 2,900.
+        outgoings: [
+          { id: 'mortgage', label: 'Mortgage', amount: 30000 },
+          { id: 'car', label: 'Car loan', amount: 1449 },
+          { id: 'living', label: 'Living costs', amount: 1449 }
+        ]
+      },
+      charts: []
+    }),
+    activeScenario: { householdCashFlowScenarioId: 'today' },
+    verify(manifest) {
+      // A story shows three figures: what comes in, what goes out, what is left.
+      // The chart carries every line as the screen shows it, so the lines must
+      // add up to what goes out, with each stated line rounded on its own.
+      const metric = (pattern) => manifest.story.metrics.find((entry) => pattern.test(entry.label));
+      const goesOut = metric(/Goes out/).rawValue;
+      const income = metric(/income before tax/i).rawValue;
+      const left = metric(/Left over/).rawValue;
+      assert(income - goesOut === left, 'Expected income less what goes out to be what is left');
+      const [chart] = manifest.story.charts;
+      const data = chart.datasets[0].data;
+      const lines = data.slice(1, -1);
+      assert(lines.includes(1400) && lines.filter((value) => value === 1400).length === 2, `Expected each stated line as shown (${lines})`);
+      assert(lines.reduce((sum, value) => sum + value, 0) === goesOut, `Expected the lines to add up to what goes out (${lines} vs ${goesOut})`);
+    }
+  },
+  {
     name: 'Household cash flow that leaves less than nothing says Short and its size, never a negative left over',
     module: baseModule('cash-2', 'Household cash flow', {
       householdCashFlowInputs: {

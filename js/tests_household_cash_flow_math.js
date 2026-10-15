@@ -723,6 +723,43 @@ export function runHouseholdCashFlowTests() {
     'today\'s pension contribution in income');
   }));
 
+  cases.push(runCase('Text a payload supplies is held to the module\'s wording at the door, in every place it can be', () => {
+    const refused = (mutate) => {
+      try {
+        normalizeHouseholdCashFlowInputs(payload(mutate));
+      } catch (error) {
+        return error.message;
+      }
+      return '';
+    };
+    const places = [
+      ['a person\'s label', (p, text) => { p.people[0].label = text; }, /people\[0\] \(niamh\)\.label/],
+      ['an outgoing\'s label', (p, text) => { p.outgoings[0].label = text; }, /outgoings\[0\] \(mortgage\)\.label/],
+      ['a case\'s title', (p, text) => { p.scenarios[1].title = text; }, /scenarios\[1\] \(clear-car\)\.title/],
+      ['a case\'s description', (p, text) => { p.scenarios[1].description = text; }, /scenarios\[1\] \(clear-car\)\.description/]
+    ];
+    const bad = [
+      'The best option for you',
+      'We recommend this',
+      'Their mortgage',
+      'The household\'s car loan',
+      'Paid to AIB',
+      'Savings of €12000'
+    ];
+    places.forEach(([name, set, where]) => {
+      bad.forEach((text) => {
+        const message = refused((p) => set(p, text));
+        assert(where.test(message), `${name}, "${text}": refused where it was said (${message})`);
+        assert(message.includes(`("${text}")`), `${name}, "${text}": and quotes it`);
+      });
+      assertEqual(refused((p) => set(p, 'Your holiday fund')), '', `${name}: plain words go through`);
+    });
+    // The fixtures' own words are plain, and a label that merely contains a banned
+    // word's letters is not refused.
+    assertEqual(refused(() => {}), '', 'the sample is accepted');
+    assertEqual(refused((p) => { p.outgoings[0].label = 'Bestway rent'; }), '', 'a word is matched whole');
+  }));
+
   cases.push(runCase('Every income type this module allows is one the tax engine accepts', () => {
     HOUSEHOLD_CASH_FLOW_INCOME_TYPES.forEach((type) => {
       const age = type === 'statePension' ? 70 : 45;

@@ -135,6 +135,56 @@ function roundToTen(amount) {
   return (Math.round(amount / 10) * 10) || 0;
 }
 
+/**
+ * WORDING THE SCREEN MAY NOT SHOW.
+ *
+ * Text a payload supplies (a person's label, an outgoing's label, a case's title
+ * and description) reaches the screen, the video and the presenter as it is, so
+ * it is held to the module's wording on the way in and not only in a test. It
+ * is education, never advice: nothing recommended or ranked, no product or
+ * provider, and no third person, because every word speaks to the household as
+ * "you" (D5).
+ */
+export const HOUSEHOLD_CASH_FLOW_BANNED_PHRASES = Object.freeze([
+  /we recommend/i,
+  /you should/i,
+  /best option/i,
+  /\bbest\b/i,
+  /\bideal\b/i,
+  /\boptimal\b/i,
+  /p\.a\./i,
+  /\bthe household\b/i,
+  /\bthe couple\b/i,
+  /\bthe client\b/i,
+  /\bclients?\b/i,
+  /\bthey\b/i,
+  /\btheir\b/i
+]);
+
+export const HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES = Object.freeze([
+  /\bAIB\b/,
+  /\bBank of Ireland\b/,
+  /\bBOI\b/,
+  /\bRevolut\b/,
+  /\bZurich\b/,
+  /\bIrish Life\b/,
+  /\bAviva\b/,
+  /\bDavy\b/
+]);
+
+/** Refuse text this screen may not show, naming where it came from. */
+function refuseForbiddenWording(text, where) {
+  const banned = [...HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, ...HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES]
+    .some((pattern) => pattern.test(text));
+  if (banned || /€\d{4,}/.test(text)) {
+    throw new Error(
+      `${where} ("${text}"): this screen speaks to you in plain words. It never recommends or ranks, never names `
+      + 'a product or a provider, never says "the household", "the couple", "the client", "they" or "their", '
+      + 'and writes amounts with a thousands separator.'
+    );
+  }
+}
+
 /** "Car loan" -> "car loan", but "HSE loan" keeps its capitals. */
 function lowerFirst(text) {
   if (text.length < 2) {
@@ -200,6 +250,7 @@ function normalizePeople(raw) {
       if (label.length < 1 || label.length > MAX_PERSON_LABEL) {
         throw new Error(`${where} (${id}): label must be 1 to ${MAX_PERSON_LABEL} characters.`);
       }
+      refuseForbiddenWording(label, `${where} (${id}).label`);
     }
     if (raw.people.length > 1 && !label) {
       throw new Error(`${where} needs a label when there are two people.`);
@@ -300,6 +351,7 @@ function normalizeOutgoings(raw) {
     if (label.length < 1 || label.length > MAX_OUTGOING_LABEL) {
       throw new Error(`${where} (${id}): label must be 1 to ${MAX_OUTGOING_LABEL} characters.`);
     }
+    refuseForbiddenWording(label, `${where} (${id}).label`);
     if (!isFiniteNumber(rawLine.amount) || rawLine.amount < 0) {
       throw new Error(`${where} (${label}): amount must be 0 or more.`);
     }
@@ -406,6 +458,7 @@ function normalizeScenarios(raw, people, outgoings) {
       if (title.length < 1 || title.length > MAX_CASE_TITLE) {
         throw new Error(`${where} (${id}): title must be 1 to ${MAX_CASE_TITLE} characters.`);
       }
+      refuseForbiddenWording(title, `${where} (${id}).title`);
     }
     if (!title) {
       title = derivedCaseTitle(changes, outgoingsById);
@@ -436,6 +489,9 @@ function normalizeScenarios(raw, people, outgoings) {
     });
 
     const description = typeof rawCase.description === 'string' ? rawCase.description.trim() : '';
+    if (description) {
+      refuseForbiddenWording(description, `${where} (${id}).description`);
+    }
     return { id, title, description, changes };
   });
 }

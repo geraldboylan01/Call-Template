@@ -25,6 +25,11 @@
  * income and what is short is the part past it.
  */
 
+import {
+  HOUSEHOLD_CASH_FLOW_BANNED_PHRASES,
+  HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES
+} from './household_cash_flow_math.js';
+
 /* ------------------------------------------------------------------ constants */
 
 /** The staircase from this content width up. */
@@ -59,33 +64,6 @@ const BAR = Object.freeze({
   rowHeightWithDelta: 38,
   chartHeight: 780
 });
-
-const BANNED_PHRASES = Object.freeze([
-  /we recommend/i,
-  /you should/i,
-  /best option/i,
-  /\bbest\b/i,
-  /\bideal\b/i,
-  /\boptimal\b/i,
-  /p\.a\./i,
-  /\bthe household\b/i,
-  /\bthe couple\b/i,
-  /\bthe client\b/i,
-  /\bclients?\b/i,
-  /\bthey\b/i,
-  /\btheir\b/i
-]);
-
-const PROVIDER_NAMES = Object.freeze([
-  /\bAIB\b/,
-  /\bBank of Ireland\b/,
-  /\bBOI\b/,
-  /\bRevolut\b/,
-  /\bZurich\b/,
-  /\bIrish Life\b/,
-  /\bAviva\b/,
-  /\bDavy\b/
-]);
 
 /* -------------------------------------------------------------------- helpers */
 
@@ -273,10 +251,10 @@ export function collectCashFlowStrings(projection, caseId) {
 export function findForbiddenText(strings) {
   const problems = [];
   strings.forEach((text) => {
-    BANNED_PHRASES.forEach((pattern) => {
+    HOUSEHOLD_CASH_FLOW_BANNED_PHRASES.forEach((pattern) => {
       if (pattern.test(text)) problems.push(`"${text}" matches ${pattern}`);
     });
-    PROVIDER_NAMES.forEach((pattern) => {
+    HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES.forEach((pattern) => {
       if (pattern.test(text)) problems.push(`"${text}" names a provider (${pattern})`);
     });
     if (/€\d{4,}/.test(text)) problems.push(`"${text}" has an amount without a thousands separator`);

@@ -242,6 +242,49 @@ export function runHouseholdCashFlowWiringTests() {
     );
   }));
 
+  cases.push(runCase('An import that cannot be read takes its stored figures with it', () => {
+    const stored = {
+      summaryHtml: '<p>Kept.</p>',
+      assumptions: { columns: ['Assumption', 'Value'], rows: [['MODEL-SUPPLIED', 1]] },
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      tables: [{ title: 'Stale', columns: ['A', 'B'], rows: [['MODEL-SUPPLIED', 1]] }],
+      charts: [{ title: 'Stale', type: 'bar', labels: ['A'], datasets: [{ label: 'A', data: [1] }] }]
+    };
+    [
+      ['a calculated field', { ...SAMPLE, leftOver: 1 }],
+      ['a stated tax line', { ...SAMPLE, outgoings: [...SAMPLE.outgoings, { id: 'tax', label: 'Tax', amount: 1 }] }],
+      ['a label that recommends', { ...SAMPLE, outgoings: [{ id: 'mortgage', label: 'Best mortgage', amount: 30_000 }] }],
+      ['not an object', 'not an object']
+    ].forEach(([name, inputs]) => {
+      drainSessionImportWarnings();
+      const generated = normalizeGenerated({ ...stored, householdCashFlowInputs: inputs });
+      assertEqual(generated.householdCashFlowInputs, null, `${name}: left out`);
+      assert(
+        drainSessionImportWarnings().some((text) => text.startsWith('householdCashFlowInputs could not be read')),
+        `${name}: and says why`
+      );
+      assertEqual(generated.outputs.rows.length, 0, `${name}: no stored outputs`);
+      assertEqual(generated.assumptions.rows.length, 0, `${name}: no stored assumptions`);
+      assertEqual(generated.tables.length, 0, `${name}: no stored tables`);
+      assertEqual(generated.charts.length, 0, `${name}: no stored charts`);
+      assertEqual(generated.summaryHtml, '<p>Kept.</p>', `${name}: the written summary is the module's own and stays`);
+    });
+  }));
+
+  cases.push(runCase('Cutting an import to four cases keeps its base among them', () => {
+    drainSessionImportWarnings();
+    const fifth = { ...SAMPLE, scenarios: [...SAMPLE.scenarios, { id: 'fifth' }], baseScenarioId: 'fifth' };
+    const kept = normalizeGenerated({ householdCashFlowInputs: fifth }).householdCashFlowInputs;
+    assert(kept, 'it survives the cut');
+    assertEqual(kept.scenarios.length, 4, 'cut to four');
+    assertEqual(kept.baseScenarioId, 'fifth', 'the named base is kept');
+    assertEqual(kept.scenarios[3].id, 'fifth', 'in place of the last case kept');
+    assert(
+      drainSessionImportWarnings().some((text) => /baseScenarioId "fifth" was beyond the first 4 cases/.test(text)),
+      'and the kept base is recorded'
+    );
+  }));
+
   cases.push(runCase('A saved session normalises to the same inputs again', () => {
     const once = normalizeGenerated({ householdCashFlowInputs: SAMPLE });
     const twice = normalizeGenerated(JSON.parse(JSON.stringify(once)));

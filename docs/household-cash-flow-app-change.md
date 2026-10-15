@@ -260,6 +260,7 @@ Messages follow the existing style and name the field and the case:
 - `generated.householdCashFlowInputs.people[0] (Niamh): statedTakeHome (€80,000) must be less than income before tax (€75,000).`
 - `generated.householdCashFlowInputs.people[1] needs a label when there are two people.`
 - *(Removed by the short-state change: a case that leaves less than nothing used to be refused with "leaves €X less than nothing each year, which this screen does not draw yet." It is drawn now.)*
+- `generated.householdCashFlowInputs.outgoings[0] (mortgage).label ("Best mortgage"): this screen speaks to you in plain words. It never recommends or ranks, never names a product or a provider, never says "the household", "the couple", "the client", "they" or "their", and writes amounts with a thousands separator.` The same message, with its own path, for `people[i].label`, `scenarios[i].title` and `scenarios[i].description`.
 - `generated.householdCashFlowInputs.scenarios[1] (Clear your car loan): outgoingId "car" is not one of the outgoings.`
 - Also: duplicate case id, outgoing id or person id, unknown case, person or change key, `baseScenarioId` not matching, a line cleared twice, more than one `extraPension`, an unknown `personId`, `householdTaxStatus` errors worded as `pensionInputs` words them, an `income` item of type `employmentPensionContribution`, and a `statedTakeHome` for a person who has no income.
 - The session importer in `js/state.js` treats `scenarios` like the other capped arrays: tolerate on the way in, cap with an import warning, never throw.
@@ -627,6 +628,14 @@ Built as its own change on `household-cash-flow-short`, after the engine, screen
 **The module** (`js/household_cash_flow_module.js`). One `markShort` decides the last mark's colour from the figure being drawn. The sentence's room is measured.
 
 **Paste pipeline and session import.** Neither needed a change of logic: both project the payload, and the projection no longer throws. Their comments were wrong and are corrected. A short session is kept and tables are derived.
+
+**Review lessons applied.** Rows 4, 12, 15, 17 and 18 of the wiring list were tightened after the first modules were reviewed, and this change checked the module against them:
+
+- Row 4: text a payload supplies (a person's label, an outgoing's label, a case's title and description) is held to the module's wording **on the way in**, not only in a test. The engine owns the list and the view imports it, so there is one. This module does not write its own `summaryHtml`, because its limit is the education-only wording and not a regulatory one.
+- Row 12: the session importer cuts cases with `capImportedEngineCases`, which keeps the named base among the cases kept, and `householdCashFlowInputs` is in `RUNTIME_OWNED_INPUT_KEYS`. Both came from main.
+- Row 15: no charts card in the grid or in the patch path. Already so.
+- Row 17: the video's figures are the SHOWN ones. "Other outgoings" was the rounded total of the stated lines, which can differ from the lines drawn by a few hundred, and is now their sum as shown. The chart has at most ten points, under the fourteen a video keeps.
+- Row 18: the module's own wiring tests now include an import that cannot be read taking its stored figures with it, and a cut that keeps the base.
 
 **Where it differs from the frames**
 
