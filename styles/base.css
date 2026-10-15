@@ -10946,9 +10946,10 @@ body.overview-has-selection .toast-host {
 }
 
 /* The thicker border is the non-colour cue, with aria-pressed. The padding
-   gives back what the border takes, so the button is the same size selected. */
+   gives back what the border takes, on every side, so the button is the same
+   size selected even when its text is three lines and sets the height. */
 .hcf-case.is-active {
-  padding: 8px 28px;
+  padding: 7px 28px;
   border: 2px solid var(--electric-blue);
   background: rgba(106, 167, 200, 0.16);
   color: var(--text);
@@ -10966,7 +10967,7 @@ body.overview-has-selection .toast-host {
 }
 
 .hcf.is-bar .hcf-case.is-active {
-  padding: 8px 12px;
+  padding: 7px 12px;
 }
 
 /* ------------------------------------------------------------------ answer */

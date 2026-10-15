@@ -641,6 +641,7 @@ Built as its own change on `household-cash-flow-short`, after the engine, screen
 
 - The "€0" label is 18px, not 20, so it fits the 28px the module keeps beside the plot.
 - The phone frame's text column is 350px wide. The module's is 306 on a 390 phone, because it keeps 28px beside the bar for the staircase's amounts. The sentence's room is measured for that reason.
+- The selected case button gives back the border's pixel on every side. It gave it back only sideways, so a button whose label wrapped to three lines was 2px taller selected and moved the bar by 2px on a phone. On a 390 phone the bar now sits at the same height in every case.
 
 **Tests.** Engine: the frames' sentences as golden strings under the design fixture, the three effect clauses that are not on a frame, a short case in each direction, status following the shown figure, and the sign of the month. Reference calculator: five short payloads (today short, tipped under, stated, assessed separately, and the design fixture) against the engine. View: every shape check also runs over three short shapes, plus the geometry below the floor and on the bar. Module: the colour follows the figure at every frame of a click that crosses the floor. Wiring: a short payload is accepted by the paste and kept by the session import. Video: a short case says "Short" and its size.
 
