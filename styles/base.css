@@ -7546,8 +7546,12 @@ body.overview-has-selection .toast-host {
     min-height: 82px;
   }
 
+  /* minmax(0, 1fr), not 1fr: a column of 1fr will not go narrower than its widest
+     card's min-content, so a table of four or five columns grew the column to 382px
+     in a 252px slot and the module was laid out at the width it was cut off at. A
+     table now scrolls inside its own wrapper, which is what the wrapper is for. */
   .generated-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .retirement-generated-grid {
