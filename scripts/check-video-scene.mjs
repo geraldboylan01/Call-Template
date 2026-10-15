@@ -401,6 +401,25 @@ const cases = [
     }
   },
   {
+    name: 'A future cost fund far in the future keeps its whole horizon in the video chart',
+    module: baseModule('fund-2', 'College', {
+      futureCostFundInputs: { ...futureCostFundInputs, startsInYears: 18 }
+    }),
+    activeScenario: { futureCostFundScenarioId: 'every-year' },
+    verify(manifest) {
+      const chart = manifest.story.charts[0];
+      assert(chart, 'Expected the fund chart');
+      assert(chart.labels.length <= 14, `Expected at most 14 points (got ${chart.labels.length})`);
+      assert(chart.labels[0] === 'Today', `Expected the chart to start today (${chart.labels[0]})`);
+      assert(chart.labels.includes('Year 18'), `Expected the year the cost starts (${chart.labels.join(', ')})`);
+      assert(chart.labels[chart.labels.length - 1] === 'Year 21', `Expected the last cost year (${chart.labels.join(', ')})`);
+      const data = chart.datasets[0].data;
+      assert(data.length === chart.labels.length, 'Expected one value per point');
+      const peak = Math.max(...data);
+      assert(data[chart.labels.indexOf('Year 18')] === peak, 'Expected the fund to peak when the cost starts');
+    }
+  },
+  {
     name: 'Household cash flow shows the selected case, with its own figures and its own bars',
     module: baseModule('cash-1', 'Household cash flow', {
       summaryHtml: '<p>What is left each year.</p>',

@@ -266,7 +266,11 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.assumptions = projection.assumptionsTable;
       resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
       resolved.generated.tables = projection.tables;
-      resolved.generated.charts = projection.charts;
+      // A video chart holds MAX_CHART_LABELS points, and a fund can run for up
+      // to 70 years. Sample the whole horizon, keeping the year the cost starts
+      // and the last year, so the line always reaches the cost.
+      const costStart = generated.futureCostFundInputs.startsInYears;
+      resolved.generated.charts = projection.charts.map((chart) => sampleChartAcross(chart, [costStart - 1, costStart]));
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
@@ -607,6 +611,33 @@ function extractStoryMetrics(module, kind) {
     }));
 
   return [...metrics, ...chartInsights].slice(0, MAX_STORY_METRICS);
+}
+
+/**
+ * A chart cut to MAX_CHART_LABELS points spread across its whole length,
+ * keeping the first and last points and any named ones. A chart that already
+ * fits is returned as it is.
+ */
+function sampleChartAcross(chart, keepIndices = []) {
+  const labels = Array.isArray(chart?.labels) ? chart.labels : [];
+  const count = labels.length;
+  if (count <= MAX_CHART_LABELS) {
+    return chart;
+  }
+  const keep = new Set([0, count - 1, ...keepIndices.filter((index) => Number.isInteger(index) && index > 0 && index < count - 1)]);
+  const slots = MAX_CHART_LABELS - keep.size;
+  for (let step = 1; step <= slots; step += 1) {
+    keep.add(Math.round((step * (count - 1)) / (slots + 1)));
+  }
+  const picked = [...keep].sort((a, b) => a - b);
+  return {
+    ...chart,
+    labels: picked.map((index) => labels[index]),
+    datasets: (Array.isArray(chart.datasets) ? chart.datasets : []).map((dataset) => ({
+      ...dataset,
+      data: picked.map((index) => (Array.isArray(dataset?.data) ? dataset.data[index] : undefined))
+    }))
+  };
 }
 
 function normalizeChart(chart, index) {
