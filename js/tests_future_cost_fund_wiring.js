@@ -7,6 +7,9 @@ import {
 import { drainSessionImportWarnings, normalizeGenerated } from './state.js';
 import { buildPresentationCatalogue } from './presenter_catalogue.js';
 import { FUTURE_COST_FUND_SAMPLE } from './tests_future_cost_fund_math.js';
+import { HOUSEHOLD_CASH_FLOW_SAMPLE } from './tests_household_cash_flow_math.js';
+import { PROTECTION_GAP_SAMPLE } from './tests_protection_gap_math.js';
+import { RENTAL_KEEP_OR_SELL_SAMPLE } from './tests_rental_keep_or_sell_math.js';
 
 /**
  * THE MODULE, WIRED INTO THE APP, WITHOUT THE APP.
@@ -142,6 +145,52 @@ export function runFutureCostFundWiringTests() {
     assertEqual(withRate.futureCostFundInputs, null, 'a rate in the payload leaves the module without inputs');
     assert(drainSessionImportWarnings().some((text) => /dirtRate is not accepted/.test(text)), 'and says why');
     assertEqual(withRate.outputs.rows.length, 0, 'nothing derived from nothing');
+  }));
+
+  cases.push(runCase('An engine payload a session cannot read takes its stored figures with it, for every engine module', () => {
+    const stored = {
+      assumptions: { columns: ['Assumption', 'Value'], rows: [['MODEL-SUPPLIED', 1]] },
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      tables: [{ title: 'Stale', columns: ['A', 'B'], rows: [['MODEL-SUPPLIED', 1]] }],
+      charts: [{ title: 'Stale', type: 'bar', labels: ['A'], datasets: [{ label: 'A', data: [1] }] }]
+    };
+    const unreadable = {
+      futureCostFundInputs: { ...SAMPLE, dirtRate: 0 },
+      householdCashFlowInputs: { ...HOUSEHOLD_CASH_FLOW_SAMPLE, leftOver: 1 },
+      protectionGapInputs: { ...PROTECTION_GAP_SAMPLE, gap: 1 },
+      rentalKeepOrSellInputs: { ...RENTAL_KEEP_OR_SELL_SAMPLE, rentPerYear: -1 }
+    };
+    Object.entries(unreadable).forEach(([key, inputs]) => {
+      drainSessionImportWarnings();
+      const generated = normalizeGenerated({ summaryHtml: '<p>Kept.</p>', ...stored, [key]: inputs });
+      assertEqual(generated[key], null, `${key} is left out`);
+      assert(drainSessionImportWarnings().some((text) => text.startsWith(`${key} could not be read`)), `${key}: and says why`);
+      assertEqual(generated.outputs.rows.length, 0, `${key}: no stored outputs`);
+      assertEqual(generated.assumptions.rows.length, 0, `${key}: no stored assumptions`);
+      assertEqual(generated.tables.length, 0, `${key}: no stored tables`);
+      assertEqual(generated.charts.length, 0, `${key}: no stored charts`);
+      assertEqual(generated.summaryHtml, '<p>Kept.</p>', `${key}: the written summary is kept`);
+    });
+    const plain = normalizeGenerated({ ...stored });
+    assertEqual(plain.outputs.rows.length, 1, 'a module with no engine payload keeps its own tables');
+  }));
+
+  cases.push(runCase('Cutting an imported module to four cases keeps its base among them', () => {
+    const fifth = (inputs, extra) => ({ ...inputs, scenarios: [...inputs.scenarios, extra], baseScenarioId: extra.id });
+    const modules = {
+      futureCostFundInputs: fifth(SAMPLE, { id: 'fifth', lumpShare: 0.25 }),
+      householdCashFlowInputs: fifth(HOUSEHOLD_CASH_FLOW_SAMPLE, { id: 'fifth' }),
+      protectionGapInputs: fifth(PROTECTION_GAP_SAMPLE, { id: 'fifth' })
+    };
+    Object.entries(modules).forEach(([key, inputs]) => {
+      drainSessionImportWarnings();
+      const generated = normalizeGenerated({ [key]: inputs });
+      assert(generated[key], `${key} survives the cut`);
+      assertEqual(generated[key].scenarios.length, 4, `${key}: cut to four`);
+      assertEqual(generated[key].baseScenarioId, generated[key].scenarios[0].id, `${key}: the first case kept is the base`);
+      const warnings = drainSessionImportWarnings();
+      assert(warnings.some((text) => /baseScenarioId "fifth" was one of the cases cut/.test(text)), `${key}: the moved base is recorded (${warnings.join(' | ')})`);
+    });
   }));
 
   cases.push(runCase('A saved session normalises to the same inputs again', () => {

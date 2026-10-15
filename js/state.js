@@ -71,6 +71,40 @@ function capImportedScenarioCases(cases, limit, label, noun = 'cases') {
   return cases.slice(0, limit);
 }
 
+/**
+ * Cut an imported module's cases to the cap, and keep its base case among them.
+ *
+ * A base case that was cut would make the engine refuse the whole module, which
+ * defeats the cut. It is dropped with a warning, so the first case kept is the
+ * base, as it is for any payload that names none.
+ */
+function capImportedEngineCases(inputs, label) {
+  if (!Array.isArray(inputs.scenarios) || inputs.scenarios.length <= MAX_MODULE_SCENARIO_CASES) {
+    return inputs;
+  }
+  const scenarios = capImportedScenarioCases(inputs.scenarios, MAX_MODULE_SCENARIO_CASES, `${label}.scenarios`);
+  const base = typeof inputs.baseScenarioId === 'string' ? inputs.baseScenarioId.trim() : '';
+  const baseKept = !base || scenarios.some((entry) => typeof entry?.id === 'string' && entry.id.trim() === base);
+  if (baseKept) {
+    return { ...inputs, scenarios };
+  }
+  recordSessionImportWarning(`${label}.baseScenarioId "${base}" was one of the cases cut, so the first case kept is the base.`);
+  const { baseScenarioId: _cut, ...rest } = inputs;
+  return { ...rest, scenarios };
+}
+
+/**
+ * The engine inputs whose figures only the engine may produce. When one of these
+ * is in a session but cannot be read, its stored tables and charts are cleared
+ * with it, so stale or model-supplied figures never show as a generic analysis.
+ */
+const RUNTIME_OWNED_INPUT_KEYS = Object.freeze([
+  'futureCostFundInputs',
+  'householdCashFlowInputs',
+  'protectionGapInputs',
+  'rentalKeepOrSellInputs'
+]);
+
 function makeSessionId() {
   if (window.crypto && typeof window.crypto.randomUUID === 'function') {
     return `session-${window.crypto.randomUUID()}`;
@@ -727,16 +761,7 @@ function normalizeFutureCostFundSessionInputs(futureCostFundInputs) {
     return null;
   }
 
-  const candidate = Array.isArray(futureCostFundInputs.scenarios)
-    ? {
-      ...futureCostFundInputs,
-      scenarios: capImportedScenarioCases(
-        futureCostFundInputs.scenarios,
-        MAX_MODULE_SCENARIO_CASES,
-        'futureCostFundInputs.scenarios'
-      )
-    }
-    : futureCostFundInputs;
+  const candidate = capImportedEngineCases(futureCostFundInputs, 'futureCostFundInputs');
 
   try {
     return normalizeFutureCostFundInputs(candidate);
@@ -761,16 +786,7 @@ function normalizeHouseholdCashFlowSessionInputs(householdCashFlowInputs) {
     return null;
   }
 
-  const candidate = Array.isArray(householdCashFlowInputs.scenarios)
-    ? {
-      ...householdCashFlowInputs,
-      scenarios: capImportedScenarioCases(
-        householdCashFlowInputs.scenarios,
-        MAX_MODULE_SCENARIO_CASES,
-        'householdCashFlowInputs.scenarios'
-      )
-    }
-    : householdCashFlowInputs;
+  const candidate = capImportedEngineCases(householdCashFlowInputs, 'householdCashFlowInputs');
 
   try {
     const normalized = normalizeHouseholdCashFlowInputs(candidate);
@@ -797,16 +813,7 @@ function normalizeProtectionGapSessionInputs(protectionGapInputs) {
     return null;
   }
 
-  const candidate = Array.isArray(protectionGapInputs.scenarios)
-    ? {
-      ...protectionGapInputs,
-      scenarios: capImportedScenarioCases(
-        protectionGapInputs.scenarios,
-        MAX_MODULE_SCENARIO_CASES,
-        'protectionGapInputs.scenarios'
-      )
-    }
-    : protectionGapInputs;
+  const candidate = capImportedEngineCases(protectionGapInputs, 'protectionGapInputs');
 
   try {
     const normalized = normalizeProtectionGapInputs(candidate);
@@ -1858,6 +1865,16 @@ export function normalizeGenerated(generated) {
     outputsBucketed: normalizeOutputsBucketed(generated.outputsBucketed),
     charts: normalizeCharts(generated.charts)
   };
+
+  const droppedRuntimeInput = RUNTIME_OWNED_INPUT_KEYS.some((key) => (
+    generated[key] && typeof generated[key] === 'object' && !normalized[key]
+  ));
+  if (droppedRuntimeInput && !RUNTIME_OWNED_INPUT_KEYS.some((key) => normalized[key])) {
+    normalized.assumptions = { columns: [], rows: [] };
+    normalized.outputs = { columns: [], rows: [] };
+    normalized.tables = [];
+    normalized.charts = [];
+  }
 
   if (normalized.videoSummary) {
     normalized.summaryHtml = '';
