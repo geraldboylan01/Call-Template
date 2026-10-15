@@ -78,13 +78,31 @@ function compare(payload, label) {
   assert.ok(Math.abs(engine.debug.released - released) < 1e-6, `${label}: released`);
   assert.ok(Math.abs(engine.debug.cashTowardHome - cash) < 1e-6, `${label}: cash toward the home`);
 
+  // What is shown adds up. Each input is rounded on its own and everything else
+  // is read off those, never rounded from the exact sum.
+  const homeShown = Math.round(payload.homeValue);
+  const mortgageShown = Math.round(payload.mortgageBalance);
+  const releasedShown = homeShown - mortgageShown - Math.round(payload.sellingCosts);
+  const cashShown = releasedShown - Math.round(payload.buyingCosts);
+  const currentShown = Math.round(payload.currentAnnualRepayments);
+  assert.equal(engine.debug.shown.homeValue, homeShown, `${label}: home as shown`);
+  assert.equal(engine.debug.shown.released, releasedShown, `${label}: released as shown`);
+  assert.equal(engine.debug.shown.cashTowardHome, cashShown, `${label}: cash as shown`);
+  assert.equal(engine.debug.shown.currentAnnualRepayments, currentShown, `${label}: repayments today as shown`);
+
   engine.debug.cases.forEach((entry, index) => {
     const scenario = payload.scenarios[index];
     assert.equal(entry.id, scenario.id, `${label}: case order`);
 
+    assert.equal(entry.block1 + entry.block2, entry.homeBudget, `${label}/${entry.id}: the blocks add to the budget`);
+    assert.equal(entry.shownRepaid + entry.shownFreed, currentShown, `${label}/${entry.id}: repaid and freed add to today`);
+
     if (scenario.kind === 'stay') {
-      assert.equal(entry.block1, Math.round(payload.homeValue - payload.mortgageBalance), `${label}/${entry.id}: your share`);
-      assert.equal(entry.block2, Math.round(payload.mortgageBalance), `${label}/${entry.id}: the mortgage`);
+      assert.equal(entry.block1, homeShown - mortgageShown, `${label}/${entry.id}: your share`);
+      assert.equal(entry.block2, mortgageShown, `${label}/${entry.id}: the mortgage`);
+      assert.equal(entry.homeBudget, homeShown, `${label}/${entry.id}: the home as shown`);
+      assert.equal(entry.shownRepaid, currentShown, `${label}/${entry.id}: repaid as shown`);
+      assert.equal(entry.shownFreed, 0, `${label}/${entry.id}: nothing freed by staying`);
       assert.equal(entry.freed, 0, `${label}/${entry.id}: nothing freed by staying`);
       return;
     }
@@ -104,12 +122,15 @@ function compare(payload, label) {
     }
 
     assert.equal(entry.block2, toThousand(loan), `${label}/${entry.id}: the loan as shown`);
-    assert.equal(entry.block1, Math.round(cash), `${label}/${entry.id}: money from selling`);
-    assert.equal(entry.homeBudget, Math.round(cash) + toThousand(loan), `${label}/${entry.id}: home budget`);
+    assert.equal(entry.block1, cashShown, `${label}/${entry.id}: money from selling`);
+    assert.equal(entry.homeBudget, cashShown + toThousand(loan), `${label}/${entry.id}: home budget`);
     assert.ok(
       Math.abs(entry.freed - (payload.currentAnnualRepayments - scenario.annualRepayment)) < 1e-9,
-      `${label}/${entry.id}: freed`
+      `${label}/${entry.id}: freed, exactly`
     );
+    assert.equal(entry.shownRepaid, Math.round(scenario.annualRepayment), `${label}/${entry.id}: repaid as shown`);
+    assert.equal(entry.shownFreed, currentShown - Math.round(scenario.annualRepayment), `${label}/${entry.id}: freed as shown`);
+    assert.ok(entry.shownFreed >= 0, `${label}/${entry.id}: freed is never shown below nothing`);
   });
 }
 
@@ -202,6 +223,60 @@ check('three hundred seeded households match the reference', () => {
     }
   }
   assert.ok(compared >= 200, `only ${compared} seeded households were comparable`);
+});
+
+check('three hundred seeded households with cents match the reference and add down as shown', () => {
+  const next = sequence(20_261_015);
+  const cents = (amount) => Math.round(amount * 100) / 100;
+  let compared = 0;
+  let shownDiffers = 0;
+  for (let index = 0; index < 900 && compared < 300; index += 1) {
+    const homeValue = cents(200_000 + (next() * 1_800_000));
+    const mortgageBalance = cents(20_000 + (next() * homeValue * 0.6));
+    const sellingCosts = cents(next() * homeValue * 0.04);
+    const released = homeValue - mortgageBalance - sellingCosts;
+    if (released < 20_000) {
+      continue;
+    }
+    // Kept clear of the whole of the money from selling, so only the budget
+    // against today's home can refuse a household here.
+    const buyingCosts = cents(next() * Math.min(released * 0.9, homeValue * 0.05));
+    const currentAnnualRepayments = cents(5_000 + (next() * 40_000));
+    const payload = {
+      homeValue,
+      mortgageBalance,
+      currentAnnualRepayments,
+      sellingCosts,
+      buyingCosts,
+      newLoanTermYears: 1 + Math.floor(next() * 40),
+      newLoanAnnualRate: Math.round(next() * 0.1 * 10_000) / 10_000,
+      scenarios: [
+        { id: 'stay', kind: 'stay' },
+        { id: 'low', kind: 'move', annualRepayment: cents(next() * currentAnnualRepayments * 0.3) },
+        { id: 'mid', kind: 'move', annualRepayment: cents(next() * currentAnnualRepayments * 0.6) },
+        { id: 'none', kind: 'move', annualRepayment: 0 }
+      ]
+    };
+    let accepted = true;
+    try {
+      computeHomeTradeDownProjection(payload);
+    } catch (error) {
+      assert.match(error.message, /more than the current home/, `seeded ${index}: ${error.message}`);
+      accepted = false;
+    }
+    if (accepted) {
+      compare(payload, `cents ${index + 1}`);
+      // How often rounding the exact figure would have disagreed with the shown
+      // rows: proof that this run exercises what the derivation is for.
+      const projection = computeHomeTradeDownProjection(payload);
+      projection.debug.cases.forEach((entry) => {
+        if (Math.round(entry.freed) !== entry.shownFreed) shownDiffers += 1;
+      });
+      compared += 1;
+    }
+  }
+  assert.ok(compared >= 200, `only ${compared} seeded households were comparable`);
+  assert.ok(shownDiffers > 0, 'no household had a freed figure that rounding the exact sum would have got wrong');
 });
 
 // The unit suites, run here so one command proves the engine and the view.

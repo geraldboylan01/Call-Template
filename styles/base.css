@@ -12442,6 +12442,90 @@ body.overview-has-selection .toast-host {
   line-height: 17px;
 }
 
+/* ------------------------------------------------------------- compact */
+
+/* A chart under 400px (a phone: the app's shell leaves 252px for the module on
+   a 320px one). The figures put their word beneath them, the two labels sit one
+   above the other behind a swatch of their block, and each year row puts its
+   name over its amount. Sizes the figure and the freed amount are fitted in
+   js/home_trade_down_view.js and set inline. */
+
+.htd-chart.is-compact .htd-figure {
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.htd-chart.is-compact .htd-figure-value,
+.htd-chart.is-compact .htd-figure-word {
+  display: block;
+}
+
+.htd-chart.is-compact .htd-figure-word {
+  margin-left: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-today-label {
+  white-space: nowrap;
+}
+
+.htd-chart.is-compact .htd-label {
+  box-sizing: border-box;
+  padding-left: 20px;
+}
+
+.htd-chart.is-compact .htd-label::before {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  content: '';
+}
+
+.htd-chart.is-compact .htd-label.is-one::before {
+  background: var(--electric-blue);
+}
+
+.htd-chart.is-compact .htd-label.is-two::before {
+  background: rgba(106, 167, 200, 0.28);
+  box-shadow: inset 0 0 0 2px var(--electric-blue);
+}
+
+.htd-chart.is-compact .htd-freed {
+  white-space: normal;
+}
+
+.htd-chart.is-compact .htd-freed-value,
+.htd-chart.is-compact .htd-freed-word {
+  display: block;
+}
+
+.htd-chart.is-compact .htd-freed-word {
+  margin-top: 4px;
+  margin-left: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-row {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.htd-chart.is-compact .htd-row-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-row-value {
+  font-size: 18px;
+  line-height: 24px;
+}
+
 .htd-footnote {
   margin: 0;
   color: var(--muted);

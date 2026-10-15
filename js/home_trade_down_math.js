@@ -32,9 +32,25 @@
  *
  * ROUNDING
  *
- * The new loan is rounded to the nearest €1,000 for display. Block 1 is shown to
- * the euro. The home budget shown is block 1 as shown plus the loan as shown, so
- * the bar always adds up. The repayments and what they free are exact.
+ * The new loan is rounded to the nearest €1,000 for display. Every other amount
+ * is shown to the euro, and what is shown adds up, as the household cash flow
+ * does: each input is rounded on its own, and every figure that depends on them
+ * is DERIVED from those rounded figures, not rounded from the exact sum.
+ *
+ *   released shown = home shown - mortgage shown - selling costs shown
+ *   cash shown     = released shown - buying costs shown
+ *   budget shown   = cash shown (or home less mortgage, staying) + loan shown
+ *   freed shown    = repaid today, shown - repaid on the new loan, shown
+ *
+ * With cents in the inputs, 100.60 repaid today and 33.40 repaid on the new loan
+ * frees 67.20, which rounds to 67 and sits beside 101 and 33. Derived, it shows
+ * 68, so 101 less 33 is what the screen says. The exact figures stay beside the
+ * shown ones in `debug`.
+ *
+ * WORDING
+ *
+ * A case title or description is shown as given. They are checked here, on the
+ * way in, against the banned wording, which the view's own scan uses too.
  */
 
 import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
@@ -54,6 +70,24 @@ const INPUT_FIELDS = Object.freeze([
   'scenarios'
 ]);
 const CASE_FIELDS = Object.freeze(['id', 'kind', 'title', 'description', 'annualRepayment']);
+
+/**
+ * Words that may never be on this screen: no recommendation, and no "we", "us"
+ * or "our" (the screen speaks to you). The view's own scan uses these, and so
+ * does the input check, because a case title or description is shown as given.
+ */
+export const HOME_TRADE_DOWN_BANNED_PHRASES = Object.freeze([
+  /\bwe recommend\b/i,
+  /\byou should\b/i,
+  /\bbest option\b/i,
+  /\bbest\b/i,
+  /\bideal\b/i,
+  /\boptimal\b/i,
+  /\bp\.a\./i,
+  /\bwe\b/i,
+  /\bus\b/i,
+  /\bour\b/i
+]);
 
 const MIN_TERM_YEARS = 1;
 const MAX_TERM_YEARS = 40;
@@ -103,6 +137,29 @@ export function loanFromAnnualRepayment(annualRepayment, termYears, annualRate) 
 }
 
 /**
+ * The inputs as the screen shows them, and what follows from them as shown.
+ *
+ * Each input is rounded on its own, and what depends on them is derived from the
+ * rounded figures, so every row adds down to the next.
+ */
+function shownFigures(inputs) {
+  const homeValue = Math.round(inputs.homeValue);
+  const mortgageBalance = Math.round(inputs.mortgageBalance);
+  const sellingCosts = Math.round(inputs.sellingCosts);
+  const buyingCosts = Math.round(inputs.buyingCosts);
+  const released = homeValue - mortgageBalance - sellingCosts;
+  return {
+    homeValue,
+    mortgageBalance,
+    sellingCosts,
+    buyingCosts,
+    currentAnnualRepayments: Math.round(inputs.currentAnnualRepayments),
+    released,
+    cashTowardHome: released - buyingCosts
+  };
+}
+
+/**
  * What a move at a yearly repayment buys, as the screen will show it.
  *
  * Shared by the normaliser, which refuses a budget above the current home, and
@@ -114,7 +171,7 @@ function priceMove(inputs, annualRepayment, cashTowardHome) {
     inputs.newLoanTermYears,
     inputs.newLoanAnnualRate
   );
-  const block1 = Math.round(cashTowardHome);
+  const block1 = shownFigures(inputs).cashTowardHome;
   const block2 = roundLoan(loanUnrounded);
   return {
     loanUnrounded,
@@ -123,6 +180,16 @@ function priceMove(inputs, annualRepayment, cashTowardHome) {
     homeBudget: block1 + block2,
     homeBudgetUnrounded: cashTowardHome + loanUnrounded
   };
+}
+
+/** Refuse client-facing text this screen may not show. */
+function refuseForbiddenWording(text, path) {
+  if (HOME_TRADE_DOWN_BANNED_PHRASES.some((pattern) => pattern.test(text))) {
+    throw new Error(
+      `${FIELD}.${path} ("${text}"): this screen shows what a repayment buys, `
+      + 'never a recommendation, and speaks to you, never as "we", "us" or "our".'
+    );
+  }
 }
 
 function normalizeCase(rawCase, index, currentAnnualRepayments) {
@@ -173,6 +240,11 @@ function normalizeCase(rawCase, index, currentAnnualRepayments) {
 
   const description = typeof rawCase.description === 'string' ? rawCase.description.trim() : '';
 
+  // A title built here ("Repay €18,000 a year") is clean by construction, so
+  // only what the payload gave is checked, as it will be shown as given.
+  if (givenTitle) refuseForbiddenWording(givenTitle, `${label}.title`);
+  if (description) refuseForbiddenWording(description, `${label}.description`);
+
   return { id, kind, title, description, annualRepayment };
 }
 
@@ -217,11 +289,14 @@ export function normalizeHomeTradeDownInputs(raw) {
     throw new Error(`${FIELD}.newLoanAnnualRate must be a number from 0 to ${MAX_ANNUAL_RATE}.`);
   }
 
+  // Both on the exact figures and on the figures as shown, so a payload that
+  // clears by less than a euro never shows a minus.
   const released = raw.homeValue - raw.mortgageBalance - raw.sellingCosts;
-  if (released < 0) {
+  const shown = shownFigures(raw);
+  if (released < 0 || shown.released < 0) {
     throw new Error(`${FIELD}.sellingCosts: selling would not clear the mortgage.`);
   }
-  if (raw.buyingCosts > released) {
+  if (raw.buyingCosts > released || shown.buyingCosts > shown.released) {
     throw new Error(`${FIELD}.buyingCosts: the money from selling does not cover the buying costs.`);
   }
 
@@ -295,28 +370,36 @@ export function getDefaultHomeTradeDownScenarioId(rawInputs) {
 }
 
 function solveCase(inputs, scenario, released, cashTowardHome) {
+  const shown = shownFigures(inputs);
   let block1;
   let block2;
   let loanUnrounded = 0;
   let repaid;
+  let shownRepaid;
   let freed;
   let homeBudgetUnrounded;
 
   if (scenario.kind === 'stay') {
-    block1 = Math.round(inputs.homeValue - inputs.mortgageBalance);
-    block2 = Math.round(inputs.mortgageBalance);
+    // Home worth as shown, less the mortgage as shown, so the two blocks add to
+    // the home worth that the assumptions show.
+    block2 = shown.mortgageBalance;
+    block1 = shown.homeValue - shown.mortgageBalance;
     repaid = inputs.currentAnnualRepayments;
+    shownRepaid = shown.currentAnnualRepayments;
     freed = 0;
     homeBudgetUnrounded = inputs.homeValue;
   } else {
     const priced = priceMove(inputs, scenario.annualRepayment, cashTowardHome);
     ({ block1, block2, loanUnrounded, homeBudgetUnrounded } = priced);
     repaid = scenario.annualRepayment;
+    shownRepaid = Math.round(scenario.annualRepayment);
     freed = inputs.currentAnnualRepayments - scenario.annualRepayment;
   }
 
-  // What is shown is what must add up.
+  // What is shown is what must add up: the budget is the two blocks as shown,
+  // and what is freed is today's repayments as shown less what is repaid as shown.
   const homeBudget = block1 + block2;
+  const shownFreed = shown.currentAnnualRepayments - shownRepaid;
 
   return {
     id: scenario.id,
@@ -331,26 +414,28 @@ function solveCase(inputs, scenario, released, cashTowardHome) {
     homeBudgetUnrounded,
     repaid,
     freed,
+    shownRepaid,
+    shownFreed,
     released
   };
 }
 
-function buildAssumptionsTable(inputs, released, cashTowardHome) {
+function buildAssumptionsTable(inputs, shown) {
   return {
     columns: ['Assumption', 'Input Used'],
     rows: [
-      ['Home value today', euroText(inputs.homeValue)],
-      ['Mortgage today', euroText(inputs.mortgageBalance)],
-      ['Repaid on the mortgage today', `${euroText(inputs.currentAnnualRepayments)} a year`],
-      ['Selling costs', euroText(inputs.sellingCosts)],
-      ['Released by selling, after the mortgage and selling costs', euroText(released)],
-      ['Buying costs', euroText(inputs.buyingCosts)],
-      ['Cash toward a new home, after buying costs', euroText(cashTowardHome)],
+      ['Home value today', euroText(shown.homeValue)],
+      ['Mortgage today', euroText(shown.mortgageBalance)],
+      ['Repaid on the mortgage today', `${euroText(shown.currentAnnualRepayments)} a year`],
+      ['Selling costs', euroText(shown.sellingCosts)],
+      ['Released by selling, after the mortgage and selling costs', euroText(shown.released)],
+      ['Buying costs', euroText(shown.buyingCosts)],
+      ['Cash toward a new home, after buying costs', euroText(shown.cashTowardHome)],
       ['New loan term', `${inputs.newLoanTermYears} ${inputs.newLoanTermYears === 1 ? 'year' : 'years'}`],
       ['New loan rate', `${Number((inputs.newLoanAnnualRate * 100).toFixed(2))}% a year`],
       ['Payments', 'Monthly, with interest compounded monthly'],
       ['Where the figures come from', 'Every figure is as stated. Nothing here is estimated.'],
-      ['Rounding', 'New loans are shown to the nearest €1,000. The home budget is the two blocks as shown.'],
+      ['Rounding', 'Amounts are shown to the euro and add down as shown. New loans are shown to the nearest €1,000. The home budget is the two blocks as shown.'],
       ['Not modelled', 'Whether a lender would offer the loan, and any grants or tax']
     ]
   };
@@ -361,8 +446,8 @@ function buildOutputsTable(cases) {
     columns: ['Case', 'Repaid a year (€)', 'Freed a year (€)', 'New loan (€)', 'Home budget (€)'],
     rows: cases.map((entry) => [
       entry.title,
-      Math.round(entry.repaid),
-      Math.round(entry.freed),
+      entry.shownRepaid,
+      entry.shownFreed,
       entry.kind === 'stay' ? 0 : entry.block2,
       entry.homeBudget
     ])
@@ -412,13 +497,14 @@ export function computeHomeTradeDownProjection(rawInputs) {
   const released = inputs.homeValue - inputs.mortgageBalance - inputs.sellingCosts;
   const cashTowardHome = released - inputs.buyingCosts;
 
+  const shown = shownFigures(inputs);
   const cases = inputs.scenarios.map((scenario) => (
     solveCase(inputs, scenario, released, cashTowardHome)
   ));
   const baseCase = cases.find((entry) => entry.id === inputs.baseScenarioId) || cases[0];
 
   return {
-    assumptionsTable: buildAssumptionsTable(inputs, released, cashTowardHome),
+    assumptionsTable: buildAssumptionsTable(inputs, shown),
     outputsTable: buildOutputsTable(cases),
     tables: buildTables(cases),
     // One ordinary chart for the surfaces that have no module to draw for them.
@@ -427,6 +513,7 @@ export function computeHomeTradeDownProjection(rawInputs) {
       inputs,
       released,
       cashTowardHome,
+      shown,
       cases,
       baseScenarioId: baseCase.id,
       assumptionsUsed: {

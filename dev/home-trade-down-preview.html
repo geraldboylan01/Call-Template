@@ -106,7 +106,17 @@
         + names.map((name) => (name === preset
           ? `<strong>${name}</strong>`
           : `<a href="?preset=${name}">${name}</a>`)).join(' · ')
-        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case';
+        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case, <code>?width=252</code> holds the width';
+
+      // ?width=252 holds the module to that many px, as the app's phone shell does.
+      const widthParam = Number(params.get('width'));
+      if (Number.isFinite(widthParam) && widthParam > 0) {
+        const mount = document.getElementById('mount');
+        mount.style.width = `${widthParam}px`;
+        mount.style.maxWidth = `${widthParam}px`;
+        mount.style.margin = '0';
+        document.body.style.padding = '12px 0';
+      }
 
       const module = buildHomeTradeDownModule({
         rawInputs: chosen,

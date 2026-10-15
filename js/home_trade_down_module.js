@@ -274,6 +274,7 @@ export function buildHomeTradeDownModule({
     chartHost.style.width = `${layout.chartWidth}px`;
     chartHost.style.height = `${layout.height}px`;
     chartHost.classList.toggle('is-narrow', layout.narrow);
+    chartHost.classList.toggle('is-compact', Boolean(layout.compact));
     stage.classList.toggle('is-narrow', layout.narrow);
     root.classList.toggle('is-narrow', layout.narrow);
     const { boxes, constants: k } = layout;
@@ -284,6 +285,12 @@ export function buildHomeTradeDownModule({
     const figureWord = el('span', 'htd-figure-word');
     figure.append(figureValue, figureWord);
     place(figure, boxes.figure);
+    if (boxes.figure.font) {
+      // Compact: one font for every case, fitted to the chart, so a click never
+      // changes a size and the amount never runs past the chart.
+      figureValue.style.fontSize = `${boxes.figure.font}px`;
+      figureValue.style.lineHeight = `${Math.round(boxes.figure.font * 1.15)}px`;
+    }
 
     const todayLine = el('div', 'htd-today-line');
     place(todayLine, boxes.todayLine);
@@ -330,6 +337,10 @@ export function buildHomeTradeDownModule({
     const freedWord = el('span', 'htd-freed-word');
     freed.append(freedValue, freedWord);
     place(freed, { left: boxes.freed.left, top: boxes.freed.top });
+    if (boxes.freed.font) {
+      freedValue.style.fontSize = `${boxes.freed.font}px`;
+      freedValue.style.lineHeight = `${Math.round(boxes.freed.font * 1.15)}px`;
+    }
 
     const track = el('div', 'htd-track');
     place(track, boxes.track);
@@ -347,14 +358,15 @@ export function buildHomeTradeDownModule({
     const rowRepaidValue = el('span', 'htd-row-value');
     rowRepaid.append(rowRepaidName, rowRepaidValue);
     place(rowRepaid, boxes.rowRepaid);
-    rowRepaid.style.lineHeight = `${boxes.rowRepaid.height}px`;
+    // Compact rows hold two lines, so they keep the line height of their words.
+    if (!layout.compact) rowRepaid.style.lineHeight = `${boxes.rowRepaid.height}px`;
 
     const rowFreed = el('div', 'htd-row is-freed');
     const rowFreedName = el('span', 'htd-row-name');
     const rowFreedValue = el('span', 'htd-row-value');
     rowFreed.append(rowFreedName, rowFreedValue);
     place(rowFreed, boxes.rowFreed);
-    rowFreed.style.lineHeight = `${boxes.rowFreed.height}px`;
+    if (!layout.compact) rowFreed.style.lineHeight = `${boxes.rowFreed.height}px`;
 
     const trackNote = el('div', 'htd-track-note');
     place(trackNote, boxes.trackNote);

@@ -384,6 +384,118 @@ export function runHomeTradeDownTests() {
     assertThrows(() => normalizeHomeTradeDownInputs([]), `${FIELD} must be an object.`, 'an array');
   }));
 
+  cases.push(runCase('A case title or description with banned wording is refused on the way in', () => {
+    const stay = { id: 'stay', kind: 'stay' };
+    const title = (text) => withCases([stay, { id: 'a', kind: 'move', annualRepayment: 12_000, title: text }]);
+    const description = (text) => withCases([stay, { id: 'a', kind: 'move', annualRepayment: 12_000, description: text }]);
+    const refusal = (path, text) => `${FIELD}.scenarios[1].${path} ("${text}"): this screen shows what a repayment buys, `
+      + 'never a recommendation, and speaks to you, never as "we", "us" or "our".';
+
+    [
+      'Our best option',
+      'What we can afford',
+      'The ideal home',
+      'You should move',
+      'The optimal repayment',
+      'We recommend this',
+      '€12,000 p.a.'
+    ].forEach((text) => {
+      assertThrows(() => normalizeHomeTradeDownInputs(title(text)), refusal('title', text), `title "${text}"`);
+      assertThrows(() => normalizeHomeTradeDownInputs(description(text)), refusal('description', text), `description "${text}"`);
+    });
+
+    // Words that only contain a banned one, and plain titles, are fine.
+    ['Focus on the family home', 'A calmer yearly repayment', 'Repay less'].forEach((text) => {
+      const normalized = normalizeHomeTradeDownInputs(title(text));
+      assertEqual(normalized.scenarios[1].title, text, 'a clean title is kept as given');
+      normalizeHomeTradeDownInputs(description(text));
+    });
+  }));
+
+  cases.push(runCase('With cents, what is shown adds down: freed is today as shown less repaid as shown', () => {
+    const payload = {
+      ...HOME_TRADE_DOWN_SAMPLE,
+      homeValue: 400_000.6,
+      mortgageBalance: 150_000.3,
+      currentAnnualRepayments: 18_000.6,
+      sellingCosts: 8_000.4,
+      buyingCosts: 6_000.4,
+      scenarios: [
+        { id: 'stay', kind: 'stay' },
+        { id: 'less', kind: 'move', annualRepayment: 6_000.4 },
+        { id: 'half', kind: 'move', annualRepayment: 9_000.5 },
+        { id: 'none', kind: 'move', annualRepayment: 0 }
+      ],
+      baseScenarioId: 'stay'
+    };
+    const projection = computeHomeTradeDownProjection(payload);
+    const [stay, less, half, none] = projection.debug.cases;
+
+    // Exact, kept beside what is shown.
+    assertWithin(less.freed, 12_000.2, 1e-9, 'freed, exactly');
+    // Rounding the exact figure would show 12,000 beside 18,001 and 6,000.
+    assertEqual(less.shownRepaid, 6_000, 'repaid as shown');
+    assertEqual(less.shownFreed, 12_001, 'freed as shown is 18,001 less 6,000');
+    assertEqual(projection.debug.shown.currentAnnualRepayments, 18_001, 'today as shown');
+    projection.debug.cases.forEach((entry) => {
+      assertEqual(
+        entry.shownRepaid + entry.shownFreed,
+        projection.debug.shown.currentAnnualRepayments,
+        `${entry.id}: repaid and freed add to today`
+      );
+    });
+    assertEqual(half.shownRepaid, 9_001, '9,000.50 rounds up');
+    assertEqual(half.shownFreed, 9_000, 'and the freed figure follows it');
+    assertEqual(none.shownFreed, 18_001, 'with no mortgage all of today is freed');
+    assertEqual(stay.shownFreed, 0, 'staying frees nothing');
+
+    // The outputs table shows those figures.
+    assertDeepEqual(
+      projection.outputsTable.rows.map((row) => [row[1], row[2]]),
+      [[18_001, 0], [6_000, 12_001], [9_001, 9_000], [0, 18_001]],
+      'the outputs table is the shown figures'
+    );
+
+    // The money from selling is derived from the inputs as shown: 400,001 less
+    // 150,000 less 8,000 is 242,001, and 6,000 off is 236,001. Rounding the exact
+    // 235,999.50 would show 236,000.
+    assertEqual(projection.debug.shown.released, 242_001, 'released as shown');
+    assertEqual(less.block1, 236_001, 'from selling, as shown');
+    assertEqual(less.block1 + less.block2, less.homeBudget, 'the two blocks are the budget');
+
+    // Staying: the home as shown, less the mortgage as shown, is the share.
+    assertEqual(stay.block2, 150_000, 'the mortgage as shown');
+    assertEqual(stay.block1, 250_001, 'the share is the home as shown less the mortgage as shown');
+    assertEqual(stay.homeBudget, 400_001, 'the home worth is the home as shown');
+    assertDeepEqual(projection.tables[0].rows.map((row) => row[1]), [250_001, 150_000, 400_001], 'the staying table adds down');
+  }));
+
+  cases.push(runCase('A sale that clears by under a euro is refused, so nothing is shown below nothing', () => {
+    // Exactly 0.30 is released, but as shown 100,000 less 100,000 less 1 is -1.
+    const payload = {
+      ...HOME_TRADE_DOWN_SAMPLE,
+      homeValue: 100_000.4,
+      mortgageBalance: 99_999.5,
+      currentAnnualRepayments: 12_000,
+      sellingCosts: 0.6,
+      buyingCosts: 0,
+      scenarios: [{ id: 'stay', kind: 'stay' }],
+      baseScenarioId: 'stay'
+    };
+    assertThrows(
+      () => normalizeHomeTradeDownInputs(payload),
+      `${FIELD}.sellingCosts: selling would not clear the mortgage.`,
+      'shown figures that go below nothing'
+    );
+    // Buying costs of 1 against 0.80 released round to a whole euro more than is released.
+    const buying = { ...payload, mortgageBalance: 99_999.6, sellingCosts: 0, buyingCosts: 0.5 };
+    assertThrows(
+      () => normalizeHomeTradeDownInputs(buying),
+      `${FIELD}.buyingCosts: the money from selling does not cover the buying costs.`,
+      'buying costs that the shown money cannot cover'
+    );
+  }));
+
   cases.push(runCase('Engine text holds no banned phrase, "we", "us", "our" or "p.a."', () => {
     const projection = computeHomeTradeDownProjection(HOME_TRADE_DOWN_SAMPLE);
     const text = collectStrings({

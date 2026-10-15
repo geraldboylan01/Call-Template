@@ -12,14 +12,16 @@ import {
 /**
  * THE WORDS AND THE GEOMETRY, ASKED WITHOUT A BROWSER.
  *
- * The widths are the ones the module is checked at: a phone (358), a wide phone
- * or small tablet (720), a laptop (1000), a wide laptop that still stacks the
- * year under the home (1631), the first width that puts them side by side
- * (1632) and the reference screen (1776). 1728 is the reference frame: a
- * 1632-wide chart with a 940-wide bar.
+ * The widths are the ones the module is checked at. 252 is what the app's mobile
+ * shell leaves for the module on a 320px phone, and 280 and 320 are what it
+ * leaves on slightly wider ones. Then a phone (358, 390), the last compact width
+ * (431) and the first that is not (432), a wide phone or small tablet (720), a
+ * laptop (1000), a wide laptop that still stacks the year under the home (1631),
+ * the first width that puts them side by side (1632) and the reference screen
+ * (1776). 1728 is the reference frame: a 1632-wide chart with a 940-wide bar.
  */
 
-const WIDTHS = Object.freeze([358, 390, 720, 1000, 1631, 1632, 1776]);
+const WIDTHS = Object.freeze([252, 280, 320, 358, 390, 431, 432, 720, 1000, 1631, 1632, 1776]);
 
 const sample = HOME_TRADE_DOWN_SAMPLE;
 
@@ -273,12 +275,48 @@ export function runHomeTradeDownViewTests() {
 
   cases.push(runCase('A first block the buying costs have nearly emptied does not meet the second label', () => {
     const projection = project(SHAPES.tinyFirstBlock);
-    [358, 1776].forEach((width) => {
+    // Side by side the second label moves right; compact, it sits under the first.
+    [432, 1776].forEach((width) => {
       const layout = layoutTradeDownChart(projection, { width });
       const [blockOne, , , labelTwoLeft] = layout.values.a;
       assert(blockOne < 3, `${width}: the first block is a sliver (${blockOne.toFixed(2)})`);
       assert(labelTwoLeft > blockOne + 100, `${width}: the second label has moved clear (${labelTwoLeft.toFixed(1)})`);
     });
+    [252, 358].forEach((width) => {
+      const layout = layoutTradeDownChart(projection, { width });
+      const [, , , labelTwoLeft] = layout.values.a;
+      const { labelOne, labelTwo } = layout.boxes;
+      assertEqual(layout.compact, true, `${width} is compact`);
+      assertEqual(labelTwoLeft, 0, `${width}: the second label starts at the left, under the first`);
+      assert(labelTwo.top >= labelOne.top + labelOne.height, `${width}: the second label is under the first`);
+    });
+  }));
+
+  cases.push(runCase('Compact, from a 252px module: stacked words, a fitted figure and rows, nothing past the chart', () => {
+    const projection = project(sample);
+    const phone = layoutTradeDownChart(projection, { width: 252 });
+    assertEqual(phone.chartWidth, 220, 'a 252 module gives a 220 chart');
+    assertEqual(phone.compact, true, '252 is compact');
+    assertEqual(phone.narrow, true, 'and stacked');
+    assertEqual(phone.height, 590, 'compact height');
+    assert(phone.boxes.figure.font >= 24 && phone.boxes.figure.font <= 36, `the figure font ${phone.boxes.figure.font}`);
+    assert(phone.boxes.freed.font >= 24 && phone.boxes.freed.font <= 36, `the freed font ${phone.boxes.freed.font}`);
+    assertEqual(phone.boxes.rowRepaid.height, 44, 'a row holds a name over an amount');
+    assert(phone.boxes.rowFreed.top >= phone.boxes.rowRepaid.top + phone.boxes.rowRepaid.height, 'the rows do not meet');
+    assert(phone.boxes.track.top >= phone.boxes.freed.top + phone.boxes.freed.height, 'the track is below the freed amount');
+
+    // The boundary: a 431 module is compact, a 432 module is the stacked arrangement.
+    assertEqual(layoutTradeDownChart(projection, { width: 431 }).compact, true, '431 is compact');
+    assertEqual(layoutTradeDownChart(projection, { width: 432 }).compact, false, '432 is not');
+    assertEqual(layoutTradeDownChart(projection, { width: 1632 }).compact, false, 'wide is never compact');
+
+    // A bigger home gets a smaller figure, never a wider one.
+    const large = layoutTradeDownChart(project(SHAPES.large), { width: 252 });
+    assert(large.boxes.figure.font <= phone.boxes.figure.font, 'a longer home figure is no larger');
+    assertDeepEqual(checkTradeDownLayout(project(SHAPES.large), large), [], 'a €4.85m home still fits at 252');
+
+    // The font is one per layout, so nothing resizes on a click.
+    assertEqual(typeof phone.boxes.figure.font, 'number', 'one figure font for every case');
   }));
 
   cases.push(runCase('The arrangement: side by side from 1632, stacked and capped at 720 under it', () => {

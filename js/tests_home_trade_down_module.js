@@ -350,7 +350,8 @@ export async function runHomeTradeDownModuleTests() {
         ['repay-12000', 'repay-18000', 'repay-12000', 'repay-18000', 'no-mortgage'],
         ['no-mortgage']
       ];
-      [1776, 358].forEach((widthHint) => {
+      // 252 is what the app's mobile shell leaves on a 320px phone.
+      [1776, 358, 252].forEach((widthHint) => {
         sequences.forEach((sequence, run) => {
           const root = mount({ widthHint });
           sequence.forEach((id, index) => {
@@ -491,7 +492,7 @@ export async function runHomeTradeDownModuleTests() {
   cases.push(runCase('Nothing rendered says a banned phrase, "we", "us", "our", a provider or a bare amount, wide or narrow', () => {
     const env = installDom();
     try {
-      [1776, 358].forEach((widthHint) => {
+      [1776, 358, 252].forEach((widthHint) => {
         const root = mount({ widthHint });
         CASE_IDS.forEach((id) => {
           buttonFor(root, id).click();
@@ -528,6 +529,40 @@ export async function runHomeTradeDownModuleTests() {
 
       const phone = mount({ widthHint: 390 });
       assertEqual(findAll(phone, 'htd-chart')[0].style.width, '358px', 'a 390 phone gives a 358 chart');
+    } finally {
+      env.restore();
+    }
+  }));
+
+  cases.push(runCase('Compact, at 252: the chart is 220px, words stack, one font for the figures, rows keep their own lines', () => {
+    const env = installDom();
+    try {
+      const root = mount({ widthHint: 252 });
+      const chart = findAll(root, 'htd-chart')[0];
+      assertEqual(chart.style.width, '220px', 'a 252 module gives a 220 chart');
+      assertEqual(chart.style.height, '590px', 'the compact height');
+      assert(chart.className.includes('is-compact'), 'compact');
+      assert(chart.className.includes('is-narrow'), 'and stacked');
+
+      const figure = findAll(root, 'htd-figure-value')[0];
+      const freed = findAll(root, 'htd-freed-value')[0];
+      assert(/^\d+px$/.test(figure.style.fontSize), `the figure's font is set (${figure.style.fontSize})`);
+      assert(/^\d+px$/.test(freed.style.fontSize), `the freed amount's font is set (${freed.style.fontSize})`);
+
+      // Rows hold two lines, so they are not set to one line's height.
+      assertEqual(findAll(root, 'htd-row')[0].style.lineHeight || '', '', 'a compact row keeps its own line height');
+
+      // A click changes words and widths, never the fitted sizes.
+      const before = [figure.style.fontSize, freed.style.fontSize];
+      buttonFor(root, 'repay-12000').click();
+      env.sched.advance(CLICK_MS + 200);
+      assertEqual(figure.style.fontSize, before[0], 'a click never resizes the figure');
+      assertEqual(freed.style.fontSize, before[1], 'a click never resizes the freed amount');
+
+      // A wider module is not compact, and its rows are one line again.
+      const wide = mount({ widthHint: 432 });
+      assert(!findAll(wide, 'htd-chart')[0].className.includes('is-compact'), '432 is not compact');
+      assertEqual(findAll(wide, 'htd-row')[0].style.lineHeight, '28px', 'stacked rows are one line');
     } finally {
       env.restore();
     }
