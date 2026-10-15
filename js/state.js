@@ -1896,6 +1896,13 @@ export function normalizeGenerated(generated) {
     normalized.tables = [];
     normalized.charts = [];
   }
+  // A protection gap's summary is only ever the engine's. When its inputs could
+  // not be read, the saved summary goes with them rather than staying on a
+  // module that no longer holds it to the screen's wording limit.
+  if (generated.protectionGapInputs !== undefined && generated.protectionGapInputs !== null && !normalized.protectionGapInputs && normalized.summaryHtml) {
+    normalized.summaryHtml = '';
+    recordSessionImportWarning('The protection gap summary was left out with its inputs.');
+  }
 
   if (normalized.videoSummary) {
     normalized.summaryHtml = '';

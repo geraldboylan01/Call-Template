@@ -248,6 +248,23 @@ export function runProtectionGapWiringTests() {
     });
     assertEqual(lone.protectionGapInputs, null, 'a death with one person is dropped, not drawn');
     assert(drainSessionImportWarnings().some((text) => /needs two people/.test(text)), 'with its reason');
+
+    // A summary saved beside inputs that cannot be read goes with them, so it
+    // never shows on the generic module left behind.
+    [
+      'bad',
+      { ...SAMPLE, coverAmount: 1 }
+    ].forEach((protectionGapInputs) => {
+      const dropped = normalizeGenerated({ protectionGapInputs, summaryHtml: '<p>The best Zurich insurance policy.</p>' });
+      assertEqual(dropped.protectionGapInputs, null, `unreadable inputs are dropped: ${JSON.stringify(protectionGapInputs).slice(0, 20)}`);
+      assertEqual(dropped.summaryHtml, '', 'and the saved summary with them');
+      assert(drainSessionImportWarnings().some((text) => /protection gap summary was left out with its inputs/.test(text)), 'which is recorded');
+    });
+    assertEqual(
+      normalizeGenerated({ protectionGapInputs: null, summaryHtml: '<p>A plain summary.</p>' }).summaryHtml,
+      '<p>A plain summary.</p>',
+      'a module with no protection gap keeps its own summary'
+    );
   }));
 
   cases.push(runCase('A saved session normalises to the same inputs again', () => {

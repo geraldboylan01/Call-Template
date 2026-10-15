@@ -171,7 +171,10 @@ export function runFutureCostFundWiringTests() {
       assertEqual(generated.assumptions.rows.length, 0, `${key}: no stored assumptions`);
       assertEqual(generated.tables.length, 0, `${key}: no stored tables`);
       assertEqual(generated.charts.length, 0, `${key}: no stored charts`);
-      assertEqual(generated.summaryHtml, '<p>Kept.</p>', `${key}: the written summary is kept`);
+      // The protection gap's summary is only ever its engine's, so it goes with
+      // its inputs. Every other module's written summary is kept.
+      const summaryKept = key !== 'protectionGapInputs';
+      assertEqual(generated.summaryHtml, summaryKept ? '<p>Kept.</p>' : '', `${key}: the written summary is ${summaryKept ? 'kept' : 'left out'}`);
     });
     const plain = normalizeGenerated({ ...stored });
     assertEqual(plain.outputs.rows.length, 1, 'a module with no engine payload keeps its own tables');
