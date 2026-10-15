@@ -348,7 +348,7 @@ export async function runRentalKeepOrSellModuleTests() {
         ['sell', 'keep', 'sell', 'keep', 'sell', 'keep'],
         ['keep', 'sell', 'sell', 'keep']
       ];
-      [1776, 358].forEach((widthHint) => {
+      [1776, 358, 252].forEach((widthHint) => {
         sequences.forEach((sequence, run) => {
           const root = mount({ widthHint });
           sequence.forEach((id, index) => {
@@ -485,7 +485,7 @@ export async function runRentalKeepOrSellModuleTests() {
   cases.push(runCase('Nothing rendered says a banned phrase, "we", "us", "our", a provider or a bare amount, wide or narrow', () => {
     const env = installDom();
     try {
-      [1776, 358].forEach((widthHint) => {
+      [1776, 358, 252].forEach((widthHint) => {
         const root = mount({ widthHint });
         ['keep', 'sell'].forEach((id) => {
           buttonFor(root, id).click();
@@ -512,6 +512,35 @@ export async function runRentalKeepOrSellModuleTests() {
       assertEqual(findAll(narrow, 'rks-chart')[0].style.width, '326px', 'narrow: 16px of padding each side');
       const phone = mount({ widthHint: 390 });
       assertEqual(findAll(phone, 'rks-chart')[0].style.width, '358px', 'a 390 phone gives a 358 chart');
+    } finally {
+      env.restore();
+    }
+  }));
+
+  cases.push(runCase('At 252 the names wrap, the word goes under the number, and nothing is cut off', () => {
+    const env = installDom();
+    try {
+      const root = mount({ widthHint: 252 });
+      const chart = findAll(root, 'rks-chart')[0];
+      assertEqual(chart.style.width, '220px', 'a 252 module gives a 220 chart');
+      assert(chart.className.includes('is-narrow') && chart.className.includes('is-stacked'), 'narrow and stacked');
+      const names = findAll(root, 'rks-name');
+      assertEqual(names.length, 5, 'five names');
+      names.forEach((node, index) => {
+        assertEqual(node.style.height, '40px', `name ${index}: room for two lines`);
+        assertEqual(node.style.lineHeight, '20px', `name ${index}: at 20px a line`);
+        assertEqual(node.style.width, 'auto', `name ${index}: as wide as its words`);
+      });
+      const labels = findAll(root, 'rks-label');
+      labels.forEach((node, index) => {
+        assert(/^\d+(\.\d+)?px$/.test(node.style.width), `label ${index}: one box width (${node.style.width})`);
+        assertEqual(node.style.width, labels[0].style.width, `label ${index}: the same as the others`);
+      });
+      // Both cases, after a click, still lay out and say what they say.
+      buttonFor(root, 'sell').click();
+      env.sched.advance(CLICK_MS + 200);
+      assertEqual(findAll(root, 'rks-name')[3].textContent, 'Tax on the gain', 'Sell names');
+      assertEqual(findAll(root, 'rks-value')[4].textContent, '€113,000', 'Sell result');
     } finally {
       env.restore();
     }

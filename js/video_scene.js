@@ -398,18 +398,21 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       const [start, ...rest] = entry.rows;
       const cuts = rest.filter((row) => row.key !== 'result');
       const yearly = entry.id === 'keep' ? ' a year' : '';
-      const shown = (amount) => Math.round(amount);
       // THREE FIGURES THAT ADD UP COME FIRST, because a story shows only the
       // first few: the headline, what comes off it, and what is left. What comes
       // off is a sum made for the video and named for what it is, so the three
       // still add up. The screen never prints it. The lines it is made of
       // follow, and any that is nothing in this case is left out.
+      //
+      // All of them are the SHOWN figures, the ones on the screen: what comes off
+      // is the sum of the cuts as shown and the result is the shown start less
+      // that, so the three add up even when the inputs have cents.
       const figures = [
-        [`${start.name}${yearly} (€)`, shown(start.amount)],
-        [`${entry.comesOffName}${yearly} (€)`, shown(entry.comesOff)],
-        [`${entry.resultName} (€)`, shown(entry.result)],
+        [`${start.name}${yearly} (€)`, start.shownAmount],
+        [`${entry.comesOffName}${yearly} (€)`, entry.shownComesOff],
+        [`${entry.resultName} (€)`, entry.shownResult],
         ...cuts
-          .map((row) => [`${row.name}${yearly} (€)`, shown(row.amount)])
+          .map((row) => [`${row.name}${yearly} (€)`, row.shownAmount])
           .filter(([, value]) => value !== 0)
       ];
       const escapeHtml = (text) => String(text)

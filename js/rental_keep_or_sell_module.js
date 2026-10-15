@@ -264,6 +264,8 @@ export function buildRentalKeepOrSellModule({
     chartHost.style.width = `${layout.chartWidth}px`;
     chartHost.style.height = `${layout.height}px`;
     chartHost.classList.toggle('is-narrow', layout.narrow);
+    // On a very narrow chart the word sits under the number.
+    chartHost.classList.toggle('is-stacked', layout.stacked);
     stage.classList.toggle('is-narrow', layout.narrow);
     root.classList.toggle('is-narrow', layout.narrow);
 
@@ -286,7 +288,8 @@ export function buildRentalKeepOrSellModule({
       // stop only under the words.
       name.style.width = layout.narrow ? 'auto' : `${spec.name.width}px`;
       name.style.height = `${spec.name.height}px`;
-      name.style.lineHeight = `${spec.name.height}px`;
+      // A name that is too long wraps onto a second line; it is never cut off.
+      name.style.lineHeight = `${spec.name.lineHeight}px`;
 
       const bar = el('div', `rks-bar ${kind}`);
       bar.style.top = `${spec.barTop}px`;
@@ -295,7 +298,12 @@ export function buildRentalKeepOrSellModule({
       const label = el('div', `rks-label ${kind}`);
       label.style.top = `${spec.labelTop}px`;
       label.style.height = `${spec.labelHeight}px`;
-      label.style.lineHeight = `${spec.labelHeight}px`;
+      // Stacked, the number and the word are two lines and the stylesheet sets them.
+      label.style.lineHeight = layout.stacked ? '' : `${spec.labelHeight}px`;
+      // Stacked, every label is one box wide and the word wraps inside it.
+      if (layout.stacked) {
+        label.style.width = `${layout.stackBox}px`;
+      }
       const value = el('span', 'rks-value');
       const word = el('span', 'rks-word');
       label.append(value, word);

@@ -50,6 +50,8 @@ const WIDE = Object.freeze({
   barOffset: 4,
   barHeight: 52,
   nameFont: 25,
+  nameLineHeight: 26,
+  nameBoxWidth: 372,
   valueFont: 36,
   wordFont: 22,
   wordGap: 12,
@@ -68,12 +70,21 @@ const NARROW = Object.freeze({
   nameGap: 0,
   pitch: 84,
   nameHeight: 24,
+  nameHeightTwoLines: 40,
+  nameLineHeight: 20,
+  nameGapBelow: 4,
   barOffset: 28,
   barHeight: 30,
+  rowTail: 26,
   nameFont: 16,
+  namePadRight: 8,
   valueFont: 19,
   wordFont: 14,
   wordGap: 6,
+  valueLine: 22,
+  wordLine: 16,
+  stackWordBelowPx: 300,
+  stackWordWrapPx: 120,
   labelOffset: 10,
   basePct: 6,
   spanPct: 62,
@@ -149,7 +160,7 @@ function joinNames(names) {
 
 /** The sentence for a case: what it shows, in the "you" voice. */
 function sentenceFor(entry) {
-  const shown = Math.abs(Math.round(entry.result));
+  const shown = Math.abs(entry.shownResult);
   if (entry.id === 'keep') {
     if (entry.resultTone === 'short') {
       return `The rent does not cover the loan repayments, running costs and tax: ${euroText(shown)} short each year.`;
@@ -180,7 +191,7 @@ function resultWordFor(entry) {
 
 /** The answer a case button carries, so both answers are visible without a click. */
 function answerLineFor(entry) {
-  const value = signedEuro(entry.result);
+  const value = signedEuro(entry.shownResult);
   if (entry.id === 'keep') {
     return `${value} a year`;
   }
@@ -189,13 +200,14 @@ function answerLineFor(entry) {
 
 /** One line of the chart as it is read: name, value and the word beside the result. */
 function lineCopy(entry, row) {
+  // Always the shown figures, so what is on screen adds down to its last line.
   if (row.key === 'start') {
-    return { key: row.key, name: row.name, value: euroText(row.amount), word: '' };
+    return { key: row.key, name: row.name, value: euroText(row.shownAmount), word: '' };
   }
   if (row.key === 'result') {
-    return { key: row.key, name: row.name, value: signedEuro(row.amount), word: resultWordFor(entry) };
+    return { key: row.key, name: row.name, value: signedEuro(row.shownAmount), word: resultWordFor(entry) };
   }
-  return { key: row.key, name: row.name, value: cutEuro(row.amount), word: '' };
+  return { key: row.key, name: row.name, value: cutEuro(row.shownAmount), word: '' };
 }
 
 /**
@@ -280,6 +292,9 @@ export function lerpValues(from, to, progress) {
  *
  *   [ zeroX, headlineX, then for each of the five lines: barLeft, barWidth, labelLeft ]
  *
+ * It is laid out from the SHOWN rows, so the bars, the words and the result all
+ * say the same thing.
+ *
  * The scale starts at zero and is one per case. The start bar always runs from
  * 8% (6% narrow) of the plot to a fixed end, and a result below zero gets room
  * to its left in proportion to how far below zero it goes. When a label would
@@ -287,23 +302,28 @@ export function lerpValues(from, to, progress) {
  * does, so nothing is ever clipped.
  */
 function caseValues(entry, copy, geometry) {
-  const { k, plotLeft, plotWidth } = geometry;
-  const start = entry.rows[0].amount;
-  const deepest = Math.max(0, -entry.result);
-  const total = start + deepest;
+  const { k, plotLeft, plotWidth, stacked, stackBox } = geometry;
+  const start = entry.rows[0].shownAmount;
+  const deepest = Math.max(0, -entry.shownResult);
+  // A start that rounds to nothing still has a scale to draw on.
+  const total = Math.max(start + deepest, 1);
 
   const spanPx = (plotWidth * k.spanPct) / 100;
   const basePx = (plotWidth * k.basePct) / 100;
   let unit = spanPx / total;
 
-  // Room for each label to the right of its bar, at this scale.
+  // Room for each label to the right of its bar, at this scale. A stacked label
+  // has one box width for every label, with the word wrapping inside it.
   entry.rows.forEach((row, index) => {
     const line = copy.lines[index];
-    const labelWidth = estimateTextWidth(line.value, k.valueFont, 700)
-      + (line.word ? k.wordGap + estimateTextWidth(line.word, k.wordFont, 500) : 0);
-    const reach = deepest + row.hi;
+    const valueWidth = estimateTextWidth(line.value, k.valueFont, 700);
+    const wordWidth = line.word ? estimateTextWidth(line.word, k.wordFont, 500) : 0;
+    const labelWidth = stacked
+      ? stackBox
+      : valueWidth + (line.word ? k.wordGap + wordWidth : 0);
+    const reach = deepest + row.shownHi;
     if (reach > 0) {
-      const room = (plotLeft + plotWidth) - (plotLeft + basePx) - k.edgeMargin - k.labelOffset - labelWidth;
+      const room = plotWidth - basePx - k.edgeMargin - k.labelOffset - labelWidth;
       unit = Math.min(unit, Math.max(room, 0.0001) / reach);
     }
   });
@@ -313,11 +333,30 @@ function caseValues(entry, copy, geometry) {
 
   const values = [zeroX, xAt(start)];
   entry.rows.forEach((row) => {
-    const left = xAt(row.lo);
-    const width = Math.max(MIN_MARK_PX, (row.hi - row.lo) * unit);
+    const left = xAt(row.shownLo);
+    const width = Math.max(MIN_MARK_PX, (row.shownHi - row.shownLo) * unit);
     values.push(left, width, left + width + k.labelOffset);
   });
   return values;
+}
+
+/**
+ * How many lines the names need, for the whole layout.
+ *
+ * It is decided over BOTH cases and every row, so every row has the same height
+ * and nothing moves vertically when the case changes. A name that is wider than
+ * its box wraps to a second line rather than being cut off.
+ */
+function countNameLines(projection, boxWidth, fontPx) {
+  let lines = 1;
+  projection.debug.cases.forEach((entry) => {
+    entry.rows.forEach((row) => {
+      if (estimateTextWidth(row.name, fontPx, 700) > boxWidth) {
+        lines = 2;
+      }
+    });
+  });
+  return lines;
 }
 
 /**
@@ -337,25 +376,70 @@ export function layoutRentalChart(projection, { width } = {}) {
   const plotLeft = narrow ? 0 : k.nameColumn + k.nameGap;
   const plotWidth = chartWidth - plotLeft;
 
-  const rowsHeight = 5 * k.pitch;
-  const geometry = { k, plotLeft, plotWidth };
+  // On a very narrow chart the word goes under the number, because the two side
+  // by side would leave the bars nothing to be drawn in.
+  const stacked = narrow && chartWidth < k.stackWordBelowPx;
+
+  // A stacked label is one box width for all of them: as wide as the widest
+  // number, or as the word when it is short, and a long word wraps to a second
+  // line inside it.
+  let stackBox = 0;
+  if (stacked) {
+    projection.debug.cases.forEach((entry) => {
+      buildRentalCopy(projection, entry.id).lines.forEach((line) => {
+        const valueWidth = estimateTextWidth(line.value, k.valueFont, 700);
+        const wordWidth = line.word
+          ? Math.min(estimateTextWidth(line.word, k.wordFont, 500), k.stackWordWrapPx)
+          : 0;
+        stackBox = Math.max(stackBox, valueWidth, wordWidth);
+      });
+    });
+  }
+
+  // NAMES WRAP, THEY ARE NEVER CUT OFF.
+  const nameBox = narrow ? Math.max(0, chartWidth - k.namePadRight) : k.nameBoxWidth;
+  const nameLines = countNameLines(projection, nameBox, k.nameFont);
+
+  let nameHeight;
+  let nameLineHeight;
+  let barOffset;
+  let pitch;
+  if (narrow) {
+    nameHeight = nameLines === 1 ? k.nameHeight : k.nameHeightTwoLines;
+    nameLineHeight = nameLines === 1 ? k.nameHeight : k.nameLineHeight;
+    barOffset = nameHeight + k.nameGapBelow;
+    pitch = barOffset + k.barHeight + k.rowTail;
+  } else {
+    // The name sits beside its bar, so two lines fit in the bar's own height.
+    nameHeight = k.nameHeight;
+    nameLineHeight = nameLines === 1 ? k.nameHeight : k.nameLineHeight;
+    barOffset = k.barOffset;
+    pitch = k.pitch;
+  }
+
+  // The number, and the word on up to two lines under it. It fits in the tail of
+  // the row below the bar, so nothing is pushed.
+  const labelHeight = stacked ? k.valueLine + (2 * k.wordLine) : k.barHeight;
+
+  const rowsHeight = 5 * pitch;
+  const geometry = { k, plotLeft, plotWidth, stacked, stackBox };
 
   const rows = Array.from({ length: 5 }, (_, index) => {
-    const top = index * k.pitch;
-    const barTop = top + k.barOffset;
+    const top = index * pitch;
+    const barTop = top + barOffset;
     return {
       index,
       top,
       barTop,
       barHeight: k.barHeight,
       labelTop: barTop,
-      labelHeight: k.barHeight,
+      labelHeight,
       name: narrow
-        ? { left: 0, top, width: chartWidth, height: k.nameHeight }
-        : { left: 0, top: barTop, width: k.nameColumn, height: k.nameHeight },
+        ? { left: 0, top, width: chartWidth, height: nameHeight, lineHeight: nameLineHeight }
+        : { left: 0, top: barTop, width: k.nameColumn, height: nameHeight, lineHeight: nameLineHeight },
       // A connector joins each cut to the next line, at the cut's lower end.
       connector: !narrow && index >= 1 && index <= 3
-        ? { top: barTop + k.barHeight, height: k.pitch - k.barHeight }
+        ? { top: barTop + k.barHeight, height: pitch - k.barHeight }
         : null
     };
   });
@@ -370,6 +454,9 @@ export function layoutRentalChart(projection, { width } = {}) {
     width,
     chartWidth,
     narrow,
+    stacked,
+    stackBox,
+    nameLines,
     constants: k,
     plot: { left: plotLeft, width: plotWidth },
     rowsHeight,
@@ -382,8 +469,8 @@ export function layoutRentalChart(projection, { width } = {}) {
 
 /**
  * The checks the screen relies on: every bar and label inside the chart, every
- * name inside its box, and no label crossing a bar it does not belong to.
- * Returns a list of problems, empty when the layout holds.
+ * name inside its box (on two lines if it must), and no label crossing a bar it
+ * does not belong to. Returns a list of problems, empty when the layout holds.
  */
 export function checkRentalLayout(projection, layout) {
   const problems = [];
@@ -404,8 +491,14 @@ export function checkRentalLayout(projection, layout) {
       const barWidth = values[3 + (index * 3)];
       const labelLeft = values[4 + (index * 3)];
       const line = copy.lines[index];
-      const labelWidth = estimateTextWidth(line.value, k.valueFont, 700)
-        + (line.word ? k.wordGap + estimateTextWidth(line.word, k.wordFont, 500) : 0);
+      const valueWidth = estimateTextWidth(line.value, k.valueFont, 700);
+      const wordWidth = line.word ? estimateTextWidth(line.word, k.wordFont, 500) : 0;
+      const labelWidth = layout.stacked
+        ? layout.stackBox
+        : valueWidth + (line.word ? k.wordGap + wordWidth : 0);
+      if (layout.stacked && wordWidth > (2 * layout.stackBox) - 12) {
+        problems.push(`${where}/${row.key}: the word "${line.word}" does not fit in two lines of ${layout.stackBox}`);
+      }
 
       if (left < -0.5 || left + barWidth > chartWidth + 0.5) {
         problems.push(`${where}/${row.key}: the bar leaves the chart (${left.toFixed(1)} to ${(left + barWidth).toFixed(1)})`);
@@ -416,10 +509,14 @@ export function checkRentalLayout(projection, layout) {
       if (labelLeft < left + barWidth) {
         problems.push(`${where}/${row.key}: the label sits on its bar`);
       }
+
+      // A name may wrap onto a second line, never beyond it. A word that cannot
+      // break costs a little of the second line, so some slack is kept.
       const nameWidth = estimateTextWidth(line.name, k.nameFont, 700);
-      const nameBox = layout.rows[index].name;
-      if (nameWidth > nameBox.width) {
-        problems.push(`${where}/${row.key}: the name "${line.name}" is wider than its box (${nameWidth} > ${nameBox.width})`);
+      const box = layout.rows[index].name.width - (layout.narrow ? k.namePadRight : 0);
+      const limit = layout.nameLines === 1 ? box : (2 * box) - 12;
+      if (nameWidth > limit) {
+        problems.push(`${where}/${row.key}: the name "${line.name}" does not fit in ${layout.nameLines} line(s) of ${box} (${nameWidth})`);
       }
     });
   });
