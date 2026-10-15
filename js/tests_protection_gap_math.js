@@ -510,9 +510,24 @@ export function runProtectionGapTests() {
     assertEqual(JSON.stringify(Object.keys(list[0])), JSON.stringify(['id', 'title', 'description']), 'shape');
     assertEqual(list[3].title, 'If Niamh died', 'the death case is "If Niamh died"');
     assertEqual(getDefaultProtectionGapScenarioId(PROTECTION_GAP_SAMPLE), 'today', 'default is the first case');
-    const based = { ...PROTECTION_GAP_SAMPLE, baseScenarioId: 'dara-cannot-work' };
-    assertEqual(getDefaultProtectionGapScenarioId(based), 'dara-cannot-work', 'a stated base');
-    assertEqual(computeProtectionGapProjection(based).debug.baseScenarioId, 'dara-cannot-work', 'base in the projection');
+    const reordered = { ...PROTECTION_GAP_SAMPLE, scenarios: [...PROTECTION_GAP_SAMPLE.scenarios.slice(1), PROTECTION_GAP_SAMPLE.scenarios[0]], baseScenarioId: 'today' };
+    assertEqual(getDefaultProtectionGapScenarioId(reordered), 'today', 'a stated base');
+    assertEqual(computeProtectionGapProjection(reordered).debug.baseScenarioId, 'today', 'base in the projection');
+    assertThrows(
+      () => computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, baseScenarioId: 'dara-cannot-work' }),
+      'generated.protectionGapInputs.baseScenarioId (Dara cannot work): the base case is today, so it cannot have an event. Put the case with no event first, or name it as baseScenarioId.',
+      'a base with an event is refused when there are other cases'
+    );
+    assertThrows(
+      () => computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ ...PROTECTION_GAP_SAMPLE.scenarios[1], title: 'Best income protection policy' }] }),
+      'generated.protectionGapInputs.scenarios[0].title ("Best income protection policy"): this screen shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".',
+      'a title with forbidden wording is refused'
+    );
+    assertThrows(
+      () => computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, householdLabel: 'The household, insured with Zurich' }),
+      'generated.protectionGapInputs.householdLabel ("The household, insured with Zurich"): this screen shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".',
+      'the household line is checked too'
+    );
     const titled = computeProtectionGapProjection({
       ...PROTECTION_GAP_SAMPLE,
       scenarios: [{ id: 'a', title: 'Your own title', description: 'One line.' }]
@@ -553,6 +568,7 @@ export function runProtectionGapTests() {
       sample(),
       computeProtectionGapProjection(onePerson({ savings: 0, needed: 62_000 })),
       computeProtectionGapProjection(sampleWith([
+        { id: 'today' },
         died({ neededAfter: 60_000 }),
         { ...died({ survivorsPension: 0 }), id: 'nopension' }
       ]))

@@ -68,6 +68,52 @@ const DERIVED_FIELDS = Object.freeze(['gap', 'months', 'spare', 'leftOver']);
 /** The hard limit: a key that is, or contains, any of these is refused at every level. */
 const FORBIDDEN_KEY_PATTERN = /cover|premium|policy|product|provider|insurer|quote/i;
 
+/**
+ * Words that may never be on this screen: no recommendation, no cover,
+ * premium, policy or insurance wording, no gendered pronoun, no third person,
+ * and no provider. The view's own scan uses these, and so does the input check,
+ * because a case title or the household line is shown as given.
+ */
+export const PROTECTION_GAP_BANNED_PHRASES = Object.freeze([
+  /\bwe recommend\b/i,
+  /\byou should\b/i,
+  /\bbest option\b/i,
+  /\bbest\b/i,
+  /\bideal\b/i,
+  /\boptimal\b/i,
+  /\bp\.a\./i,
+  /\bcover(s|ed|ing|age)?\b/i,
+  /premium/i,
+  /\bpolic(y|ies)\b/i,
+  /insur/i,
+  /\bquote/i,
+  /income protection/i,
+  /serious illness/i,
+  /\b(he|she|his|her|hers|him)\b/i,
+  /the household/i,
+  /the client/i
+]);
+
+export const PROTECTION_GAP_PROVIDER_NAMES = Object.freeze([
+  /\bbank of ireland\b/i,
+  /\baib\b/i,
+  /\bptsb\b/i,
+  /\bpermanent tsb\b/i,
+  /\brevolut\b/i,
+  /\bzurich\b/i,
+  /\birish life\b/i,
+  /\bdavy\b/i
+]);
+
+/** Refuse client-facing text this screen may not show. */
+function refuseForbiddenWording(text, path) {
+  const pattern = [...PROTECTION_GAP_BANNED_PHRASES, ...PROTECTION_GAP_PROVIDER_NAMES].find((candidate) => candidate.test(text));
+  if (pattern) {
+    throw new Error(`${FIELD}.${path} ("${text}"): this screen shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".`);
+  }
+}
+
+
 const ID_PATTERN = /^[a-z0-9_-]+$/;
 
 const FOOTNOTE = 'Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. '
@@ -265,8 +311,10 @@ function normalizeCase(rawCase, index, people, neededToday) {
     }
   }
   refuseUnknown(rawCase, CASE_FIELDS, path, rawTitle || id);
+  if (rawTitle) refuseForbiddenWording(rawTitle, `${path}.title`);
 
   const description = typeof rawCase.description === 'string' ? rawCase.description.trim() : '';
+  if (description) refuseForbiddenWording(description, `${path}.description`);
 
   if (!has(rawCase, 'event')) {
     return { id, title: rawTitle || derivedCaseTitle(null, null), description };
@@ -293,6 +341,7 @@ export function normalizeProtectionGapInputs(raw) {
     if (householdLabel.length < 1 || householdLabel.length > MAX_HOUSEHOLD_LABEL_LENGTH) {
       throw new Error(`${FIELD}.householdLabel must be 1 to ${MAX_HOUSEHOLD_LABEL_LENGTH} characters.`);
     }
+    refuseForbiddenWording(householdLabel, 'householdLabel');
   }
 
   const people = normalizePeople(raw.people);
@@ -330,6 +379,12 @@ export function normalizeProtectionGapInputs(raw) {
       throw new Error(`${FIELD}.baseScenarioId must match a case id.`);
     }
     baseScenarioId = requested;
+  }
+  // With other cases beside it, the base is today, the case every other is read
+  // against, so it carries no event. A module of one case may show one event.
+  const base = scenarios.find((scenario) => scenario.id === baseScenarioId);
+  if (scenarios.length > 1 && base.event) {
+    throw new Error(`${FIELD}.baseScenarioId (${base.title}): the base case is today, so it cannot have an event. Put the case with no event first, or name it as baseScenarioId.`);
   }
 
   const normalized = { people, needed: raw.needed, savings: raw.savings, baseScenarioId, scenarios };
