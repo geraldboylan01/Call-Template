@@ -105,9 +105,28 @@ export const PROTECTION_GAP_PROVIDER_NAMES = Object.freeze([
   /\bdavy\b/i
 ]);
 
+/** The first banned pattern a piece of client-facing text matches, or null. */
+function wordingProblem(text) {
+  return [...PROTECTION_GAP_BANNED_PHRASES, ...PROTECTION_GAP_PROVIDER_NAMES].find((candidate) => candidate.test(text)) || null;
+}
+
+/**
+ * Whether a written summary may sit beside this screen. The summary is shown on
+ * the focused view, the overview card and the presenter, so it is held to the
+ * same wording limit as the screen itself, checked as plain text.
+ */
+export function protectionGapSummaryAllowed(summaryHtml) {
+  const text = String(summaryHtml || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return !text || !wordingProblem(text);
+}
+
 /** Refuse client-facing text this screen may not show. */
 function refuseForbiddenWording(text, path) {
-  const pattern = [...PROTECTION_GAP_BANNED_PHRASES, ...PROTECTION_GAP_PROVIDER_NAMES].find((candidate) => candidate.test(text));
+  const pattern = wordingProblem(text);
   if (pattern) {
     throw new Error(`${FIELD}.${path} ("${text}"): this screen shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".`);
   }

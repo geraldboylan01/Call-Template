@@ -13277,10 +13277,7 @@ function buildGeneratedSection(module, {
       readOnly,
       onEditGeneratedText
     }));
-  } else if (!isProtectionGapModule(displayModule)) {
-    // The protection gap draws its own heading, answer and sentence from the
-    // engine, under a hard limit on wording (no cover, premium or product). A
-    // model-written summary would sit outside that limit, so none is shown.
+  } else {
     grid.appendChild(buildSummaryCard(generated.summaryHtml, {
       module,
       readOnly,

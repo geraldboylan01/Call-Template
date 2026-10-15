@@ -160,7 +160,9 @@ export function runFutureCostFundWiringTests() {
       protectionGapInputs: { ...PROTECTION_GAP_SAMPLE, gap: 1 },
       rentalKeepOrSellInputs: { ...RENTAL_KEEP_OR_SELL_SAMPLE, rentPerYear: -1 }
     };
-    Object.entries(unreadable).forEach(([key, inputs]) => {
+    unreadable.futureCostFundPrimitive = 'not an object';
+    Object.entries(unreadable).forEach(([entryKey, inputs]) => {
+      const key = entryKey === 'futureCostFundPrimitive' ? 'futureCostFundInputs' : entryKey;
       drainSessionImportWarnings();
       const generated = normalizeGenerated({ summaryHtml: '<p>Kept.</p>', ...stored, [key]: inputs });
       assertEqual(generated[key], null, `${key} is left out`);
@@ -187,10 +189,24 @@ export function runFutureCostFundWiringTests() {
       const generated = normalizeGenerated({ [key]: inputs });
       assert(generated[key], `${key} survives the cut`);
       assertEqual(generated[key].scenarios.length, 4, `${key}: cut to four`);
-      assertEqual(generated[key].baseScenarioId, generated[key].scenarios[0].id, `${key}: the first case kept is the base`);
+      assertEqual(generated[key].baseScenarioId, 'fifth', `${key}: the named base is kept`);
+      assertEqual(generated[key].scenarios[3].id, 'fifth', `${key}: in place of the last case kept`);
       const warnings = drainSessionImportWarnings();
-      assert(warnings.some((text) => /baseScenarioId "fifth" was one of the cases cut/.test(text)), `${key}: the moved base is recorded (${warnings.join(' | ')})`);
+      assert(warnings.some((text) => /baseScenarioId "fifth" was beyond the first 4 cases/.test(text)), `${key}: the kept base is recorded (${warnings.join(' | ')})`);
     });
+    // The protection gap's base is its only case with no event, so losing it
+    // would lose the module: today, named as the base, sits fifth.
+    const events = PROTECTION_GAP_SAMPLE.scenarios.slice(1);
+    const todayLast = {
+      ...PROTECTION_GAP_SAMPLE,
+      baseScenarioId: 'today',
+      scenarios: [...events, { ...events[0], id: 'niamh-cannot-work-again' }, PROTECTION_GAP_SAMPLE.scenarios[0]]
+    };
+    drainSessionImportWarnings();
+    const kept = normalizeGenerated({ protectionGapInputs: todayLast }).protectionGapInputs;
+    assert(kept, 'the protection gap survives with today kept');
+    assertEqual(kept.baseScenarioId, 'today', 'today is still the base');
+    assertEqual(kept.scenarios.map((entry) => entry.id).join(','), 'niamh-cannot-work,dara-cannot-work,niamh-died,today', 'three events and today');
   }));
 
   cases.push(runCase('A saved session normalises to the same inputs again', () => {

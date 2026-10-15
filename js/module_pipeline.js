@@ -36,7 +36,8 @@ import {
 } from './household_cash_flow_math.js';
 import {
   computeProtectionGapProjection,
-  normalizeProtectionGapInputs
+  normalizeProtectionGapInputs,
+  protectionGapSummaryAllowed
 } from './protection_gap_math.js';
 import {
   computeRentalKeepOrSellProjection,
@@ -484,6 +485,12 @@ function applyHouseholdCashFlowProjectionToModule(module) {
 
 function applyProtectionGapProjectionToModule(module) {
   const projection = computeProtectionGapProjection(module.generated.protectionGapInputs);
+
+  // A summary kept from before, or from a saved session, is held to the screen's
+  // wording limit too: one that breaks it is cleared rather than shown.
+  if (!protectionGapSummaryAllowed(module.generated.summaryHtml)) {
+    module.generated.summaryHtml = '';
+  }
 
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
@@ -2126,6 +2133,9 @@ export function normalizePayload(payload) {
 
     if ('protectionGapInputs' in payload.generated) {
       generatedPatch.protectionGapInputs = validateProtectionGapInputsPayload(payload.generated.protectionGapInputs);
+      if (!protectionGapSummaryAllowed(payload.generated.summaryHtml)) {
+        throw new Error('generated.summaryHtml: a protection gap summary shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".');
+      }
     }
 
     if ('rentalKeepOrSellInputs' in payload.generated) {

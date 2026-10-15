@@ -176,6 +176,29 @@ export function runProtectionGapWiringTests() {
     assert(module.generated.protectionGapInputs, 'the protection gap is set again');
   }));
 
+  cases.push(runCase('A summary is held to the same wording limit: refused on paste, cleared on import and on load', () => {
+    let refused = '';
+    try {
+      normalizePayload({ generated: { summaryHtml: '<p>The best income protection policy for you.</p>', protectionGapInputs: SAMPLE } });
+    } catch (error) {
+      refused = error.message;
+    }
+    assert(/^generated\.summaryHtml: a protection gap summary shows the gap and the time/.test(refused), `refused on paste: ${refused}`);
+    const fine = paste(createBlankModule(), { summaryHtml: '<p>How big the gap would be, and how long your savings fill it.</p>', protectionGapInputs: SAMPLE });
+    assertEqual(fine.generated.summaryHtml, '<p>How big the gap would be, and how long your savings fill it.</p>', 'a plain summary is kept');
+
+    drainSessionImportWarnings();
+    const imported = normalizeGenerated({ summaryHtml: '<p>Your premium would be low.</p>', protectionGapInputs: SAMPLE });
+    assertEqual(imported.summaryHtml, '', 'cleared on import');
+    assert(drainSessionImportWarnings().some((text) => /summary used wording this screen never shows/.test(text)), 'and says why');
+
+    const loaded = createBlankModule();
+    loaded.generated.protectionGapInputs = JSON.parse(JSON.stringify(SAMPLE));
+    loaded.generated.summaryHtml = '<p>Ask your insurer for a quote.</p>';
+    ensureGenerated(loaded);
+    assertEqual(loaded.generated.summaryHtml, '', 'cleared on load');
+  }));
+
   cases.push(runCase('Loading a module refreshes its derived tables', () => {
     const module = createBlankModule();
     module.generated.protectionGapInputs = JSON.parse(JSON.stringify(SAMPLE));

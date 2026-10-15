@@ -1085,6 +1085,8 @@ export function runIeTaxTests() {
     assertThrows(() => exitTaxRateOn('14/10/2026', rules), /YYYY-MM-DD/, 'a date in another format');
     assertThrows(() => exitTaxRateOn('2026-13-40', rules), /valid calendar date/, 'a date that does not exist');
     assertThrows(() => exitTaxRateOn('2026-02-30', rules), /valid calendar date/, 'the 30th of February');
+    assert(exitTaxRateOn(' 2026-10-14 ', rules).rate === 0.38, 'spaces round a date are trimmed before it is compared');
+    assert(afterTaxInvestmentDisclosures({ asOf: ' 2026-10-14 ', rules }).length === 3, 'and the notes read the trimmed date');
     assert(rules.investmentFunds.deemedDisposal.everyYears === 8, 'the eight-year rule');
     assert(JSON.stringify(resolveTaxRules(2031).investmentFunds) === JSON.stringify(rules.investmentFunds), 'held unchanged in later years');
   }));

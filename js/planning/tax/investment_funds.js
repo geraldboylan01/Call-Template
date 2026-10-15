@@ -35,8 +35,8 @@ function requireInvestmentRules(rules) {
  * The exit tax entry in force on a date: the last one on or before it, so the
  * final rate is held. Throws for a date before the first entry.
  */
-export function exitTaxRateOn(dateIso, rules) {
-  requireIsoDate(dateIso, 'date');
+export function exitTaxRateOn(rawDate, rules) {
+  const dateIso = requireIsoDate(rawDate, 'date');
   const schedule = requireInvestmentRules(rules).exitTaxRateSchedule;
   const entry = [...schedule].reverse().find((candidate) => candidate.effectiveFrom <= dateIso && knownOn(candidate, dateIso));
   if (!entry) {
@@ -64,13 +64,13 @@ function nextExitTaxChange(dateIso, rules) {
  * - The Investment Account, unless `includeInvestmentAccount` is false.
  */
 export function afterTaxInvestmentDisclosures({
-  asOf,
+  asOf: rawAsOf,
   rules,
   pensionAtReliefLimit = false,
   reliefLimit = null,
   includeInvestmentAccount = true
 } = {}) {
-  requireIsoDate(asOf, 'asOf');
+  const asOf = requireIsoDate(rawAsOf, 'asOf');
   const funds = requireInvestmentRules(rules);
   const disclosures = [];
 
