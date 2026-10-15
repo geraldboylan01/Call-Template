@@ -1,0 +1,72 @@
+{
+  "fictionalFigures": true,
+  "clips": [
+    {
+      "kind": "mortgage",
+      "size": "desktop",
+      "seconds": 14,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 420063,
+      "webmBytes": 483568,
+      "fps": 30
+    },
+    {
+      "kind": "mortgage",
+      "size": "mobile",
+      "seconds": 14,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 361320,
+      "webmBytes": 430616,
+      "fps": 30
+    },
+    {
+      "kind": "balance-sheet",
+      "size": "desktop",
+      "seconds": 18,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 698262,
+      "webmBytes": 727283,
+      "fps": 30
+    },
+    {
+      "kind": "balance-sheet",
+      "size": "mobile",
+      "seconds": 18,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 558600,
+      "webmBytes": 614069,
+      "fps": 30
+    },
+    {
+      "kind": "future-cost-fund",
+      "size": "all",
+      "seconds": 33.64,
+      "width": 1920,
+      "height": 1080,
+      "mp4Bytes": 2136159,
+      "fps": 25
+    },
+    {
+      "kind": "household-cash-flow",
+      "size": "all",
+      "seconds": 26.88,
+      "width": 1920,
+      "height": 1080,
+      "mp4Bytes": 1789761,
+      "fps": 25
+    },
+    {
+      "kind": "protection-gap",
+      "size": "all",
+      "seconds": 26.88,
+      "width": 1920,
+      "height": 1080,
+      "mp4Bytes": 2228798,
+      "fps": 25
+    }
+  ]
+}
