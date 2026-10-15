@@ -76,6 +76,16 @@ Use `14_college_funding_playbook.md` when Gerry says things like:
 - ring-fence college funding
 - at home versus away from home for college
 
+### Future Cost Fund Playbook
+Use `18_future_cost_fund_playbook.md` when Gerry says things like:
+- use the future cost fund playbook
+- future cost fund
+- how do they have the money ready for college
+- lump sum now or save every year
+- what would it take to fund school fees
+- set money aside for care costs starting in a few years
+- start saving later
+
 ### Education Playbook
 Use `20_education_playbook.md` when Gerry says things like:
 - use the education playbook
@@ -108,6 +118,7 @@ Use `22_protection_playbook.md` when Gerry says things like:
   - repeatable mortgage maths -> Mortgage
   - repeatable non-housing loan maths -> Loan
   - children’s college cost scenarios -> College Funding
+  - having the money ready for one dated cost (lump sum today, saving each year, or starting later) -> Future Cost Fund
   - structured topic explanation -> Education
   - long-form report transformation -> Report
   - protection review -> Protection
@@ -131,3 +142,4 @@ Rules:
 - If Gerry later says `turn that into a report` or `make an education module from this`, switch to the named visual playbook.
 - Keep one module contract per response unless Gerry clearly asks for multiple outputs.
 - Use House Purchase for planning a future purchase. Use Mortgage for an existing housing loan's payment, term, payoff, or overpayment path.
+- Use College Funding for what college will cost. Use Future Cost Fund for how to have the money ready for one dated cost once its yearly cost is known.

@@ -234,6 +234,81 @@ assert(futureCostFundBriefModule.calculationStatus === 'resolved', 'Codex brief 
 assert(futureCostFundBriefModule.activeScenario.id === 'start-later', 'Codex brief must name the selected future cost fund case.');
 assert(!JSON.stringify(futureCostFundBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied future cost fund outputs.');
 
+const householdCashFlowBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Household Cash Flow Client',
+    order: ['cash'],
+    modules: [{
+      id: 'cash',
+      title: 'Household cash flow',
+      generated: {
+        householdCashFlowInputs: {
+          householdTaxStatus: 'married_or_civil_partners',
+          people: [
+            { id: 'niamh', age: 45, label: 'Niamh' },
+            { id: 'dara', age: 45, label: 'Dara' }
+          ],
+          income: [
+            { personId: 'niamh', type: 'employment', amount: 75000 },
+            { personId: 'dara', type: 'employment', amount: 75000 }
+          ],
+          outgoings: [
+            { id: 'mortgage', label: 'Mortgage', amount: 30000 },
+            { id: 'car', label: 'Car loan', amount: 6000 },
+            { id: 'living', label: 'Living costs', amount: 48000 }
+          ],
+          scenarios: [
+            { id: 'today' },
+            { id: 'clear-car', changes: [{ type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' }] }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { householdCashFlowScenarioId: new Map([['cash', 'clear-car']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const householdCashFlowBriefModule = householdCashFlowBrief.call.modules[0];
+assert(householdCashFlowBriefModule.moduleKind === 'household-cash-flow', 'Codex brief must recognize a household cash flow module.');
+assert(householdCashFlowBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the household cash flow projection.');
+assert(householdCashFlowBriefModule.activeScenario.id === 'clear-car', 'Codex brief must name the selected household cash flow case.');
+assert(!JSON.stringify(householdCashFlowBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied household cash flow outputs.');
+
+const protectionGapBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Protection Gap Client',
+    order: ['gap'],
+    modules: [{
+      id: 'gap',
+      title: 'Protection gap',
+      generated: {
+        protectionGapInputs: {
+          householdLabel: 'Niamh and Dara, both 45',
+          people: [
+            { id: 'niamh', label: 'Niamh', takeHome: 57000 },
+            { id: 'dara', label: 'Dara', takeHome: 45000 }
+          ],
+          needed: 96000,
+          savings: 60000,
+          scenarios: [
+            { id: 'today' },
+            { id: 'niamh-cannot-work', event: { type: 'cannotWork', personId: 'niamh', statePayment: 13000 } }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { protectionGapScenarioId: new Map([['gap', 'niamh-cannot-work']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const protectionGapBriefModule = protectionGapBrief.call.modules[0];
+assert(protectionGapBriefModule.moduleKind === 'protection-gap', 'Codex brief must recognize a protection gap module.');
+assert(protectionGapBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the protection gap projection.');
+assert(protectionGapBriefModule.activeScenario.id === 'niamh-cannot-work', 'Codex brief must name the selected protection gap case.');
+assert(!JSON.stringify(protectionGapBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied protection gap outputs.');
+
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');
 assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');

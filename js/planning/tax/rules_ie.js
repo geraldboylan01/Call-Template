@@ -21,7 +21,7 @@
  * bump `IE_TAX_RULES_VERSION` and rerun the golden cases.
  */
 
-export const IE_TAX_RULES_VERSION = 'ie-tax-2026.3';
+export const IE_TAX_RULES_VERSION = 'ie-tax-2026.4';
 
 /** The first tax year the catalogue covers. Earlier years are refused. */
 export const IE_TAX_FIRST_YEAR = 2026;
@@ -134,6 +134,14 @@ export const IE_TAX_SOURCES = Object.freeze({
   revenueDirt: Object.freeze({
     title: 'Revenue, Deposit Interest Retention Tax (DIRT)',
     url: 'https://www.revenue.ie/en/additional-incomes/dirt/who-is-charged-dirt.aspx'
+  }),
+  revenueInvestmentUndertakings: Object.freeze({
+    title: 'Revenue, Tax and Duty Manual Part 27-01a-02 (investment undertakings: exit tax rates and the eight-year deemed disposal)',
+    url: 'https://www.revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-27/27-01a-02.pdf'
+  }),
+  budget2027TaxPolicyChanges: Object.freeze({
+    title: 'Department of Finance, Budget 2027 Tax Policy Changes',
+    url: 'https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf'
   })
 });
 
@@ -353,6 +361,47 @@ export const IE_LEGISLATED_SCHEDULES = Object.freeze({
       verifiedOn: '2026-10-11',
       source: S.revenueCgtCalculate
     })
+  ]),
+
+  /**
+   * Exit tax on gains in investment funds and ETFs (investment undertaking tax
+   * on Irish funds, the same rate on equivalent EU funds) and on investment
+   * life policies (life assurance exit tax), by the date of the chargeable
+   * event: a sale, a payment, or the end of each eight-year period. The rate
+   * for a personal portfolio investment undertaking (60%) is not modelled.
+   *
+   * 41% and 38% are transcribed from Revenue's Tax and Duty Manual Part
+   * 27-01a-02 (updated January 2026). 35% was announced in Budget 2027 on
+   * 6 October 2026, from 1 January 2027, for funds and life policies; checked
+   * on 14 October 2026 against Budget-day coverage, as the Department's own
+   * publication could not be opened here. Switch it to `enacted` when the
+   * Finance Act passes.
+   */
+  investmentFundExitTaxRate: Object.freeze([
+    Object.freeze({
+      ruleId: 'ie.exit_tax.rate.2015',
+      effectiveFrom: '2015-01-01',
+      rate: 0.41,
+      status: 'enacted',
+      source: S.revenueInvestmentUndertakings
+    }),
+    Object.freeze({
+      ruleId: 'ie.exit_tax.rate.2026',
+      effectiveFrom: '2026-01-01',
+      rate: 0.38,
+      status: 'enacted',
+      enactedBy: 'Finance Act 2025',
+      source: S.revenueInvestmentUndertakings
+    }),
+    Object.freeze({
+      ruleId: 'ie.exit_tax.rate.2027',
+      effectiveFrom: '2027-01-01',
+      rate: 0.35,
+      status: 'announced',
+      announcedBy: 'Budget 2027',
+      verifiedOn: '2026-10-14',
+      source: S.budget2027TaxPolicyChanges
+    })
   ])
 });
 
@@ -430,5 +479,49 @@ export const IE_CGT_FIXED_RULES = Object.freeze({
   principalPrivateResidence: Object.freeze({
     ruleId: 'ie.cgt.ppr.s604',
     sources: Object.freeze([S.revenuePpr])
+  })
+});
+
+/**
+ * Investing outside a pension. Neither changes year by year, so neither sits in
+ * a Budget block: the eight-year rule is fixed by statute, and the Investment
+ * Account is a scheme with its own start date. The tax engine computes none of
+ * this. Modules read it to say what an after-tax investment is subject to.
+ */
+export const IE_INVESTMENT_RULES = Object.freeze({
+  /**
+   * Units in a fund are treated as sold at the end of each eight-year period
+   * after they were bought, and the gain to then is taxed at the exit tax rate.
+   * Tax paid this way is set against the tax due when they are finally sold.
+   * Budget 2027 left the rule unchanged.
+   */
+  deemedDisposal: Object.freeze({
+    ruleId: 'ie.exit_tax.deemed_disposal',
+    status: 'enacted',
+    everyYears: 8,
+    creditedOnFinalDisposal: true,
+    sources: Object.freeze([S.revenueInvestmentUndertakings])
+  }),
+
+  /**
+   * Announced in Budget 2027 and not yet law, so every figure can change.
+   * Providers open it on 1 July 2027: up to €12,000 paid in a year, no exit
+   * tax and no deemed disposal, and 1% a year on the value above €50,000.
+   * Its name varies in the coverage, so the wording calls it "a new
+   * Investment Account". Switch `status` to `enacted` when the Finance Act
+   * passes, and correct any figure that changed.
+   */
+  investmentAccount: Object.freeze({
+    ruleId: 'ie.investment_account.2027',
+    status: 'announced',
+    announcedBy: 'Budget 2027',
+    verifiedOn: '2026-10-14',
+    opensOn: '2027-07-01',
+    annualContributionCap: 12_000,
+    taxFreeValue: 50_000,
+    annualChargeRate: 0.01,
+    exitTax: false,
+    deemedDisposal: false,
+    sources: Object.freeze([S.budget2027TaxPolicyChanges])
   })
 });

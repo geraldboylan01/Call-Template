@@ -75,6 +75,15 @@ function formatTaxDate(iso) {
   return `${day} ${MONTH_NAMES[month - 1]} ${year}`;
 }
 
+const NUMBER_WORDS = Object.freeze([
+  'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'
+]);
+
+/** 8 as "eight": words for one to ten, digits above. */
+function numberWord(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 10 ? NUMBER_WORDS[value] : String(value);
+}
+
 /** A share of a gain as a whole percentage, for example "52%". */
 function formatShare(share) {
   return `${Math.round((Number(share) || 0) * 100)}%`;
@@ -424,6 +433,55 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
     kind: 'applied',
     label: 'Loss carried forward',
     render: ({ params }) => `The loss of ${formatTaxEuro(params?.amount)} that is not used this year can be set against gains in later years.`
+  },
+  PENSION_AT_RELIEF_LIMIT: {
+    kind: 'applied',
+    label: 'Pension at the relief limit',
+    render: ({ params }) => {
+      const limit = params && Number.isFinite(params.share) && Number.isFinite(params.earningsCap)
+        ? `, ${formatTaxRate(params.share)} of earnings up to ${formatTaxEuro(params.earningsCap)}`
+        : '';
+      return `Your pension contributions are at the most income tax relief allows at your age${limit}. `
+        + 'Money you invest beyond that gets no income tax relief.';
+    }
+  },
+  INVESTMENT_FUND_TAX: {
+    kind: 'applied',
+    label: 'Tax on investment funds',
+    render: ({ params, rules }) => {
+      const years = rules?.investmentFunds?.deemedDisposal?.everyYears;
+      return `Gains on investment funds, ETFs and investment life policies are taxed at ${formatTaxRate(params?.rate)} when you sell, `
+        + `and every ${numberWord(years)} years as if you had sold, even if you have not. `
+        + `Tax paid at each ${numberWord(years)}-year point is set against the tax due when you finally sell.`;
+    }
+  },
+  INVESTMENT_FUND_TAX_ANNOUNCED: {
+    kind: 'applied',
+    label: 'New exit tax rate',
+    render: ({ params }) => {
+      const lead = params?.inForce
+        ? `The ${formatTaxRate(params?.rate)} rate was announced in ${params?.announcedBy} for gains from ${formatTaxDate(params?.effectiveFrom)}.`
+        : `A cut to ${formatTaxRate(params?.rate)} from ${formatTaxDate(params?.effectiveFrom)} was announced in ${params?.announcedBy}.`;
+      return `${lead} It could change before the Finance Act is passed.`;
+    }
+  },
+  INVESTMENT_ACCOUNT: {
+    kind: 'applied',
+    label: 'The Investment Account',
+    render: ({ params, rules }) => {
+      const account = rules?.investmentFunds?.investmentAccount || {};
+      const years = rules?.investmentFunds?.deemedDisposal?.everyYears;
+      const terms = `up to ${formatTaxEuro(account.annualContributionCap)} a year with no exit tax and no ${numberWord(years)}-year charge, `
+        + `and ${formatTaxRate(account.annualChargeRate)} a year on its value above ${formatTaxEuro(account.taxFreeValue)}`;
+      if (account.status === 'announced') {
+        return `A new Investment Account was announced in ${account.announcedBy} to open on ${formatTaxDate(account.opensOn)}, taking ${terms}. `
+          + 'The details could change before they become law.';
+      }
+      if (params?.asOf && params.asOf < account.opensOn) {
+        return `A new Investment Account opens on ${formatTaxDate(account.opensOn)}, taking ${terms}.`;
+      }
+      return `The Investment Account takes ${terms}.`;
+    }
   }
 });
 

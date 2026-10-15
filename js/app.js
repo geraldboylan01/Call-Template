@@ -80,6 +80,14 @@ import {
   getDefaultFutureCostFundScenarioId,
   getFutureCostFundCases
 } from './future_cost_fund_math.js';
+import {
+  getDefaultHouseholdCashFlowScenarioId,
+  getHouseholdCashFlowCases
+} from './household_cash_flow_math.js';
+import {
+  getDefaultProtectionGapScenarioId,
+  getProtectionGapCases
+} from './protection_gap_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
 import { validateOutputsBucketedPayload } from './outputs_bucketed_contract.js';
@@ -273,6 +281,8 @@ const appState = {
   pbsScenarioByModuleId: new Map(),
   mortgageScenarioByModuleId: new Map(),
   futureCostFundScenarioByModuleId: new Map(),
+  householdCashFlowScenarioByModuleId: new Map(),
+  protectionGapScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1584,6 +1594,113 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'household-cash-flow-demo',
+    label: 'Household Cash Flow: Where a Year Goes',
+    payload: {
+      title: 'Household Cash Flow - Where a Year Goes',
+      generated: {
+        summaryHtml: '<p>This shows what is left each year after everything you pay, and what each change would do to it. Tax is an estimate from your income, and what a case changes about it is always an estimate.</p>',
+        householdCashFlowInputs: {
+          householdTaxStatus: 'married_or_civil_partners',
+          people: [
+            { id: 'niamh', age: 45, label: 'Niamh' },
+            { id: 'dara', age: 45, label: 'Dara' }
+          ],
+          income: [
+            { personId: 'niamh', type: 'employment', amount: 75000 },
+            { personId: 'dara', type: 'employment', amount: 75000 }
+          ],
+          outgoings: [
+            { id: 'mortgage', label: 'Mortgage', amount: 30000 },
+            { id: 'car', label: 'Car loan', amount: 6000 },
+            { id: 'living', label: 'Living costs', amount: 48000 },
+            { id: 'children', label: 'Children', amount: 9000 },
+            { id: 'insurance', label: 'Insurance', amount: 3000 }
+          ],
+          scenarios: [
+            { id: 'today' },
+            { id: 'clear-car', changes: [{ type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' }] },
+            { id: 'pension', changes: [{ type: 'extraPension', amount: 10000 }] },
+            {
+              id: 'both',
+              changes: [
+                { type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' },
+                { type: 'extraPension', amount: 10000 }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'household-cash-flow-stated-demo',
+    label: 'Household Cash Flow: Take-Home Pay Given',
+    payload: {
+      title: 'Household Cash Flow - Take-Home Pay Given',
+      generated: {
+        summaryHtml: '<p>Niamh gave her take-home pay from her payslips, so her tax is taken from that. Dara\'s is an estimate. The change each case makes to tax is always an estimate.</p>',
+        householdCashFlowInputs: {
+          householdTaxStatus: 'married_or_civil_partners',
+          people: [
+            { id: 'niamh', age: 45, label: 'Niamh', statedTakeHome: 50000 },
+            { id: 'dara', age: 45, label: 'Dara' }
+          ],
+          income: [
+            { personId: 'niamh', type: 'employment', amount: 75000 },
+            { personId: 'dara', type: 'employment', amount: 75000 }
+          ],
+          outgoings: [
+            { id: 'mortgage', label: 'Mortgage', amount: 30000 },
+            { id: 'car', label: 'Car loan', amount: 6000 },
+            { id: 'living', label: 'Living costs', amount: 48000 },
+            { id: 'children', label: 'Children', amount: 9000 },
+            { id: 'insurance', label: 'Insurance', amount: 3000 }
+          ],
+          scenarios: [
+            { id: 'today' },
+            { id: 'clear-car', changes: [{ type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' }] },
+            { id: 'pension', changes: [{ type: 'extraPension', amount: 10000 }] }
+          ]
+        }
+      }
+    }
+  },
+  {
+    id: 'protection-gap-demo',
+    label: 'Protection Gap: If One Income Stopped',
+    payload: {
+      title: 'Protection Gap - If One Income Stopped',
+      generated: {
+        summaryHtml: '<p>This shows how big the gap would be each year if one of your incomes stopped, and how many months your savings would fill it. Take-home pay and State payments are as given.</p>',
+        protectionGapInputs: {
+          householdLabel: 'Niamh and Dara, both 45',
+          people: [
+            { id: 'niamh', label: 'Niamh', takeHome: 57000 },
+            { id: 'dara', label: 'Dara', takeHome: 45000 }
+          ],
+          needed: 96000,
+          savings: 60000,
+          scenarios: [
+            { id: 'today' },
+            { id: 'niamh-cannot-work', event: { type: 'cannotWork', personId: 'niamh', statePayment: 13000 } },
+            { id: 'dara-cannot-work', event: { type: 'cannotWork', personId: 'dara', statePayment: 13000 } },
+            {
+              id: 'niamh-died',
+              event: {
+                type: 'dies',
+                personId: 'niamh',
+                survivorsPension: 13500,
+                neededAfter: 60000,
+                neededBecause: ['mortgageCleared', 'livingCostsLower']
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
     id: 'college-funding-twins-demo',
     label: 'College Funding: Twins Scenario Demo',
     payload: {
@@ -2181,6 +2298,8 @@ function hasCalculatedGeneratedOutputs(module) {
     || generated.loanInputs
     || generated.collegeFundingInputs
     || generated.futureCostFundInputs
+    || generated.householdCashFlowInputs
+    || generated.protectionGapInputs
     || generated.housePurchaseInputs
     || generated.netRetirementInputs
   );
@@ -3146,6 +3265,8 @@ function applyUpdatedProjectionToModule({
     module.generated.loanInputs = null;
     module.generated.collegeFundingInputs = null;
     module.generated.futureCostFundInputs = null;
+    module.generated.householdCashFlowInputs = null;
+    module.generated.protectionGapInputs = null;
     applyNetRetirementProjectionToModule(module);
     return;
   }
@@ -4574,6 +4695,8 @@ function getCodexVideoActiveScenarios() {
     pensionScenarioId: {},
     netRetirementScenarioId: {},
     futureCostFundScenarioId: {},
+    householdCashFlowScenarioId: {},
+    protectionGapScenarioId: {},
     housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
@@ -4581,6 +4704,8 @@ function getCodexVideoActiveScenarios() {
     activeScenarios.pensionScenarioId[module.id] = getPensionScenarioForModule(module.id);
     activeScenarios.netRetirementScenarioId[module.id] = getNetRetirementScenarioForModule(module.id);
     activeScenarios.futureCostFundScenarioId[module.id] = getFutureCostFundScenarioForModule(module.id);
+    activeScenarios.householdCashFlowScenarioId[module.id] = getHouseholdCashFlowScenarioForModule(module.id);
+    activeScenarios.protectionGapScenarioId[module.id] = getProtectionGapScenarioForModule(module.id);
     activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
@@ -5908,6 +6033,8 @@ async function replaceSession(nextSession, options = {}) {
   appState.pbsScenarioByModuleId = new Map();
   appState.mortgageScenarioByModuleId = new Map();
   appState.futureCostFundScenarioByModuleId = new Map();
+  appState.householdCashFlowScenarioByModuleId = new Map();
+  appState.protectionGapScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6539,6 +6666,8 @@ async function handleHousePurchaseEditor(moduleId, payload = {}) {
       module.generated.loanInputs = null;
       module.generated.collegeFundingInputs = null;
       module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -6841,6 +6970,179 @@ function setFutureCostFundScenarioForModule(moduleId, scenarioId) {
   const uiState = ensureModuleUi(module);
   if (uiState) {
     uiState.futureCostFundScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+/**
+ * THE SELECTED CASE OF A HOUSEHOLD CASH FLOW.
+ *
+ * The same trio as the mortgage module: the case is remembered in memory for
+ * the session, persisted on the module's ui for the next load, and forgotten
+ * (never shown) when the payload no longer contains it. Unlike mortgage there
+ * is nothing outside the module to patch on a click: its assumptions, outputs
+ * and tables list every case, so they do not follow the selection.
+ */
+function getHouseholdCashFlowCasesForModule(module) {
+  if (!module?.generated?.householdCashFlowInputs) {
+    return [];
+  }
+
+  try {
+    return getHouseholdCashFlowCases(module.generated.householdCashFlowInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getHouseholdCashFlowScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getHouseholdCashFlowCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.householdCashFlowScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.householdCashFlowScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.householdCashFlowScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  // A remembered case that the payload no longer contains is forgotten rather
+  // than shown, so an edited module opens on its own base case.
+  appState.householdCashFlowScenarioByModuleId.delete(moduleId);
+  try {
+    return getDefaultHouseholdCashFlowScenarioId(module.generated.householdCashFlowInputs) || cases[0].id;
+  } catch (_error) {
+    return cases[0].id;
+  }
+}
+
+function setHouseholdCashFlowScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const nextCase = getHouseholdCashFlowCasesForModule(module).find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getHouseholdCashFlowScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.householdCashFlowScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // The module has already moved its own line and words, on its own clock, and
+  // nothing else on the page follows the case. So there is nothing to patch and
+  // nothing to rebuild: rebuilding would replace the travel the client is
+  // watching.
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.householdCashFlowScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+/**
+ * THE PROTECTION GAP'S SELECTED CASE.
+ *
+ * The same trio as the household cash flow: the case is remembered in memory
+ * for the session, persisted on the module's ui for the next load, and
+ * forgotten (never shown) when the payload no longer contains it. There is
+ * nothing outside the module to patch on a click: its tables list every case.
+ */
+function getProtectionGapCasesForModule(module) {
+  if (!module?.generated?.protectionGapInputs) {
+    return [];
+  }
+
+  try {
+    return getProtectionGapCases(module.generated.protectionGapInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getProtectionGapScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getProtectionGapCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.protectionGapScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.protectionGapScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.protectionGapScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  // A remembered case that the payload no longer contains is forgotten rather
+  // than shown, so an edited module opens on its own base case.
+  appState.protectionGapScenarioByModuleId.delete(moduleId);
+  try {
+    return getDefaultProtectionGapScenarioId(module.generated.protectionGapInputs) || cases[0].id;
+  } catch (_error) {
+    return cases[0].id;
+  }
+}
+
+function setProtectionGapScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const nextCase = getProtectionGapCasesForModule(module).find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getProtectionGapScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.protectionGapScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // The module has already moved its own marks and words, on its own clock, and
+  // nothing else on the page follows the case. So there is nothing to patch and
+  // nothing to rebuild: rebuilding would replace the travel the client is
+  // watching.
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.protectionGapScenarioId = nextCase.id;
   }
   module.updatedAt = nowIso();
   scheduleSessionSave();
@@ -7620,6 +7922,8 @@ function openVideoScene(moduleId) {
         pensionScenarioId: appState.pensionScenarioByModuleId.get(module.id) || '',
         netRetirementScenarioId: appState.netRetirementScenarioByModuleId.get(module.id) || '',
         futureCostFundScenarioId: getFutureCostFundScenarioForModule(module.id),
+        householdCashFlowScenarioId: getHouseholdCashFlowScenarioForModule(module.id),
+        protectionGapScenarioId: getProtectionGapScenarioForModule(module.id),
         housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
@@ -9592,7 +9896,7 @@ function bindEvents() {
 // Presentation runs against a disposable session and disposable scenario maps.
 // Pending autosaves still refer to the original session, never this copy.
 function installLivePresenter() {
-  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
+  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'protectionGapScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
   window.planeirPresenter = installPresenter({
     session: () => appState.presenterSnapshot?.session || appState.session,
     root: () => ui.swipeStage.querySelector('.focused-module-card'),
@@ -9620,7 +9924,7 @@ function installLivePresenter() {
     async setScenario(module, scenarioId) {
       if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
       const root = ui.swipeStage.querySelector('.focused-module-card');
-      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund') {
+      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow' || module.kind === 'protection-gap') {
         const control = [...root.querySelectorAll('*')].find(el => typeof el.presenterSelectScenario === 'function');
         if (!control) throw new Error(`Scenario control is unavailable in ${module.label}.`);
         await control.presenterSelectScenario(scenarioId);
@@ -9820,6 +10124,14 @@ export async function initApp(options = {}) {
       setFutureCostFundScenarioForModule(moduleId, scenarioId);
     };
     window.__getFutureCostFundScenarioForModule = (moduleId) => getFutureCostFundScenarioForModule(moduleId);
+    window.__setHouseholdCashFlowScenario = (moduleId, scenarioId) => {
+      setHouseholdCashFlowScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getHouseholdCashFlowScenarioForModule = (moduleId) => getHouseholdCashFlowScenarioForModule(moduleId);
+    window.__setProtectionGapScenario = (moduleId, scenarioId) => {
+      setProtectionGapScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getProtectionGapScenarioForModule = (moduleId) => getProtectionGapScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runIeTaxTests = () => runIeTaxTests();
