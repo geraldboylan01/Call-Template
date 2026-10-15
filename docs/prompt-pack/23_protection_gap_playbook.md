@@ -102,9 +102,19 @@ When one is missing, do not return the JSON yet:
 - **What is needed after a death.** Only when Gerry says what would change, such as the mortgage being cleared or living costs falling. Otherwise leave `neededAfter` out and the need stays the same. This one never needs a question.
 
 ## The Wording Limit
-Nothing in the payload may recommend, rank, or mention cover, a premium, a policy, insurance, a quote, a product or a provider, or call anyone `he`, `she` or `the household`. The app refuses:
-- any key containing `cover`, `premium`, `policy`, `product`, `provider`, `insurer` or `quote`, at any level, with `generated.protectionGapInputs.<key>: this screen shows the gap and the time, never a cover amount, a premium or a product.`
-- a title, description, household line or person's name that uses that wording, with a message naming the field.
+Nothing in the payload may recommend, rank, or mention cover, a premium, a policy, insurance, a quote, a product or a provider, or refer to anyone in the third person. Write people by name.
+
+The app refuses any key containing `cover`, `premium`, `policy`, `product`, `provider`, `insurer` or `quote`, at any level, with `generated.protectionGapInputs.<key>: this screen shows the gap and the time, never a cover amount, a premium or a product.`
+
+It also refuses a title, description, household line or person's name containing any of these, in any case, with a message naming the field:
+- `we recommend`, `you should`, `best`, `ideal`, `optimal`, `p.a.`
+- `cover`, `covers`, `covered`, `covering`, `coverage`, `premium`, `policy`, `policies`, any word starting `insur`, any word starting `quote`, `income protection`, `serious illness`
+- `he`, `she`, `his`, `her`, `hers`, `him`, `the household`, `the client`
+- `Bank of Ireland`, `AIB`, `PTSB`, `Permanent TSB`, `Revolut`, `Zurich`, `Irish Life`, `Davy`
+
+Gerry's own words often carry these (`Sinéad is on her own`), so never copy them into a title, description or household line. Leave titles out, and keep the household line to names and ages, for example `Sinéad, 38`.
+
+The fields `gap`, `months`, `spare` and `leftOver` are calculated and refused with `generated.protectionGapInputs.<key> is not accepted. It is calculated.`
 - `gap`, `months`, `spare` and `leftOver`, which are calculated, with `generated.protectionGapInputs.<key> is not accepted. It is calculated.`
 
 If Gerry asks for a cover amount or a premium, build the module without it and say in NOTES that this screen never shows one, and that the Protection playbook is the place for that conversation.

@@ -20,13 +20,13 @@ For each prompt below:
 - Pass if the selected playbook is correct.
 - Pass if unsupported keys are omitted.
 - Pass if the module feels usable on a live call.
-- Pass only if `generated.summaryHtml` is understandable without knowing the playbook name.
+- Pass only if `generated.summaryHtml` is understandable without knowing the playbook name. Protection Gap is exempt: it emits no summary, because the app writes it.
 - Pass only if client-facing JSON avoids internal words such as `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, and schemas.
 - Pass only if SECTION 2 starts with `{` and ends with `}` as one complete top-level object.
 - PBS outputs pass only if the summary section uses `key: "summary"`, the exact row label `Net worth`, and `subtotalLabel: "Net worth"`.
 - House Purchase outputs pass only if `generated` contains exactly `summaryHtml` and `housePurchaseInputs`; all results remain runtime-owned.
 - Future Cost Fund outputs pass only if `generated` contains exactly `summaryHtml` and `futureCostFundInputs`, no rate field appears, and no case states a euro amount.
-- Protection Gap outputs pass only if `generated` contains exactly `protectionGapInputs` (no `summaryHtml`), every amount is whole euros, the first case has no event, and nothing anywhere in the payload mentions cover, a premium, a policy, a product or a provider, or says `he`, `she` or `the household`.
+- Protection Gap outputs pass only if `generated` contains exactly `protectionGapInputs` (no `summaryHtml`), every amount is whole euros, the first case has no event, and no title, description, household line or name contains a word from the playbook's wording limit.
 - Rental Keep or Sell outputs pass only if `generated` contains exactly `summaryHtml` and `rentalKeepOrSellInputs`, all eight figures are present, no `scenarios` array appears, and the summary never says which case is better.
 - Fresh-start House Purchase outputs pass only when `lendingCategory` and each applicant's `schemeBuyerStatus` remain separate.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
@@ -431,7 +431,8 @@ Checks:
 - one person, and two cases: today, and Sinéad unable to work with `statePayment` 13000
 - no death case, since a death needs two people
 - no cover amount, premium or product anywhere in the payload, and NOTES says this screen never shows one and that the Protection playbook is the place for it
-- no `he`, `she` or `her` in any title or description
+- no title, description or household line contains a word from the wording limit: not `her` from Gerry's "on her own", and not `income protection`
+- the payload pastes without refusal
 
 ### GAP-3
 Prompt:
