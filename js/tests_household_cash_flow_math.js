@@ -62,6 +62,30 @@ export const HOUSEHOLD_CASH_FLOW_SAMPLE = Object.freeze({
   ])
 });
 
+/**
+ * The same household with living costs of 60,000, so TODAY is short. The short
+ * frames were drawn from this one (with the tax engine, short by 2,800 today).
+ */
+export const HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE = Object.freeze({
+  ...HOUSEHOLD_CASH_FLOW_SAMPLE,
+  outgoings: Object.freeze(HOUSEHOLD_CASH_FLOW_SAMPLE.outgoings.map((line) => (
+    line.id === 'living' ? Object.freeze({ ...line, amount: 60_000 }) : line
+  )))
+});
+
+/**
+ * The sample with 20,000 into the pension, so today leaves money over and ONE
+ * case tips it below nothing: the other direction across the floor.
+ */
+export const HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE = Object.freeze({
+  ...HOUSEHOLD_CASH_FLOW_SAMPLE,
+  scenarios: Object.freeze(HOUSEHOLD_CASH_FLOW_SAMPLE.scenarios.map((entry) => (
+    entry.id === 'pension'
+      ? Object.freeze({ id: 'pension', changes: Object.freeze([Object.freeze({ type: 'extraPension', amount: 20_000 })]) })
+      : entry
+  )))
+});
+
 /** The tax the design frames assumed: 24,000 each, less 40% relief on what each pays in. */
 export function designFixtureOptions() {
   return {
@@ -92,6 +116,23 @@ export const HOUSEHOLD_CASH_FLOW_DESIGN_EXPECTED = Object.freeze({
     'Clearing your car loan from savings stops €6,000 a year going out, so the amount you have left over doubles, from €6,000 to €12,000.',
     'Paying €10,000 more into your pensions lowers your tax by €4,000, so €6,000 more goes out each year and you have nothing left over.',
     'You have the same €6,000 left over as today, but your car loan is gone and €10,000 more goes into your pensions each year, with your tax €4,000 lower.'
+  ])
+});
+
+/**
+ * The short state under the same design tax, so every figure is a literal. The
+ * sentences are the ones on the approved frames, with these figures.
+ */
+const HOUSEHOLD_CASH_FLOW_SHORT_EXPECTED = Object.freeze({
+  leftOver: Object.freeze([-6_000, 0, -12_000, -6_000]),
+  monthly: Object.freeze(['€500 a month', '€0 a month', '€1,000 a month', '€500 a month']),
+  signedMonthly: Object.freeze([-500, 0, -1_000, -500]),
+  status: Object.freeze(['short', 'tight', 'short', 'short']),
+  sentences: Object.freeze([
+    'Today, €156,000 goes out against your €150,000, and you are short by €6,000.',
+    'Clearing your car loan from savings stops €6,000 a year going out, so you have nothing left over instead of being short by €6,000.',
+    'Paying €10,000 more into your pensions lowers your tax by €4,000, so €6,000 more goes out each year and you are short by €12,000 instead of €6,000.',
+    'You are short by the same €6,000 as today, but your car loan is gone and €10,000 more goes into your pensions each year, with your tax €4,000 lower.'
   ])
 });
 
@@ -226,7 +267,19 @@ function checkInvariants(projection, label) {
       `${where}: cost after relief`
     );
     assert(entry.pensionContributions.taxRelief >= 0, `${where}: relief is never negative`);
-    assert(entry.leftOver.amount >= -0.005, `${where}: a short case is refused, never summarised`);
+    // The status follows the figure SHOWN, and the month carries its sign.
+    const shownLeft = entry.leftOver.shown;
+    assertEqual(
+      entry.leftOver.status,
+      shownLeft > 0 ? 'left_over' : (shownLeft === 0 ? 'tight' : 'short'),
+      `${where}: status follows the amount shown`
+    );
+    assertWithin(
+      entry.leftOver.monthly,
+      Math.sign(shownLeft) * Math.round(Math.abs(shownLeft) / 12 / 10) * 10,
+      0.005,
+      `${where}: the month is to the nearest 10 and has the sign of the year`
+    );
 
     const detail = debug.cases[index];
     const shownLines = detail.lines.reduce((sum, line) => sum + line.shownAmount, 0);
@@ -271,6 +324,95 @@ export function runHouseholdCashFlowTests() {
     const projection = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions());
     assertEqual(projection.summary.cases[2].leftOver.status, 'tight', 'case 3 is tight');
     assertEqual(projection.summary.cases[2].leftOver.amount, 0, 'case 3 leaves exactly nothing');
+  }));
+
+  cases.push(runCase('A case that leaves less than nothing is drawn, not refused: figures, signs, status and the frames\' sentences', () => {
+    const projection = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, designFixtureOptions());
+    const expected = HOUSEHOLD_CASH_FLOW_SHORT_EXPECTED;
+    projection.debug.cases.forEach((entry, index) => {
+      assertEqual(entry.shownLeftOver, expected.leftOver[index], `case ${index + 1} left over`);
+      assertEqual(entry.status, expected.status[index], `case ${index + 1} status`);
+      assertEqual(entry.monthly.text, expected.monthly[index], `case ${index + 1} month, as the screen says it`);
+      assertEqual(entry.monthly.amount, expected.signedMonthly[index], `case ${index + 1} month, signed`);
+      assertEqual(entry.sentence, expected.sentences[index], `case ${index + 1} sentence`);
+      const summary = projection.summary.cases[index].leftOver;
+      assertEqual(summary.status, expected.status[index], `case ${index + 1} summary status`);
+      assertEqual(summary.monthly, expected.signedMonthly[index], `case ${index + 1} summary month is signed`);
+      assertEqual(summary.shown, expected.leftOver[index], `case ${index + 1} summary shown`);
+    });
+    checkInvariants(projection, 'short design');
+    // The ledger keeps its sign, and the last level is below the floor.
+    const today = projection.debug.cases[0];
+    assertEqual(today.levels[today.levels.length - 1].level, -6_000, 'the steps run past the floor');
+    assertEqual(projection.outputsTable.rows[0][4], -6_000, 'the outputs table is a ledger: left over is negative');
+    assertEqual(projection.outputsTable.rows[0][5], 'About −€500 a month'.replace('About ', ''), 'and so is its month');
+    assertEqual(projection.tables[0].rows[projection.tables[0].rows.length - 1][1], -6_000, 'and the case table');
+    // What the chart and the video say is the screen's word, with the size.
+    const chart = projection.charts[0];
+    assertEqual(chart.labels[chart.labels.length - 1], 'Short', 'the chart names it Short');
+    assertEqual(chart.datasets[0].data[chart.datasets[0].data.length - 1], 6_000, 'and gives the size');
+  }));
+
+  cases.push(runCase('Short, in the other directions: a left over year tipped under, short made smaller, short made left over', () => {
+    // Left over today, short in a case.
+    const tipped = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE, designFixtureOptions());
+    assertEqual(tipped.debug.cases[0].status, 'left_over', 'today leaves money over');
+    assertEqual(tipped.debug.cases[2].shownLeftOver, -6_000, 'the 20,000 case is short');
+    assertEqual(
+      tipped.debug.cases[2].sentence,
+      'Paying €20,000 more into your pensions lowers your tax by €8,000, so €12,000 more goes out each year and you are short by €6,000.',
+      'left over to short has no "instead of"'
+    );
+    checkInvariants(tipped, 'tipped');
+    const chart = tipped.charts[0];
+    assertEqual(chart.labels[chart.labels.length - 1], 'Left over', 'the chart is for today, which is not short');
+
+    // Short today, and a smaller short, and money left over.
+    const living = (amount) => payload((p) => {
+      p.outgoings.find((line) => line.id === 'living').amount = amount;
+    });
+    const smaller = computeHouseholdCashFlowProjection(living(62_000), designFixtureOptions());
+    assertEqual(smaller.debug.cases[0].shownLeftOver, -8_000, 'today is short by 8,000');
+    assertEqual(
+      smaller.debug.cases[1].sentence,
+      'Clearing your car loan from savings stops €6,000 a year going out, so you are short by €2,000 instead of €8,000.',
+      'short by less than today'
+    );
+    const over = computeHouseholdCashFlowProjection(living(55_000), designFixtureOptions());
+    assertEqual(over.debug.cases[0].shownLeftOver, -1_000, 'today is short by 1,000');
+    assertEqual(
+      over.debug.cases[1].sentence,
+      'Clearing your car loan from savings stops €6,000 a year going out, so you have €5,000 left over instead of being short by €1,000.',
+      'left over instead of short'
+    );
+    [tipped, smaller, over].forEach((projection, index) => checkInvariants(projection, `direction ${index + 1}`));
+  }));
+
+  cases.push(runCase('Short follows the amount shown, and a short month rounds as a left over month of the same size does', () => {
+    const living = (amount) => payload((p) => {
+      p.outgoings.find((line) => line.id === 'living').amount = amount;
+    });
+    const run = (amount) => computeHouseholdCashFlowProjection(living(amount), designFixtureOptions());
+    // €40 short unrounded shows €0, which is Tight and not Short.
+    const near = run(54_040).summary.cases[0];
+    assertWithin(near.leftOver.amount, -40, 0.005, 'short by 40 unrounded');
+    assertEqual(near.leftOver.shown, 0, 'and it shows nothing');
+    assertEqual(near.leftOver.status, 'tight', 'so it is tight');
+    assertEqual(near.leftOver.monthly, 0, 'with no month, and not a negative zero');
+    assert(Object.is(near.leftOver.monthly, 0), 'the month is +0');
+    // €60 short shows €100 short.
+    const just = run(54_060).summary.cases[0];
+    assertEqual(just.leftOver.shown, -100, 'short by 60 shows 100');
+    assertEqual(just.leftOver.status, 'short', 'so it is short');
+    assertEqual(just.leftOver.monthly, -10, 'and its month is signed');
+    // 300 a year is 25 a month: the tie goes up, in both directions.
+    const plus = run(53_700).debug.cases[0];
+    const minus = run(54_300).debug.cases[0];
+    assertEqual(plus.shownLeftOver, 300, 'left over by 300');
+    assertEqual(minus.shownLeftOver, -300, 'short by 300');
+    assertEqual(plus.monthly.amount, 30, 'a tie rounds up');
+    assertEqual(minus.monthly.amount, -30, 'and a short tie rounds the same size, signed');
+    assertEqual(plus.monthly.text, minus.monthly.text, 'and says the same words');
   }));
 
   cases.push(runCase('Case 4 is not case 1: the same left over, and exactly tax, pensions and the car loan changed', () => {
@@ -550,11 +692,6 @@ export function runHouseholdCashFlowTests() {
     check((p) => {
       p.baseScenarioId = 'nope';
     }, `${FIELD}.baseScenarioId must match a case id.`, 'an unknown base');
-
-    check((p) => {
-      p.outgoings[2].amount = 80_000;
-    }, `${FIELD}.scenarios[0] (Today): leaves €26,000 less than nothing each year, which this screen does not draw yet.`,
-    'a case that leaves less than nothing');
 
     check((p) => {
       delete p.people[1].label;

@@ -172,6 +172,15 @@ function px(value) {
   return `${Number(value).toFixed(1)}px`;
 }
 
+/**
+ * The last mark is green while what is left is above nothing and red once it is
+ * below, decided by the figure being DRAWN and not the case being chosen, so a
+ * click that crosses the floor changes colour where the mark crosses it.
+ */
+function markShort(node, values) {
+  node.classList.toggle('is-short', Boolean(values) && values[values.length - 1] < 0);
+}
+
 /* ---------------------------------------------------------------- the module */
 
 /**
@@ -312,11 +321,21 @@ export function buildHouseholdCashFlowModule({
       bars: [], connectors: [], outlines: [], amounts: [], names: [], deltas: []
     };
 
-    const floor = el('div', 'hcf-floor');
+    // With a case that runs below it, the floor is the line the picture reads
+    // against, so it is drawn a little stronger and named "€0".
+    const floor = el('div', layout.band > 0 ? 'hcf-floor has-band' : 'hcf-floor');
     floor.style.top = px(layout.floor);
     floor.style.left = '0px';
     floor.style.width = px(layout.plotWidth);
     chartHost.append(floor);
+    if (layout.zero.visible) {
+      const zero = el('div', 'hcf-zero', '€0');
+      zero.style.left = px(layout.zero.left);
+      zero.style.top = px(layout.zero.top);
+      zero.style.width = px(layout.zero.width);
+      zero.style.fontSize = px(layout.fonts.zero);
+      chartHost.append(zero);
+    }
 
     for (let index = 0; index < layout.columns - 1; index += 1) {
       const connector = el('div', 'hcf-connector');
@@ -447,6 +466,8 @@ export function buildHouseholdCashFlowModule({
       const isLast = index === refs.bars.length - 1;
       const changed = !isIncome && !isLast && lines[index - 1].hasDelta;
       bar.className = `hcf-bar ${isIncome ? 'is-income' : (isLast ? 'is-left' : 'is-cost')}${changed ? ' is-changed' : ''}`;
+      // What was on screen stays on screen until the clock moves it.
+      if (isLast) markShort(bar, shown);
     });
   }
 
@@ -463,6 +484,7 @@ export function buildHouseholdCashFlowModule({
       refs.amounts[index].style.top = px(amount.top);
     });
     const leftNow = values[values.length - 1];
+    markShort(refs.bars[refs.bars.length - 1], values);
     refs.lastLabel.style.top = px(refs.outlineInfo.lastLabel.topFor(leftNow));
     // Nothing left stands as a line on the floor, not as a bar.
     const target = valuesOf(selectedId);
@@ -493,7 +515,7 @@ export function buildHouseholdCashFlowModule({
     track.style.left = px(left);
     track.style.top = px(layout.barTop);
     track.style.width = px(layout.barWidth);
-    track.style.height = px(layout.barHeight);
+    track.style.height = px(layout.barHeight + layout.reserve);
     for (let index = 0; index < model.drawnLines.length + 1; index += 1) {
       const segment = el('div', 'hcf-segment');
       segment.style.width = px(layout.barWidth);
@@ -511,6 +533,15 @@ export function buildHouseholdCashFlowModule({
     endMark.style.top = px(layout.barHeight - 4);
     track.append(endMark);
     chartHost.append(track);
+
+    // Where income ends, once some case runs past it.
+    if (layout.reserve > 0) {
+      const incomeEnd = el('div', 'hcf-bar-income-end');
+      incomeEnd.style.left = px(left - 6);
+      incomeEnd.style.top = px(layout.incomeEnd);
+      incomeEnd.style.width = px(layout.barWidth + 12);
+      chartHost.append(incomeEnd);
+    }
 
     const ids = [...model.drawnLines.map((line) => line.id), 'left'];
     ids.forEach((id) => {
@@ -542,6 +573,7 @@ export function buildHouseholdCashFlowModule({
       const isLast = index === refs.segments.length - 1;
       const changed = !isLast && lines[index].hasDelta;
       segment.className = `hcf-segment ${isLast ? 'is-left' : 'is-cost'}${changed ? ' is-changed' : ''}`;
+      if (isLast) markShort(segment, shown);
     });
 
     refs.rows.forEach((parts, id) => {
@@ -566,6 +598,7 @@ export function buildHouseholdCashFlowModule({
       node.style.top = px(segment.top);
       node.style.height = px(segment.height);
     });
+    markShort(refs.segments[refs.segments.length - 1], values);
 
     // A line cleared against today is a zero-height step: a tick marks where it was.
     const base = model.cases.find((entry) => entry.id === model.baseId);
@@ -621,6 +654,33 @@ export function buildHouseholdCashFlowModule({
     else renderBarCopy();
   }
 
+  /**
+   * Above the bar, the sentence keeps the room of the LONGEST case's, so a click
+   * never moves the drawing under it. The sentences are the engine's, and the
+   * short ones run to five lines on a phone, so the design's four is not enough.
+   * Measured where the browser can measure it, which is once the module is on
+   * the page; until then the stylesheet's four lines stand.
+   */
+  function reserveSentenceRoom() {
+    if (drawing !== 'bar') {
+      sentence.style.minHeight = '';
+      return;
+    }
+    if (!root.isConnected || typeof sentence.getBoundingClientRect !== 'function') return;
+    const current = sentence.textContent;
+    sentence.style.minHeight = '0px';
+    let tallest = 0;
+    cases.forEach((entry) => {
+      sentence.textContent = entry.sentence;
+      tallest = Math.max(tallest, sentence.getBoundingClientRect().height);
+    });
+    sentence.textContent = current;
+    sentence.style.minHeight = '';
+    // Never less than the stylesheet's four lines.
+    const four = parseFloat(getComputedStyle(sentence).lineHeight) * 4;
+    sentence.style.minHeight = px(Math.max(Number.isFinite(four) ? four : 0, Math.ceil(tallest)));
+  }
+
   function paint(values) {
     shown = values;
     if (drawing === 'stairs') paintStairs(values);
@@ -639,6 +699,7 @@ export function buildHouseholdCashFlowModule({
     if (drawing === 'stairs') buildStairs();
     else buildBar();
     renderCopy();
+    reserveSentenceRoom();
     // Resizing is not a transition: settle on the selected case at once.
     paint(valuesOf(selectedId));
   }

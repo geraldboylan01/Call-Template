@@ -17,8 +17,12 @@
  * WHAT THIS FILE DOES NOT DO. It does not calculate. Every amount is a figure
  * the engine already rounded to the nearest €100, and what is left over is the
  * engine's shown income less its shown lines, so the picture always adds up.
- * Short cases are refused by the engine in this release, so nothing here draws
- * below the floor.
+ *
+ * SHORT. A case may leave less than nothing. The costs then keep stepping past
+ * the floor, and what is short hangs below it in red, on the same scale as
+ * everything else. The room for the deepest case is kept in every case, so
+ * nothing moves when a case is chosen. On the bar the costs run past the end of
+ * income and what is short is the part past it.
  */
 
 /* ------------------------------------------------------------------ constants */
@@ -34,6 +38,10 @@ const ANSWER_BESIDE_FROM = 1360;
 
 const ANSWER_WIDTH = 328;
 const ANSWER_GAP = 48;
+
+/** Below the floor, past the deepest step, on the staircase, and on the bar. */
+const STAIRS_BAND_PAD = 20;
+const BAR_RESERVE_PAD = 16;
 
 /** The pitch of the design frame (1728 of content, nine columns). */
 const REFERENCE_PITCH = 156;
@@ -169,16 +177,14 @@ export function readCashFlowModel(projection) {
     };
   });
   const base = cases.find((entry) => entry.isBase) || cases[0];
-  cases.forEach((entry) => {
-    if (entry.left < 0) {
-      throw new Error('A short case cannot be drawn yet. The engine refuses it before it reaches the screen.');
-    }
-  });
   return {
     drawnLines,
     cases,
     baseId: base.id,
     income: base.income,
+    // How far below the floor the deepest case goes, kept in every case so the
+    // drawing never moves when a case is chosen. 0 when nothing is short.
+    deepest: Math.max(0, ...cases.map((entry) => -entry.left)),
     footnote: debug.footnote,
     hasPensionColumn: Boolean(debug.hasPensionColumn)
   };
@@ -189,6 +195,13 @@ function findCase(model, caseId) {
 }
 
 /* ---------------------------------------------------------------------- words */
+
+/** What today's outline says: where you were, in words. */
+function todayFigureText(todayLeft) {
+  if (todayLeft > 0) return `${euroText(todayLeft)} left over`;
+  if (todayLeft < 0) return `${euroText(todayLeft)} short`;
+  return '€0 left over';
+}
 
 const HEADING = 'After everything you pay, what is left each year?';
 const MUTED_LINE = 'Your household cash flow';
@@ -205,9 +218,12 @@ export function buildCashFlowCopy(projection, caseId) {
   const entry = findCase(model, caseId);
   const today = findCase(model, model.baseId);
 
-  const status = entry.status === 'left_over'
-    ? { kind: 'left_over', word: 'Left over' }
-    : { kind: 'tight', word: 'Tight' };
+  let status = { kind: 'tight', word: 'Tight' };
+  if (entry.status === 'left_over') {
+    status = { kind: 'left_over', word: 'Left over' };
+  } else if (entry.status === 'short') {
+    status = { kind: 'short', word: 'Short' };
+  }
 
   const lines = entry.drawn.map((line) => ({
     id: line.id,
@@ -219,8 +235,6 @@ export function buildCashFlowCopy(projection, caseId) {
     // staircase and is left out of the bar.
     quiet: line.id === 'pensions' && line.amount === 0
   }));
-
-  const todayFigure = today.left > 0 ? `${euroText(today.left)} left over` : '€0 left over';
 
   return {
     mutedLine: MUTED_LINE,
@@ -236,9 +250,10 @@ export function buildCashFlowCopy(projection, caseId) {
     sentence: entry.sentence,
     footnote: model.footnote,
     lines,
-    lastName: 'Left over',
+    // The last column and the last row take the word the answer takes.
+    lastName: entry.left < 0 ? 'Short' : 'Left over',
     key: 'Today',
-    todayFigure,
+    todayFigure: todayFigureText(today.left),
     chartLabel: `${status.word}: ${euroText(entry.left)} a year. ${entry.sentence}`
   };
 }
@@ -307,7 +322,9 @@ export function layoutStairs(projection, { width } = {}) {
     name: clamp(22 * scale, 14, 22),
     delta: clamp(20 * scale, 13, 20),
     ghost: clamp(18 * scale, 14, 18),
-    key: clamp(22 * scale, 16, 22)
+    key: clamp(22 * scale, 16, 22),
+    // "€0" at the floor. It has to fit the 28px the module keeps either side.
+    zero: clamp(18 * scale, 13, 18)
   };
   const plotHeight = clamp(pitch * 2.9, 300, 450);
   const income = model.income;
@@ -315,9 +332,12 @@ export function layoutStairs(projection, { width } = {}) {
   const amountGap = Math.round(fonts.amount + 14);
   const top = amountGap + 4;
   const floor = top + plotHeight;
+  // Room below the floor for the deepest case, and a little more, so the names
+  // clear it. Nothing when no case is short.
+  const band = model.deepest > 0 ? Math.round(model.deepest * perEuro + STAIRS_BAND_PAD) : 0;
 
-  const names = ['Your income before tax', ...model.drawnLines.map((line) => line.label), 'Left over'];
-  const namesTop = Math.round(floor + 16 * scale);
+  const names = ['Your income before tax', ...model.drawnLines.map((line) => line.label), 'Left over', 'Short'];
+  const namesTop = Math.round(floor + band + 16 * scale);
   const slotInset = (pitch - barWidth) / 2;
   let nameLines = 1;
   let deltaLines = 0;
@@ -352,6 +372,17 @@ export function layoutStairs(projection, { width } = {}) {
   const keySize = { swatchWidth: 36, swatchHeight: 18, gap: 12 };
   const keyWidth = keySize.swatchWidth + keySize.gap + estimateTextWidth('Today', fonts.key, 600);
 
+  // "€0" names the floor once some case runs below it. It sits left of the
+  // plot, right-aligned a few px from it, centred on the line.
+  const zeroWidth = estimateTextWidth('€0', fonts.zero, 500);
+  const zero = {
+    visible: band > 0,
+    width: zeroWidth,
+    height: Math.ceil(fonts.zero * 1.2),
+    left: -(zeroWidth + 4),
+    top: floor - Math.ceil(fonts.zero * 1.2) / 2
+  };
+
   return {
     mode: 'stairs',
     width,
@@ -372,6 +403,9 @@ export function layoutStairs(projection, { width } = {}) {
     income,
     top,
     floor,
+    band,
+    deepest: model.deepest,
+    zero,
     amountGap,
     namesTop,
     namesHeight,
@@ -403,12 +437,14 @@ export function stairsGeometry(layout, values) {
       kind: 'cost'
     });
   }
+  // What is left stands on the floor. What is short hangs from it, down to
+  // where the last step ended, so the two ends meet at the same depth.
   const left = values[lines];
   bars.push({
     left: layout.slots[lines + 1].left,
-    top: layout.floor - left * layout.perEuro,
-    height: left * layout.perEuro,
-    kind: 'left'
+    top: left >= 0 ? layout.floor - left * layout.perEuro : layout.floor,
+    height: Math.abs(left) * layout.perEuro,
+    kind: left >= 0 ? 'left' : 'short'
   });
   const connectors = [];
   for (let index = 0; index <= lines; index += 1) {
@@ -464,7 +500,7 @@ export function stairsOutlines(layout, model, caseId) {
 
   // "Today" over today's figure. At a narrow pitch the figure itself wraps, so
   // the label is three short lines instead of two long ones.
-  const figure = today.left > 0 ? `${euroText(today.left)} left over` : '€0 left over';
+  const figure = todayFigureText(today.left);
   const fits = estimateTextWidth(figure, layout.fonts.ghost, 600) <= layout.pitch;
   const labelText = fits
     ? ['Today', figure]
@@ -481,8 +517,11 @@ export function stairsOutlines(layout, model, caseId) {
       height: labelHeight,
       width: layout.pitch,
       left: layout.slots[lines + 1].slotLeft,
-      // Above whichever stands higher, today's outline or this case's bar.
-      topFor: (leftOverNow) => layout.floor - Math.max(leftOverNow, today.left) * layout.perEuro - labelHeight - 8
+      // Above whichever stands higher, today's outline or this case's bar, and
+      // never below the floor: a short column hangs down, and the label stays up.
+      topFor: (leftOverNow) => (
+        layout.floor - Math.max(0, leftOverNow, today.left) * layout.perEuro - labelHeight - 8
+      )
     }
   };
 }
@@ -514,6 +553,27 @@ export function checkStairsLayout(layout, model) {
         height: layout.fonts.amount * 1.1
       });
     });
+
+    if (layout.zero.visible) {
+      caseBoxes.push({
+        name: `${entry.id} zero label`,
+        left: layout.zero.left,
+        top: layout.zero.top,
+        width: layout.zero.width,
+        height: layout.zero.height
+      });
+    }
+    // Nothing may reach the names, in any case.
+    caseBoxes.forEach((box) => {
+      if (box.top + box.height > layout.namesTop + 0.5) {
+        problems.push(`${entry.id}: ${box.name} reaches the names`);
+      }
+    });
+    // What hangs below the floor stays inside the room kept for it.
+    const hangs = Math.max(0, -entry.left) * layout.perEuro;
+    if (hangs > layout.band + 0.5) {
+      problems.push(`${entry.id}: what is short (${Math.round(hangs)}px) is deeper than the room kept for it`);
+    }
 
     const outline = stairsOutlines(layout, model, entry.id);
     if (outline.keyVisible) {
@@ -554,14 +614,15 @@ export function checkStairsLayout(layout, model) {
     // plot's edge. The module keeps that much side padding for it.
     const inset = (layout.pitch - layout.barWidth) / 2;
     caseBoxes.forEach((box) => {
-      if (box.left < -inset - 0.5 || box.top < -0.5 || box.left + box.width > layout.width + inset + 0.5) {
+      const room = box.name.endsWith('zero label') ? 28 : inset;
+      if (box.left < -room - 0.5 || box.top < -0.5 || box.left + box.width > layout.width + room + 0.5) {
         problems.push(`${box.name} is outside the container`);
       }
     });
   });
 
   // Names: the longest word must fit its slot, so a name wraps and never runs on.
-  const names = ['Your income before tax', ...model.drawnLines.map((line) => line.label), 'Left over'];
+  const names = ['Your income before tax', ...model.drawnLines.map((line) => line.label), 'Left over', 'Short'];
   names.forEach((name, index) => {
     name.split(/\s+/).forEach((word) => {
       if (estimateTextWidth(word, layout.fonts.name, 600) > layout.pitch) {
@@ -581,6 +642,10 @@ export function checkStairsLayout(layout, model) {
 export function layoutBar(projection, { width } = {}) {
   const model = readCashFlowModel(projection);
   const contentWidth = Math.min(width, BAR.maxWidth);
+  const perEuro = BAR.height / model.income;
+  // The costs run past the end of income, so the bar is as much taller as the
+  // deepest case needs, in every case. Nothing when no case is short.
+  const reserve = model.deepest > 0 ? Math.round(model.deepest * perEuro + BAR_RESERVE_PAD) : 0;
   return {
     mode: 'bar',
     width,
@@ -591,13 +656,21 @@ export function layoutBar(projection, { width } = {}) {
     barTop: BAR.top,
     labelLeft: BAR.labelLeft,
     labelWidth: contentWidth - BAR.labelLeft,
-    height: BAR.chartHeight,
-    perEuro: BAR.height / model.income,
-    income: model.income
+    height: BAR.chartHeight + reserve,
+    perEuro,
+    income: model.income,
+    deepest: model.deepest,
+    reserve,
+    // Where income ends: a hairline across the bar once some case runs past it.
+    incomeEnd: BAR.top + BAR.height
   };
 }
 
-/** The segments for a list of values: spent from the top down, left over last. */
+/**
+ * The segments for a list of values: spent from the top down, left over last.
+ * The costs run on past the end of income when the year is short, and the last
+ * segment is then the part past it.
+ */
 export function barGeometry(layout, values) {
   const lines = values.length - 1;
   const segments = [];
@@ -607,8 +680,20 @@ export function barGeometry(layout, values) {
     segments.push({ top: spent, height: Math.max(0, height - BAR.gap), centre: spent + height / 2, kind: 'cost', raw: height });
     spent += height;
   }
-  const leftHeight = values[lines] * layout.perEuro;
-  segments.push({ top: spent, height: leftHeight, centre: spent + leftHeight / 2, kind: 'left', raw: leftHeight });
+  const left = values[lines];
+  if (left >= 0) {
+    const leftHeight = left * layout.perEuro;
+    segments.push({ top: spent, height: leftHeight, centre: spent + leftHeight / 2, kind: 'left', raw: leftHeight });
+  } else {
+    const over = -left * layout.perEuro;
+    segments.push({
+      top: layout.barHeight,
+      height: over,
+      centre: layout.barHeight + over / 2,
+      kind: 'short',
+      raw: over
+    });
+  }
   return { segments };
 }
 
@@ -631,7 +716,7 @@ export function placeBarRows(layout, specs) {
   }
   const last = rows.length - 1;
   if (last >= 0) {
-    const floor = layout.barTop + layout.barHeight + 8 - rows[last].height / 2;
+    const floor = layout.barTop + layout.barHeight + (layout.reserve || 0) + 8 - rows[last].height / 2;
     if (rows[last].c > floor) {
       rows[last].c = floor;
       for (let index = last - 1; index >= 0; index -= 1) {
@@ -658,10 +743,12 @@ export function barRowSpecs(model, caseId, values) {
       segment: index
     });
   });
-  if (entry.left > 0) {
+  // Nothing left stands as a mark and not a row, so only a figure above or
+  // below nothing gets one.
+  if (entry.left !== 0) {
     specs.push({
       id: 'left',
-      label: 'Left over',
+      label: entry.left < 0 ? 'Short' : 'Left over',
       amount: euroText(entry.left),
       hasDelta: false,
       delta: '',
@@ -688,7 +775,7 @@ export function checkBarLayout(layout, model) {
           problems.push(`${entry.id}: row "${row.label}" touches "${previous.label}"`);
         }
       }
-      if (row.top + row.height > layout.barTop + layout.barHeight + 12) {
+      if (row.top + row.height > layout.barTop + layout.barHeight + layout.reserve + 12) {
         problems.push(`${entry.id}: row "${row.label}" is below the floor`);
       }
       const need = estimateTextWidth(row.label, 15, 600) + 8 + estimateTextWidth(row.amount, 17, 700);

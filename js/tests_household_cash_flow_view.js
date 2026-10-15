@@ -1,12 +1,15 @@
 import { computeHouseholdCashFlowProjection } from './household_cash_flow_math.js';
 import {
+  HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE,
   HOUSEHOLD_CASH_FLOW_SAMPLE,
+  HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
   designFixtureOptions
 } from './tests_household_cash_flow_math.js';
 import {
   BAR_BELOW_WIDTH,
   STAIRS_FROM_WIDTH,
   barGeometry,
+  barRowSpecs,
   buildCashFlowCopy,
   checkBarLayout,
   checkStairsLayout,
@@ -16,6 +19,7 @@ import {
   layoutBar,
   layoutStairs,
   lerpValues,
+  placeBarRows,
   readCashFlowModel,
   stairsGeometry,
   stairsOutlines
@@ -101,8 +105,16 @@ const SHAPES = Object.freeze([
     options: CALCULATION
   },
   { name: 'one person', raw: ONE_PERSON, options: CALCULATION },
-  { name: 'six lines and a pension', raw: SIX_LINES, options: CALCULATION }
+  { name: 'six lines and a pension', raw: SIX_LINES, options: CALCULATION },
+  // The short state, in the three ways a household gets there.
+  { name: 'today short (the frames)', raw: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, options: CALCULATION },
+  { name: 'left over tipped under by a case', raw: HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE, options: CALCULATION },
+  { name: 'today short on the design fixture', raw: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, options: designFixtureOptions() }
 ]);
+
+const SHORT_TODAY = SHAPES[5];
+const SHORT_TIPPED = SHAPES[6];
+const SHORT_DESIGN = SHAPES[7];
 
 function project(shape) {
   return computeHouseholdCashFlowProjection(shape.raw, shape.options);
@@ -213,12 +225,26 @@ export function runHouseholdCashFlowViewTests() {
             );
           });
           const last = geometry.bars[geometry.bars.length - 1];
-          assert(Math.abs(last.top + last.height - layout.floor) < 0.01, 'what is left stands on the floor');
           const lastCost = geometry.bars[geometry.bars.length - 2];
-          assert(
-            Math.abs(lastCost.top + lastCost.height - last.top) < 0.01 || entry.drawn.length === 0,
-            `${shape.name} ${entry.id}: the last step ends where what is left begins`
-          );
+          if (entry.left >= 0) {
+            assert(Math.abs(last.top + last.height - layout.floor) < 0.01, 'what is left stands on the floor');
+            assert(
+              Math.abs(lastCost.top + lastCost.height - last.top) < 0.01 || entry.drawn.length === 0,
+              `${shape.name} ${entry.id}: the last step ends where what is left begins`
+            );
+          } else {
+            // What is short hangs from the floor, to where the last step ended.
+            assertEqual(last.kind, 'short', `${shape.name} ${entry.id}: it is a short bar`);
+            assert(Math.abs(last.top - layout.floor) < 0.01, `${shape.name} ${entry.id}: what is short hangs from the floor`);
+            assert(
+              Math.abs(last.height - -entry.left * layout.perEuro) < 0.01,
+              `${shape.name} ${entry.id}: and is drawn on the one scale`
+            );
+            assert(
+              Math.abs(lastCost.top + lastCost.height - (last.top + last.height)) < 0.01 || entry.drawn.length === 0,
+              `${shape.name} ${entry.id}: the last step and what is short end at the same depth`
+            );
+          }
         });
       });
     });
@@ -298,6 +324,8 @@ export function runHouseholdCashFlowViewTests() {
       assert(Math.abs(spent + left.raw - 700) < 0.01, `${entry.id}: costs and what is left fill the bar`);
       assert(Math.abs(left.top + left.raw - 700) < 0.01, `${entry.id}: what is left is the last piece`);
     });
+    assertEqual(layout.reserve, 0, 'nothing is short, so no room is kept below the bar');
+    assertEqual(layout.height, 780, 'and the chart is its usual height');
   }));
 
   cases.push(runCase('Interpolation is exact at both ends, so a settled frame is the target', () => {
@@ -308,16 +336,173 @@ export function runHouseholdCashFlowViewTests() {
     assertEqual(JSON.stringify(lerpValues(from, to, 0.5)), '[2.5,4,6]', 'middle');
   }));
 
-  cases.push(runCase('A short case is not drawn: the model refuses to read one', () => {
-    const projection = project(SHAPES[0]);
-    projection.debug.cases[0].shownLeftOver = -2_800;
-    let refused = false;
-    try {
-      readCashFlowModel(projection);
-    } catch (error) {
-      refused = /short case cannot be drawn yet/.test(error.message);
-    }
-    assert(refused, 'refused with its reason');
+  cases.push(runCase('A short case is read and drawn: the model carries it and the room for the deepest', () => {
+    const model = readCashFlowModel(project(SHORT_TODAY));
+    assert(model.cases[0].left < 0, 'today is short');
+    assertEqual(model.cases[0].status, 'short', 'with the status the engine gave it');
+    assertEqual(model.deepest, Math.max(...model.cases.map((entry) => -entry.left)), 'the deepest case sets the room');
+    assert(readCashFlowModel(project(SHAPES[0])).deepest === 0, 'nothing short, nothing kept');
+  }));
+
+  cases.push(runCase('Short words: the word, the figure, the last name and today\'s outline are in the "you" voice', () => {
+    const projection = project(SHORT_DESIGN);
+    const today = buildCashFlowCopy(projection, 'today');
+    assertEqual(today.status.kind, 'short', 'the status kind');
+    assertEqual(today.status.word, 'Short', 'the status word');
+    assertEqual(today.figure, '€6,000', 'the size, with no sign: the word carries it');
+    assertEqual(today.monthly, '€500 a month', 'and the month, the same way');
+    assertEqual(today.lastName, 'Short', 'the last column and row take the word');
+    assertEqual(today.todayFigure, '€6,000 short', 'today\'s outline says where you were, in words');
+    assertEqual(
+      today.sentence,
+      'Today, €156,000 goes out against your €150,000, and you are short by €6,000.',
+      'today\'s sentence'
+    );
+    assertEqual(today.chartLabel, `Short: €6,000 a year. ${today.sentence}`, 'the drawing is named for the word and the size');
+
+    const clear = buildCashFlowCopy(projection, projection.debug.cases[1].id);
+    assertEqual(clear.status.word, 'Tight', 'a case that clears it exactly is Tight');
+    assertEqual(clear.lastName, 'Left over', 'and the last column takes the other word');
+    assertEqual(clear.todayFigure, '€6,000 short', 'today\'s outline still says short');
+
+    // The word is "Short" in every place a case can be short: nothing says "negative".
+    SHAPES.slice(5).forEach((shape) => {
+      const shapeProjection = project(shape);
+      shapeProjection.debug.cases.forEach((entry) => {
+        const strings = collectCashFlowStrings(shapeProjection, entry.id).join(' | ');
+        assert(!/-|−|negative|deficit|overdrawn/i.test(strings.replace(/\d+-\w+/g, '')), `${shape.name} ${entry.id}: no sign or accounting word: ${strings}`);
+      });
+    });
+  }));
+
+  cases.push(runCase('Below the floor: one scale, room kept for the deepest case in every case, and the floor named', () => {
+    [SHORT_TODAY, SHORT_TIPPED].forEach((shape) => {
+      const projection = project(shape);
+      const model = readCashFlowModel(projection);
+      STAIRS_WIDTHS.forEach((width) => {
+        const layout = layoutStairs(projection, { width });
+        const hang = model.deepest * layout.perEuro;
+        assert(layout.band >= hang + 19 && layout.band <= hang + 21, `${shape.name} at ${width}: the band is the deepest case and 20`);
+        assert(layout.namesTop >= layout.floor + layout.band, `${shape.name} at ${width}: names clear the band`);
+        assertEqual(layout.zero.visible, true, `${shape.name} at ${width}: the floor is named`);
+        assert(layout.zero.left + layout.zero.width <= 0, `${shape.name} at ${width}: "€0" is left of the plot`);
+        assert(layout.zero.left >= -28 - 0.5, `${shape.name} at ${width}: and inside the 28px kept for it`);
+        // The same layout for every case: the chart is as tall for a case that is not short.
+        assertEqual(layout.height, layout.namesTop + layout.namesHeight + 8, `${shape.name} at ${width}: height is in the layout, not the case`);
+      });
+    });
+
+    // Nothing short, nothing kept: the staircase is exactly as it was.
+    const plain = layoutStairs(project(SHAPES[0]), { width: 1728 });
+    assertEqual(plain.band, 0, 'no band when nothing is short');
+    assertEqual(plain.zero.visible, false, 'and no "€0"');
+    assertEqual(Math.round(plain.namesTop - plain.floor), 16, 'names sit as they did');
+  }));
+
+  cases.push(runCase('The staircase runs past the floor: a step that starts above it ends below it, and what is short hangs', () => {
+    const projection = project(SHORT_TODAY);
+    const model = readCashFlowModel(projection);
+    const layout = layoutStairs(projection, { width: 1728 });
+    model.cases.filter((entry) => entry.left < 0).forEach((entry) => {
+      const geometry = stairsGeometry(layout, entry.values);
+      const last = geometry.bars[geometry.bars.length - 1];
+      assertEqual(last.kind, 'short', `${entry.id}: the last bar is the short bar`);
+      assertEqual(Math.round(last.top), Math.round(layout.floor), `${entry.id}: it hangs from the floor`);
+      assert(last.height > 0, `${entry.id}: with a height`);
+      assert(last.top + last.height < layout.namesTop, `${entry.id}: and stops above the names`);
+      // Some step crosses the floor: it starts above it and ends below.
+      const crossing = geometry.bars.slice(1, -1).find((bar) => bar.top < layout.floor && bar.top + bar.height > layout.floor);
+      assert(crossing, `${entry.id}: a cost step crosses the floor`);
+      // The amounts of steps that start below the floor sit above their bars,
+      // inside the room kept, and never reach the names.
+      geometry.amounts.forEach((amount, index) => {
+        assert(amount.top + layout.fonts.amount * 1.1 < layout.namesTop, `${entry.id}: amount ${index} stays above the names`);
+      });
+    });
+    // A case that is left over still stands on the floor in the same layout.
+    const standing = stairsGeometry(layout, model.cases[1].values);
+    assertEqual(standing.bars[standing.bars.length - 1].kind, 'left', 'a case that is left over stands');
+  }));
+
+  cases.push(runCase('Short outlines: today\'s hangs below the floor, and the label stays above it either way', () => {
+    // Short today, left over in a case: the outline hangs, the label is above the green bar.
+    const projection = project(SHORT_TODAY);
+    const model = readCashFlowModel(projection);
+    const layout = layoutStairs(projection, { width: 1728 });
+    const clear = stairsOutlines(layout, model, model.cases[1].id);
+    const last = clear.outlines[clear.outlines.length - 1];
+    assertEqual(last.visible, true, 'the last column is outlined');
+    assertEqual(Math.round(last.top), Math.round(layout.floor), 'today\'s outline hangs from the floor');
+    assert(last.height > 0, 'with today\'s depth');
+    assertEqual(clear.lastLabel.lines[0], 'Today', 'the label says Today');
+    assert(/short$/.test(clear.lastLabel.lines[clear.lastLabel.lines.length - 1]), 'and where you were: short');
+    const thisLeft = model.cases[1].left;
+    assert(
+      clear.lastLabel.topFor(thisLeft) + clear.lastLabel.height <= layout.floor - thisLeft * layout.perEuro + 0.01,
+      'the label is above the bar that stands'
+    );
+    // Short in both: both hang, and the label sits on the floor, not under it.
+    const both = stairsOutlines(layout, model, model.cases[2].id);
+    const shortNow = model.cases[2].left;
+    assert(shortNow < 0, 'the pension case is short');
+    assert(both.lastLabel.topFor(shortNow) + both.lastLabel.height <= layout.floor + 0.01, 'the label never goes below the floor');
+
+    // Left over today, short in a case: the outline stands and the red bar hangs.
+    const tipped = project(SHORT_TIPPED);
+    const tippedModel = readCashFlowModel(tipped);
+    const tippedLayout = layoutStairs(tipped, { width: 1728 });
+    const tipOutline = stairsOutlines(tippedLayout, tippedModel, tippedModel.cases[2].id);
+    const standing = tipOutline.outlines[tipOutline.outlines.length - 1];
+    assertEqual(standing.visible, true, 'the last column is outlined');
+    assertEqual(
+      Math.round(standing.top + standing.height),
+      Math.round(tippedLayout.floor),
+      'today\'s outline stands on the floor'
+    );
+    const tipLeft = tippedModel.cases[2].left;
+    assert(tipLeft < 0, 'the case is short');
+    assert(
+      tipOutline.lastLabel.topFor(tipLeft) + tipOutline.lastLabel.height <= standing.top + 0.01,
+      'and the label sits above today\'s outline'
+    );
+  }));
+
+  cases.push(runCase('The bar runs past the end of income: room kept in every case, the short part in red, and its row below', () => {
+    const projection = project(SHORT_TODAY);
+    const model = readCashFlowModel(projection);
+    BAR_WIDTHS.forEach((width) => {
+      const layout = layoutBar(projection, { width });
+      const hang = model.deepest * layout.perEuro;
+      assert(layout.reserve >= hang + 15 && layout.reserve <= hang + 17, `at ${width}: the reserve is the deepest case and 16`);
+      assertEqual(layout.height, 780 + layout.reserve, `at ${width}: the chart is that much taller, in every case`);
+      assertEqual(layout.incomeEnd, layout.barTop + layout.barHeight, `at ${width}: income ends at 700`);
+
+      model.cases.forEach((entry) => {
+        const { segments } = barGeometry(layout, entry.values);
+        const last = segments[segments.length - 1];
+        if (entry.left < 0) {
+          assertEqual(last.kind, 'short', `${entry.id}: the part past income is the short segment`);
+          assertEqual(last.top, layout.barHeight, `${entry.id}: it starts where income ends`);
+          assert(Math.abs(last.raw - -entry.left * layout.perEuro) < 0.01, `${entry.id}: on the one scale`);
+          const lastCost = segments[segments.length - 2];
+          assert(
+            Math.abs(lastCost.top + lastCost.raw - (layout.barHeight + last.raw)) < 0.01,
+            `${entry.id}: the costs run on to the same depth`
+          );
+          const spec = barRowSpecs(model, entry.id, entry.values).find((row) => row.id === 'left');
+          assertEqual(spec.label, 'Short', `${entry.id}: the row is named Short`);
+          const rows = placeBarRows(layout, barRowSpecs(model, entry.id, entry.values).map((row) => ({
+            ...row,
+            centre: segments[row.segment].centre
+          })));
+          const shortRow = rows[rows.length - 1];
+          assert(shortRow.top + shortRow.height <= layout.barTop + layout.barHeight + layout.reserve + 12, `${entry.id}: its row is inside the room`);
+          assert(shortRow.c >= layout.barTop + layout.barHeight - 1, `${entry.id}: and below where income ends`);
+        } else if (entry.left > 0) {
+          assertEqual(last.kind, 'left', `${entry.id}: what is left is the last piece`);
+        }
+      });
+    });
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;

@@ -17,7 +17,9 @@ import { readFileSync } from 'node:fs';
 import { computeHouseholdCashFlowProjection } from '../js/household_cash_flow_math.js';
 import {
   HOUSEHOLD_CASH_FLOW_DESIGN_EXPECTED,
+  HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE,
   HOUSEHOLD_CASH_FLOW_SAMPLE,
+  HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
   designFixtureOptions,
   runHouseholdCashFlowTests
 } from '../js/tests_household_cash_flow_math.js';
@@ -152,8 +154,11 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
     const shownIncome = nearest(income, 100);
     const shownOut = shownTax + shownPensions + sum(shownStated);
     const shownLeft = shownIncome - shownOut;
+    // The month: the size to the nearest 10, then its sign (a short year is a
+    // negative month), so a tie rounds the same size in both directions.
     const monthlyExact = shownLeft / 12;
-    const monthly = nearest(monthlyExact, 10);
+    const monthlySize = nearest(Math.abs(monthlyExact), 10);
+    const monthly = (monthlyExact < 0 ? -monthlySize : monthlySize) || 0;
     return {
       id: scenario.id,
       people,
@@ -168,7 +173,10 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
       shownIncome,
       shownOut,
       shownLeft,
-      monthlyText: `${Math.abs(monthlyExact - monthly) < 0.005 ? '' : 'About '}${eur(monthly)} a month`
+      // Above nothing is left over, nothing is tight, below nothing is short.
+      status: shownLeft > 0 ? 'left_over' : (shownLeft === 0 ? 'tight' : 'short'),
+      monthlySigned: monthly,
+      monthlyText: `${Math.abs(Math.abs(monthlyExact) - monthlySize) < 0.005 ? '' : 'About '}${eur(monthlySize)} a month`
     };
   });
 
@@ -179,7 +187,17 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
 function referenceSentences(ref) {
   const [today, clear, pension, both] = ref.cases;
   const effect = (left, base) => {
-    if (left === base) return `you have the same ${eur(left)} left over as today`;
+    if (left === base) {
+      return left < 0 ? `you are short by the same ${eur(left)} as today` : `you have the same ${eur(left)} left over as today`;
+    }
+    if (left < 0) {
+      return base < 0 ? `you are short by ${eur(left)} instead of ${eur(base)}` : `you are short by ${eur(left)}`;
+    }
+    if (base < 0) {
+      return left === 0
+        ? `you have nothing left over instead of being short by ${eur(base)}`
+        : `you have ${eur(left)} left over instead of being short by ${eur(base)}`;
+    }
     if (left === 0) return 'you have nothing left over';
     if (base > 0 && left === 2 * base) return `the amount you have left over doubles, from ${eur(base)} to ${eur(left)}`;
     if (left > base) return `the amount you have left over rises by ${eur(left - base)}, from ${eur(base)} to ${eur(left)}`;
@@ -189,7 +207,9 @@ function referenceSentences(ref) {
   const taxDrop = (entry) => today.shownTax - entry.shownTax;
   const carToday = today.shownStated[1];
   return [
-    `Today, ${eur(today.shownOut)} of your ${eur(today.shownIncome)} goes out and you have ${eur(today.shownLeft)} left over.`,
+    today.shownLeft < 0
+      ? `Today, ${eur(today.shownOut)} goes out against your ${eur(today.shownIncome)}, and you are short by ${eur(today.shownLeft)}.`
+      : `Today, ${eur(today.shownOut)} of your ${eur(today.shownIncome)} goes out and you have ${eur(today.shownLeft)} left over.`,
     `Clearing your car loan from savings stops ${eur(carToday)} a year going out, so ${effect(clear.shownLeft, today.shownLeft)}.`,
     `Paying ${eur(pension.shownPensions)} more into your pensions lowers your tax by ${eur(taxDrop(pension))}, `
       + `so ${eur(pension.shownPensions - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
@@ -233,8 +253,18 @@ const onePerson = {
   ]
 };
 
+const shortAndStated = clone(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE);
+shortAndStated.people[0].statedTakeHome = 50_000;
+
+const shortSeparate = withIncome(100_000, 50_000, 100_000);
+shortSeparate.householdTaxStatus = 'single';
+
 const SAMPLE_SHAPED = [
   ['engine, 75,000 each', HOUSEHOLD_CASH_FLOW_SAMPLE],
+  ['engine, today short (the frames: living costs 60,000)', HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE],
+  ['engine, left over tipped under by 20,000 into pensions', HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE],
+  ['engine, short with one person stated', shortAndStated],
+  ['engine, short with two people assessed separately', shortSeparate],
   ['engine, 120,000 and 30,000', withIncome(120_000, 30_000, 40_000)],
   ['engine, 100,000 and 50,000', withIncome(100_000, 50_000, 40_000)],
   ['one person stated', statedOne],
@@ -258,6 +288,9 @@ function compare(payload, ref, projection, label) {
     assert.ok(Math.abs(summary.pensionContributions.taxRelief - expected.relief) < 0.005, `${where}: relief`);
     assert.equal(detail.shownLeftOver, expected.shownLeft, `${where}: shown left over`);
     assert.equal(detail.monthly.text, expected.monthlyText, `${where}: month`);
+    assert.equal(summary.leftOver.status, expected.status, `${where}: status`);
+    assert.equal(detail.status, expected.status, `${where}: status on the screen's side`);
+    assert.equal(summary.leftOver.monthly, expected.monthlySigned, `${where}: the month is signed`);
     expected.people.forEach((person) => {
       const found = summary.takeHome.byPerson.find((entry) => entry.personId === person.id);
       assert.ok(Math.abs(found.tax - person.tax) < 0.005, `${where}: ${person.id} tax ${found.tax} vs ${person.tax}`);
@@ -298,6 +331,34 @@ SAMPLE_SHAPED.forEach(([name, payload]) => {
 check('the engine agrees with the reference: one person, other income and a cleared line', () => {
   const projection = computeHouseholdCashFlowProjection(onePerson, { calculationYear: YEAR });
   compare(onePerson, reference(onePerson), projection, 'one person');
+});
+
+check('the short fixtures are short where they should be, so the checks above are not vacuous', () => {
+  const frames = reference(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE);
+  assert.equal(frames.cases[0].status, 'short', 'today is short');
+  assert.ok(frames.cases[0].shownLeft < 0, 'by an amount');
+  assert.ok(frames.cases.some((entry) => entry.status !== 'short'), 'and a case gets out of it');
+  const tipped = reference(HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE);
+  assert.equal(tipped.cases[0].status, 'left_over', 'today leaves money over');
+  assert.equal(tipped.cases[2].status, 'short', 'and 20,000 into pensions tips it under');
+  [shortAndStated, shortSeparate].forEach((payload) => {
+    assert.ok(reference(payload).cases.some((entry) => entry.status === 'short'), 'every short fixture has a short case');
+  });
+  // The design fixture is short too, in literal figures.
+  const design = reference(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, { taxFor: designFixtureOptions().taxFor });
+  assert.deepEqual(design.cases.map((entry) => entry.shownLeft), [-6_000, 0, -12_000, -6_000]);
+  assert.deepEqual(design.cases.map((entry) => entry.status), ['short', 'tight', 'short', 'short']);
+  assert.deepEqual(design.cases.map((entry) => entry.monthlySigned), [-500, 0, -1_000, -500]);
+  compare(
+    HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
+    design,
+    computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, designFixtureOptions()),
+    'design, short'
+  );
+  assert.deepEqual(
+    referenceSentences(design),
+    computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, designFixtureOptions()).debug.cases.map((entry) => entry.sentence)
+  );
 });
 
 check('with nothing stated, the people\'s tax sums to the engine\'s household total for every case', () => {

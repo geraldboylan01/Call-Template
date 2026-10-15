@@ -425,6 +425,31 @@ const cases = [
     }
   },
   {
+    name: 'Household cash flow that leaves less than nothing says Short and its size, never a negative left over',
+    module: baseModule('cash-2', 'Household cash flow', {
+      householdCashFlowInputs: {
+        ...householdCashFlowInputs,
+        outgoings: householdCashFlowInputs.outgoings.map((line) => (
+          line.id === 'living' ? { ...line, amount: 60000 } : line
+        ))
+      },
+      charts: []
+    }),
+    activeScenario: { householdCashFlowScenarioId: 'today' },
+    verify(manifest) {
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected a short household to resolve, not be refused');
+      const labels = manifest.story.metrics.map((metric) => metric.label).join(' | ');
+      assert(/Short/.test(labels) && !/Left over/.test(labels), `Expected Short and no Left over (${labels})`);
+      const short = manifest.story.metrics.find((metric) => /Short/.test(metric.label));
+      assert(short.rawValue > 0 && short.rawValue < 10000, `Expected the size of what is short, not a negative (got ${short.rawValue})`);
+      const goesOut = manifest.story.metrics.find((metric) => /Goes out/.test(metric.label));
+      assert(goesOut.rawValue === 150000 + short.rawValue, `Expected what goes out to be income plus the shortfall (got ${goesOut.rawValue})`);
+      const chart = JSON.stringify(manifest.story.charts);
+      assert(/"Short"/.test(chart) && !/"Left over"/.test(chart), 'Expected the chart to name the last bar Short');
+      assert(!/-\d/.test(chart.replace(/"[a-z-]+-\d+"/g, '')), 'Expected no negative figure in the chart');
+    }
+  },
+  {
     name: 'Protection gap shows the selected case, with its own figures, its own answer and its own bars',
     module: baseModule('gap-1', 'Protection gap', {
       summaryHtml: '<p>MODEL-SUPPLIED summary.</p>',

@@ -290,10 +290,13 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       // The figures that add up come first: what comes in, what goes out and
       // what is left, because a story shows only the first few. Anything that is
       // nothing in this case is left out.
+      // A short year says "Short" and its size, as the screen does, so the story
+      // never reads "left over" of a negative figure.
+      const isShort = selected.shownLeftOver < 0;
       const figures = [
         ['Your income before tax (€)', shown(row.income.total)],
         ['Goes out (€)', selected.shownIncome - selected.shownLeftOver],
-        ['Left over (€)', selected.shownLeftOver],
+        isShort ? ['Short (€)', -selected.shownLeftOver] : ['Left over (€)', selected.shownLeftOver],
         ['Tax (€)', shown(row.outgoings.tax)],
         ['Pensions (€)', shown(row.outgoings.pensionContributions)],
         ['Other outgoings (€)', shown(row.outgoings.statedTotal)]
@@ -303,13 +306,13 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
         title: 'Where a year of your income goes',
         subtitle: `For “${selected.title}”.`,
         type: 'bar',
-        labels: ['Your income before tax', ...drawn.map((line) => line.label), 'Left over'],
+        labels: ['Your income before tax', ...drawn.map((line) => line.label), isShort ? 'Short' : 'Left over'],
         datasets: [{
           label: 'A year',
           data: [
             selected.shownIncome,
             ...drawn.map((line) => selected.lines.find((entry) => entry.id === line.id).shownAmount),
-            selected.shownLeftOver
+            Math.abs(selected.shownLeftOver)
           ]
         }],
         display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: 'A year' }

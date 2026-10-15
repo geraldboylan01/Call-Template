@@ -893,24 +893,57 @@ function buildCaseModels(inputs, year, options) {
   return { models, baseEstimate, hasPensionColumn, outgoingsById, injected };
 }
 
+/**
+ * The status follows the amount SHOWN: above €0 is left over, exactly €0 is
+ * tight and below €0 is short. A case that is short by €40 unrounded and shows
+ * €0 is tight, which is what the picture says.
+ */
 function statusFor(shownLeftOver) {
-  return shownLeftOver > 0 ? 'left_over' : 'tight';
+  if (shownLeftOver > 0) {
+    return 'left_over';
+  }
+  return shownLeftOver === 0 ? 'tight' : 'short';
 }
 
+/**
+ * The month, to the nearest €10.
+ *
+ * `amount` is SIGNED: negative when the year is short, so a reader that adds or
+ * compares months is right without reading the status. `text` is the words the
+ * screen puts beside the word "Short", so it has no sign: "About €230 a month".
+ * The size is rounded first and given its sign afterwards, because Math.round
+ * sends -2.5 to -2 and 2.5 to 3, and a short year must round as a left over
+ * year of the same size does.
+ */
 function monthlyFor(shownLeftOver) {
   const exactMonthly = shownLeftOver / 12;
-  const amount = roundToTen(exactMonthly);
-  const exact = Math.abs(exactMonthly - amount) < 0.005;
+  const size = roundToTen(Math.abs(exactMonthly));
+  const amount = (exactMonthly < 0 ? -size : size) || 0;
+  const exact = Math.abs(Math.abs(exactMonthly) - size) < 0.005;
   return {
     amount,
     exact,
-    text: `${exact ? '' : 'About '}${euroText(amount)} a month`
+    text: `${exact ? '' : 'About '}${euroText(size)} a month`
   };
 }
 
 function effectClause(todayLeft, left) {
   if (left === todayLeft) {
-    return `you have the same ${euroText(left)} left over as today`;
+    return left < 0
+      ? `you are short by the same ${euroText(left)} as today`
+      : `you have the same ${euroText(left)} left over as today`;
+  }
+  // Short, and it was not short by this much today.
+  if (left < 0) {
+    return todayLeft < 0
+      ? `you are short by ${euroText(left)} instead of ${euroText(todayLeft)}`
+      : `you are short by ${euroText(left)}`;
+  }
+  // Short today, and not now.
+  if (todayLeft < 0) {
+    return left === 0
+      ? `you have nothing left over instead of being short by ${euroText(todayLeft)}`
+      : `you have ${euroText(left)} left over instead of being short by ${euroText(todayLeft)}`;
   }
   if (left === 0) {
     return 'you have nothing left over';
@@ -927,6 +960,10 @@ function effectClause(todayLeft, left) {
 function buildSentence({ model, today, outgoingsById }) {
   const shownLeft = model.shownLeftOver;
   if (model.isBase) {
+    if (shownLeft < 0) {
+      return `Today, ${euroText(model.shownOutgoings)} goes out against your ${euroText(model.shownIncome)}, `
+        + `and you are short by ${euroText(shownLeft)}.`;
+    }
     const left = shownLeft === 0 ? 'you have nothing left over' : `you have ${euroText(shownLeft)} left over`;
     return `Today, ${euroText(model.shownOutgoings)} of your ${euroText(model.shownIncome)} goes out and ${left}.`;
   }
@@ -1065,6 +1102,17 @@ function buildAssumptionsTable(inputs, year, models, lines, disclosureRows) {
   return { columns: ['Assumption', 'Input Used'], rows };
 }
 
+/**
+ * The tables are a ledger: income less every line is left over, and a short
+ * year is a negative left over, so the month carries its sign here. The screen
+ * says "Short" and drops the sign, because the word carries it.
+ */
+function signedMonthText(monthly) {
+  return monthly.amount < 0
+    ? `${monthly.exact ? '' : 'About '}−${euroText(monthly.amount)} a month`
+    : monthly.text;
+}
+
 function buildOutputsTable(models) {
   return {
     columns: ['Case', 'Tax (€)', 'Pensions (€)', 'Other outgoings (€)', 'Left over (€)', 'A month'],
@@ -1074,7 +1122,7 @@ function buildOutputsTable(models) {
       model.shownPensions,
       model.shownStated,
       model.shownLeftOver,
-      model.monthly.text
+      signedMonthText(model.monthly)
     ])
   };
 }
@@ -1092,17 +1140,20 @@ function buildTables(models) {
 }
 
 function buildCharts(baseModel, drawnLines) {
+  // Every bar here is an amount of a year, so a short year is the word "Short"
+  // and the size of it, as it is on the screen.
+  const short = baseModel.shownLeftOver < 0;
   return [{
     title: 'Where a year of your income goes',
     subtitle: `For “${baseModel.scenario.title}”.`,
     type: 'bar',
-    labels: ['Your income before tax', ...drawnLines.map((line) => line.label), 'Left over'],
+    labels: ['Your income before tax', ...drawnLines.map((line) => line.label), short ? 'Short' : 'Left over'],
     datasets: [{
       label: 'A year',
       data: [
         baseModel.shownIncome,
         ...drawnLines.map((line) => baseModel.shownLines.find((entry) => entry.id === line.id).shownAmount),
-        baseModel.shownLeftOver
+        Math.abs(baseModel.shownLeftOver)
       ]
     }],
     display: {
@@ -1158,13 +1209,9 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
   });
 
   const today = models.find((model) => model.isBase);
-  models.forEach((model, index) => {
-    if (model.leftOver < -0.005) {
-      throw new Error(
-        `${FIELD}.scenarios[${index}] (${model.scenario.title}): leaves ${euroText(-model.leftOver)} less than `
-        + 'nothing each year, which this screen does not draw yet.'
-      );
-    }
+  models.forEach((model) => {
+    // A case that leaves less than nothing is drawn, not refused: it is a
+    // household's ordinary year, and a plan has to be able to read it.
     model.todayShownLeftOver = today.shownLeftOver;
     model.shownLines.forEach((line) => {
       const todayLine = today.shownLines.find((entry) => entry.id === line.id);

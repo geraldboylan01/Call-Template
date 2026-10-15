@@ -11080,6 +11080,20 @@ body.overview-has-selection .toast-host {
   background: rgba(247, 244, 238, 0.32);
 }
 
+/* Once a case runs below it, the floor is the line the picture reads against. */
+.hcf-floor.has-band {
+  background: rgba(247, 244, 238, 0.55);
+}
+
+.hcf-zero {
+  position: absolute;
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .hcf-connector {
   position: absolute;
   height: 1px;
@@ -11101,6 +11115,11 @@ body.overview-has-selection .toast-host {
 
 .hcf-bar.is-left {
   background: var(--accent-green);
+}
+
+/* What is short hangs below the floor. Red always sits beside the word "Short". */
+.hcf-bar.is-short {
+  background: var(--accent-red);
 }
 
 /* Today's bar where it was: an outline, never a fill. */
@@ -11228,6 +11247,18 @@ body.overview-has-selection .toast-host {
 
 .hcf-segment.is-left {
   background: var(--accent-green);
+}
+
+.hcf-segment.is-short {
+  background: var(--accent-red);
+}
+
+/* Where income ends, across the bar, once a case runs past it. */
+.hcf-bar-income-end {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.6);
+  pointer-events: none;
 }
 
 .hcf-cleared-tick {
