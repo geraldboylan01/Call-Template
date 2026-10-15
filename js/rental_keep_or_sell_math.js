@@ -24,11 +24,21 @@
  * There is no `scenarios` array. The two cases are fixed, with the ids `keep`
  * and `sell`.
  *
+ * WHAT IS SHOWN, AND WHAT IT ADDS TO
+ *
+ * Amounts are shown to the nearest euro, and a figure that is rounded on its own
+ * can contradict the ones beside it: a start of 100.40 less three cuts of 33.40
+ * is 0.20, but its rows round to 100, 33, 33 and 33. So every row carries a
+ * `shownAmount`, and the result shown is DERIVED from the rows shown (the shown
+ * start less the shown cuts), as the household cash flow does. The exact figures
+ * stay beside them for the checks. Whatever is on screen adds down to its last
+ * line.
+ *
  * WHAT COMES OFF
  *
  * `debug.cases[].comesOff` is the sum of the three cuts, with a name for what it
- * is. It exists for the video, which shows three figures that add up. The
- * screen never prints it.
+ * is, and `shownComesOff` is the sum of the cuts as shown. It exists for the
+ * video, which shows three figures that add up. The screen never prints it.
  */
 
 const FIELD = 'generated.rentalKeepOrSellInputs';
@@ -179,11 +189,32 @@ function solveCase(inputs, spec) {
     hi: Math.max(0, result)
   });
 
-  const shown = Math.round(result);
+  // THE SHOWN ROWS, AND A RESULT DERIVED FROM THEM.
+  const shownStart = Math.round(start);
+  rows[0].shownAmount = shownStart;
+  rows[0].shownLo = 0;
+  rows[0].shownHi = shownStart;
+  let shownRun = shownStart;
+  let shownComesOff = 0;
+  rows.slice(1, 4).forEach((row) => {
+    const amount = Math.round(row.amount);
+    row.shownAmount = amount;
+    row.shownHi = shownRun;
+    row.shownLo = shownRun - amount;
+    shownRun -= amount;
+    shownComesOff += amount;
+  });
+  // `+ 0` so that nothing is ever shown as minus zero.
+  const shownResult = (shownStart - shownComesOff) + 0;
+  const resultRow = rows[4];
+  resultRow.shownAmount = shownResult;
+  resultRow.shownLo = Math.min(0, shownResult);
+  resultRow.shownHi = Math.max(0, shownResult);
+
   let resultTone = 'level';
-  if (shown > 0) {
+  if (shownResult > 0) {
     resultTone = 'left_over';
-  } else if (shown < 0) {
+  } else if (shownResult < 0) {
     resultTone = 'short';
   }
 
@@ -195,8 +226,10 @@ function solveCase(inputs, spec) {
     resultName: spec.resultName,
     rows,
     result,
+    shownResult,
     resultTone,
     comesOff,
+    shownComesOff,
     comesOffName: spec.comesOffName
   };
 }
@@ -222,7 +255,7 @@ function buildAssumptionsTable(inputs) {
 }
 
 function buildOutputsTable(cases) {
-  const byKey = (entry, key) => entry.rows.find((row) => row.key === key).amount;
+  const byKey = (entry, key) => entry.rows.find((row) => row.key === key).shownAmount;
   return {
     columns: [
       'Case',
@@ -234,25 +267,25 @@ function buildOutputsTable(cases) {
     ],
     rows: cases.map((entry) => [
       entry.title,
-      Math.round(byKey(entry, 'start')),
-      Math.round(byKey(entry, 'cut1')),
-      Math.round(byKey(entry, 'cut2')),
-      Math.round(byKey(entry, 'cut3')),
-      Math.round(byKey(entry, 'result'))
+      byKey(entry, 'start'),
+      byKey(entry, 'cut1'),
+      byKey(entry, 'cut2'),
+      byKey(entry, 'cut3'),
+      byKey(entry, 'result')
     ])
   };
 }
 
 /** Cuts are shown negative, so every table adds down to its last line. */
 function signedAmount(row) {
-  return row.key === 'start' || row.key === 'result' ? row.amount : -row.amount;
+  return row.key === 'start' || row.key === 'result' ? row.shownAmount : -row.shownAmount;
 }
 
 function buildTables(cases) {
   return cases.map((entry) => ({
     title: `${entry.title}: from the ${entry.startName.toLowerCase()} to what is left`,
     columns: ['Line', 'Amount (€)'],
-    rows: entry.rows.map((row) => [row.name, Math.round(signedAmount(row))])
+    rows: entry.rows.map((row) => [row.name, signedAmount(row)])
   }));
 }
 
@@ -266,7 +299,7 @@ function buildCharts(baseCase) {
     labels: baseCase.rows.map((row) => row.name),
     datasets: [{
       label: 'Amount',
-      data: baseCase.rows.map((row) => Math.round(signedAmount(row)))
+      data: baseCase.rows.map((row) => signedAmount(row))
     }],
     display: {
       variant: 'wide',

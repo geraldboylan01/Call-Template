@@ -509,6 +509,29 @@ const cases = [
     }
   },
   {
+    name: 'Rental keep or sell with cents: the three figures shown still add up',
+    module: baseModule('rental-3', 'Rental keep or sell', {
+      rentalKeepOrSellInputs: {
+        ...rentalKeepOrSellInputs,
+        rentPerYear: 100.4,
+        loanRepaymentsPerYear: 33.4,
+        runningCostsPerYear: 33.4,
+        taxOnRentalProfitPerYear: 33.4
+      },
+      charts: []
+    }),
+    activeScenario: { rentalKeepOrSellScenarioId: 'keep' },
+    verify(manifest) {
+      const rent = manifest.story.metrics.find((metric) => /^Rent/.test(metric.label));
+      const comesOff = manifest.story.metrics.find((metric) => /Loan repayments, running costs and tax/.test(metric.label));
+      const net = manifest.story.metrics.find((metric) => /^Net each year/.test(metric.label));
+      assert(rent.rawValue === 100, `Expected a rent of 100 (got ${rent.rawValue})`);
+      assert(comesOff.rawValue === 99, `Expected 99 to come off, as shown (got ${comesOff.rawValue})`);
+      assert(net.rawValue === 1, `Expected a net of 1, derived from the rows shown (got ${net.rawValue})`);
+      assert(rent.rawValue - comesOff.rawValue === net.rawValue, 'The three figures must add up');
+    }
+  },
+  {
     name: 'Education and report preserve structured story data',
     module: baseModule('education-1', 'Help to Buy', {
       summaryHtml: '<p>Understand eligibility before starting an application.</p>',
