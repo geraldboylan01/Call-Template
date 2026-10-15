@@ -7,6 +7,12 @@ import {
 import { drainSessionImportWarnings, normalizeGenerated } from './state.js';
 import { buildPresentationCatalogue } from './presenter_catalogue.js';
 import { PROTECTION_GAP_SAMPLE } from './tests_protection_gap_math.js';
+import {
+  PROTECTION_GAP_BANNED_PHRASES,
+  PROTECTION_GAP_PROVIDER_NAMES,
+  computeProtectionGapProjection,
+  protectionGapSummaryHtml
+} from './protection_gap_math.js';
 
 /**
  * THE MODULE, WIRED INTO THE APP, WITHOUT THE APP.
@@ -176,49 +182,33 @@ export function runProtectionGapWiringTests() {
     assert(module.generated.protectionGapInputs, 'the protection gap is set again');
   }));
 
-  cases.push(runCase('A summary is held to the same wording limit: refused on paste, cleared on import and on load', () => {
-    let refused = '';
-    try {
-      normalizePayload({ generated: { summaryHtml: '<p>The best income protection policy for you.</p>', protectionGapInputs: SAMPLE } });
-    } catch (error) {
-      refused = error.message;
-    }
-    assert(/^generated\.summaryHtml: a protection gap summary shows the gap and the time/.test(refused), `refused on paste: ${refused}`);
-    const fine = paste(createBlankModule(), { summaryHtml: '<p>How big the gap would be, and how long your savings fill it.</p>', protectionGapInputs: SAMPLE });
-    assertEqual(fine.generated.summaryHtml, '<p>How big the gap would be, and how long your savings fill it.</p>', 'a plain summary is kept');
+  cases.push(runCase('The summary is the engine\'s: one from a payload, a session or a patch on its own is replaced', () => {
+    const expected = protectionGapSummaryHtml(computeProtectionGapProjection(SAMPLE));
+    const shown = expected.replace(/<[^>]*>/g, ' ');
+    [...PROTECTION_GAP_BANNED_PHRASES, ...PROTECTION_GAP_PROVIDER_NAMES].forEach((pattern) => {
+      assert(!pattern.test(shown), `the engine's summary never matches ${pattern}`);
+    });
 
-    drainSessionImportWarnings();
+    const pasted = paste(createBlankModule(), { summaryHtml: '<p>The best income protection policy for you.</p>', protectionGapInputs: SAMPLE });
+    assertEqual(pasted.generated.summaryHtml, expected, 'replaced on paste');
+    assertEqual(paste(createBlankModule(), { protectionGapInputs: SAMPLE }).generated.summaryHtml, expected, 'written on paste when none is sent');
+
     const imported = normalizeGenerated({ summaryHtml: '<p>Your premium would be low.</p>', protectionGapInputs: SAMPLE });
-    assertEqual(imported.summaryHtml, '', 'cleared on import');
-    assert(drainSessionImportWarnings().some((text) => /summary used wording this screen never shows/.test(text)), 'and says why');
+    assertEqual(imported.summaryHtml, expected, 'replaced on import');
 
-    // A summary sent on its own to the module, after it exists.
+    // A summary sent on its own to the module, after it exists, including one
+    // whose words are split by markup or hidden behind character references.
     const existing = paste(createBlankModule(), { protectionGapInputs: SAMPLE });
-    let alone = '';
-    try {
-      applyNormalizedPayloadToModule(existing, normalizePayload({ generated: { summaryHtml: '<p>The best policy and premium.</p>' } }));
-    } catch (error) {
-      alone = error.message;
-    }
-    assert(/^generated\.summaryHtml: a protection gap summary/.test(alone), `a summary on its own is refused: ${alone}`);
-    assertEqual(existing.generated.summaryHtml, '', 'and the module is unchanged');
-
-    // Words hidden behind character references, or split by invisible characters.
-    ['<p>Buy c&#111;ver now.</p>', '<p>Ask Z&#x75;rich.</p>', '<p>A pre&shy;mium.</p>', '<p>Your c\u200Bover.</p>'].forEach((html) => {
-      let hidden = '';
-      try {
-        normalizePayload({ generated: { summaryHtml: html, protectionGapInputs: SAMPLE } });
-      } catch (error) {
-        hidden = error.message;
-      }
-      assert(/^generated\.summaryHtml: a protection gap summary/.test(hidden), `refused: ${html}`);
+    ['<p>Buy c<span></span>over now.</p>', '<p>p&period;a&period;</p>', '<p>Ask Z&#x75;rich.</p>'].forEach((html) => {
+      applyNormalizedPayloadToModule(existing, normalizePayload({ generated: { summaryHtml: html } }));
+      assertEqual(existing.generated.summaryHtml, expected, `replaced when sent on its own: ${html}`);
     });
 
     const loaded = createBlankModule();
     loaded.generated.protectionGapInputs = JSON.parse(JSON.stringify(SAMPLE));
     loaded.generated.summaryHtml = '<p>Ask your insurer for a quote.</p>';
     ensureGenerated(loaded);
-    assertEqual(loaded.generated.summaryHtml, '', 'cleared on load');
+    assertEqual(loaded.generated.summaryHtml, expected, 'replaced on load');
   }));
 
   cases.push(runCase('Loading a module refreshes its derived tables', () => {

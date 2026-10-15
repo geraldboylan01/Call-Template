@@ -110,37 +110,6 @@ function wordingProblem(text) {
   return [...PROTECTION_GAP_BANNED_PHRASES, ...PROTECTION_GAP_PROVIDER_NAMES].find((candidate) => candidate.test(text)) || null;
 }
 
-/**
- * Whether a written summary may sit beside this screen. The summary is shown on
- * the focused view, the overview card and the presenter, so it is held to the
- * same wording limit as the screen itself, checked as plain text.
- */
-export function protectionGapSummaryAllowed(summaryHtml) {
-  const text = decodeCharacterReferences(String(summaryHtml || '').replace(/<[^>]*>/g, ' '))
-    // Characters a reader never sees, which would otherwise split a word.
-    .replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return !text || !wordingProblem(text);
-}
-
-const NAMED_CHARACTER_REFERENCES = Object.freeze({
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', shy: '\u00AD',
-  rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201D', ldquo: '\u201C', ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', euro: '\u20AC'
-});
-
-/** The text a browser shows for HTML character references, so a check reads what the client reads. */
-function decodeCharacterReferences(text) {
-  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);?/gi, (whole, ref) => {
-    if (ref[0] === '#') {
-      const code = ref[1] === 'x' || ref[1] === 'X' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
-      return Number.isFinite(code) && code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : whole;
-    }
-    const named = NAMED_CHARACTER_REFERENCES[ref.toLowerCase()];
-    return named === undefined ? whole : named;
-  });
-}
-
 /** Refuse client-facing text this screen may not show. */
 function refuseForbiddenWording(text, path) {
   const pattern = wordingProblem(text);
@@ -231,6 +200,10 @@ function normalizePeople(raw) {
     const label = typeof person.label === 'string' ? person.label.trim() : '';
     if (label.length < 1 || label.length > MAX_PERSON_LABEL_LENGTH) {
       throw new Error(`${FIELD}.${path}.label must be 1 to ${MAX_PERSON_LABEL_LENGTH} characters.`);
+    }
+    // A name is shown in the sentence and the summary, so it is held to the same limit.
+    if (wordingProblem(label)) {
+      throw new Error(`${FIELD}.${path}.label ("${label}"): a name is shown on this screen, so it is held to the same wording limit (no provider, product, "he" or "she"). If it is the person's own name, use another form of it.`);
     }
     if (!isWholeEuros(person.takeHome)) {
       throw new Error(`${FIELD}.${path}.takeHome must be a whole number of euros.`);
@@ -688,4 +661,33 @@ export function computeProtectionGapProjection(rawInputs) {
       }
     }
   };
+}
+
+
+const SUMMARY_INTRO = 'This shows how big the gap would be each year if an income stopped, '
+  + 'and how many months your savings would fill it. Take-home pay and State payments are as given.';
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * The summary shown beside this screen, on the overview card and in the
+ * presenter. It is written here from the engine's own answers and never by a
+ * model, so it cannot say anything the screen may not: a fixed opening line,
+ * then each case's answer in case order.
+ *
+ * @param {object} projection the result of `computeProtectionGapProjection`
+ */
+export function protectionGapSummaryHtml(projection) {
+  const cases = Array.isArray(projection?.debug?.cases) ? projection.debug.cases : [];
+  const items = cases
+    .map((entry) => `<li>${escapeHtml(`${entry.title}: ${entry.headline.line1} ${entry.headline.line2}`)}</li>`)
+    .join('');
+  return `<p>${SUMMARY_INTRO}</p>${items ? `<ul>${items}</ul>` : ''}`;
 }

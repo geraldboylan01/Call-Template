@@ -17,7 +17,7 @@ import {
 import {
   normalizeProtectionGapInputs,
   computeProtectionGapProjection,
-  protectionGapSummaryAllowed
+  protectionGapSummaryHtml
 } from './protection_gap_math.js';
 import {
   normalizeRentalKeepOrSellInputs,
@@ -2082,18 +2082,17 @@ export function normalizeGenerated(generated) {
     normalized.education = null;
     normalized.report = null;
     normalized.outputsBucketed = null;
-    if (!protectionGapSummaryAllowed(normalized.summaryHtml)) {
-      recordSessionImportWarning('The protection gap summary used wording this screen never shows, so it was left out.');
-      normalized.summaryHtml = '';
-    }
     try {
       const projection = computeProtectionGapProjection(normalized.protectionGapInputs);
+      // The summary is the engine's, as on paste: a saved one is never shown.
+      normalized.summaryHtml = protectionGapSummaryHtml(projection);
       normalized.assumptions = projection.assumptionsTable;
       normalized.outputs = projection.outputsTable;
       normalized.tables = projection.tables;
       normalized.charts = projection.charts;
     } catch (_error) {
       // Never preserve model-supplied calculations for a runtime-owned module.
+      normalized.summaryHtml = '';
       normalized.assumptions = { columns: [], rows: [] };
       normalized.outputs = { columns: [], rows: [] };
       normalized.tables = [];

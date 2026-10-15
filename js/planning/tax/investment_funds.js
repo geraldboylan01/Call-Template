@@ -16,11 +16,13 @@ function requireIsoDate(value, field) {
 }
 
 /**
- * Whether a rule was known on a date. An announced rule is not, before the day
- * it was announced: a date before Budget day gets the law as it then stood.
+ * Whether a rule was known on a date. A rule is not known before the day it was
+ * announced, so a date before Budget day gets the law as it then stood. This
+ * holds after the rule becomes law too: `announcedOn` stays on the entry when
+ * its status moves to enacted, and a date before it still gets the old law.
  */
 function knownOn(entry, dateIso) {
-  return entry.status !== 'announced' || !entry.announcedOn || entry.announcedOn <= dateIso;
+  return !entry.announcedOn || entry.announcedOn <= dateIso;
 }
 
 function requireInvestmentRules(rules) {

@@ -1160,6 +1160,11 @@ export function runIeTaxTests() {
     const open = renderTaxDisclosures(afterTaxInvestmentDisclosures({ asOf: '2027-08-01', rules: after }), { rules: after }).map((entry) => entry.text);
     assert(open[0].includes('taxed at 35% when you sell'), `rate: ${open[0]}`);
     assert(open[1] === 'The Investment Account takes up to €12,000 a year with no exit tax and no eight-year charge, and 1% a year on its value above €50,000.', `once open: ${open[1]}`);
+    // Once law, the announcement date still holds: a date before Budget day
+    // gets the law as it then stood, with no account and no 35%.
+    const earlier = afterTaxInvestmentDisclosures({ asOf: '2026-01-01', rules: before });
+    assert(JSON.stringify(earlier.map((entry) => entry.code)) === JSON.stringify(['INVESTMENT_FUND_TAX']), `before Budget day, once enacted: ${earlier.map((entry) => entry.code)}`);
+    assert(earlier[0].params.rate === 0.38, `38% before Budget day, once enacted: ${earlier[0].params.rate}`);
   }));
 
   cases.push(runCase('An exit tax schedule the law could not produce is refused', () => {

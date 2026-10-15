@@ -3,7 +3,8 @@ import {
   computeProtectionGapProjection,
   getDefaultProtectionGapScenarioId,
   getProtectionGapCases,
-  normalizeProtectionGapInputs
+  normalizeProtectionGapInputs,
+  protectionGapSummaryHtml
 } from './protection_gap_math.js';
 
 /**
@@ -528,12 +529,37 @@ export function runProtectionGapTests() {
       'generated.protectionGapInputs.householdLabel ("The household, insured with Zurich"): this screen shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".',
       'the household line is checked too'
     );
+    assertThrows(
+      () => computeProtectionGapProjection({
+        ...PROTECTION_GAP_SAMPLE,
+        people: [PROTECTION_GAP_SAMPLE.people[0], { id: 'dara', label: 'Zurich', takeHome: 45_000 }]
+      }),
+      'generated.protectionGapInputs.people[1].label ("Zurich"): a name is shown on this screen, so it is held to the same wording limit (no provider, product, "he" or "she"). If it is the person\'s own name, use another form of it.',
+      'a person\'s name is checked too, since it is shown in the sentence and the case title'
+    );
     const titled = computeProtectionGapProjection({
       ...PROTECTION_GAP_SAMPLE,
       scenarios: [{ id: 'a', title: 'Your own title', description: 'One line.' }]
     }).debug.cases[0];
     assertEqual(titled.title, 'Your own title', 'a stated title wins');
     assertEqual(titled.description, 'One line.', 'description kept');
+  }));
+
+  cases.push(runCase('The summary is written from the engine\'s own answers, escaped', () => {
+    assertEqual(
+      protectionGapSummaryHtml(sample()),
+      '<p>This shows how big the gap would be each year if an income stopped, and how many months your savings would fill it. Take-home pay and State payments are as given.</p>'
+        + '<ul><li>Today: You have €6,000 a year left over. There is nothing for your savings to fill.</li>'
+        + '<li>Niamh cannot work: You are €38,000 a year short. Your savings would last 19 months.</li>'
+        + '<li>Dara cannot work: You are €26,000 a year short. Your savings would last 28 months.</li>'
+        + '<li>If Niamh died: You are €1,500 a year short. Your savings would last beyond three years.</li></ul>',
+      'a fixed opening line, then each case\'s answer in case order'
+    );
+    const marked = protectionGapSummaryHtml(computeProtectionGapProjection({
+      ...PROTECTION_GAP_SAMPLE,
+      scenarios: [{ id: 'a', title: 'A <b>bold</b> & "marked" title' }]
+    }));
+    assert(marked.includes('<li>A &lt;b&gt;bold&lt;/b&gt; &amp; &quot;marked&quot; title: '), `a title is text, never markup: ${marked}`);
   }));
 
   cases.push(runCase('Tables and chart: shape, and the figures are the case figures', () => {

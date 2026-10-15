@@ -37,7 +37,7 @@ import {
 import {
   computeProtectionGapProjection,
   normalizeProtectionGapInputs,
-  protectionGapSummaryAllowed
+  protectionGapSummaryHtml
 } from './protection_gap_math.js';
 import {
   computeRentalKeepOrSellProjection,
@@ -486,11 +486,10 @@ function applyHouseholdCashFlowProjectionToModule(module) {
 function applyProtectionGapProjectionToModule(module) {
   const projection = computeProtectionGapProjection(module.generated.protectionGapInputs);
 
-  // A summary kept from before, or from a saved session, is held to the screen's
-  // wording limit too: one that breaks it is cleared rather than shown.
-  if (!protectionGapSummaryAllowed(module.generated.summaryHtml)) {
-    module.generated.summaryHtml = '';
-  }
+  // The summary is the engine's, written from its own answers, so it is held
+  // to the screen's wording limit by construction. Any summary a payload, a
+  // saved session or an edit supplied is replaced.
+  module.generated.summaryHtml = protectionGapSummaryHtml(projection);
 
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
@@ -1994,7 +1993,6 @@ function validateHouseholdCashFlowInputsPayload(householdCashFlowInputs) {
   return normalized;
 }
 
-const PROTECTION_GAP_SUMMARY_REFUSAL = 'generated.summaryHtml: a protection gap summary shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".';
 
 function validateProtectionGapInputsPayload(protectionGapInputs) {
   const normalized = normalizeProtectionGapInputs(protectionGapInputs);
@@ -2135,9 +2133,6 @@ export function normalizePayload(payload) {
 
     if ('protectionGapInputs' in payload.generated) {
       generatedPatch.protectionGapInputs = validateProtectionGapInputsPayload(payload.generated.protectionGapInputs);
-      if (!protectionGapSummaryAllowed(payload.generated.summaryHtml)) {
-        throw new Error(PROTECTION_GAP_SUMMARY_REFUSAL);
-      }
     }
 
     if ('rentalKeepOrSellInputs' in payload.generated) {
@@ -2533,17 +2528,6 @@ export function cloneSessionValue(value) {
 }
 
 export function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState = true } = {}) {
-  // A summary sent on its own to a protection gap module that already exists is
-  // held to the same wording limit, before anything changes. The preflight runs
-  // on a blank module, so it cannot see that the module is a protection gap.
-  const patch = normalizedPayload.generated;
-  if (patch && 'summaryHtml' in patch) {
-    const protectionGapInputs = 'protectionGapInputs' in patch ? patch.protectionGapInputs : module.generated?.protectionGapInputs;
-    if (protectionGapInputs && !protectionGapSummaryAllowed(patch.summaryHtml)) {
-      throw new Error(PROTECTION_GAP_SUMMARY_REFUSAL);
-    }
-  }
-
   if ('title' in normalizedPayload) {
     module.title = normalizedPayload.title;
   }
@@ -2591,7 +2575,8 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
       applyFutureCostFundProjectionToModule(module);
     } else if (hasHouseholdCashFlowInputsPatch && module.generated.householdCashFlowInputs) {
       applyHouseholdCashFlowProjectionToModule(module);
-    } else if (hasProtectionGapInputsPatch && module.generated.protectionGapInputs) {
+    } else if ((hasProtectionGapInputsPatch || 'summaryHtml' in normalizedPayload.generated) && module.generated.protectionGapInputs) {
+      // A summary sent on its own is replaced by the engine's too.
       applyProtectionGapProjectionToModule(module);
     } else if (hasRentalKeepOrSellInputsPatch && module.generated.rentalKeepOrSellInputs) {
       applyRentalKeepOrSellProjectionToModule(module);
