@@ -4,6 +4,34 @@ App change brief for Claude Code. Paste this whole file as the prompt. Suggested
 
 Status: designs chosen (A1 "cut down" and B1 "two blocks") and decisions made, not started. Written 13 October 2026, decisions recorded the same day. The build waits for the future cost fund screen to land on `main`, because it sets the wiring pattern (see Before you write code).
 
+## Build status
+
+**The rental keep or sell is built and wired.** It follows the "Wiring a new engine module" list in `docs/future-cost-fund-app-change.md`, rows 4 to 21, and it was opened as its own pull request, ahead of the home. The home trade down is not on this branch: its engine, view, module and styles are on `module/property-decisions` and wait for this to merge, after which they are wired the same way.
+
+| | Rental |
+|---|---|
+| Engine | `js/rental_keep_or_sell_math.js` |
+| View (words, geometry, label checks, no DOM) | `js/rental_keep_or_sell_view.js` |
+| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/rental_keep_or_sell_module.js` |
+| Suites | engine 13, view 12, module 14, wiring 9, plus the reference calculator |
+| Check | `npm run check:rental-keep-or-sell` (also in `consumer-regression.yml` and `deploy-worker.yml`) |
+| Preview | `dev/rental-keep-or-sell-preview.html` |
+| Styles | `.rks-` in `styles/base.css` |
+| Shared files touched | `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, `scripts/check-video-scene.mjs`, `scripts/check-codex-video-brief.mjs`, `package.json` |
+
+Row 1 to 3 of the list (a central rate, a statutory rate, the catalogue identity fixture) do not apply: the rental reads no central assumption and calculates no tax.
+
+Decided for the video: three figures that add up. The headline, what comes off it, and what is left, where "what comes off" is derived for the video only and named: "Loan repayments, running costs and tax" for Keep and "Selling costs, the loan and tax" for Sell. The engine returns it as `comesOff` and `comesOffName` in `debug`, and no table or chart carries it. The video says the sentence the module wrote.
+
+Differences from this brief as first written:
+
+- **The scale tightens when a label would not fit** to the right of its bar. At the reference size nothing binds, so Sell still puts zero at 8% and the headline at 78%, and Keep puts zero at 12.4%. At narrower widths the bars are shorter and nothing is clipped, so the headline line moves between cases there.
+- **The outputs table has no derived total.** One row per case, with the same five columns for both ("Rent or sale price", "Loan", "Running or selling costs", "Tax", "Net each year or in hand").
+- **A payload with a `scenarios` array is refused** as "not an input of this module", on paste and on import.
+- **The module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes. Wide from 1200, stacked and capped at 720 under that. It was looked at in the real DOM at 1366 (wide), 1024 and 844 (stacked): no label past its chart, no sideways scroll.
+- **Styles:** the selected button's name is at 800, the zero and headline lines stop behind names and labels, and the two buttons sit side by side on a phone.
+- **The Dev Panel example** is "Rental Property: Keep or Sell", with the sample figures.
+
 ## Context
 
 Two modules, built one after the other in this change. Each is complete without the other.
