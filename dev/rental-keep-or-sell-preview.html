@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rental keep or sell module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. Resize the window to
+         see it change arrangement at 1200px. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #070c10;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 72px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1920px; margin: 0 auto; }
+      #params { color: #a9b5bd; font: 13px/1.5 system-ui; margin: 0 0 18px; }
+      #params a { color: #6aa7c8; }
+    </style>
+  </head>
+  <body>
+    <p id="params"></p>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildRentalKeepOrSellModule } from '../js/rental_keep_or_sell_module.js';
+      import { RENTAL_KEEP_OR_SELL_SAMPLE } from '../js/tests_rental_keep_or_sell_math.js';
+
+      const params = new URLSearchParams(location.search);
+      const preset = params.get('preset') || 'sample';
+      const caseId = params.get('case') || null;
+
+      const sample = { ...RENTAL_KEEP_OR_SELL_SAMPLE };
+
+      const presets = {
+        // The figures the design was drawn from: Keep is minus 1,200 a year,
+        // Sell leaves 113,000 in hand.
+        sample,
+        // The rent covers everything, with money left over each year.
+        leftover: { ...sample, rentPerYear: 25000 },
+        // The rent exactly covers everything.
+        level: { ...sample, rentPerYear: 19200 },
+        // A shortfall of 10,000 a year on 18,000 of rent: zero moves right to make room.
+        shortfall: { ...sample, loanRepaymentsPerYear: 21800 },
+        // A sale that does not clear the loan.
+        underwater: { ...sample, loanBalance: 400000 },
+        // A sale that leaves nothing in hand.
+        nothing: { ...sample, loanBalance: 293000 },
+        // A cut of nothing keeps its row.
+        zerocuts: { ...sample, runningCostsPerYear: 0, sellingCosts: 0 },
+        // Large figures: the labels are the widest they get.
+        large: {
+          ...sample,
+          salePrice: 2500000,
+          loanBalance: 1200000,
+          taxOnGain: 310000,
+          sellingCosts: 48000
+        },
+        // The payload names Sell as the case to open on.
+        sellfirst: { ...sample, baseScenarioId: 'sell' }
+      };
+
+      const chosen = presets[preset] || presets.sample;
+      const names = Object.keys(presets);
+      document.getElementById('params').innerHTML = 'preset: '
+        + names.map((name) => (name === preset
+          ? `<strong>${name}</strong>`
+          : `<a href="?preset=${name}">${name}</a>`)).join(' · ')
+        + ' &nbsp;|&nbsp; <code>?case=keep</code> or <code>?case=sell</code> opens on a case';
+
+      const module = buildRentalKeepOrSellModule({
+        rawInputs: chosen,
+        selectedCaseId: caseId
+      });
+      if (!module) {
+        document.getElementById('mount').textContent = 'The payload could not be projected.';
+      } else {
+        document.getElementById('mount').append(module);
+      }
+    </script>
+  </body>
+</html>
