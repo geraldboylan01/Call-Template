@@ -3,6 +3,8 @@ import { computeCollegeFundingProjection } from './college_funding_math.js';
 import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
 import { computeHouseholdCashFlowProjection } from './household_cash_flow_math.js';
 import { computeProtectionGapProjection } from './protection_gap_math.js';
+import { computeRentalKeepOrSellProjection } from './rental_keep_or_sell_math.js';
+import { buildRentalCopy } from './rental_keep_or_sell_view.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
@@ -101,6 +103,9 @@ export function getVideoModuleKind(module) {
   }
   if (generated.protectionGapInputs) {
     return { id: 'protection-gap', label: 'Protection gap' };
+  }
+  if (generated.rentalKeepOrSellInputs) {
+    return { id: 'rental-keep-or-sell', label: 'Rental keep or sell' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -365,6 +370,55 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.charts = [chart];
       resolved.generated.summaryHtml = `<p>${escapeHtml(selected.headline.line1)} ${escapeHtml(selected.headline.line2)}</p>`
         + `<p>${escapeHtml(selected.sentence)}</p>`;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'rental-keep-or-sell') {
+      // The video shows the case that is selected on screen: its own figures,
+      // its own bars and its own sentence, not the first case's.
+      const requestedId = asTrimmedText(activeScenario.rentalKeepOrSellScenarioId);
+      const base = computeRentalKeepOrSellProjection(generated.rentalKeepOrSellInputs);
+      const known = base.debug.cases.find((entry) => entry.id === requestedId);
+      const selected = known
+        || base.debug.cases.find((entry) => entry.id === base.debug.baseScenarioId)
+        || base.debug.cases[0];
+      const projection = selected.id === base.debug.baseScenarioId
+        ? base
+        : computeRentalKeepOrSellProjection({ ...generated.rentalKeepOrSellInputs, baseScenarioId: selected.id });
+      const entry = projection.debug.cases.find((candidate) => candidate.id === selected.id);
+      const [start, ...rest] = entry.rows;
+      const cuts = rest.filter((row) => row.key !== 'result');
+      const yearly = entry.id === 'keep' ? ' a year' : '';
+      const shown = (amount) => Math.round(amount);
+      // THREE FIGURES THAT ADD UP COME FIRST, because a story shows only the
+      // first few: the headline, what comes off it, and what is left. What comes
+      // off is a sum made for the video and named for what it is, so the three
+      // still add up. The screen never prints it. The lines it is made of
+      // follow, and any that is nothing in this case is left out.
+      const figures = [
+        [`${start.name}${yearly} (€)`, shown(start.amount)],
+        [`${entry.comesOffName}${yearly} (€)`, shown(entry.comesOff)],
+        [`${entry.resultName} (€)`, shown(entry.result)],
+        ...cuts
+          .map((row) => [`${row.name}${yearly} (€)`, shown(row.amount)])
+          .filter(([, value]) => value !== 0)
+      ];
+      const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = projection.charts;
+      // The module wrote these words, so the video says what the screen says.
+      resolved.generated.summaryHtml = `<p>${escapeHtml(buildRentalCopy(projection, selected.id).headline)}</p>`;
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
