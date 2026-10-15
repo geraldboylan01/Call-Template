@@ -14,8 +14,9 @@ This style should work:
 
 ## Output Contract
 - SECTION 1 - NOTES (FOR GERRY ONLY)
-  - Keep it to the key assumptions, and show the working for any tax figure you estimated.
+  - Keep it to the key assumptions.
   - One line each for Keep and Sell with the result: what is left each year, and what would be in hand.
+  - When a tax figure is missing, NOTES is the whole reply until Gerry confirms it: see Tax Is Stated, Not Calculated.
 - SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Return a single strict JSON object.
   - Use straight double quotes only. Do not use smart quotes.
@@ -62,12 +63,13 @@ Any other key is refused with `generated.rentalKeepOrSellInputs.<key> is not an 
 Keep and Sell. There is no `scenarios` array, and one is refused. To compare anything else, such as a different sale price or a rent rise, build a second module and say so in NOTES.
 
 ## Tax Is Stated, Not Calculated
-The app calculates no tax for this module, and its footnote says so.
+The app calculates no tax for this module, and its footnote tells the client that the figures are as stated. So both tax figures must come from Gerry. Never put a figure you worked out yourself into the payload as if he had given it.
 - If Gerry gives the tax figures, use them as given.
-- If he does not, estimate each one with the Irish tax overlay, round to the euro, and show the working in NOTES:
+- If one is missing, do not return the JSON yet. Work out a suggestion with the Irish tax overlay and show the working in NOTES:
   - **Tax on the rental profit:** the rent less the allowable costs, including the interest part of the loan repayments but not the capital, taxed at the client's marginal rate with USC and PRSI.
   - **Tax on the gain:** the sale price less the purchase price and the costs of buying and selling, less the annual exemption, at the capital gains tax rate.
-- If something the estimate needs is missing, such as the purchase price or the interest part of the repayments, use a clearly labelled placeholder and mark it in NOTES for Gerry to confirm.
+  - Name anything the suggestion had to assume, such as the purchase price or the interest part of the repayments.
+- Then ask one bold question asking Gerry to confirm the figures or give his own. Return SECTION 2 once he answers, using the figures he confirms.
 - Never put a tax figure at 0 unless Gerry says there is none.
 
 ## Not Modelled

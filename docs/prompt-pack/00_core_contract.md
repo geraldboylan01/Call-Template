@@ -157,6 +157,7 @@ If the uploaded file `irish_tax_ai_cheat_sheet_v1.1.md` is available and Gerry's
 ## Ambiguity Policy
 - One bold follow-up question max, and only when the missing fact changes the structure of the output materially.
 - Otherwise, choose the best reasonable assumption and keep moving.
+- The exception is a figure the screen tells the client was given. Where a playbook says so (Protection Gap, Rental Keep or Sell), suggest the figure in NOTES and ask Gerry to confirm it before returning SECTION 2. Never present your own estimate as his.
 - Do not ask for permission to proceed.
 
 ## Playbook Selection

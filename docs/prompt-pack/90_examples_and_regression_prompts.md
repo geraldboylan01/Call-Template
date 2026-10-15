@@ -425,14 +425,23 @@ Checks:
 
 ### GAP-2
 Prompt:
-`Use the protection gap playbook. Sinéad is on her own, takes home 48000, needs 44000 a year and has 10000 saved. What if she couldn't work? And how much income protection should she take out?`
+`Use the protection gap playbook. Sinéad is on her own, takes home 48000, needs 44000 a year and has 10000 saved. What if she couldn't work, on about 13000 a year from the State? And how much income protection should she take out?`
 
 Checks:
-- one person, and two cases: today, and Sinéad unable to work
+- one person, and two cases: today, and Sinéad unable to work with `statePayment` 13000
 - no death case, since a death needs two people
-- a State payment is supplied, named in NOTES with its weekly rate and marked for Gerry to confirm
 - no cover amount, premium or product anywhere in the payload, and NOTES says this screen never shows one and that the Protection playbook is the place for it
 - no `he`, `she` or `her` in any title or description
+
+### GAP-3
+Prompt:
+`Use the protection gap playbook. Ciara and Tom. Ciara takes home 51000 and Tom earns 70000 gross. They need 82000 a year and have 30000 saved. What if Tom couldn't work?`
+
+Checks:
+- no JSON yet: Tom's take-home and the State payment are both missing
+- NOTES suggests Tom's take-home with its working, and names the State payment that would fit with its weekly rate and the PRSI caveat
+- one bold question asks Gerry to confirm the figures or give his own
+- once Gerry confirms, the payload uses exactly the figures he confirmed
 
 ## Rental Keep or Sell Regression Prompts
 
@@ -451,10 +460,11 @@ Prompt:
 `Use the rental keep or sell playbook. Rent 1200 a month, repayments 900 a month, costs about 3000 a year, and he's a higher-rate taxpayer. It could sell for 280000; he bought it for 190000 in 2015 and owes 150000. Should he sell?`
 
 Checks:
-- both tax figures are estimated, with the working in NOTES, and any missing input (the interest part of the repayments, the costs of buying and selling) is a labelled placeholder for Gerry to confirm
-- neither tax figure is 0
-- the summary speaks to the client as `you`, never says which case is better, and never says `you should`, `best` or `we recommend`
-- NOTES answers the question by saying the module shows both cases side by side, not a recommendation
+- no JSON yet: both tax figures are missing
+- NOTES suggests both tax figures with the working, names what it had to assume (the interest part of the repayments, the costs of buying and selling), and neither suggestion is 0
+- one bold question asks Gerry to confirm the figures or give his own
+- once Gerry confirms, the payload uses exactly the figures he confirmed, and the summary speaks to the client as `you`, never says which case is better, and never says `you should`, `best` or `we recommend`
+- NOTES answers "should he sell" by saying the module shows both cases side by side, not a recommendation
 
 ## Education Regression Prompts
 
