@@ -806,19 +806,26 @@ function buildCaseModels(inputs, year, options) {
           inputs.grossByPerson
         );
       const stated = person.statedTakeHome !== null;
-      const tax = stated
+      const taxBeforeFloor = stated
         ? (gross - person.statedTakeHome) + (estimatedTax - personEstimatedInBase[person.id])
         : estimatedTax;
+      // RELIEF CAN NEVER BE MORE THAN THE TAX PAID. A stated take-home close to
+      // gross pay leaves almost no tax for a contribution's relief to come off,
+      // and the engine's change is an estimate that knows nothing of the payslip.
+      // So a person's tax is never below nothing, and what was held back is kept
+      // so the screen's maker is told.
+      const tax = Math.max(0, taxBeforeFloor);
       return {
         personId: person.id,
         label: person.label,
         gross,
         tax,
+        heldAtZero: tax !== taxBeforeFloor ? taxBeforeFloor : null,
         takeHome: gross - tax,
         taxSource: stated ? 'stated' : 'estimated',
         basis: inputs.taxStatus === 'married_or_civil_partners' && inputs.people.length === 2 ? 'allocated' : 'own',
-        estimatedTax,
-        estimatedTakeHome: gross - estimatedTax,
+        estimatedTax: Math.max(0, estimatedTax),
+        estimatedTakeHome: gross - Math.max(0, estimatedTax),
         usc: injected ? null : caseEstimate.people[person.id].usc,
         prsi: injected ? null : caseEstimate.people[person.id].prsi
       };
@@ -827,12 +834,33 @@ function buildCaseModels(inputs, year, options) {
     const taxTotal = people.reduce((sum, person) => sum + person.tax, 0);
     const pensionsGross = Object.values(contributions).reduce((sum, amount) => sum + amount, 0);
 
-    // What the contribution saves: the same case with no contributions at all.
-    // An estimate always, because a payslip cannot know it.
+    // What the contribution saves: each person's tax in this case with no
+    // contributions, less their tax with them. An estimate of the change, always,
+    // because a payslip cannot know it, and never more than the tax that was
+    // there to relieve, which is why it is measured person by person.
     let taxRelief = 0;
     if (pensionsGross > 0) {
       const without = estimate(`${scenario.id}:without-contributions`, noContributions);
-      taxRelief = Math.max(0, without.total - caseEstimate.total);
+      people.forEach((person) => {
+        const withoutEstimated = injected
+          ? without.people[person.personId].injectedTax
+          : estimatedPersonTax(
+            person.personId,
+            without,
+            baseEstimate,
+            noContributions,
+            baseContributions,
+            inputs.grossByPerson
+          );
+        const statedHere = inputs.people.find((entry) => entry.id === person.personId).statedTakeHome;
+        const withoutTax = Math.max(
+          0,
+          statedHere !== null
+            ? (person.gross - statedHere) + (withoutEstimated - personEstimatedInBase[person.personId])
+            : withoutEstimated
+        );
+        taxRelief += Math.max(0, withoutTax - person.tax);
+      });
     }
 
     const statedLines = inputs.outgoings.map((line) => {
@@ -1166,6 +1194,19 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
         + `differs from the estimate (${euroText(estimated)}) by more than ${Math.round(STATED_TAKE_HOME_WARNING_SHARE * 100)}%.`
       );
     }
+  });
+
+  // Where a person's tax was held at nothing, say so: the figure on screen is
+  // the household's, and a payslip close to gross pay is what caused it.
+  models.forEach((model, index) => {
+    model.people.forEach((person) => {
+      if (person.heldAtZero !== null) {
+        warnings.push(
+          `${FIELD}.scenarios[${index}] (${model.scenario.title}): tax for ${person.label || person.personId} `
+          + `would have been −${euroText(person.heldAtZero)} and is held at €0, because relief cannot be more than the tax paid.`
+        );
+      }
+    });
   });
 
   const drawnLines = [

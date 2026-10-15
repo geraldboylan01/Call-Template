@@ -331,6 +331,56 @@ export function runHouseholdCashFlowTests() {
     assert(/for Niamh and an estimate for Dara/.test(projection.debug.footnote), 'the footnote says which was used');
   }));
 
+  cases.push(runCase('Tax is never below nothing: a take-home close to gross pay cannot be relieved into a negative', () => {
+    // Codex's example: 75,000 gross, 74,999 stated, 10,000 more into a pension.
+    // Relief of 4,000 against 1 of tax used to give tax of -3,999 and a
+    // take-home of 78,999, which is more than was earned.
+    const near = payload((p) => {
+      p.people[0].statedTakeHome = 74_999;
+      p.scenarios = [
+        { id: 'today' },
+        { id: 'pension', changes: [{ type: 'extraPension', amount: 10_000, personId: 'niamh' }] }
+      ];
+    });
+    const projection = computeHouseholdCashFlowProjection(near, { calculationYear: 2026 });
+    checkInvariants(projection, 'near gross');
+    const niamh = (entry) => entry.takeHome.byPerson.find((person) => person.personId === 'niamh');
+    const [today, pension] = projection.summary.cases;
+
+    assertWithin(niamh(today).tax, 1, 0.005, 'today: the 1 of tax the payslip leaves');
+    assertEqual(niamh(pension).tax, 0, 'with the pension: held at nothing, not -3,999');
+    assertEqual(niamh(pension).takeHome, 75_000, 'and take-home is gross pay, not more than was earned');
+    assert(pension.takeHome.byPerson.every((person) => person.tax >= 0 && person.takeHome <= person.gross), 'nobody is taxed below nothing');
+
+    // The relief is what was there to relieve, so the cost after relief adds up.
+    assertWithin(pension.pensionContributions.taxRelief, 1, 0.005, 'relief is the 1 of tax that was paid');
+    assertWithin(pension.pensionContributions.costAfterRelief, 9_999, 0.005, 'cost after relief');
+    assertWithin(
+      today.leftOver.amount - pension.leftOver.amount,
+      pension.pensionContributions.costAfterRelief,
+      0.005,
+      'the fall in left over is the cost after relief'
+    );
+
+    // And the screen's maker is told, in debug and not on the client's screen.
+    const held = projection.debug.warnings.filter((text) => /held at €0/.test(text));
+    assertEqual(held.length, 1, 'one warning');
+    assert(/scenarios\[1\] \(Pay €10,000 more into your pensions\)/.test(held[0]), 'it names the case');
+    assert(/Niamh would have been −€3,999/.test(held[0]), 'and the person and the figure');
+  }));
+
+  cases.push(runCase('The floor changes nothing in an ordinary case, and says nothing', () => {
+    [HOUSEHOLD_CASH_FLOW_SAMPLE, payload((p) => {
+      p.people[0].statedTakeHome = 50_000;
+    })].forEach((raw, index) => {
+      const projection = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
+      assertEqual(projection.debug.warnings.filter((text) => /held at €0/.test(text)).length, 0, `shape ${index + 1}: no warning`);
+      projection.debug.cases.forEach((entry) => {
+        assert(entry.taxBreakdown.byPerson.every((person) => person.estimatedTax >= 0), 'no negative estimate');
+      });
+    });
+  }));
+
   cases.push(runCase('A stated figure far from the estimate warns and is never refused', () => {
     // Well above the estimate, so no case is pushed below nothing.
     const stated = payload((p) => {

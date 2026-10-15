@@ -120,21 +120,31 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
   const cases = payload.scenarios.map((scenario) => {
     const paid = extraFor(scenario);
     const run = scenario.id === baseId ? baseRun : taxRun(paid, scenario.id);
-    const people = payload.people.map((person) => {
-      const estimated = estimatedTax(run, paid, person.id);
+    const zeroPaid = Object.fromEntries(ids.map((id) => [id, 0]));
+    const none = taxRun(zeroPaid, `${scenario.id}:none`);
+    // A person's tax is what the payslip leaves plus what the case changes, and
+    // never less than nothing: relief cannot be more than the tax paid.
+    const taxOf = (person, theRun, thePaid) => {
+      const estimated = estimatedTax(theRun, thePaid, person.id);
       const baseEstimated = estimatedTax(baseRun, basePaid, person.id);
-      const tax = person.statedTakeHome == null
+      const level = person.statedTakeHome == null
         ? estimated
         : (gross[person.id] - person.statedTakeHome) + (estimated - baseEstimated);
-      return { id: person.id, tax, takeHome: gross[person.id] - tax };
+      return Math.max(0, level);
+    };
+    const people = payload.people.map((person) => {
+      const tax = taxOf(person, run, paid);
+      return { id: person.id, tax, takeHome: gross[person.id] - tax, withoutTax: taxOf(person, none, zeroPaid) };
     });
     const tax = sum(people.map((person) => person.tax));
     const pensions = sum(Object.values(paid));
     const cleared = new Set((scenario.changes || []).filter((change) => change.type === 'clearOutgoing').map((change) => change.outgoingId));
     const stated = payload.outgoings.map((line) => ({ id: line.id, amount: cleared.has(line.id) ? 0 : line.amount }));
     const statedTotal = sum(stated.map((line) => line.amount));
-    const none = taxRun(Object.fromEntries(ids.map((id) => [id, 0])), `${scenario.id}:none`);
-    const relief = pensions > 0 ? Math.max(0, none.total - run.total) : 0;
+    // What the contribution saves, person by person: never more than their tax.
+    const relief = pensions > 0
+      ? sum(people.map((person) => Math.max(0, person.withoutTax - person.tax)))
+      : 0;
 
     const shownTax = nearest(tax, 100);
     const shownPensions = nearest(pensions, 100);
@@ -312,6 +322,21 @@ check('a stated take-home never moves the other person, and the change in a case
     const changeEstimated = tax(estimated, index, 'niamh') - tax(estimated, 0, 'niamh');
     assert.ok(Math.abs(changeStated - changeEstimated) < 0.005, `Niamh's change, case ${index + 1}`);
   });
+});
+
+check('a stated take-home close to gross pay cannot be relieved below nothing (Codex\'s example)', () => {
+  const near = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+  near.people[0].statedTakeHome = 74_999;
+  near.scenarios = [
+    { id: 'today' },
+    { id: 'pension', changes: [{ type: 'extraPension', amount: 10_000, personId: 'niamh' }] }
+  ];
+  const projection = computeHouseholdCashFlowProjection(near, { calculationYear: YEAR });
+  compare(near, reference(near), projection, 'near gross');
+  const niamh = projection.summary.cases[1].takeHome.byPerson.find((person) => person.personId === 'niamh');
+  assert.equal(niamh.tax, 0);
+  assert.equal(niamh.takeHome, 75_000);
+  assert.ok(projection.debug.warnings.some((text) => /held at €0/.test(text)), 'the cap is recorded');
 });
 
 check('relief is the engine\'s saving, so D7 reads: gross for growth, cost after relief for cash flow', () => {

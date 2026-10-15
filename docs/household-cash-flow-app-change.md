@@ -231,7 +231,7 @@ Also:
 
 - `debug.cases[]`: `id`, `title`, `description`, `changes`, `lines[]` (`{ id, label, amount, shownAmount, deltaVsToday }`), `levels[]`, `sentence`, `taxBreakdown` (`incomeTax`, `usc`, `prsi`, per person where jointly assessed the income tax is the allocated share) and `disclosureCodes`.
 - `debug.assumptionsUsed`: `IE_TAX_RULES_VERSION` read at run time, the tax year, `PLANEIR_ASSUMPTIONS_VERSION`, the household tax status and whether it was defaulted, and `taxSourceByPerson`.
-- `debug.warnings[]`: a stated take-home that differs from the estimate by more than 15%. A warning, never a rejection, because a payslip is allowed to differ.
+- `debug.warnings[]`: a stated take-home that differs from the estimate by more than 15%. A warning, never a rejection, because a payslip is allowed to differ. Also a person's tax held at €0 (see "Tax is never below nothing" in the build notes).
 - The assumptions table states, in plain words and in the second person: per-year figures in today's money; **which tax was used for each person** (the disclosure line, below); pension contributions are shown in full, and the income tax relief on them shows as lower tax (D7); for a couple, income tax is assessed together, so each person's share is an allocation by income share and their take-home is marked `allocated` (D6); and amounts are rounded to the nearest €100. Use the engine's own disclosure text (`renderTaxDisclosures`) for the estimated parts and do not write tax sentences of your own.
 - `charts` carries **one** ordinary chart (the base case's lines in order, income at the left) for the surfaces with no module to draw for them, chiefly the video summary. This is what `repayment_case_module.js` does. The focused pane shows no charts card for this module.
 - `getHouseholdCashFlowCases(rawInputs)` returns `[{ id, title, description }]` for the presenter, like `getMortgageScenarioCases`.
@@ -545,6 +545,15 @@ Found while building:
 - The engine's disclosures say "They" of tax figures. The words test allows that in engine-owned text and is strict about text this module writes.
 
 Not built: the screen, the wiring and the plan adapter.
+
+### Tax is never below nothing
+
+Found by review after the screen merged. A stated take-home sets the level of a person's tax (`income − statedTakeHome`) and the engine supplies only what a case changes, so a stated figure close to gross pay left a person with almost no tax to relieve, and a pension case then subtracted more relief than there was tax. €75,000 gross, €74,999 stated and €10,000 more into a pension gave tax of −€3,999 and a take-home of €78,999.
+
+- **Each person's tax is held at €0 or more, in every case.** Relief cannot be more than the tax paid.
+- **Relief is realised per person**: what a person's tax would have been with no extra contribution, less what it is, never below nothing. So `taxRelief` in `pensionContributions` is what there was to relieve (€1 in the example above, not €4,000), and `costAfterRelief` is the gross contribution less that (€9,999). The invariants are unchanged.
+- **The cap is recorded.** A `debug.warnings` entry names the case, the person and the figure it would have been, and says it is held at €0. The screen says nothing; the tax figure is simply never negative.
+- **Nothing changes in an ordinary case**: the cap only binds where a stated figure leaves less tax than the relief. The check script has the example as a fixture, and its reference calculator applies the same rule independently.
 
 ## When you finish
 
