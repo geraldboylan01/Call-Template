@@ -1,0 +1,152 @@
+/* A focused filming frame around the real module; no financial view is recreated. */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #07111e; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+#stage { height: 100vh; padding: 24px 28px; display: grid; grid-template-rows: auto 1fr auto; gap: 16px; box-sizing: border-box; background: radial-gradient(ellipse at 85% 0%, #112b44 0, transparent 65%), #07111e; }
+.demo-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.demo-heading p { color: #84c8eb; font-size: 10px; font-weight: 700; letter-spacing: .15em; margin: 0 0 7px; }
+.demo-heading h1 { font-size: 24px; color: #f4f8ff; margin: 0; letter-spacing: -.02em; }
+.demo-live-label { color: #a1b5c9; font-size: 9px; letter-spacing: .11em; }
+#module { min-height: 0; overflow: hidden; }
+.demo-caption { border-top: 1px solid #274058; padding-top: 10px; height: 62px; box-sizing: border-box; }
+.demo-caption p { margin: 0 0 6px; color: #eff7ff; font-size: 16px; line-height: 1.35; }
+.demo-caption small { color: #9db3c8; font-size: 10px; }
+#demo-cursor { position: fixed; top: 0; left: 0; width: 23px; height: 30px; z-index: 100; pointer-events: none; opacity: 0; filter: drop-shadow(0 2px 3px #0008); }
+#demo-cursor svg { width: 100%; height: 100%; }
+#demo-click { position: fixed; border: 2px solid #b9e8ff; width: 30px; height: 30px; border-radius: 50%; z-index: 99; opacity: 0; pointer-events: none; }
+
+/* Focus the mortgage take on the decision card and its moving repayment rail. */
+.rcm { padding: 14px 18px; gap: 12px; }
+.rcm-context { font-size: 11px; }
+.rcm-case-name { font-size: 13px; }
+.rcm-case-amount { font-size: 10px; }
+.rcm-premise, .rcm-timing, .rcm-charts, .rcm-table-panel, .rcm-notes, .rcm-reduction, .rcm-disclosure { display: none !important; }
+.rcm-card { padding: 18px; gap: 20px; border-radius: 16px; }
+.rcm-card > .rcm-band:nth-child(4) { display: none; }
+.rcm-hero-figure { font-size: 48px; }
+.rcm-hero-sub { font-size: 12px; }
+.rcm-hero-band { min-height: 124px; }
+.rcm-label-accent, .rcm-label-positive { font-size: 11px; }
+.rcm-band { padding: 0; gap: 8px; }
+.rcm-interest-bar { height: 64px; }
+
+.pbs-scenario-shell { gap: 12px; }
+.pbs-scenario-summary-host, .pbs-net-worth-context { display: none; }
+.pbs-scenario-switcher-label { display: none; }
+.pbs-scenario-option { font-size: 13px; min-height: 38px; }
+.pbs-balance-header { grid-template-columns: 1.2fr 1fr; padding: 12px; }
+.pbs-balance-stack { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
+.pbs-balance-slab-primary { min-height: 125px; }
+.pbs-balance-slab { min-height: 56px; }
+.pbs-balance-value { font-size: 42px; }
+.pbs-balance-value-secondary { font-size: 21px; }
+.pbs-bucket-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.pbs-bucket-card { min-height: 172px; }
+.pbs-bucket-card-header { min-height: 50px; padding: 10px; }
+.pbs-bucket-card-title { font-size: 14px; }
+.pbs-bucket-info, .pbs-indicator-info { display: none; }
+.pbs-bucket-row { grid-template-columns: 1fr; gap: 6px; }
+.pbs-bucket-row-label { font-size: 13px; }
+.pbs-bucket-row-amount { font-size: 18px; text-align: left; }
+.pbs-bucket-total { grid-template-columns: 1fr; gap: 5px; padding: 10px; }
+.pbs-bucket-total-value { font-size: 20px; text-align: left; }
+.pbs-flow-chip { z-index: 90; font-size: 14px; animation: preview-flow-fade 820ms linear both; }
+.pbs-flow-chip.is-moving { opacity: .94; }
+@keyframes preview-flow-fade { 0%, 65% { opacity: .94; } 100% { opacity: 0; } }
+.pbs-outputs-stack > .pbs-stacked-card { display: none; }
+
+@media (max-width: 600px) {
+  #stage { padding: 18px 16px; gap: 12px; }
+  .demo-heading h1 { font-size: 22px; }
+  .demo-live-label { display: none; }
+  .demo-caption p { font-size: 15px; }
+  .demo-caption small { font-size: 9px; }
+  .demo-caption { height: 82px; }
+  .rcm { padding: 12px; gap: 10px; }
+  .rcm-ladder { grid-template-columns: 1fr; }
+  .rcm-case { padding: 9px 10px; }
+  .rcm-case-top { flex-direction: row; gap: 10px; }
+  .rcm-case-name { font-size: 14px; }
+  .rcm-hero-band { grid-template-columns: 1fr 1fr; }
+  .rcm-hero-band { min-height: 126px; }
+  .rcm-hero-figure { font-size: 36px; }
+  .rcm-hero-money { font-size: 17px; }
+  .rcm-hero-sub { font-size: 11px; }
+  .rcm-band { padding: 0; }
+  .rcm-context-facts { font-size: 10px; }
+  .pbs-scenario-switcher { padding: 7px; }
+  .pbs-scenario-options { grid-template-columns: 1fr; padding: 0; border: 0; }
+  .pbs-scenario-option { text-align: center; min-height: 34px; padding: 7px 8px; font-size: 13px; }
+  .pbs-balance-header { grid-template-columns: 1fr 1fr; padding: 8px; gap: 8px; }
+  .pbs-balance-stack { grid-template-columns: 1fr; }
+  .pbs-balance-slab { padding: 10px; min-height: 50px; }
+  .pbs-balance-slab-primary { min-height: 115px; }
+  .pbs-balance-value { font-size: 32px; }
+  .pbs-balance-value-secondary { font-size: 18px; }
+  .pbs-balance-formula { font-size: 10px; }
+  .pbs-bucket-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pbs-bucket-card { min-height: 146px; }
+  .pbs-bucket-card-header { padding: 9px; min-height: 30px; }
+  .pbs-bucket-row-label { font-size: 12px; }
+  .pbs-bucket-row-amount { font-size: 16px; }
+  .pbs-bucket-total-label { font-size: 9px; }
+  .pbs-bucket-total-value { font-size: 18px; }
+  .pbs-bucket-total { padding: 8px; }
+  .pbs-bucket-empty-state { padding: 4px 0; }
+}
+
+/* The newer modules use the same focused filming frame. Keep their native
+   responsive drawings and scenario controls; move repeated context to the
+   shared heading/caption rather than shrinking a full presenter screen. */
+.fcf, .hcf, .pg, .pg-rail, .pg-main { gap: 10px; }
+.fcf-head, .hcf-head, .fcf-support, .fcf-footnote, .hcf-footnote, .hcf-sentence, .pg-kicker, .pg-footnote, .pg-sentence { display: none !important; }
+.fcf-case { min-height: 48px; padding: 7px 10px; }
+.fcf-case-name { font-size: 13px; }
+.fcf-case-amount { font-size: 11px; }
+.fcf-headline { font-size: 23px; min-height: 2.4em; }
+.hcf { padding-inline: 18px; gap: 6px; }
+.hcf-case { min-height: 38px; padding: 8px 10px; font-size: 13px; }
+.hcf-case.is-active { padding: 7px 9px; }
+.hcf-cases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.hcf-answer { display: grid; grid-template-columns: auto auto 1fr; align-items: baseline; column-gap: 10px; }
+.hcf-status { font-size: 13px; gap: 6px; }
+.hcf-swatch { width: 10px; height: 10px; }
+.hcf-figure { margin: 0; font-size: 34px; }
+.hcf-unit { margin: 0; font-size: 13px; }
+.hcf-monthly { display: none; }
+.pg-household { margin: 0; font-size: 15px; line-height: 20px; }
+.pg-savings { margin: 2px 0 0; font-size: 13px; line-height: 18px; }
+.pg-case, .pg.is-narrow .pg-case { min-height: 38px; padding: 7px 10px; font-size: 13px; }
+.pg-headline, .pg.is-narrow .pg-headline { font-size: 22px; line-height: 27px; min-height: 54px; }
+.pg-line2 { display: none; }
+.pg-headline, .pg.is-narrow .pg-headline { min-height: 27px; }
+.pg-caption, .pg.is-narrow .pg-caption { font-size: 13px; line-height: 18px; }
+.pg-block { gap: 6px; }
+@media (min-width: 601px) {
+  .fcf { gap: 8px; }
+  .fcf-chart { zoom: .8; margin-inline: auto; }
+  .fcf-chart:not(.is-narrow) .fcf-block { font-size: 16px; line-height: 20px; }
+  .pg { zoom: .72; width: 100%; column-gap: 116px; }
+  .pg-household { font-size: 22px; line-height: 28px; }
+  .pg-savings { font-size: 18px; line-height: 24px; }
+  .pg-case { font-size: 18px; min-height: 48px; }
+  .pg-headline, .pg.is-narrow .pg-headline { font-size: 32px; line-height: 38px; min-height: 38px; }
+  .pg-caption, .pg.is-narrow .pg-caption { font-size: 18px; line-height: 24px; }
+}
+@media (max-width: 600px) {
+  .fcf { gap: 8px; }
+  .fcf-chart { zoom: .9; margin-inline: auto; }
+  .fcf-cases { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+  .fcf-case { min-height: 53px; }
+  .fcf-headline { font-size: 19px; min-height: 3.6em; }
+  .hcf { padding-inline: 0; gap: 8px; }
+  .hcf-cases { grid-template-columns: repeat(2,1fr); }
+  .hcf.is-bar .hcf-case { min-height: 38px; padding: 7px 9px; font-size: 13px; line-height: 1.2; }
+  .hcf.is-bar .hcf-case.is-active { padding: 6px 8px; }
+  .hcf-chart { zoom: .65; width: 65% !important; margin-inline: auto; }
+  .hcf-row-name, .hcf-bar-head-label { font-size: 20px; line-height: 20px; }
+  .hcf-row-amount, .hcf-bar-head-amount { font-size: 24px; line-height: 20px; }
+  .hcf-row-delta { font-size: 17px; line-height: 18px; }
+  .pg.is-narrow .pg-household { font-size: 15px; line-height: 20px; }
+  .pg.is-narrow .pg-savings { font-size: 13px; line-height: 18px; }
+  .pg-main { gap: 6px; }
+}
