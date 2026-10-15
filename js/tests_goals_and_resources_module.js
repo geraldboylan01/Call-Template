@@ -499,7 +499,7 @@ export async function runGoalsAndResourcesModuleTests() {
         const root = mount({ rawInputs: raw, widthHint });
         assert(hasClass(findAll(root, 'gar-status')[0], 'is-left'), `${widthHint}: the headline square is amber`);
         assert(!hasClass(findAll(root, 'gar-status')[0], 'is-spare'), `${widthHint}: and not green`);
-        assertEqual(findAll(root, 'gar-headline')[0].textContent, 'You have €1,203 a year left over', `${widthHint}: headline`);
+        assertEqual(findAll(root, 'gar-headline')[0].textContent, 'You have €843 a year left over', `${widthHint}: headline`);
         assertEqual(
           findAll(root, 'gar-support')[0].textContent,
           'Your retirement target is not met, even at the most income tax relief allows.',

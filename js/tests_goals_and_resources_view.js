@@ -76,6 +76,9 @@ const GAR_STRESS_SHAPES = Object.freeze([
   { name: 'a hard target, retiring early', payload: {
     ...SAMPLE, retirement: { retirementAge: 55, targetIncomeToday: 120_000 }
   } },
+  { name: 'money left this year, short in a later year', payload: {
+    ...SAMPLE, leftOverEachYear: 14_500
+  } },
   { name: 'a target out of reach at the relief limit', payload: {
     ...SAMPLE, retirement: { retirementAge: 55, targetIncomeToday: 200_000 }
   } },
@@ -216,8 +219,11 @@ export function runGoalsAndResourcesViewTests() {
     assertEqual(rows('cash-stays').join('\n'), [
       'College, first child | €3,603 a year for 8 years | Covered | ',
       'College, second child | €3,113 a year for 10 years | Partly covered | €2,397 of €3,113 a year',
-      'Your mortgage cleared by 60 | €4,081 a year more | Not covered | Repayment rises to €2,811 a month',
-      'You retire at 62 on €50,000 a year | €9,265 a year | Not covered | after income tax relief'
+      // Met in later years, once the colleges stop, so "partly" over the years
+      // with nothing this year: no "€0 of €4,081 a year", whose wording is not
+      // settled, so the row says its state and what it is.
+      'Your mortgage cleared by 60 | €4,081 a year more | Partly covered | Repayment rises to €2,811 a month',
+      'You retire at 62 on €50,000 a year | €9,265 a year | Partly covered | after income tax relief'
     ].join('\n'), 'case 1');
 
     assertEqual(rows('college-today').join('\n'), [
@@ -255,6 +261,45 @@ export function runGoalsAndResourcesViewTests() {
     ordinary.cases.forEach((entry) => {
       const retirement = entry.year.goals[entry.year.goals.length - 1];
       assert(!retirement.detail.includes(GAR_WORDS.atTheLimit), `${entry.id}: not at the limit`);
+    });
+  }));
+
+  cases.push(runCase('The target sentence is only said at the relief limit, never for a goal short in a later year', () => {
+    const later = modelFor(GAR_STRESS_SHAPES.find((shape) => shape.name === 'money left this year, short in a later year').payload);
+    const entry = later.cases.find((candidate) => candidate.id === 'mortgage-then-college');
+    // This year everything fits, with €98 over, but a later year is short.
+    assertEqual(entry.headline.text, 'You have €98 a year left over', 'not "to spare": a goal is short later');
+    assertEqual(
+      entry.support,
+      'Your goals need €14,402 a year against the €14,500 you have.',
+      'and the support line is the ordinary one, not the relief-limit sentence'
+    );
+    const retirement = entry.year.goals[entry.year.goals.length - 1];
+    assertEqual(retirement.state, 'partly', 'retirement is partly covered over the years');
+    assert(retirement.firstShortYear >= 1, 'short from a later year');
+    assert(!retirement.detail.includes(GAR_WORDS.atTheLimit), 'and its row does not say it is at the limit');
+    assert(!/€[\d,]+ of €[\d,]+ a year/.test(retirement.detail), 'nor "€X of €X a year"');
+
+    // At the limit, the sentence is said.
+    const limit = modelFor(GAR_STRESS_SHAPES.find(
+      (shape) => shape.name === 'a target out of reach at the relief limit, with the money to pay in the most'
+    ).payload);
+    limit.cases.forEach((candidate) => {
+      assertEqual(
+        candidate.support,
+        'Your retirement target is not met, even at the most income tax relief allows.',
+        `${candidate.id}: said at the limit`
+      );
+    });
+    // Everywhere else it is not.
+    GAR_STRESS_SHAPES.forEach((shape) => {
+      const model = modelFor(shape.payload);
+      model.cases.forEach((candidate) => {
+        const atTheLimit = candidate.year.goals.some((goal) => goal.detail.endsWith(GAR_WORDS.atTheLimit));
+        if (!atTheLimit) {
+          assert(!/relief allows/.test(candidate.support), `${shape.name} ${candidate.id}: not said away from the limit`);
+        }
+      });
     });
   }));
 
@@ -329,11 +374,14 @@ export function runGoalsAndResourcesViewTests() {
           );
           if (goal.state === 'covered') assert(block.outH < 0.01, `${entry.id}: a covered goal has no short part`);
           if (goal.state === 'not') assert(block.inH < 0.01, `${entry.id}: an uncovered goal has no covered part`);
-          // A target out of reach at the relief limit is "partly" with every euro of
-          // the money found: nothing is short of money, so the picture shows none.
-          const atTheLimit = goal.detail.endsWith(GAR_WORDS.atTheLimit) && goal.covered >= goal.need - 0.5;
-          if (goal.state === 'partly' && !atTheLimit) {
-            assert(block.inH > 0 && block.outH > 0, `${entry.id}: a partly covered goal shows both`);
+          // "Partly" is over the years and the picture is this year's money, so
+          // a partly covered goal can show only a covered part (short later), or
+          // only a short part (met later), or both.
+          if (goal.state === 'partly') {
+            assert(
+              goal.firstShortYear !== null || goal.detail.endsWith(GAR_WORDS.atTheLimit),
+              `${entry.id}: a partly covered goal says when it is short, or that it is at the limit`
+            );
           }
         });
       });

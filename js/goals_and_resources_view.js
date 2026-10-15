@@ -133,11 +133,18 @@ const CHILD_ORDINALS = Object.freeze(['First', 'Second', 'Third', 'Fourth']);
 /** One goal as the screen shows it: its block in the picture and its row in the list. */
 function buildGoal(goal, entry, debug, children) {
   const { need, covered } = goal;
-  const partly = goal.state === 'partly' ? `${eur(covered)} of ${eur(need)} a year` : '';
+  // "€X of €Y a year" is this year's money, so it is only said when this year
+  // is itself part way: some covered and some not. A goal that is "partly
+  // covered" over the years with nothing this year, or all of it this year and
+  // a shortfall later, has no wording of its own yet and says only its state.
+  const partly = goal.state === 'partly' && covered > 0.5 && covered < need - 0.5
+    ? `${eur(covered)} of ${eur(need)} a year`
+    : '';
   const common = {
     name: goal.title,
     need,
     covered,
+    firstShortYear: goal.firstShortYear === undefined ? null : goal.firstShortYear,
     state: goal.state,
     stateWord: goal.stateWord
   };

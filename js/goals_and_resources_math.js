@@ -1009,6 +1009,11 @@ function yearlyState(entry) {
   return entry.states.every((goal) => goal.state === 'covered') ? 'spare' : 'left';
 }
 
+/** The household is paying in the most income tax relief allows and the target is still out of reach. */
+function atTheReliefLimit(entry) {
+  return entry.pension.reachedCap && entry.pension.gapLeftOver > 0;
+}
+
 /** The sentence for a target that is out of reach at the relief limit. */
 const TARGET_NOT_MET_TEXT = 'Your retirement target is not met, even at the most income tax relief allows.';
 
@@ -1055,7 +1060,10 @@ function caseWords(inputs, entry) {
     mortgageNote: mortgageAlreadyEnds(inputs.mortgage) ? `Your mortgage already ends by ${inputs.mortgage.clearByAge}.` : '',
     state,
     headline,
-    support: state === 'left' ? TARGET_NOT_MET_TEXT : needs
+    // The target sentence is only true at the relief limit. Money left over
+    // with a goal short in a later year is a different reason, and says what
+    // this year needs like any other case.
+    support: state === 'left' && atTheReliefLimit(entry) ? TARGET_NOT_MET_TEXT : needs
   };
 }
 
