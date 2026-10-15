@@ -162,6 +162,23 @@ const rentalKeepOrSellInputs = {
   taxOnGain: 21000
 };
 
+const homeTradeDownInputs = {
+  homeValue: 650000,
+  mortgageBalance: 280000,
+  currentAnnualRepayments: 30000,
+  sellingCosts: 15000,
+  buyingCosts: 12000,
+  newLoanTermYears: 15,
+  newLoanAnnualRate: 0.04,
+  baseScenarioId: 'stay',
+  scenarios: [
+    { id: 'stay', kind: 'stay' },
+    { id: 'repay-18000', kind: 'move', annualRepayment: 18000 },
+    { id: 'repay-12000', kind: 'move', annualRepayment: 12000 },
+    { id: 'no-mortgage', kind: 'move', annualRepayment: 0 }
+  ]
+};
+
 function makeHousePurchaseInputs() {
   return {
     ...createDefaultHousePurchaseInputs('2026-07-12'),
@@ -548,6 +565,79 @@ const cases = [
       assert(comesOff.rawValue === 99, `Expected 99 to come off, as shown (got ${comesOff.rawValue})`);
       assert(net.rawValue === 1, `Expected a net of 1, derived from the rows shown (got ${net.rawValue})`);
       assert(rent.rawValue - comesOff.rawValue === net.rawValue, 'The three figures must add up');
+    }
+  },
+  {
+    name: 'Home trade down shows the selected case, with three figures that add up and its own sentence',
+    module: baseModule('home-1', 'Home trade down', {
+      summaryHtml: '<p>MODEL-SUPPLIED summary.</p>',
+      homeTradeDownInputs,
+      // A calculated module's stored tables are never trusted.
+      outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] },
+      charts: []
+    }),
+    activeScenario: { homeTradeDownScenarioId: 'repay-12000' },
+    verify(manifest) {
+      assert(manifest.source.moduleKind === 'home-trade-down', 'Expected home trade down module kind');
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected home trade down projection to resolve');
+      assert(manifest.source.activeScenario.id === 'repay-12000', 'Expected the selected home case');
+      assert(manifest.story.charts.length > 0, 'Expected the home chart');
+      const labels = manifest.story.metrics.map((metric) => metric.label).join(' | ');
+      assert(!labels.includes('MODEL-SUPPLIED'), 'Expected model-supplied outputs to be replaced');
+      const selling = manifest.story.metrics.find((metric) => /^From selling, after buying costs/.test(metric.label));
+      const loan = manifest.story.metrics.find((metric) => /^New loan/.test(metric.label));
+      const budget = manifest.story.metrics.find((metric) => /^Home budget/.test(metric.label));
+      assert(selling && loan && budget, `Expected the money from selling, the loan and the budget (${labels})`);
+      assert(selling.rawValue === 343000, `Expected 343,000 from selling (got ${selling.rawValue})`);
+      assert(loan.rawValue === 135000, `Expected a loan of 135,000 (got ${loan.rawValue})`);
+      assert(budget.rawValue === 478000, `Expected a home budget of 478,000 (got ${budget.rawValue})`);
+      assert(selling.rawValue + loan.rawValue === budget.rawValue, 'The three figures must add up');
+      assert(manifest.story.metrics[0] === selling && manifest.story.metrics[2] === budget, 'The three that add up come first');
+      const text = JSON.stringify(manifest.story);
+      assert(!text.includes('MODEL-SUPPLIED'), 'Expected the model-supplied summary to be replaced');
+      assert(/Repaying €12,000 a year supports a loan of €135,000/.test(text), 'Expected the module\'s own sentence in the story');
+      assert(!/\bwe\b|\bour\b/i.test(text), 'The story must speak to "you"');
+    }
+  },
+  {
+    name: 'Home trade down opens on the base case, staying, with the home and the mortgage adding to what it is worth',
+    module: baseModule('home-2', 'Home trade down', { homeTradeDownInputs, charts: [] }),
+    activeScenario: { homeTradeDownScenarioId: 'no-such-case' },
+    verify(manifest) {
+      assert(manifest.source.activeScenario.id === 'stay', 'Expected the base case');
+      const share = manifest.story.metrics.find((metric) => /^Your share of the home/.test(metric.label));
+      const mortgage = manifest.story.metrics.find((metric) => /^Mortgage/.test(metric.label));
+      const worth = manifest.story.metrics.find((metric) => /^Home worth/.test(metric.label));
+      assert(share && mortgage && worth, 'Expected the share, the mortgage and what the home is worth');
+      assert(share.rawValue === 370000 && mortgage.rawValue === 280000 && worth.rawValue === 650000, 'Expected 370,000 + 280,000 = 650,000');
+      assert(share.rawValue + mortgage.rawValue === worth.rawValue, 'The three figures must add up');
+    }
+  },
+  {
+    name: 'Home trade down with cents: the three figures shown still add up',
+    module: baseModule('home-3', 'Home trade down', {
+      homeTradeDownInputs: {
+        ...homeTradeDownInputs,
+        homeValue: 400000.6,
+        mortgageBalance: 150000.3,
+        currentAnnualRepayments: 18000.6,
+        sellingCosts: 8000.4,
+        buyingCosts: 6000.4,
+        scenarios: [
+          { id: 'stay', kind: 'stay' },
+          { id: 'less', kind: 'move', annualRepayment: 6000.4 }
+        ]
+      },
+      charts: []
+    }),
+    activeScenario: { homeTradeDownScenarioId: 'less' },
+    verify(manifest) {
+      const metrics = manifest.story.metrics;
+      const selling = metrics.find((metric) => /^From selling, after buying costs/.test(metric.label));
+      const loan = metrics.find((metric) => /^New loan/.test(metric.label));
+      const budget = metrics.find((metric) => /^Home budget/.test(metric.label));
+      assert(selling.rawValue + loan.rawValue === budget.rawValue, 'The three figures must add up');
+      assert(selling.rawValue === 236001, `Expected the money from selling as shown, 236,001 (got ${selling.rawValue})`);
     }
   },
   {

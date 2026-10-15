@@ -5,6 +5,8 @@ import { computeHouseholdCashFlowProjection } from './household_cash_flow_math.j
 import { computeProtectionGapProjection } from './protection_gap_math.js';
 import { computeRentalKeepOrSellProjection } from './rental_keep_or_sell_math.js';
 import { buildRentalCopy } from './rental_keep_or_sell_view.js';
+import { computeHomeTradeDownProjection } from './home_trade_down_math.js';
+import { buildTradeDownCopy } from './home_trade_down_view.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
@@ -106,6 +108,9 @@ export function getVideoModuleKind(module) {
   }
   if (generated.rentalKeepOrSellInputs) {
     return { id: 'rental-keep-or-sell', label: 'Rental keep or sell' };
+  }
+  if (generated.homeTradeDownInputs) {
+    return { id: 'home-trade-down', label: 'Home trade down' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -426,6 +431,49 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.charts = projection.charts;
       // The module wrote these words, so the video says what the screen says.
       resolved.generated.summaryHtml = `<p>${escapeHtml(buildRentalCopy(projection, selected.id).headline)}</p>`;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'home-trade-down') {
+      // The video shows the case that is selected on screen: its own figures,
+      // its own blocks and its own sentence, not the first case's.
+      const requestedId = asTrimmedText(activeScenario.homeTradeDownScenarioId);
+      const projection = computeHomeTradeDownProjection(generated.homeTradeDownInputs);
+      const { cases } = projection.debug;
+      const selected = cases.find((entry) => entry.id === requestedId)
+        || cases.find((entry) => entry.id === projection.debug.baseScenarioId)
+        || cases[0];
+      const copy = buildTradeDownCopy(projection, selected.id);
+      const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+      // THREE FIGURES THAT ADD UP COME FIRST, because a story shows only the
+      // first few: what the sale leaves (or, staying, your share of the home),
+      // the loan (or the mortgage), and the home they make. Then the year: what
+      // is still repaid and what is freed. They are the SHOWN figures, the ones
+      // on the screen, so the three add up and the two add to today's
+      // repayments even when the inputs have cents.
+      const figures = [
+        [`${copy.block1.name} (€)`, selected.block1],
+        [`${sentence(copy.block2.name)} (€)`, selected.block2],
+        [`${sentence(copy.figure.word)} (€)`, selected.homeBudget],
+        ['Still repaid a year (€)', selected.shownRepaid],
+        ['Freed a year (€)', selected.shownFreed]
+      ];
+      const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = projection.charts;
+      // The module wrote these words, so the video says what the screen says.
+      resolved.generated.summaryHtml = `<p>${escapeHtml(copy.headline)}</p>`;
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },

@@ -44,6 +44,10 @@ import {
   normalizeRentalKeepOrSellInputs
 } from './rental_keep_or_sell_math.js';
 import {
+  computeHomeTradeDownProjection,
+  normalizeHomeTradeDownInputs
+} from './home_trade_down_math.js';
+import {
   computeMortgageProjection,
   normalizeMortgageInputs
 } from './mortgage_math.js';
@@ -193,6 +197,15 @@ export function ensureGenerated(module) {
       applyRentalKeepOrSellProjectionToModule(module);
     } catch (error) {
       console.warn('[CallCanvas] rental keep or sell projection could not be refreshed', error);
+    }
+  }
+  // The home trade down reads no central assumption either: the loan's term and
+  // rate are the client's own inputs, so this changes nothing today.
+  if (module.generated.homeTradeDownInputs) {
+    try {
+      applyHomeTradeDownProjectionToModule(module);
+    } catch (error) {
+      console.warn('[CallCanvas] home trade down projection could not be refreshed', error);
     }
   }
 }
@@ -524,6 +537,27 @@ function applyRentalKeepOrSellProjectionToModule(module) {
   host.recordProjection(module.id, {
     calculator: 'rentalKeepOrSell',
     inputs: cloneSessionValue(module.generated.rentalKeepOrSellInputs),
+    debug: projection.debug
+  });
+
+  return projection;
+}
+
+function applyHomeTradeDownProjectionToModule(module) {
+  const projection = computeHomeTradeDownProjection(module.generated.homeTradeDownInputs);
+
+  module.generated.assumptions = projection.assumptionsTable;
+  module.generated.outputs = projection.outputsTable;
+  module.generated.outputsBucketed = null;
+  module.generated.tables = projection.tables;
+  module.generated.charts = projection.charts.map((chart, index) => ({
+    ...chart,
+    id: chart.id || makeChartId(module.id, chart.title, index)
+  }));
+
+  host.recordProjection(module.id, {
+    calculator: 'homeTradeDown',
+    inputs: cloneSessionValue(module.generated.homeTradeDownInputs),
     debug: projection.debug
   });
 
@@ -2010,6 +2044,14 @@ function validateRentalKeepOrSellInputsPayload(rentalKeepOrSellInputs) {
   return normalized;
 }
 
+function validateHomeTradeDownInputsPayload(homeTradeDownInputs) {
+  const normalized = normalizeHomeTradeDownInputs(homeTradeDownInputs);
+  // Projected as well, so what the engine will not put in order is refused here
+  // and not half applied.
+  computeHomeTradeDownProjection(normalized);
+  return normalized;
+}
+
 function validateNetRetirementInputsPayload(netRetirementInputs) {
   return normalizeNetRetirementInputs(netRetirementInputs);
 }
@@ -2139,6 +2181,10 @@ export function normalizePayload(payload) {
       generatedPatch.rentalKeepOrSellInputs = validateRentalKeepOrSellInputsPayload(payload.generated.rentalKeepOrSellInputs);
     }
 
+    if ('homeTradeDownInputs' in payload.generated) {
+      generatedPatch.homeTradeDownInputs = validateHomeTradeDownInputsPayload(payload.generated.homeTradeDownInputs);
+    }
+
     if ('netRetirementInputs' in payload.generated) {
       generatedPatch.netRetirementInputs = validateNetRetirementInputsPayload(payload.generated.netRetirementInputs);
     }
@@ -2194,6 +2240,7 @@ export function clearGeneratedForVideoSummary(module) {
   module.generated.householdCashFlowInputs = null;
   module.generated.protectionGapInputs = null;
   module.generated.rentalKeepOrSellInputs = null;
+  module.generated.homeTradeDownInputs = null;
   module.generated.housePurchaseInputs = null;
   module.generated.netRetirementInputs = null;
   module.generated.education = null;
@@ -2242,6 +2289,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2266,6 +2314,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2287,6 +2336,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.education = null;
       module.generated.report = null;
       clearVideoSummaryForGeneratedModule(module);
@@ -2306,6 +2356,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -2326,6 +2377,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2340,6 +2392,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
     if (generatedPatch.householdCashFlowInputs) {
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.pbsInputs = null;
       module.generated.liquidityPlan = null;
       module.generated.pensionInputs = null;
@@ -2368,6 +2421,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2389,6 +2443,29 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
+      module.generated.homeTradeDownInputs = null;
+      module.generated.housePurchaseInputs = null;
+      module.generated.netRetirementInputs = null;
+      module.generated.education = null;
+      module.generated.report = null;
+      module.generated.outputsBucketed = null;
+      clearVideoSummaryForGeneratedModule(module);
+    }
+  }
+
+  if ('homeTradeDownInputs' in generatedPatch) {
+    module.generated.homeTradeDownInputs = generatedPatch.homeTradeDownInputs;
+    if (generatedPatch.homeTradeDownInputs) {
+      module.generated.pbsInputs = null;
+      module.generated.liquidityPlan = null;
+      module.generated.pensionInputs = null;
+      module.generated.mortgageInputs = null;
+      module.generated.loanInputs = null;
+      module.generated.collegeFundingInputs = null;
+      module.generated.futureCostFundInputs = null;
+      module.generated.householdCashFlowInputs = null;
+      module.generated.protectionGapInputs = null;
+      module.generated.rentalKeepOrSellInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2410,6 +2487,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -2428,6 +2506,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2447,6 +2526,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2467,6 +2547,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.report = null;
@@ -2486,6 +2567,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.homeTradeDownInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
@@ -2542,6 +2624,7 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
     const hasHouseholdCashFlowInputsPatch = 'householdCashFlowInputs' in normalizedPayload.generated;
     const hasProtectionGapInputsPatch = 'protectionGapInputs' in normalizedPayload.generated;
     const hasRentalKeepOrSellInputsPatch = 'rentalKeepOrSellInputs' in normalizedPayload.generated;
+    const hasHomeTradeDownInputsPatch = 'homeTradeDownInputs' in normalizedPayload.generated;
     const hasNetRetirementInputsPatch = 'netRetirementInputs' in normalizedPayload.generated;
     const hasMortgageInputsPatch = 'mortgageInputs' in normalizedPayload.generated;
     const hasLoanInputsPatch = 'loanInputs' in normalizedPayload.generated;
@@ -2580,6 +2663,8 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
       applyProtectionGapProjectionToModule(module);
     } else if (hasRentalKeepOrSellInputsPatch && module.generated.rentalKeepOrSellInputs) {
       applyRentalKeepOrSellProjectionToModule(module);
+    } else if (hasHomeTradeDownInputsPatch && module.generated.homeTradeDownInputs) {
+      applyHomeTradeDownProjectionToModule(module);
     }
   }
 }

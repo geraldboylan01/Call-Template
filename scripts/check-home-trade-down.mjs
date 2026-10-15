@@ -19,6 +19,7 @@ import {
 } from '../js/tests_home_trade_down_math.js';
 import { runHomeTradeDownViewTests } from '../js/tests_home_trade_down_view.js';
 import { runHomeTradeDownModuleTests } from '../js/tests_home_trade_down_module.js';
+import { runHomeTradeDownWiringTests } from '../js/tests_home_trade_down_wiring.js';
 
 let failures = 0;
 
@@ -297,9 +298,15 @@ if (moduleSummary.failed > 0) {
   failures += moduleSummary.failed;
 }
 
+// The paste pipeline, the session importer and the presenter catalogue.
+const wiringSummary = runHomeTradeDownWiringTests();
+if (wiringSummary.failed > 0) {
+  failures += wiringSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[HomeTradeDownAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[HomeTradeDownAudit] the engine matches the independent reference and the engine, view and module suites pass.');
+console.info('[HomeTradeDownAudit] the engine matches the independent reference and the engine, view, module and wiring suites pass.');

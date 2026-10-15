@@ -36,6 +36,7 @@ import { buildFutureCostFundModule } from './future_cost_fund_module.js';
 import { buildHouseholdCashFlowModule } from './household_cash_flow_module.js';
 import { buildProtectionGapModule } from './protection_gap_module.js';
 import { buildRentalKeepOrSellModule } from './rental_keep_or_sell_module.js';
+import { buildHomeTradeDownModule } from './home_trade_down_module.js';
 import {
   PBS_ASSET_SECTION_KEYS,
   resolveLiquidityReserveForPlan,
@@ -2181,6 +2182,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isHomeTradeDownModule(module)) {
+    return {
+      label: 'Home Trade Down',
+      token: 'home-trade-down'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2368,6 +2376,14 @@ function buildOverviewMetaItems(module, signalCounts) {
   if (moduleKind.token === 'rental-keep-or-sell') {
     // The two cases are fixed: keep, and sell.
     items.push(pluralizeOverview(2, 'case'));
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'home-trade-down') {
+    const inputs = module?.generated?.homeTradeDownInputs || {};
+    if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
+      items.push(pluralizeOverview(inputs.scenarios.length, 'case'));
+    }
     return uniqueOverviewItems(items, 3, 22);
   }
 
@@ -2719,6 +2735,10 @@ function isRentalKeepOrSellModule(module) {
   return Boolean(module?.generated?.rentalKeepOrSellInputs);
 }
 
+function isHomeTradeDownModule(module) {
+  return Boolean(module?.generated?.homeTradeDownInputs);
+}
+
 function isHousePurchaseModule(module) {
   return Boolean(module?.generated?.housePurchaseInputs);
 }
@@ -2847,6 +2867,13 @@ function getPlaybookDisplayContext(module) {
     return {
       key: 'rentalKeepOrSell',
       heading: 'Rental Keep or Sell'
+    };
+  }
+
+  if (isHomeTradeDownModule(module)) {
+    return {
+      key: 'homeTradeDown',
+      heading: 'Home Trade Down'
     };
   }
 
@@ -3335,6 +3362,7 @@ function blocksGeneratedTableEditing(module) {
     || isHouseholdCashFlowModule(module)
     || isProtectionGapModule(module)
     || isRentalKeepOrSellModule(module)
+    || isHomeTradeDownModule(module)
     || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
@@ -8115,6 +8143,38 @@ function buildRentalKeepOrSellShell(module) {
       onSelectCase: (caseId) => {
         if (typeof window.__setRentalKeepOrSellScenario === 'function') {
           window.__setRentalKeepOrSellScenario(module.id, caseId);
+        }
+      }
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * The home trade down's shell: the module itself, which holds the question, the
+ * case buttons, the sentence, the home in two blocks, the year's track and the
+ * footnote. It owns its own clock, so a click moves the marks and rebuilds
+ * nothing, and it tells the app which case is selected only so that the case is
+ * remembered.
+ */
+function buildHomeTradeDownShell(module) {
+  const inputs = module?.generated?.homeTradeDownInputs;
+  if (!inputs) {
+    return null;
+  }
+
+  const remembered = typeof window.__getHomeTradeDownScenarioForModule === 'function'
+    ? window.__getHomeTradeDownScenarioForModule(module.id)
+    : '';
+
+  try {
+    return buildHomeTradeDownModule({
+      rawInputs: inputs,
+      selectedCaseId: remembered || null,
+      onSelectCase: (caseId) => {
+        if (typeof window.__setHomeTradeDownScenario === 'function') {
+          window.__setHomeTradeDownScenario(module.id, caseId);
         }
       }
     });
@@ -13338,6 +13398,13 @@ function buildGeneratedSection(module, {
     }
   }
 
+  if (isHomeTradeDownModule(displayModule)) {
+    const homeTradeDownShell = buildHomeTradeDownShell(module);
+    if (homeTradeDownShell) {
+      grid.appendChild(homeTradeDownShell);
+    }
+  }
+
   // NO CHARTS CARD FOR A REPAYMENT MODULE.
   //
   // It draws its own balance curve and its own year-by-year interest columns,
@@ -13404,9 +13471,12 @@ function buildGeneratedSection(module, {
   // months strip itself, and its one chart is for the video.
   // NO CHARTS CARD FOR A RENTAL KEEP OR SELL either: the module draws the bars
   // itself, and its one chart is for the video.
+  // NO CHARTS CARD FOR A HOME TRADE DOWN either: the module draws the home in
+  // two blocks and the year's track itself, and its one chart is for the video.
   if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)
     && !isFutureCostFundModule(displayModule) && !isHouseholdCashFlowModule(displayModule)
-    && !isProtectionGapModule(displayModule) && !isRentalKeepOrSellModule(displayModule)) {
+    && !isProtectionGapModule(displayModule) && !isRentalKeepOrSellModule(displayModule)
+    && !isHomeTradeDownModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13594,7 +13664,7 @@ export function patchFocusedGeneratedCards({
   // only after the first case click, which is the worst way to find it.
   if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)
     && !isHouseholdCashFlowModule(displayModule) && !isProtectionGapModule(displayModule)
-    && !isRentalKeepOrSellModule(displayModule)) {
+    && !isRentalKeepOrSellModule(displayModule) && !isHomeTradeDownModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
