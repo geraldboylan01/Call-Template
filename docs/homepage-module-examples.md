@@ -1,6 +1,6 @@
 # Homepage module examples
 
-The three click-to-play examples use silent H.264 recordings of the actual native module renderers at `1e1cc58f06b9ee489765645613b350e0bac5555c`. The households and inputs are fictional. Only the finished clips and posters are public; Presenter packages and sample sessions remain in the local recording bundle.
+The homepage restores the original autoplaying, tabbed Mortgage and Personal balance sheet preview and adds College funding, Household cash flow and Protection gap to the same inline player. The three newer clips use silent H.264 recordings of the actual native module renderers at `1e1cc58f06b9ee489765645613b350e0bac5555c`. The households and inputs are fictional. Only the finished clips and posters are public; Presenter packages and sample sessions remain in the local recording bundle.
 
 ## College budget, revised 15 October 2026
 
@@ -26,6 +26,8 @@ The revised recording labels the native module **College: fees and living costs*
 
 ## Playback and validation
 
-Posters load lazily. No video source is assigned to the shared player until a visitor chooses an example; it then opens in a native modal with playback, seeking and fullscreen controls. Closing or pressing Escape releases the video and restores focus. Direct MP4 links still work without JavaScript. The build versions MP4 URLs alongside styles, scripts and images.
+Mortgage plays silently when the inline preview enters view. Selecting a tab switches and plays that example in the same player. Each clip plays once, with Pause/Resume/Replay and Enlarge controls, matching the original two examples. Videos pause offscreen and in background tabs. Reduced-motion preferences keep previews still until Play is pressed. Only the selected module's recording is loaded. Enlarge opens the selected clip at its current time with native seeking and fullscreen controls; Escape closes it and restores focus.
 
-The local recording bundle is `private/video-calls/2026-10-14-new-module-videos/` in the primary checkout. The revised college recording passed all native Presenter cues forward and backward at 1920×1080 and 1280×720, plus full-frame capture and codec checks. Run `npm run build` and `node scripts/check-homepage-module-videos.mjs` to check the built homepage's desktop/mobile playback, keyboard access, focus restoration, deferred downloads, seeking and replay. Browser checks use the same local `playwright-core` dependency and Chrome setup as the existing browser checks.
+The original mortgage and balance-sheet files retain their desktop and portrait mobile versions. The three new recordings use their native 16:9 proportions at both widths, so the player adapts to the selected clip instead of adding large blank areas. All five tabs remain visible and wrap on small screens. Local media URLs carry the build version.
+
+The local recording bundle is `private/video-calls/2026-10-14-new-module-videos/` in the primary checkout. The revised college recording passed all native Presenter cues forward and backward at 1920×1080 and 1280×720, plus full-frame capture and codec checks. Run `npm run build` and `node scripts/check-homepage-module-videos.mjs` to check the built homepage's desktop/mobile autoplay, all five module selections, keyboard navigation, pause/replay, enlargement, source loading and reduced motion. Browser checks use the same local `playwright-core` dependency and Chrome setup as the existing browser checks.
