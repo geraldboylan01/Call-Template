@@ -192,6 +192,28 @@ export function runProtectionGapWiringTests() {
     assertEqual(imported.summaryHtml, '', 'cleared on import');
     assert(drainSessionImportWarnings().some((text) => /summary used wording this screen never shows/.test(text)), 'and says why');
 
+    // A summary sent on its own to the module, after it exists.
+    const existing = paste(createBlankModule(), { protectionGapInputs: SAMPLE });
+    let alone = '';
+    try {
+      applyNormalizedPayloadToModule(existing, normalizePayload({ generated: { summaryHtml: '<p>The best policy and premium.</p>' } }));
+    } catch (error) {
+      alone = error.message;
+    }
+    assert(/^generated\.summaryHtml: a protection gap summary/.test(alone), `a summary on its own is refused: ${alone}`);
+    assertEqual(existing.generated.summaryHtml, '', 'and the module is unchanged');
+
+    // Words hidden behind character references, or split by invisible characters.
+    ['<p>Buy c&#111;ver now.</p>', '<p>Ask Z&#x75;rich.</p>', '<p>A pre&shy;mium.</p>', '<p>Your c\u200Bover.</p>'].forEach((html) => {
+      let hidden = '';
+      try {
+        normalizePayload({ generated: { summaryHtml: html, protectionGapInputs: SAMPLE } });
+      } catch (error) {
+        hidden = error.message;
+      }
+      assert(/^generated\.summaryHtml: a protection gap summary/.test(hidden), `refused: ${html}`);
+    });
+
     const loaded = createBlankModule();
     loaded.generated.protectionGapInputs = JSON.parse(JSON.stringify(SAMPLE));
     loaded.generated.summaryHtml = '<p>Ask your insurer for a quote.</p>';

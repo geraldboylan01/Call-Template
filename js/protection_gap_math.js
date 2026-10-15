@@ -116,12 +116,29 @@ function wordingProblem(text) {
  * same wording limit as the screen itself, checked as plain text.
  */
 export function protectionGapSummaryAllowed(summaryHtml) {
-  const text = String(summaryHtml || '')
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
+  const text = decodeCharacterReferences(String(summaryHtml || '').replace(/<[^>]*>/g, ' '))
+    // Characters a reader never sees, which would otherwise split a word.
+    .replace(/[\u00AD\u200B-\u200D\u2060\uFEFF]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
   return !text || !wordingProblem(text);
+}
+
+const NAMED_CHARACTER_REFERENCES = Object.freeze({
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', shy: '\u00AD',
+  rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201D', ldquo: '\u201C', ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', euro: '\u20AC'
+});
+
+/** The text a browser shows for HTML character references, so a check reads what the client reads. */
+function decodeCharacterReferences(text) {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);?/gi, (whole, ref) => {
+    if (ref[0] === '#') {
+      const code = ref[1] === 'x' || ref[1] === 'X' ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : whole;
+    }
+    const named = NAMED_CHARACTER_REFERENCES[ref.toLowerCase()];
+    return named === undefined ? whole : named;
+  });
 }
 
 /** Refuse client-facing text this screen may not show. */

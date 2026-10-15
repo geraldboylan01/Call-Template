@@ -1994,6 +1994,8 @@ function validateHouseholdCashFlowInputsPayload(householdCashFlowInputs) {
   return normalized;
 }
 
+const PROTECTION_GAP_SUMMARY_REFUSAL = 'generated.summaryHtml: a protection gap summary shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".';
+
 function validateProtectionGapInputsPayload(protectionGapInputs) {
   const normalized = normalizeProtectionGapInputs(protectionGapInputs);
   // The engine's own refusals (a death with one person, a higher need after a
@@ -2134,7 +2136,7 @@ export function normalizePayload(payload) {
     if ('protectionGapInputs' in payload.generated) {
       generatedPatch.protectionGapInputs = validateProtectionGapInputsPayload(payload.generated.protectionGapInputs);
       if (!protectionGapSummaryAllowed(payload.generated.summaryHtml)) {
-        throw new Error('generated.summaryHtml: a protection gap summary shows the gap and the time, never a recommendation, a cover amount, a premium, a product or a provider, and never says "he", "she" or "the household".');
+        throw new Error(PROTECTION_GAP_SUMMARY_REFUSAL);
       }
     }
 
@@ -2531,6 +2533,17 @@ export function cloneSessionValue(value) {
 }
 
 export function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState = true } = {}) {
+  // A summary sent on its own to a protection gap module that already exists is
+  // held to the same wording limit, before anything changes. The preflight runs
+  // on a blank module, so it cannot see that the module is a protection gap.
+  const patch = normalizedPayload.generated;
+  if (patch && 'summaryHtml' in patch) {
+    const protectionGapInputs = 'protectionGapInputs' in patch ? patch.protectionGapInputs : module.generated?.protectionGapInputs;
+    if (protectionGapInputs && !protectionGapSummaryAllowed(patch.summaryHtml)) {
+      throw new Error(PROTECTION_GAP_SUMMARY_REFUSAL);
+    }
+  }
+
   if ('title' in normalizedPayload) {
     module.title = normalizedPayload.title;
   }
