@@ -1,11 +1,11 @@
 const examples = {
   mortgage: {
-    label: 'Mortgage', responsive: true,
+    label: 'Mortgage',
     caption: 'Compare how extra repayments change the finish date and interest cost.',
     context: 'Actual mortgage module, using fictional figures and stated repayment assumptions.'
   },
   'balance-sheet': {
-    label: 'Personal balance sheet', responsive: true,
+    label: 'Personal balance sheet',
     caption: 'See how a property sale moves money between assets, cash and debt.',
     context: 'Actual personal balance sheet module, using fictional figures. The sale is an illustrative scenario.'
   },
@@ -75,13 +75,11 @@ function mountProductPreview(root) {
     const example = examples[kind];
     const size = mobile.matches ? 'mobile' : 'desktop';
     const stem = `${kind}-preview-${size}`;
-    sources = example.responsive
-      ? [{ src: asset(`${stem}.mp4`), type: 'video/mp4' }, { src: asset(`${stem}.webm`), type: 'video/webm' }]
-      : [{ src: asset(`${kind}.mp4`), type: 'video/mp4' }];
+    sources = [{ src: asset(`${stem}.mp4`), type: 'video/mp4' }, { src: asset(`${stem}.webm`), type: 'video/webm' }];
     setSources(video);
-    video.poster = asset(example.responsive ? `${stem}-poster.png` : `${kind}-poster.webp`);
-    video.width = example.responsive ? (mobile.matches ? 720 : 1440) : 1920;
-    video.height = example.responsive && mobile.matches ? 1290 : 1080;
+    video.poster = asset(`${stem}-poster.png`);
+    video.width = mobile.matches ? 720 : 1440;
+    video.height = mobile.matches ? 1290 : 1080;
     root.style.setProperty('--preview-aspect', `${video.width} / ${video.height}`);
     video.setAttribute('aria-label', `${example.label} scenario comparison using fictional figures`);
     video.load();
