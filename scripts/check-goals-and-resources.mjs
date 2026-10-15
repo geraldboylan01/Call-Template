@@ -216,39 +216,92 @@ check('pensions: the extra is gross, and its relief is the tax engine\'s differe
   near(base.yearlyExtraCost, base.extraPoints * salary - relief, 0.01, 'cost after relief');
 });
 
-check('pensions: at the relief limit the gap left over is reported and the goal is not covered', () => {
-  const stretched = computeGoalsAndResourcesProjection({
-    ...H,
-    retirement: { retirementAge: 62, targetIncomeToday: 200_000 }
-  });
+// The Revenue age bands, written out here so the ceiling is not taken from the
+// engine: the limit on a personal contribution that gets relief, by age.
+const reliefBand = (age) => {
+  if (age <= 29) return 0.15;
+  if (age <= 39) return 0.20;
+  if (age <= 49) return 0.25;
+  if (age <= 54) return 0.30;
+  if (age <= 59) return 0.35;
+  return 0.40;
+};
+
+check('pensions: the search ceiling is the room across the whole schedule, and at it nothing more helps', () => {
+  const target = { retirementAge: 62, targetIncomeToday: 200_000 };
+  const stretched = computeGoalsAndResourcesProjection({ ...H, retirement: target });
   const base = stretched.debug.retirement.base;
   assert.equal(base.reachedCap, true);
-  near(base.extraPoints, 0.25 - 0.05, 1e-9, 'the cap is the age band less the lower contribution');
+  // A person pays in until the year before they retire, at that year's age band,
+  // so their room is that band less what they pay in; the household's is the
+  // larger of its people's.
+  const ceiling = Math.max(...H.pensions.map((person) => reliefBand(target.retirementAge - 1) - person.personalPct));
+  near(base.extraPoints, ceiling, 1e-9, 'the ceiling is the last working year\'s band less the lower contribution');
+  near(base.capPointsAvailable, ceiling, 1e-9, 'and it is reported');
   assert.ok(base.gapLeftOver > 0, 'a gap is left');
-  const at = computePensionProjection(pensionPayload({ retirementAge: 62, targetIncomeToday: 200_000 }, base.extraPoints)).debug;
-  near(base.gapLeftOver, at.currentGapVsRequired, 1, 'the gap left over is the engine\'s');
+
+  const gapAt = (extra) => {
+    const debug = computePensionProjection(pensionPayload(target, extra)).debug;
+    return debug.requiredPot - debug.projectedPotCurrent;
+  };
+  near(base.gapLeftOver, gapAt(ceiling), 1, 'the gap left over is the engine\'s');
+  near(gapAt(ceiling + 0.05), gapAt(ceiling), 1e-6, 'more than the ceiling changes nothing: everyone is at the limit every year');
+  assert.ok(gapAt(ceiling - 0.01) > gapAt(ceiling) + 1, 'a little under it there is still something to gain');
+
   stretched.debug.cases.forEach((entry) => {
     const retirement = entry.states.find((goal) => goal.goal === 'retirement');
     assert.notEqual(retirement.state, 'covered', `${entry.id}: retirement is not covered`);
   });
 });
 
-check('states: the yearly money handed out by hand in the planning order', () => {
+check('the ledger runs to the last active goal, with nothing for the mortgage once it is cleared', () => {
+  const years = (age, person) => age - person.currentAge;
+  const horizon = Math.max(
+    MONTHS_CLEARED / 12,
+    ...H.children.map((child) => 18 - child.age),
+    ...H.pensions.map((person) => years(H.retirement.retirementAge, person)),
+    ...H.pensions.map((person) => years(H.laterRetirement.retirementAge, person))
+  );
+  debug.cases.forEach((entry) => {
+    assert.equal(entry.ledger.length, horizon, `${entry.id}: the ledger has a row for every year to the last goal`);
+    assert.equal(entry.laterRetirement.ledger.length, horizon, `${entry.id}: and so does the later option's`);
+    entry.ledger.forEach((row) => {
+      if (row.year >= MONTHS_CLEARED / 12) assert.equal(row.mortgage, 0, `${entry.id} year ${row.year}: no mortgage once cleared`);
+    });
+  });
+});
+
+check('states: the yearly money handed out by hand, year by year, in the planning order', () => {
   debug.cases.forEach((entry) => {
     const mortgageYearly = 12 * (clearedPayment(entry.mortgageLump) - todayPayment);
     const reference = collegeReference(entry.collegeLump, H.children);
+    const freed = Math.max(0, -mortgageYearly);
+    // Each goal's need in each year: the children by their own start, the
+    // mortgage until it is cleared, retirement from the engine's per-year cost
+    // (its first year is proved against the tax engine above).
     const needs = [
-      reference.priced[0].yearly,
-      reference.priced[1].yearly,
-      Math.max(0, mortgageYearly),
-      entry.pension.yearlyExtraCost
+      (year) => (year < reference.priced[0].startsIn ? reference.priced[0].yearly : 0),
+      (year) => (year < reference.priced[1].startsIn ? reference.priced[1].yearly : 0),
+      (year) => (year < MONTHS_CLEARED / 12 ? Math.max(0, mortgageYearly) : 0),
+      (year) => entry.pension.extraCostByYear[year] || 0
     ];
-    let remaining = H.leftOverEachYear + Math.max(0, -mortgageYearly);
+    const got = needs.map(() => []);
+    for (let year = 0; year < entry.ledger.length; year += 1) {
+      let remaining = H.leftOverEachYear + (year < MONTHS_CLEARED / 12 ? freed : 0);
+      needs.forEach((need, index) => {
+        const amount = Math.max(0, Math.min(need(year), remaining));
+        remaining -= amount;
+        got[index].push(amount);
+      });
+    }
     const expected = needs.map((need, index) => {
-      const covered = Math.max(0, Math.min(need, remaining));
-      remaining -= covered;
-      let state = need <= 0.5 || covered >= need - 0.5 ? 'covered' : (covered <= 0 ? 'not' : 'partly');
-      if (index === 3 && entry.pension.reachedCap && state === 'covered') state = 'partly';
+      const active = got[index]
+        .map((amount, year) => ({ amount, need: need(year) }))
+        .filter((row) => row.need > 0.5);
+      const short = active.filter((row) => row.amount < row.need - 0.5);
+      let state = 'covered';
+      if (short.length > 0) state = active.every((row) => row.amount <= 0) ? 'not' : 'partly';
+      if (index === 3 && entry.pension.reachedCap && entry.pension.gapLeftOver > 0 && state === 'covered') state = 'partly';
       return state;
     });
     assert.deepEqual(entry.states.map((goal) => goal.state), expected, `${entry.id}: states`);

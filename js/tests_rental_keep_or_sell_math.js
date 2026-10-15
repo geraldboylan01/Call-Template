@@ -343,6 +343,106 @@ export function runRentalKeepOrSellTests() {
     assert(/one year/.test(basis), 'the period is stated');
   }));
 
+  cases.push(runCase('Cent inputs: the rows shown add down to the result shown, in the table, the tables and the chart', () => {
+    // A start of 100.40 less three cuts of 33.40 is 0.20, but its rows round to
+    // 100, 33, 33 and 33. The result shown is the shown start less the shown
+    // cuts, so what is on screen adds up.
+    const payload = {
+      ...RENTAL_KEEP_OR_SELL_SAMPLE,
+      rentPerYear: 100.4,
+      loanRepaymentsPerYear: 33.4,
+      runningCostsPerYear: 33.4,
+      taxOnRentalProfitPerYear: 33.4,
+      salePrice: 100.4,
+      sellingCosts: 33.4,
+      loanBalance: 33.4,
+      taxOnGain: 33.4
+    };
+    const projection = computeRentalKeepOrSellProjection(payload);
+    ['keep', 'sell'].forEach((id) => {
+      const entry = caseById(projection, id);
+      assertDeepEqual(entry.rows.map((row) => row.shownAmount), [100, 33, 33, 33, 1], `${id}: shown amounts`);
+      assertEqual(entry.shownResult, 1, `${id}: the result is derived from the rows shown`);
+      assertEqual(entry.shownComesOff, 99, `${id}: what comes off, as shown`);
+      assert(Math.abs(entry.result - 0.2) < 1e-9, `${id}: the exact result is kept beside it (${entry.result})`);
+      assertEqual(entry.resultTone, 'left_over', `${id}: the tone follows the result shown`);
+      // The shown bars are laid out end to end.
+      assertEqual(entry.rows[3].shownLo, 1, `${id}: the last cut ends at the result shown`);
+      assertEqual(entry.rows[4].shownHi, 1, `${id}: the result bar is the result shown`);
+    });
+    assertDeepEqual(projection.outputsTable.rows[0], ['Keep', 100, 33, 33, 33, 1], 'the outputs table, Keep');
+    assertDeepEqual(projection.outputsTable.rows[1], ['Sell', 100, 33, 33, 33, 1], 'the outputs table, Sell');
+    projection.tables.forEach((table) => {
+      const amounts = table.rows.map((row) => row[1]);
+      assertEqual(
+        amounts.slice(0, -1).reduce((sum, amount) => sum + amount, 0),
+        amounts[amounts.length - 1],
+        `${table.title}: the lines add to the last row`
+      );
+    });
+    assertDeepEqual(projection.charts[0].datasets[0].data, [100, -33, -33, -33, 1], 'the chart data');
+  }));
+
+  cases.push(runCase('A result is never shown as minus zero, and a rounded shortfall is a shortfall', () => {
+    const level = computeRentalKeepOrSellProjection({
+      ...RENTAL_KEEP_OR_SELL_SAMPLE,
+      rentPerYear: 100.4,
+      loanRepaymentsPerYear: 50.2,
+      runningCostsPerYear: 50.2,
+      taxOnRentalProfitPerYear: 0
+    });
+    const keep = caseById(level, 'keep');
+    assert(Object.is(keep.shownResult, 0), 'a plain zero, not minus zero');
+    assertEqual(keep.resultTone, 'level', 'level');
+
+    // 100.40 less three cuts of 33.50 is exactly minus 0.10, which is a shortfall of
+    // nothing; but each 33.50 shows as 34, so the rows shown fall 2 short.
+    const short = caseById(computeRentalKeepOrSellProjection({
+      ...RENTAL_KEEP_OR_SELL_SAMPLE,
+      rentPerYear: 100.4,
+      loanRepaymentsPerYear: 33.5,
+      runningCostsPerYear: 33.5,
+      taxOnRentalProfitPerYear: 33.5
+    }), 'keep');
+    assertDeepEqual(short.rows.map((row) => row.shownAmount), [100, 34, 34, 34, -2], 'rows shown');
+    assertEqual(short.resultTone, 'short', 'the tone follows what is shown');
+  }));
+
+  cases.push(runCase('Seeded cent payloads: what is shown always adds down, everywhere it is shown', () => {
+    let state = 20_261_015;
+    const next = () => {
+      state = (state * 1_664_525 + 1_013_904_223) % 4_294_967_296;
+      return state / 4_294_967_296;
+    };
+    const cents = (limit) => Math.round(next() * limit * 100) / 100;
+    for (let index = 0; index < 500; index += 1) {
+      const payload = {
+        rentPerYear: 0.5 + cents(60_000),
+        loanRepaymentsPerYear: cents(40_000),
+        runningCostsPerYear: cents(15_000),
+        taxOnRentalProfitPerYear: cents(15_000),
+        salePrice: 0.5 + cents(1_500_000),
+        sellingCosts: cents(60_000),
+        loanBalance: cents(1_200_000),
+        taxOnGain: cents(250_000)
+      };
+      const projection = computeRentalKeepOrSellProjection(payload);
+      projection.debug.cases.forEach((entry) => {
+        const [start, one, two, three, result] = entry.rows.map((row) => row.shownAmount);
+        assertEqual(start - one - two - three, result, `payload ${index}/${entry.id}: the rows shown add down`);
+        assertEqual(entry.shownResult, result, `payload ${index}/${entry.id}: the result is the last row`);
+        assertEqual(entry.shownComesOff, one + two + three, `payload ${index}/${entry.id}: what comes off`);
+        assert(!Object.is(result, -0), `payload ${index}/${entry.id}: no minus zero`);
+      });
+      const [keepRow, sellRow] = projection.outputsTable.rows;
+      [keepRow, sellRow].forEach((row, which) => {
+        assertEqual(row[1] - row[2] - row[3] - row[4], row[5], `payload ${index}/${which}: the outputs table adds down`);
+      });
+      const data = projection.charts[0].datasets[0].data;
+      assertEqual(data[0] + data[1] + data[2] + data[3], data[4], `payload ${index}: the chart adds down`);
+    }
+  }));
+
   const passed = cases.filter((entry) => entry.pass).length;
   const failed = cases.length - passed;
   const summary = { total: cases.length, passed, failed, results: cases };

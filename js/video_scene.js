@@ -266,7 +266,11 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       resolved.generated.assumptions = projection.assumptionsTable;
       resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
       resolved.generated.tables = projection.tables;
-      resolved.generated.charts = projection.charts;
+      // A video chart holds MAX_CHART_LABELS points, and a fund can run for up
+      // to 70 years. Sample the whole horizon, keeping the year the cost starts
+      // and the last year, so the line always reaches the cost.
+      const costStart = generated.futureCostFundInputs.startsInYears;
+      resolved.generated.charts = projection.charts.map((chart) => sampleChartAcross(chart, [costStart - 1, costStart]));
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
@@ -394,18 +398,21 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       const [start, ...rest] = entry.rows;
       const cuts = rest.filter((row) => row.key !== 'result');
       const yearly = entry.id === 'keep' ? ' a year' : '';
-      const shown = (amount) => Math.round(amount);
       // THREE FIGURES THAT ADD UP COME FIRST, because a story shows only the
       // first few: the headline, what comes off it, and what is left. What comes
       // off is a sum made for the video and named for what it is, so the three
       // still add up. The screen never prints it. The lines it is made of
       // follow, and any that is nothing in this case is left out.
+      //
+      // All of them are the SHOWN figures, the ones on the screen: what comes off
+      // is the sum of the cuts as shown and the result is the shown start less
+      // that, so the three add up even when the inputs have cents.
       const figures = [
-        [`${start.name}${yearly} (€)`, shown(start.amount)],
-        [`${entry.comesOffName}${yearly} (€)`, shown(entry.comesOff)],
-        [`${entry.resultName} (€)`, shown(entry.result)],
+        [`${start.name}${yearly} (€)`, start.shownAmount],
+        [`${entry.comesOffName}${yearly} (€)`, entry.shownComesOff],
+        [`${entry.resultName} (€)`, entry.shownResult],
         ...cuts
-          .map((row) => [`${row.name}${yearly} (€)`, shown(row.amount)])
+          .map((row) => [`${row.name}${yearly} (€)`, row.shownAmount])
           .filter(([, value]) => value !== 0)
       ];
       const escapeHtml = (text) => String(text)
@@ -607,6 +614,33 @@ function extractStoryMetrics(module, kind) {
     }));
 
   return [...metrics, ...chartInsights].slice(0, MAX_STORY_METRICS);
+}
+
+/**
+ * A chart cut to MAX_CHART_LABELS points spread across its whole length,
+ * keeping the first and last points and any named ones. A chart that already
+ * fits is returned as it is.
+ */
+function sampleChartAcross(chart, keepIndices = []) {
+  const labels = Array.isArray(chart?.labels) ? chart.labels : [];
+  const count = labels.length;
+  if (count <= MAX_CHART_LABELS) {
+    return chart;
+  }
+  const keep = new Set([0, count - 1, ...keepIndices.filter((index) => Number.isInteger(index) && index > 0 && index < count - 1)]);
+  const slots = MAX_CHART_LABELS - keep.size;
+  for (let step = 1; step <= slots; step += 1) {
+    keep.add(Math.round((step * (count - 1)) / (slots + 1)));
+  }
+  const picked = [...keep].sort((a, b) => a - b);
+  return {
+    ...chart,
+    labels: picked.map((index) => labels[index]),
+    datasets: (Array.isArray(chart.datasets) ? chart.datasets : []).map((dataset) => ({
+      ...dataset,
+      data: picked.map((index) => (Array.isArray(dataset?.data) ? dataset.data[index] : undefined))
+    }))
+  };
 }
 
 function normalizeChart(chart, index) {

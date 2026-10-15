@@ -16,7 +16,8 @@ import {
 } from './household_cash_flow_math.js';
 import {
   normalizeProtectionGapInputs,
-  computeProtectionGapProjection
+  computeProtectionGapProjection,
+  protectionGapSummaryHtml
 } from './protection_gap_math.js';
 import {
   normalizeRentalKeepOrSellInputs,
@@ -70,6 +71,44 @@ function capImportedScenarioCases(cases, limit, label, noun = 'cases') {
 
   return cases.slice(0, limit);
 }
+
+/**
+ * Cut an imported module's cases to the cap, and keep its base case among them.
+ *
+ * A base case that was cut would make the engine refuse the whole module, which
+ * defeats the cut, so it takes the place of the last case kept, with a warning.
+ */
+function capImportedEngineCases(inputs, label) {
+  if (!Array.isArray(inputs.scenarios) || inputs.scenarios.length <= MAX_MODULE_SCENARIO_CASES) {
+    return inputs;
+  }
+  const scenarios = capImportedScenarioCases(inputs.scenarios, MAX_MODULE_SCENARIO_CASES, `${label}.scenarios`);
+  const base = typeof inputs.baseScenarioId === 'string' ? inputs.baseScenarioId.trim() : '';
+  const sameId = (entry) => typeof entry?.id === 'string' && entry.id.trim() === base;
+  if (!base || scenarios.some(sameId)) {
+    return { ...inputs, scenarios };
+  }
+  const baseCase = inputs.scenarios.find(sameId);
+  if (!baseCase) {
+    return { ...inputs, scenarios };
+  }
+  // The base is the case every other is read against (for the protection gap,
+  // the only case with no event), so it is kept in place of the last case kept.
+  recordSessionImportWarning(`${label}.baseScenarioId "${base}" was beyond the first ${MAX_MODULE_SCENARIO_CASES} cases, so it was kept in place of the last of them.`);
+  return { ...inputs, scenarios: [...scenarios.slice(0, MAX_MODULE_SCENARIO_CASES - 1), baseCase] };
+}
+
+/**
+ * The engine inputs whose figures only the engine may produce. When one of these
+ * is in a session but cannot be read, its stored tables and charts are cleared
+ * with it, so stale or model-supplied figures never show as a generic analysis.
+ */
+const RUNTIME_OWNED_INPUT_KEYS = Object.freeze([
+  'futureCostFundInputs',
+  'householdCashFlowInputs',
+  'protectionGapInputs',
+  'rentalKeepOrSellInputs'
+]);
 
 function makeSessionId() {
   if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -723,20 +762,15 @@ function firstDefinedNumber(source, keys) {
  * solved) is dropped with a warning and the module simply has no inputs.
  */
 function normalizeFutureCostFundSessionInputs(futureCostFundInputs) {
-  if (!futureCostFundInputs || typeof futureCostFundInputs !== 'object' || Array.isArray(futureCostFundInputs)) {
+  if (futureCostFundInputs === undefined || futureCostFundInputs === null) {
+    return null;
+  }
+  if (typeof futureCostFundInputs !== 'object' || Array.isArray(futureCostFundInputs)) {
+    recordSessionImportWarning('futureCostFundInputs could not be read and was left out: it must be an object.');
     return null;
   }
 
-  const candidate = Array.isArray(futureCostFundInputs.scenarios)
-    ? {
-      ...futureCostFundInputs,
-      scenarios: capImportedScenarioCases(
-        futureCostFundInputs.scenarios,
-        MAX_MODULE_SCENARIO_CASES,
-        'futureCostFundInputs.scenarios'
-      )
-    }
-    : futureCostFundInputs;
+  const candidate = capImportedEngineCases(futureCostFundInputs, 'futureCostFundInputs');
 
   try {
     return normalizeFutureCostFundInputs(candidate);
@@ -757,20 +791,15 @@ function normalizeFutureCostFundSessionInputs(futureCostFundInputs) {
  * module simply has no inputs. Projecting it here is what finds the second kind.
  */
 function normalizeHouseholdCashFlowSessionInputs(householdCashFlowInputs) {
-  if (!householdCashFlowInputs || typeof householdCashFlowInputs !== 'object' || Array.isArray(householdCashFlowInputs)) {
+  if (householdCashFlowInputs === undefined || householdCashFlowInputs === null) {
+    return null;
+  }
+  if (typeof householdCashFlowInputs !== 'object' || Array.isArray(householdCashFlowInputs)) {
+    recordSessionImportWarning('householdCashFlowInputs could not be read and was left out: it must be an object.');
     return null;
   }
 
-  const candidate = Array.isArray(householdCashFlowInputs.scenarios)
-    ? {
-      ...householdCashFlowInputs,
-      scenarios: capImportedScenarioCases(
-        householdCashFlowInputs.scenarios,
-        MAX_MODULE_SCENARIO_CASES,
-        'householdCashFlowInputs.scenarios'
-      )
-    }
-    : householdCashFlowInputs;
+  const candidate = capImportedEngineCases(householdCashFlowInputs, 'householdCashFlowInputs');
 
   try {
     const normalized = normalizeHouseholdCashFlowInputs(candidate);
@@ -793,20 +822,15 @@ function normalizeHouseholdCashFlowSessionInputs(householdCashFlowInputs) {
  * inputs. Projecting it here is what finds the second kind.
  */
 function normalizeProtectionGapSessionInputs(protectionGapInputs) {
-  if (!protectionGapInputs || typeof protectionGapInputs !== 'object' || Array.isArray(protectionGapInputs)) {
+  if (protectionGapInputs === undefined || protectionGapInputs === null) {
+    return null;
+  }
+  if (typeof protectionGapInputs !== 'object' || Array.isArray(protectionGapInputs)) {
+    recordSessionImportWarning('protectionGapInputs could not be read and was left out: it must be an object.');
     return null;
   }
 
-  const candidate = Array.isArray(protectionGapInputs.scenarios)
-    ? {
-      ...protectionGapInputs,
-      scenarios: capImportedScenarioCases(
-        protectionGapInputs.scenarios,
-        MAX_MODULE_SCENARIO_CASES,
-        'protectionGapInputs.scenarios'
-      )
-    }
-    : protectionGapInputs;
+  const candidate = capImportedEngineCases(protectionGapInputs, 'protectionGapInputs');
 
   try {
     const normalized = normalizeProtectionGapInputs(candidate);
@@ -827,7 +851,11 @@ function normalizeProtectionGapSessionInputs(protectionGapInputs) {
  * Projecting it here is what finds that, as for the other engine modules.
  */
 function normalizeRentalKeepOrSellSessionInputs(rentalKeepOrSellInputs) {
-  if (!rentalKeepOrSellInputs || typeof rentalKeepOrSellInputs !== 'object' || Array.isArray(rentalKeepOrSellInputs)) {
+  if (rentalKeepOrSellInputs === undefined || rentalKeepOrSellInputs === null) {
+    return null;
+  }
+  if (typeof rentalKeepOrSellInputs !== 'object' || Array.isArray(rentalKeepOrSellInputs)) {
+    recordSessionImportWarning('rentalKeepOrSellInputs could not be read and was left out: it must be an object.');
     return null;
   }
 
@@ -1859,6 +1887,23 @@ export function normalizeGenerated(generated) {
     charts: normalizeCharts(generated.charts)
   };
 
+  const droppedRuntimeInput = RUNTIME_OWNED_INPUT_KEYS.some((key) => (
+    generated[key] !== undefined && generated[key] !== null && !normalized[key]
+  ));
+  if (droppedRuntimeInput && !RUNTIME_OWNED_INPUT_KEYS.some((key) => normalized[key])) {
+    normalized.assumptions = { columns: [], rows: [] };
+    normalized.outputs = { columns: [], rows: [] };
+    normalized.tables = [];
+    normalized.charts = [];
+  }
+  // A protection gap's summary is only ever the engine's. When its inputs could
+  // not be read, the saved summary goes with them rather than staying on a
+  // module that no longer holds it to the screen's wording limit.
+  if (generated.protectionGapInputs !== undefined && generated.protectionGapInputs !== null && !normalized.protectionGapInputs && normalized.summaryHtml) {
+    normalized.summaryHtml = '';
+    recordSessionImportWarning('The protection gap summary was left out with its inputs.');
+  }
+
   if (normalized.videoSummary) {
     normalized.summaryHtml = '';
     normalized.pbsInputs = null;
@@ -2046,12 +2091,15 @@ export function normalizeGenerated(generated) {
     normalized.outputsBucketed = null;
     try {
       const projection = computeProtectionGapProjection(normalized.protectionGapInputs);
+      // The summary is the engine's, as on paste: a saved one is never shown.
+      normalized.summaryHtml = protectionGapSummaryHtml(projection);
       normalized.assumptions = projection.assumptionsTable;
       normalized.outputs = projection.outputsTable;
       normalized.tables = projection.tables;
       normalized.charts = projection.charts;
     } catch (_error) {
       // Never preserve model-supplied calculations for a runtime-owned module.
+      normalized.summaryHtml = '';
       normalized.assumptions = { columns: [], rows: [] };
       normalized.outputs = { columns: [], rows: [] };
       normalized.tables = [];

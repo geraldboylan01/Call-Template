@@ -125,6 +125,27 @@ export function runRentalKeepOrSellWiringTests() {
     );
   }));
 
+  cases.push(runCase('Cent inputs are accepted, and what is derived adds down to the result shown', () => {
+    const module = paste(createBlankModule(), {
+      rentalKeepOrSellInputs: {
+        ...SAMPLE,
+        rentPerYear: 100.4,
+        loanRepaymentsPerYear: 33.4,
+        runningCostsPerYear: 33.4,
+        taxOnRentalProfitPerYear: 33.4
+      }
+    });
+    const [keep] = module.generated.outputs.rows;
+    assertEqual(JSON.stringify(keep), JSON.stringify(['Keep', 100, 33, 33, 33, 1]), 'the outputs row adds down');
+    const table = module.generated.tables[0].rows.map((row) => row[1]);
+    assertEqual(JSON.stringify(table), JSON.stringify([100, -33, -33, -33, 1]), 'and so does the table');
+    assertEqual(
+      JSON.stringify(module.generated.charts[0].datasets[0].data),
+      JSON.stringify([100, -33, -33, -33, 1]),
+      'and the chart'
+    );
+  }));
+
   cases.push(runCase('A refused paste leaves the module as it was', () => {
     const module = paste(createBlankModule(), { collegeFundingInputs: COLLEGE });
     let refused = false;

@@ -7,6 +7,8 @@ import {
   projectGoalsAndResources
 } from './goals_and_resources_math.js';
 import { computePensionProjection } from './pension_math.js';
+import { renderTaxDisclosures } from './planning/tax/disclosures.js';
+import { resolveTaxRules } from './planning/tax/resolve.js';
 
 /**
  * The illustrative household every figure in the brief is proved against.
@@ -216,7 +218,9 @@ export function runGoalsAndResourcesTests() {
     });
     // Case 1: €6,000 against college €3,603 then €3,113, then the mortgage.
     const first = debug.cases[0].states.map((goal) => goal.state).join(',');
-    assertEqual(first, 'covered,partly,not,not', 'case 1 states');
+    // Judged year by year: the mortgage and retirement get nothing this year, and
+    // are met in later years once the colleges stop, so they are partly covered.
+    assertEqual(first, 'covered,partly,partly,partly', 'case 1 states');
     assertEqual(debug.cases[1].states.map((goal) => goal.state).join(','), 'covered,covered,covered,partly', 'case 2 states');
     // A younger child's college comes after an older child's, whatever order they are listed in.
     const swapped = computeGoalsAndResourcesProjection({
@@ -489,6 +493,192 @@ export function runGoalsAndResourcesTests() {
       'generated.goalsAndResourcesInputs.mortgage.clearByAge must be a whole age later than 45.',
       'only an age at or below today is rejected'
     );
+  }));
+
+  // ---- the three engine issues found in review of PR #58, and the relief-limit notes
+
+  const withoutLater = (raw) => {
+    const copy = { ...raw };
+    delete copy.laterRetirement;
+    return copy;
+  };
+  const closesAt = (raw, target, extraPoints) => computePensionProjection({
+    currentYear: 2026,
+    incomeMode: 'target',
+    targetIncomeToday: target.targetIncomeToday,
+    targetIncomeBasis: 'net',
+    householdTaxStatus: raw.householdTaxStatus,
+    pensions: raw.pensions.map((person) => ({
+      ...person,
+      retirementAge: target.retirementAge,
+      personalPct: Math.max(0, person.personalPct + extraPoints)
+    }))
+  }).debug.currentGapVsRequired === 0;
+
+  /** One person already at today's limit (25% at 49) who will reach the 30%, 35% and 40% bands. */
+  const atTodaysLimit = withoutLater({
+    ...GOALS_AND_RESOURCES_SAMPLE,
+    householdTaxStatus: 'single',
+    mortgage: { ...GOALS_AND_RESOURCES_SAMPLE.mortgage, currentAge: 49, clearByAge: 60 },
+    pensions: [{
+      id: 'sean', title: 'Sean', currentAge: 49, currentSalary: 100_000, currentPot: 150_000,
+      personalPct: 0.25, employerPct: 0.05, includeStatePension: true
+    }],
+    retirement: { retirementAge: 65, targetIncomeToday: 40_000 },
+    children: [GOALS_AND_RESOURCES_SAMPLE.children[0]]
+  });
+
+  cases.push(runCase('The relief-limit search counts the age bands a person reaches before retiring', () => {
+    const { base } = computeGoalsAndResourcesProjection(atTodaysLimit).debug.retirement;
+    assertEqual(base.onTrackAtToday, false, 'today\'s contributions do not close it');
+    assertEqual(base.reachedCap, false, 'a later, higher band helps, so the limit is not reached');
+    assert(base.extraPoints > 0, `the search found an extra (${base.extraPoints})`);
+    assertEqual(base.gapLeftOver, 0, 'no gap is left');
+    assert(closesAt(atTodaysLimit, atTodaysLimit.retirement, base.extraPoints), 'the retirement module agrees it closes');
+    // Room is the 40% band at the last working age (64) less the 25% paid in.
+    assertWithin(base.capPointsAvailable, 0.15, 1e-9, 'the ceiling is from the whole schedule');
+    assertEqual(base.disclosures.length, 0, 'and there is nothing to say about money beyond the limit');
+  }));
+
+  cases.push(runCase('Two people: one at the limit today does not stop the other\'s room from being used', () => {
+    const couple = withoutLater({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      householdTaxStatus: 'married_or_civil_partners',
+      mortgage: { ...GOALS_AND_RESOURCES_SAMPLE.mortgage, currentAge: 49, clearByAge: 60 },
+      pensions: [
+        atTodaysLimit.pensions[0],
+        { id: 'una', title: 'Una', currentAge: 40, currentSalary: 70_000, currentPot: 60_000, personalPct: 0.06, employerPct: 0.05, includeStatePension: true }
+      ],
+      retirement: { retirementAge: 65, targetIncomeToday: 60_000 },
+      children: [GOALS_AND_RESOURCES_SAMPLE.children[0]]
+    });
+    const { base } = computeGoalsAndResourcesProjection(couple).debug.retirement;
+    assertEqual(base.reachedCap, false, 'not at the limit: Una can pay in more');
+    assert(closesAt(couple, couple.retirement, base.extraPoints), 'and it closes');
+    // The most that helps is the larger of the two people's room: Una at 59
+    // gets the 40% band, 34 points more than her 6%.
+    assertWithin(base.capPointsAvailable, 0.34, 1e-9, 'the ceiling is the larger headroom');
+  }));
+
+  cases.push(runCase('The limit is still reported when no later band helps', () => {
+    const atTheTop = withoutLater({
+      ...atTodaysLimit,
+      mortgage: { ...atTodaysLimit.mortgage, currentAge: 61, clearByAge: 70 },
+      pensions: [{ ...atTodaysLimit.pensions[0], currentAge: 61, personalPct: 0.4 }],
+      retirement: { retirementAge: 65, targetIncomeToday: 90_000 }
+    });
+    const { base } = computeGoalsAndResourcesProjection(atTheTop).debug.retirement;
+    assertEqual(base.reachedCap, true, 'already at the highest band');
+    assert(base.gapLeftOver > 0, 'a gap is left');
+    assertEqual(base.extraPoints, 0, 'nothing more can be paid in with relief');
+    assertEqual(base.disclosures.length, 4, 'and the notes are raised');
+  }));
+
+  const later = {
+    ...GOALS_AND_RESOURCES_SAMPLE,
+    mortgage: { ...GOALS_AND_RESOURCES_SAMPLE.mortgage, currentAge: 45, clearByAge: 50 },
+    retirement: { retirementAge: 65, targetIncomeToday: 50_000 },
+    // A later target that still needs an extra, so its years carry a cost.
+    laterRetirement: { retirementAge: 67, targetIncomeToday: 56_000 },
+    children: [{ id: 'child-1', title: 'First child', age: 1 }]
+  };
+
+  cases.push(runCase('The ledger runs to the last active goal, the later retirement option included', () => {
+    const { cases: result } = computeGoalsAndResourcesProjection(later).debug;
+    // Mortgage 5 years, college starts in 17, retirement 20 years, the later option 22.
+    result.forEach((entry) => {
+      assertEqual(entry.ledger.length, 22, `${entry.id}: the ledger`);
+      assertEqual(entry.laterRetirement.ledger.length, 22, `${entry.id}: the later option's ledger`);
+      assertEqual(entry.ledger[4].mortgage, entry.mortgage.yearlyChange, `${entry.id}: the mortgage is in its last year`);
+      assertEqual(entry.ledger[5].mortgage, 0, `${entry.id}: nothing for the mortgage once it is cleared`);
+      assert(entry.ledger[16].children[0] === entry.ledger[0].children[0], `${entry.id}: college is saved for through year 16`);
+      assertEqual(entry.ledger[17].children[0], 0, `${entry.id}: and not after its start`);
+      assert(entry.ledger[19].pension > 0, `${entry.id}: retirement saving runs to year 19`);
+      assertEqual(entry.ledger[20].pension, 0, `${entry.id}: and stops when it ends`);
+      assert(entry.laterRetirement.ledger[20].pension > 0, `${entry.id}: the later option still saves in year 20`);
+      assert(entry.laterRetirement.ledger[21].pension > 0, `${entry.id}: and in its last year, 21`);
+    });
+    // The tables carry the same rows.
+    const table = computeGoalsAndResourcesProjection(later).tables[0];
+    assertEqual(table.rows.length, 22, 'the "what you need each year" table');
+  }));
+
+  cases.push(runCase('Coverage is judged year by year, not on this year\'s cost', () => {
+    // Left over of €14,500: this year the retirement saving fits, and it rises
+    // with wage growth while the left over does not.
+    const raw = { ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 14_500 };
+    const result = computeGoalsAndResourcesProjection(raw).debug.cases;
+    const entry = result.find((candidate) => candidate.id === 'mortgage-then-college');
+    const retirement = entry.states.find((goal) => goal.goal === 'retirement');
+    assert(entry.ledger[0].difference < 0.5, 'this year, everything fits');
+    assertEqual(retirement.covered >= retirement.need - 0.5, true, 'this year\'s retirement saving is covered');
+    assertEqual(retirement.state, 'partly', 'but it is not covered over the years');
+    const firstShort = entry.ledger.findIndex((row) => row.difference > 0.5);
+    assert(firstShort >= 1, 'the money runs short after this year');
+    assertEqual(retirement.firstShortYear, firstShort, 'and it says which year');
+
+    // With more left over than any year needs, it is covered in every year.
+    const plenty = computeGoalsAndResourcesProjection({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 40_000 }).debug.cases;
+    plenty.forEach((candidate) => {
+      candidate.states.forEach((goal) => {
+        assertEqual(goal.state, 'covered', `${candidate.id}: ${goal.goal} covered`);
+        assertEqual(goal.firstShortYear, null, `${candidate.id}: ${goal.goal} is never short`);
+      });
+    });
+
+    // With nothing left over, nothing is covered in any year.
+    const none = computeGoalsAndResourcesProjection({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 0 }).debug.cases[0];
+    assertEqual(none.states.map((goal) => goal.state).join(','), 'not,not,not,not', 'nothing covered');
+    assertEqual(none.states.every((goal) => goal.firstShortYear === 0), true, 'short from this year');
+
+    // And a goal that gets money only in later years is partly covered, not "not covered".
+    const sample = projection().debug.cases[0];
+    assertEqual(sample.states[2].state, 'partly', 'the mortgage gets nothing now and is met once college saving ends');
+    assertEqual(sample.states[2].firstShortYear, 0, 'short from this year');
+  }));
+
+  cases.push(runCase('At the relief limit with the target out of reach, the notes beside an after-tax investment are carried', () => {
+    const raw = { ...GOALS_AND_RESOURCES_SAMPLE, retirement: { retirementAge: 62, targetIncomeToday: 200_000 } };
+    const { debug } = computeGoalsAndResourcesProjection(raw);
+    const { base } = debug.retirement;
+    assertEqual(base.reachedCap, true, 'at the limit');
+    assertEqual(
+      base.disclosures.map((entry) => entry.code).join(','),
+      'PENSION_AT_RELIEF_LIMIT,INVESTMENT_FUND_TAX,INVESTMENT_FUND_TAX_ANNOUNCED,INVESTMENT_ACCOUNT',
+      'the four notes'
+    );
+    assertEqual(debug.calculationDateIso, '2026-11-01', 'raised as of the calculation date');
+    assertEqual(debug.taxRulesYear, 2026, 'with the rules for its year');
+    const texts = renderTaxDisclosures(base.disclosures, { rules: resolveTaxRules(debug.taxRulesYear) }).map((entry) => entry.text);
+    assertEqual(
+      texts[0],
+      'Your pension contributions are at the most income tax relief allows at your age, 25% of earnings up to €115,000. '
+      + 'Money you invest beyond that gets no income tax relief.',
+      'the limit note carries the figures when both people share one limit'
+    );
+    assertEqual(texts.length, 4, 'four rendered notes');
+    // Every case carries the same notes, and the screen can take them from any.
+    debug.cases.forEach((entry) => {
+      assertEqual(entry.pension.disclosures.length, 4, `${entry.id}: notes`);
+    });
+
+    // Two different limits: the note says no figure rather than the wrong one.
+    const differing = computeGoalsAndResourcesProjection({
+      ...raw,
+      pensions: [raw.pensions[0], { ...raw.pensions[1], currentAge: 55 }]
+    }).debug.retirement.base.disclosures;
+    assertEqual(differing[0].params, null, 'no figures when the two limits differ');
+    assertEqual(
+      renderTaxDisclosures(differing, { rules: resolveTaxRules(2026) })[0].text,
+      'Your pension contributions are at the most income tax relief allows at your age. Money you invest beyond that gets no income tax relief.',
+      'and the note reads without them'
+    );
+
+    // The target is met: none.
+    const met = computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE).debug;
+    assertEqual(met.retirement.base.reachedCap, false, 'the sample is inside the limit');
+    assertEqual(met.retirement.base.disclosures.length, 0, 'no notes when the target is met');
+    assertEqual(met.retirement.later.disclosures.length, 0, 'nor for the later option');
   }));
 
   cases.push(runCase('The retirement module still returns every field the search reads, as a number', () => {

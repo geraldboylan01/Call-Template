@@ -9,13 +9,20 @@
  * with `renderTaxDisclosures`, the same as any other tax disclosure.
  */
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+import { assertIsoDate } from '../utils.js';
 
 function requireIsoDate(value, field) {
-  if (typeof value !== 'string' || !ISO_DATE.test(value)) {
-    throw new Error(`${field} must be a YYYY-MM-DD date; received ${JSON.stringify(value)}.`);
-  }
-  return value;
+  return assertIsoDate(value, field);
+}
+
+/**
+ * Whether a rule was known on a date. A rule is not known before the day it was
+ * announced, so a date before Budget day gets the law as it then stood. This
+ * holds after the rule becomes law too: `announcedOn` stays on the entry when
+ * its status moves to enacted, and a date before it still gets the old law.
+ */
+function knownOn(entry, dateIso) {
+  return !entry.announcedOn || entry.announcedOn <= dateIso;
 }
 
 function requireInvestmentRules(rules) {
@@ -30,10 +37,10 @@ function requireInvestmentRules(rules) {
  * The exit tax entry in force on a date: the last one on or before it, so the
  * final rate is held. Throws for a date before the first entry.
  */
-export function exitTaxRateOn(dateIso, rules) {
-  requireIsoDate(dateIso, 'date');
+export function exitTaxRateOn(rawDate, rules) {
+  const dateIso = requireIsoDate(rawDate, 'date');
   const schedule = requireInvestmentRules(rules).exitTaxRateSchedule;
-  const entry = [...schedule].reverse().find((candidate) => candidate.effectiveFrom <= dateIso);
+  const entry = [...schedule].reverse().find((candidate) => candidate.effectiveFrom <= dateIso && knownOn(candidate, dateIso));
   if (!entry) {
     throw new Error(`No exit tax rate is recorded for ${dateIso}.`);
   }
@@ -43,7 +50,7 @@ export function exitTaxRateOn(dateIso, rules) {
 /** The next scheduled change after a date, or null. */
 function nextExitTaxChange(dateIso, rules) {
   const schedule = requireInvestmentRules(rules).exitTaxRateSchedule;
-  return schedule.find((entry) => entry.effectiveFrom > dateIso) || null;
+  return schedule.find((entry) => entry.effectiveFrom > dateIso && knownOn(entry, dateIso)) || null;
 }
 
 /**
@@ -59,13 +66,13 @@ function nextExitTaxChange(dateIso, rules) {
  * - The Investment Account, unless `includeInvestmentAccount` is false.
  */
 export function afterTaxInvestmentDisclosures({
-  asOf,
+  asOf: rawAsOf,
   rules,
   pensionAtReliefLimit = false,
   reliefLimit = null,
   includeInvestmentAccount = true
 } = {}) {
-  requireIsoDate(asOf, 'asOf');
+  const asOf = requireIsoDate(rawAsOf, 'asOf');
   const funds = requireInvestmentRules(rules);
   const disclosures = [];
 
@@ -92,7 +99,7 @@ export function afterTaxInvestmentDisclosures({
     });
   }
 
-  if (includeInvestmentAccount && funds.investmentAccount) {
+  if (includeInvestmentAccount && funds.investmentAccount && knownOn(funds.investmentAccount, asOf)) {
     disclosures.push({ code: 'INVESTMENT_ACCOUNT', params: { asOf } });
   }
 
