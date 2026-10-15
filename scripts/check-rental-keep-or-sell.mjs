@@ -15,6 +15,7 @@ import {
 } from '../js/tests_rental_keep_or_sell_math.js';
 import { runRentalKeepOrSellViewTests } from '../js/tests_rental_keep_or_sell_view.js';
 import { runRentalKeepOrSellModuleTests } from '../js/tests_rental_keep_or_sell_module.js';
+import { runRentalKeepOrSellWiringTests } from '../js/tests_rental_keep_or_sell_wiring.js';
 
 let failures = 0;
 
@@ -40,18 +41,23 @@ function runningBalances(startEuro, deductionsEuro) {
   return { after, result: left };
 }
 
+/**
+ * What is shown: each figure to the nearest euro, and the result as the shown
+ * start less the shown cuts, so whatever is on screen adds down to its last line.
+ */
+function shownRows(startEuro, deductionsEuro) {
+  const toEuro = (euro) => Math.round(cents(euro) / 100);
+  const start = toEuro(startEuro);
+  const cuts = deductionsEuro.map(toEuro);
+  return { start, cuts, result: start - cuts.reduce((sum, amount) => sum + amount, 0) + 0 };
+}
+
 function reference(payload) {
+  const keepCuts = [payload.loanRepaymentsPerYear, payload.runningCostsPerYear, payload.taxOnRentalProfitPerYear];
+  const sellCuts = [payload.sellingCosts, payload.loanBalance, payload.taxOnGain];
   return {
-    keep: runningBalances(payload.rentPerYear, [
-      payload.loanRepaymentsPerYear,
-      payload.runningCostsPerYear,
-      payload.taxOnRentalProfitPerYear
-    ]),
-    sell: runningBalances(payload.salePrice, [
-      payload.sellingCosts,
-      payload.loanBalance,
-      payload.taxOnGain
-    ])
+    keep: { ...runningBalances(payload.rentPerYear, keepCuts), shown: shownRows(payload.rentPerYear, keepCuts) },
+    sell: { ...runningBalances(payload.salePrice, sellCuts), shown: shownRows(payload.salePrice, sellCuts) }
   };
 }
 
@@ -82,7 +88,16 @@ function compare(payload, label) {
     assert.equal(Math.round(result.lo * 100), Math.min(0, expected.result), `${label}/${id}: result lower end`);
     assert.equal(Math.round(result.hi * 100), Math.max(0, expected.result), `${label}/${id}: result upper end`);
 
-    const expectedTone = expected.result > 0 ? 'left_over' : expected.result < 0 ? 'short' : 'level';
+    // The shown rows, and a result derived from them.
+    const shown = expected.shown;
+    assert.deepEqual(
+      entry.rows.map((row) => row.shownAmount),
+      [shown.start, ...shown.cuts, shown.result],
+      `${label}/${id}: the rows shown`
+    );
+    assert.equal(entry.shownResult, shown.result, `${label}/${id}: the result shown`);
+
+    const expectedTone = shown.result > 0 ? 'left_over' : shown.result < 0 ? 'short' : 'level';
     assert.equal(entry.resultTone, expectedTone, `${label}/${id}: tone`);
   });
 }
@@ -140,6 +155,35 @@ check('three hundred seeded payloads match the reference', () => {
   }
 });
 
+check('three hundred seeded payloads with cents match the reference, shown rows and all', () => {
+  const next = sequence(20_261_016);
+  const euro = (limit) => Math.round(next() * limit * 100) / 100;
+  for (let index = 0; index < 300; index += 1) {
+    const payload = {
+      rentPerYear: 0.5 + euro(60_000),
+      loanRepaymentsPerYear: euro(40_000),
+      runningCostsPerYear: euro(15_000),
+      taxOnRentalProfitPerYear: euro(15_000),
+      salePrice: 0.5 + euro(1_500_000),
+      sellingCosts: euro(60_000),
+      loanBalance: euro(1_200_000),
+      taxOnGain: euro(250_000)
+    };
+    compare(payload, `cents ${index + 1}`);
+  }
+});
+
+check('the cent case from the review: 100.40 less three of 33.40 shows 100, 33, 33, 33 and 1', () => {
+  const ref = reference({
+    ...RENTAL_KEEP_OR_SELL_SAMPLE,
+    rentPerYear: 100.4,
+    loanRepaymentsPerYear: 33.4,
+    runningCostsPerYear: 33.4,
+    taxOnRentalProfitPerYear: 33.4
+  });
+  assert.deepEqual([ref.keep.shown.start, ...ref.keep.shown.cuts, ref.keep.shown.result], [100, 33, 33, 33, 1]);
+});
+
 // The unit suites, run here so one command proves the engine and the view.
 const summary = runRentalKeepOrSellTests();
 if (summary.failed > 0) {
@@ -158,9 +202,15 @@ if (moduleSummary.failed > 0) {
   failures += moduleSummary.failed;
 }
 
+// The paste pipeline, the session importer and the presenter catalogue.
+const wiringSummary = runRentalKeepOrSellWiringTests();
+if (wiringSummary.failed > 0) {
+  failures += wiringSummary.failed;
+}
+
 if (failures > 0) {
   console.error(`[RentalKeepOrSellAudit] ${failures} check(s) failed.`);
   process.exit(1);
 }
 
-console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine, view and module suites pass.');
+console.info('[RentalKeepOrSellAudit] the engine matches the independent reference and the engine, view, module and wiring suites pass.');

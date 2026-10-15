@@ -309,6 +309,37 @@ assert(protectionGapBriefModule.calculationStatus === 'resolved', 'Codex brief m
 assert(protectionGapBriefModule.activeScenario.id === 'niamh-cannot-work', 'Codex brief must name the selected protection gap case.');
 assert(!JSON.stringify(protectionGapBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied protection gap outputs.');
 
+const rentalKeepOrSellBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Rental Client',
+    order: ['rental'],
+    modules: [{
+      id: 'rental',
+      title: 'Rental keep or sell',
+      generated: {
+        rentalKeepOrSellInputs: {
+          rentPerYear: 18000,
+          loanRepaymentsPerYear: 13000,
+          runningCostsPerYear: 2500,
+          taxOnRentalProfitPerYear: 3700,
+          salePrice: 320000,
+          sellingCosts: 6000,
+          loanBalance: 180000,
+          taxOnGain: 21000
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { rentalKeepOrSellScenarioId: new Map([['rental', 'sell']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const rentalKeepOrSellBriefModule = rentalKeepOrSellBrief.call.modules[0];
+assert(rentalKeepOrSellBriefModule.moduleKind === 'rental-keep-or-sell', 'Codex brief must recognize a rental keep or sell module.');
+assert(rentalKeepOrSellBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the rental keep or sell projection.');
+assert(rentalKeepOrSellBriefModule.activeScenario.id === 'sell', 'Codex brief must name the selected rental case.');
+assert(!JSON.stringify(rentalKeepOrSellBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied rental outputs.');
+
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');
 assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');

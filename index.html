@@ -35,6 +35,7 @@
     <link rel="shortcut icon" href="./favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
     <link rel="stylesheet" href="./styles/landing.css" />
+    <link rel="stylesheet" href="./styles/product-preview.css" />
     <link rel="stylesheet" href="./styles/cases.css" />
     <noscript>
       <style>
@@ -260,30 +261,20 @@
             </div>
           </div>
 
-          <div class="hero-visual-wrap" data-reveal data-reveal-delay="120">
-            <div class="hero-visual">
-              <div class="hero-video-card">
-                <div class="hero-video-shell">
-                  <iframe
-                    class="hero-video-frame"
-                    src="https://www.youtube-nocookie.com/embed/jfQUwShZC6Y"
-                    title="Why Gerry started Planeir"
-                    loading="lazy"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerpolicy="strict-origin-when-cross-origin"
-                    allowfullscreen
-                  ></iframe>
-                </div>
-                <div class="hero-video-caption">
-                  <span>Why Gerry started Planeir</span>
-                  <p>
-                    Gerry started Planeir to turn the financial questions people quietly carry into
-                    clear, visual explanations, so the moving parts make sense before a decision.
-                  </p>
-                </div>
-              </div>
+          <figure id="module-examples" class="product-preview" data-product-preview>
+            <div class="preview-tabs" role="tablist" aria-label="Example modules">
+                <button id="previewMortgageTab" type="button" role="tab" aria-selected="true" aria-controls="previewPanel" data-preview-module="mortgage">Mortgage</button>
+                <button id="previewBalanceTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="balance-sheet">Personal balance sheet</button>
+                <button id="previewCollegeTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="future-cost-fund">College funding</button>
+                <button id="previewCashFlowTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="household-cash-flow">Household cash flow</button>
+                <button id="previewProtectionTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="protection-gap">Protection gap</button>
             </div>
-          </div>
+            <div id="previewPanel" class="preview-stage" role="tabpanel" aria-labelledby="previewMortgageTab"><video data-preview-video muted playsinline preload="none" poster="./assets/examples/mortgage-preview-desktop-poster.png" width="1440" height="1080" aria-label="Mortgage scenario comparison using fictional figures"><source type="video/mp4" /><source type="video/webm" /></video></div>
+            <div class="preview-controls"><span>Actual modules · Fictional figures</span><div><button type="button" data-preview-play>Play preview</button>
+                <button type="button" data-preview-enlarge>Enlarge</button></div></div>
+            <figcaption data-preview-caption aria-live="polite">Compare how extra repayments change the finish date and interest cost.</figcaption>
+            <dialog class="preview-dialog" aria-labelledby="previewDialogTitle"><div class="preview-dialog-header"><h2 id="previewDialogTitle">Planéir example · Fictional figures</h2><button type="button" data-preview-close>Close</button></div><video controls muted playsinline preload="none" aria-label="Enlarged module example"><source type="video/mp4" /><source type="video/webm" /></video><p data-preview-context></p><div class="preview-dialog-footer"><a class="button button-primary" href="./apply/">Apply with your situation</a></div></dialog>
+          </figure>
         </section>
 
         <h2 class="visually-hidden">Why people trust Planeir</h2>
@@ -423,5 +414,6 @@
       window.__WORKER_BASE_URL = "https://api.planeir.ie";
     </script>
     <script type="module" src="./js/landing.js"></script>
+    <script type="module" src="./js/workspace/previews.js"></script>
   </body>
 </html>

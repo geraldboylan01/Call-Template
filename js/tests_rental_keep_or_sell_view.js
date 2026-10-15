@@ -12,13 +12,16 @@ import {
 /**
  * THE WORDS AND THE GEOMETRY, ASKED WITHOUT A BROWSER.
  *
- * The widths are the ones the module is checked at: a phone (358), a wide phone
- * or small tablet (720), a laptop just under the wide arrangement (1000), the
- * first width of the wide arrangement (1200) and the reference screen (1776).
+ * The widths are the ones the module is checked at: the narrowest the app's
+ * mobile shell leaves it (252), a phone (320 and 358), a wide phone or small
+ * tablet (720), a laptop just under the wide arrangement (1000), the first width
+ * of the wide arrangement (1200) and the reference screen (1776).
  * 1728 is the reference frame: a 1632-wide chart with a 1252-wide plot.
  */
 
-const WIDTHS = Object.freeze([358, 720, 1000, 1199, 1200, 1776]);
+// 252 is what the app's mobile shell leaves for the module on a 320px phone:
+// the shell's swipe stage and the focused card's padding take the rest.
+const WIDTHS = Object.freeze([252, 280, 320, 358, 720, 1000, 1199, 1200, 1776]);
 
 const sample = RENTAL_KEEP_OR_SELL_SAMPLE;
 
@@ -283,6 +286,80 @@ export function runRentalKeepOrSellViewTests() {
     assertEqual(phone.chartWidth, 358, 'a 390 phone gives a 358 chart');
     assertEqual(phone.rows[1].top, 84, 'row pitch 84 on a phone');
     assertEqual(layoutRentalChart(projection, { width: 1728 }).rows[1].top, 92, 'row pitch 92 on a wide screen');
+  }));
+
+  cases.push(runCase('Names wrap onto a second line instead of being cut off, in every row alike', () => {
+    const projection = project(sample);
+    const narrowest = layoutRentalChart(projection, { width: 252 });
+    assertEqual(narrowest.chartWidth, 220, 'a 252 module gives a 220 chart');
+    assertEqual(narrowest.nameLines, 2, '"Tax on the rental profit" needs two lines in 220px');
+    assertEqual(narrowest.rows[0].name.height, 40, 'two lines of 20');
+    assertEqual(narrowest.rows[0].name.lineHeight, 20, 'at 20px a line');
+    assertEqual(narrowest.rows[1].top, 100, 'rows are 100 apart when names take two lines');
+    assertDeepEqual(
+      narrowest.rows.map((row) => row.name.height),
+      [40, 40, 40, 40, 40],
+      'every row is alike, so nothing moves up or down when the case changes'
+    );
+    assert(narrowest.rows[0].barTop > narrowest.rows[0].name.top + narrowest.rows[0].name.height - 1, 'the bar sits under both lines');
+    assertDeepEqual(checkRentalLayout(projection, narrowest), [], 'and nothing is flagged');
+
+    const phone = layoutRentalChart(projection, { width: 358 });
+    assertEqual(phone.nameLines, 1, 'one line where the name fits');
+    assertEqual(phone.rows[1].top, 84, 'and the pitch is 84');
+    assertEqual(layoutRentalChart(projection, { width: 1776 }).nameLines, 1, 'the wide column holds it on one');
+  }));
+
+  cases.push(runCase('The word goes under the number on a very narrow chart, and the bars keep their room', () => {
+    const projection = project(sample);
+    [252, 280, 320].forEach((width) => {
+      const layout = layoutRentalChart(projection, { width });
+      assertEqual(layout.stacked, true, `${width}: stacked`);
+      assertEqual(layout.rows[4].labelHeight, 54, `${width}: the number, then the word on up to two lines`);
+      assert(layout.stackBox >= 94, `${width}: one box width for every label (${layout.stackBox})`);
+      const keep = layout.values.keep;
+      // The start bar still has real width, not a mark.
+      assert(keep[3] > layout.chartWidth * 0.3, `${width}: the start bar is ${keep[3].toFixed(1)}px of ${layout.chartWidth}`);
+    });
+    [358, 720, 1776].forEach((width) => {
+      const layout = layoutRentalChart(projection, { width });
+      assertEqual(layout.stacked, false, `${width}: not stacked`);
+      assertEqual(layout.rows[4].labelHeight, layout.constants.barHeight, `${width}: one line, the bar's height`);
+    });
+  }));
+
+  cases.push(runCase('Cent inputs: the lines shown add down to a result derived from them', () => {
+    const payload = {
+      ...sample,
+      rentPerYear: 100.4,
+      loanRepaymentsPerYear: 33.4,
+      runningCostsPerYear: 33.4,
+      taxOnRentalProfitPerYear: 33.4
+    };
+    const projection = project(payload);
+    const copy = buildRentalCopy(projection, 'keep');
+    assertDeepEqual(
+      copy.lines.map((line) => line.value),
+      ['€100', '−€33', '−€33', '−€33', '€1'],
+      'the lines shown'
+    );
+    assertEqual(
+      copy.headline,
+      'The rent covers the loan repayments, running costs and tax, with €1 left over each year.',
+      'the sentence says what the rows say'
+    );
+    assertEqual(copy.buttons[0].answerLine, '€1 a year', 'and so does the button');
+    assertEqual(copy.lines[4].word, 'a year, left over', 'beside its word');
+
+    // The marks are laid out from the same shown figures, end to end.
+    const layout = layoutRentalChart(projection, { width: 1728 });
+    const values = layout.values.keep;
+    const left = (index) => values[2 + (index * 3)];
+    const right = (index) => values[2 + (index * 3)] + values[3 + (index * 3)];
+    assertWithin(right(1), right(0), 0.01, 'the first cut hangs from the headline');
+    assertWithin(right(3), left(2), 0.01, 'the third cut hangs from the second');
+    assertWithin(left(3), values[0] + (1 * ((right(0) - values[0]) / 100)), 0.01, 'and ends at the 1 that is left');
+    assertDeepEqual(checkRentalLayout(projection, layout), [], 'nothing is flagged');
   }));
 
   cases.push(runCase('Interpolation is exact at both ends, and the case is not mutated', () => {

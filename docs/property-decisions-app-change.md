@@ -6,34 +6,37 @@ Status: designs chosen (A1 "cut down" and B1 "two blocks") and decisions made, n
 
 ## Build status
 
-Built on this branch, not wired: both engines, both views, both modules, their styles and their dev previews, each proved by its own check.
+**The rental keep or sell is built and wired.** It follows the "Wiring a new engine module" list in `docs/future-cost-fund-app-change.md`, rows 4 to 21, and it was opened as its own pull request, ahead of the home. The home trade down is not on this branch: its engine, view, module and styles are on `module/property-decisions` and wait for this to merge, after which they are wired the same way.
 
-| | Rental | Home |
-|---|---|---|
-| Engine | `js/rental_keep_or_sell_math.js` | `js/home_trade_down_math.js` |
-| View (words, geometry, label checks, no DOM) | `js/rental_keep_or_sell_view.js` | `js/home_trade_down_view.js` |
-| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/rental_keep_or_sell_module.js` | `js/home_trade_down_module.js` |
-| Suites | engine 13, view 12, module 14 | engine 14, view 13, module 14 |
-| Check | `node scripts/check-rental-keep-or-sell.mjs` | `node scripts/check-home-trade-down.mjs` |
-| Preview | `dev/rental-keep-or-sell-preview.html` | `dev/home-trade-down-preview.html` |
-| Styles | `.rks-` in `styles/base.css` | `.htd-` in `styles/base.css` |
+| | Rental |
+|---|---|
+| Engine | `js/rental_keep_or_sell_math.js` |
+| View (words, geometry, label checks, no DOM) | `js/rental_keep_or_sell_view.js` |
+| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/rental_keep_or_sell_module.js` |
+| Suites | engine 13, view 12, module 14, wiring 9, plus the reference calculator |
+| Check | `npm run check:rental-keep-or-sell` (also in `consumer-regression.yml` and `deploy-worker.yml`) |
+| Preview | `dev/rental-keep-or-sell-preview.html` |
+| Styles | `.rks-` in `styles/base.css` |
+| Shared files touched | `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, `scripts/check-video-scene.mjs`, `scripts/check-codex-video-brief.mjs`, `package.json` |
 
-Each check runs its reference calculator (which imports nothing from the engine) and then all three suites. The rental reference works in whole cents. The home reference finds the loan by month-by-month bisection and confirms it with logarithms. Both run the sample, the edges and 300 seeded payloads. The stale-exports ratchet and the brand check pass, and `npm run build` leaves no tracked file changed.
+Row 1 to 3 of the list (a central rate, a statutory rate, the catalogue identity fixture) do not apply: the rental reads no central assumption and calculates no tax.
 
-Not built, waiting for the protection gap pull request to merge: `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, the two cases in `scripts/check-video-scene.mjs` and `scripts/check-codex-video-brief.mjs`, `package.json` and the two workflows. The npm scripts `check:rental-keep-or-sell` and `check:home-trade-down` come with `package.json`. Until then the node commands above run the same checks.
-
-Decided for the video, which is not built: three figures that add up. Home: the money from selling after buying costs, plus the loan, is the home budget, all on the screen. Rental: the headline, what comes off, and the result, where "what comes off" is derived for the video only and named: "Loan repayments, running costs and tax" for Keep and "Selling costs, the loan and tax" for Sell. The engine already returns it as `comesOff` and `comesOffName` in `debug`, and no table or chart carries it.
+Decided for the video: three figures that add up. The headline, what comes off it, and what is left, where "what comes off" is derived for the video only and named: "Loan repayments, running costs and tax" for Keep and "Selling costs, the loan and tax" for Sell. The engine returns it as `comesOff` and `comesOffName` in `debug`, and no table or chart carries it. The video says the sentence the module wrote.
 
 Differences from this brief as first written:
 
-- **Home: side by side from 1632 wide, not 1200.** The first block's label has to fit under the first block, and the smallest that block gets is a little over half of the bar. That needs a bar of about 840px beside a 380px year, so under 1632 the year sits under the home, in a chart capped at 720. The rental module still changes arrangement at 1200.
-- **Home: when the buying costs leave the first block too short to hold its label, the second label moves right** to clear it instead of meeting it. A first block of a sliver is checked.
-- **Home: "a budget above the current home" is refused by the normaliser,** not only by the projection, so the paste validator catches it. It compares the budget as shown with today's home to the euro.
-- **Rental: the scale tightens when a label would not fit** to the right of its bar. At the reference size nothing binds, so Sell still puts zero at 8% and the headline at 78%, and Keep puts zero at 12.4%. At 358, 720, 1000 and 1200 the bars are shorter and nothing is clipped. The headline line therefore moves between cases at those widths.
-- **Rental: the outputs table has no derived total.** One row per case, with the same five columns for both ("Rent or sale price", "Loan", "Running or selling costs", "Tax", "Net each year or in hand").
-- **Rental: a payload with a `scenarios` array is refused** as "not an input of this module".
-- **Both: the module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes.
-- **Styles:** the selected button's name is at 800, the zero and headline lines stop behind names and labels, and the two rental buttons sit side by side on a phone. The home buttons drop their second line on a phone, as the frame does.
+- **The scale tightens when a label would not fit** to the right of its bar. At the reference size nothing binds, so Sell still puts zero at 8% and the headline at 78%, and Keep puts zero at 12.4%. At narrower widths the bars are shorter and nothing is clipped, so the headline line moves between cases there.
+- **The outputs table has no derived total.** One row per case, with the same five columns for both ("Rent or sale price", "Loan", "Running or selling costs", "Tax", "Net each year or in hand").
+- **A payload with a `scenarios` array is refused** as "not an input of this module", on paste and on import.
+- **What is shown adds down.** Every row carries the amount shown and the result is the shown start less the shown cuts, as the household cash flow does, in the screen, the outputs table, the tables, the chart data and the video. With cents in the inputs a start of 100.40 less three cuts of 33.40 shows 100, 33, 33, 33 and 1, not 0. The exact figures stay beside them in `debug`.
+- **Names wrap, and 252px is checked.** The app's mobile shell leaves about 252px for the module on a 320px phone. A name that is too long wraps to a second line instead of being cut off, decided over both cases so every row has the same height, and on a chart narrower than 300px the word goes under the number. The layout checks run at 252, 280 and 320 as well as 358 and up.
+- **The module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes. Wide from 1200, stacked and capped at 720 under that. It was looked at in the real DOM at 1366 (wide), 1024 and 844 (stacked): no label past its chart, no sideways scroll.
+- **Styles:** the selected button's name is at 800, the zero and headline lines stop behind names and labels, and the two buttons sit side by side on a phone.
+- **The Dev Panel example** is "Rental Property: Keep or Sell", with the sample figures.
+
+### Home trade down
+
+(Written when the home is wired, in this same pull request.)
 
 ## Context
 

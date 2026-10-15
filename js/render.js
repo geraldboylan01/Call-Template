@@ -35,6 +35,7 @@ import { buildRepaymentCaseModule } from './repayment_case_module.js';
 import { buildFutureCostFundModule } from './future_cost_fund_module.js';
 import { buildHouseholdCashFlowModule } from './household_cash_flow_module.js';
 import { buildProtectionGapModule } from './protection_gap_module.js';
+import { buildRentalKeepOrSellModule } from './rental_keep_or_sell_module.js';
 import {
   PBS_ASSET_SECTION_KEYS,
   resolveLiquidityReserveForPlan,
@@ -2173,6 +2174,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isRentalKeepOrSellModule(module)) {
+    return {
+      label: 'Rental Keep or Sell',
+      token: 'rental-keep-or-sell'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2354,6 +2362,12 @@ function buildOverviewMetaItems(module, signalCounts) {
     if (Array.isArray(inputs.scenarios) && inputs.scenarios.length > 0) {
       items.push(pluralizeOverview(inputs.scenarios.length, 'case'));
     }
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'rental-keep-or-sell') {
+    // The two cases are fixed: keep, and sell.
+    items.push(pluralizeOverview(2, 'case'));
     return uniqueOverviewItems(items, 3, 22);
   }
 
@@ -2701,6 +2715,10 @@ function isProtectionGapModule(module) {
   return Boolean(module?.generated?.protectionGapInputs);
 }
 
+function isRentalKeepOrSellModule(module) {
+  return Boolean(module?.generated?.rentalKeepOrSellInputs);
+}
+
 function isHousePurchaseModule(module) {
   return Boolean(module?.generated?.housePurchaseInputs);
 }
@@ -2822,6 +2840,13 @@ function getPlaybookDisplayContext(module) {
     return {
       key: 'protectionGap',
       heading: 'Protection Gap'
+    };
+  }
+
+  if (isRentalKeepOrSellModule(module)) {
+    return {
+      key: 'rentalKeepOrSell',
+      heading: 'Rental Keep or Sell'
     };
   }
 
@@ -3309,6 +3334,7 @@ function blocksGeneratedTableEditing(module) {
     || isFutureCostFundModule(module)
     || isHouseholdCashFlowModule(module)
     || isProtectionGapModule(module)
+    || isRentalKeepOrSellModule(module)
     || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
@@ -8058,6 +8084,37 @@ function buildProtectionGapShell(module) {
       onSelectCase: (caseId) => {
         if (typeof window.__setProtectionGapScenario === 'function') {
           window.__setProtectionGapScenario(module.id, caseId);
+        }
+      }
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+/**
+ * The rental keep or sell's shell: the module itself, which holds the question,
+ * the two case buttons, the sentence, the bars and the footnote. It owns its own
+ * clock, so a click moves the marks and rebuilds nothing, and it tells the app
+ * which case is selected only so that the case is remembered.
+ */
+function buildRentalKeepOrSellShell(module) {
+  const inputs = module?.generated?.rentalKeepOrSellInputs;
+  if (!inputs) {
+    return null;
+  }
+
+  const remembered = typeof window.__getRentalKeepOrSellScenarioForModule === 'function'
+    ? window.__getRentalKeepOrSellScenarioForModule(module.id)
+    : '';
+
+  try {
+    return buildRentalKeepOrSellModule({
+      rawInputs: inputs,
+      selectedCaseId: remembered || null,
+      onSelectCase: (caseId) => {
+        if (typeof window.__setRentalKeepOrSellScenario === 'function') {
+          window.__setRentalKeepOrSellScenario(module.id, caseId);
         }
       }
     });
@@ -13223,7 +13280,8 @@ function buildGeneratedSection(module, {
   } else {
     grid.appendChild(buildSummaryCard(generated.summaryHtml, {
       module,
-      readOnly,
+      // The protection gap's summary is written by its engine, so it has no edit.
+      readOnly: readOnly || isProtectionGapModule(displayModule),
       onEditGeneratedText
     }));
   }
@@ -13270,6 +13328,13 @@ function buildGeneratedSection(module, {
     const protectionGapShell = buildProtectionGapShell(module);
     if (protectionGapShell) {
       grid.appendChild(protectionGapShell);
+    }
+  }
+
+  if (isRentalKeepOrSellModule(displayModule)) {
+    const rentalKeepOrSellShell = buildRentalKeepOrSellShell(module);
+    if (rentalKeepOrSellShell) {
+      grid.appendChild(rentalKeepOrSellShell);
     }
   }
 
@@ -13337,9 +13402,11 @@ function buildGeneratedSection(module, {
   // module draws the staircase or the bar, and its one chart is for the video.
   // NO CHARTS CARD FOR A PROTECTION GAP either: the module draws the bar and the
   // months strip itself, and its one chart is for the video.
+  // NO CHARTS CARD FOR A RENTAL KEEP OR SELL either: the module draws the bars
+  // itself, and its one chart is for the video.
   if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)
     && !isFutureCostFundModule(displayModule) && !isHouseholdCashFlowModule(displayModule)
-    && !isProtectionGapModule(displayModule)) {
+    && !isProtectionGapModule(displayModule) && !isRentalKeepOrSellModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13526,7 +13593,8 @@ export function patchFocusedGeneratedCards({
   // would put back the duplicate the module was built to remove -- visible
   // only after the first case click, which is the worst way to find it.
   if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)
-    && !isHouseholdCashFlowModule(displayModule) && !isProtectionGapModule(displayModule)) {
+    && !isHouseholdCashFlowModule(displayModule) && !isProtectionGapModule(displayModule)
+    && !isRentalKeepOrSellModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
