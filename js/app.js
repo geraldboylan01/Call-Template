@@ -88,6 +88,10 @@ import {
   getDefaultProtectionGapScenarioId,
   getProtectionGapCases
 } from './protection_gap_math.js';
+import {
+  getDefaultRentalKeepOrSellScenarioId,
+  getRentalKeepOrSellCases
+} from './rental_keep_or_sell_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
 import { validateOutputsBucketedPayload } from './outputs_bucketed_contract.js';
@@ -283,6 +287,7 @@ const appState = {
   futureCostFundScenarioByModuleId: new Map(),
   householdCashFlowScenarioByModuleId: new Map(),
   protectionGapScenarioByModuleId: new Map(),
+  rentalKeepOrSellScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1701,6 +1706,26 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'rental-keep-or-sell-demo',
+    label: 'Rental Property: Keep or Sell',
+    payload: {
+      title: 'Rental Property - Keep or Sell',
+      generated: {
+        summaryHtml: '<p>This shows what the property gives you each year if you keep it, and what you would have in hand if you sold it. Rent, costs, the loan and tax are as given.</p>',
+        rentalKeepOrSellInputs: {
+          rentPerYear: 18000,
+          loanRepaymentsPerYear: 13000,
+          runningCostsPerYear: 2500,
+          taxOnRentalProfitPerYear: 3700,
+          salePrice: 320000,
+          sellingCosts: 6000,
+          loanBalance: 180000,
+          taxOnGain: 21000
+        }
+      }
+    }
+  },
+  {
     id: 'college-funding-twins-demo',
     label: 'College Funding: Twins Scenario Demo',
     payload: {
@@ -2300,6 +2325,7 @@ function hasCalculatedGeneratedOutputs(module) {
     || generated.futureCostFundInputs
     || generated.householdCashFlowInputs
     || generated.protectionGapInputs
+    || generated.rentalKeepOrSellInputs
     || generated.housePurchaseInputs
     || generated.netRetirementInputs
   );
@@ -3267,6 +3293,7 @@ function applyUpdatedProjectionToModule({
     module.generated.futureCostFundInputs = null;
     module.generated.householdCashFlowInputs = null;
     module.generated.protectionGapInputs = null;
+    module.generated.rentalKeepOrSellInputs = null;
     applyNetRetirementProjectionToModule(module);
     return;
   }
@@ -4697,6 +4724,7 @@ function getCodexVideoActiveScenarios() {
     futureCostFundScenarioId: {},
     householdCashFlowScenarioId: {},
     protectionGapScenarioId: {},
+    rentalKeepOrSellScenarioId: {},
     housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
@@ -4706,6 +4734,7 @@ function getCodexVideoActiveScenarios() {
     activeScenarios.futureCostFundScenarioId[module.id] = getFutureCostFundScenarioForModule(module.id);
     activeScenarios.householdCashFlowScenarioId[module.id] = getHouseholdCashFlowScenarioForModule(module.id);
     activeScenarios.protectionGapScenarioId[module.id] = getProtectionGapScenarioForModule(module.id);
+    activeScenarios.rentalKeepOrSellScenarioId[module.id] = getRentalKeepOrSellScenarioForModule(module.id);
     activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
@@ -6035,6 +6064,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.futureCostFundScenarioByModuleId = new Map();
   appState.householdCashFlowScenarioByModuleId = new Map();
   appState.protectionGapScenarioByModuleId = new Map();
+  appState.rentalKeepOrSellScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6668,6 +6698,7 @@ async function handleHousePurchaseEditor(moduleId, payload = {}) {
       module.generated.futureCostFundInputs = null;
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
+      module.generated.rentalKeepOrSellInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -7143,6 +7174,88 @@ function setProtectionGapScenarioForModule(moduleId, scenarioId) {
   const uiState = ensureModuleUi(module);
   if (uiState) {
     uiState.protectionGapScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+/**
+ * The selected case of the rental keep or sell.
+ *
+ * The same trio as the protection gap: the case is remembered in memory for the
+ * session, persisted on the module's ui for the next load, and forgotten (never
+ * shown) when the payload no longer contains it. The module moves its own marks
+ * and words on its own clock, and nothing else on the page follows the case.
+ */
+function getRentalKeepOrSellCasesForModule(module) {
+  if (!module?.generated?.rentalKeepOrSellInputs) {
+    return [];
+  }
+
+  try {
+    return getRentalKeepOrSellCases(module.generated.rentalKeepOrSellInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function getRentalKeepOrSellScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getRentalKeepOrSellCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.rentalKeepOrSellScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.rentalKeepOrSellScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.rentalKeepOrSellScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  appState.rentalKeepOrSellScenarioByModuleId.delete(moduleId);
+  try {
+    return getDefaultRentalKeepOrSellScenarioId(module.generated.rentalKeepOrSellInputs) || cases[0].id;
+  } catch (_error) {
+    return cases[0].id;
+  }
+}
+
+function setRentalKeepOrSellScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const nextCase = getRentalKeepOrSellCasesForModule(module).find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getRentalKeepOrSellScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.rentalKeepOrSellScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // Nothing to patch and nothing to rebuild: rebuilding would replace the
+  // travel the client is watching.
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.rentalKeepOrSellScenarioId = nextCase.id;
   }
   module.updatedAt = nowIso();
   scheduleSessionSave();
@@ -7924,6 +8037,7 @@ function openVideoScene(moduleId) {
         futureCostFundScenarioId: getFutureCostFundScenarioForModule(module.id),
         householdCashFlowScenarioId: getHouseholdCashFlowScenarioForModule(module.id),
         protectionGapScenarioId: getProtectionGapScenarioForModule(module.id),
+        rentalKeepOrSellScenarioId: getRentalKeepOrSellScenarioForModule(module.id),
         housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
@@ -9896,7 +10010,7 @@ function bindEvents() {
 // Presentation runs against a disposable session and disposable scenario maps.
 // Pending autosaves still refer to the original session, never this copy.
 function installLivePresenter() {
-  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'protectionGapScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
+  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'protectionGapScenarioByModuleId', 'rentalKeepOrSellScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
   window.planeirPresenter = installPresenter({
     session: () => appState.presenterSnapshot?.session || appState.session,
     root: () => ui.swipeStage.querySelector('.focused-module-card'),
@@ -9924,7 +10038,7 @@ function installLivePresenter() {
     async setScenario(module, scenarioId) {
       if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
       const root = ui.swipeStage.querySelector('.focused-module-card');
-      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow' || module.kind === 'protection-gap') {
+      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow' || module.kind === 'protection-gap' || module.kind === 'rental-keep-or-sell') {
         const control = [...root.querySelectorAll('*')].find(el => typeof el.presenterSelectScenario === 'function');
         if (!control) throw new Error(`Scenario control is unavailable in ${module.label}.`);
         await control.presenterSelectScenario(scenarioId);
@@ -10132,6 +10246,10 @@ export async function initApp(options = {}) {
       setProtectionGapScenarioForModule(moduleId, scenarioId);
     };
     window.__getProtectionGapScenarioForModule = (moduleId) => getProtectionGapScenarioForModule(moduleId);
+    window.__setRentalKeepOrSellScenario = (moduleId, scenarioId) => {
+      setRentalKeepOrSellScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getRentalKeepOrSellScenarioForModule = (moduleId) => getRentalKeepOrSellScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runIeTaxTests = () => runIeTaxTests();
