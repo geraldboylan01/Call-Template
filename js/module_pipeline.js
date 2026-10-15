@@ -36,7 +36,8 @@ import {
 } from './household_cash_flow_math.js';
 import {
   computeProtectionGapProjection,
-  normalizeProtectionGapInputs
+  normalizeProtectionGapInputs,
+  protectionGapSummaryHtml
 } from './protection_gap_math.js';
 import {
   computeRentalKeepOrSellProjection,
@@ -484,6 +485,11 @@ function applyHouseholdCashFlowProjectionToModule(module) {
 
 function applyProtectionGapProjectionToModule(module) {
   const projection = computeProtectionGapProjection(module.generated.protectionGapInputs);
+
+  // The summary is the engine's, written from its own answers, so it is held
+  // to the screen's wording limit by construction. Any summary a payload, a
+  // saved session or an edit supplied is replaced.
+  module.generated.summaryHtml = protectionGapSummaryHtml(projection);
 
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
@@ -1987,6 +1993,7 @@ function validateHouseholdCashFlowInputsPayload(householdCashFlowInputs) {
   return normalized;
 }
 
+
 function validateProtectionGapInputsPayload(protectionGapInputs) {
   const normalized = normalizeProtectionGapInputs(protectionGapInputs);
   // The engine's own refusals (a death with one person, a higher need after a
@@ -2568,7 +2575,8 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
       applyFutureCostFundProjectionToModule(module);
     } else if (hasHouseholdCashFlowInputsPatch && module.generated.householdCashFlowInputs) {
       applyHouseholdCashFlowProjectionToModule(module);
-    } else if (hasProtectionGapInputsPatch && module.generated.protectionGapInputs) {
+    } else if ((hasProtectionGapInputsPatch || 'summaryHtml' in normalizedPayload.generated) && module.generated.protectionGapInputs) {
+      // A summary sent on its own is replaced by the engine's too.
       applyProtectionGapProjectionToModule(module);
     } else if (hasRentalKeepOrSellInputsPatch && module.generated.rentalKeepOrSellInputs) {
       applyRentalKeepOrSellProjectionToModule(module);

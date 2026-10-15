@@ -24,7 +24,12 @@
  * the same in every case too, so nothing below it moves.
  */
 
-import { PROTECTION_GAP_HORIZON_MONTHS, euroText } from './protection_gap_math.js';
+import {
+  PROTECTION_GAP_BANNED_PHRASES as BANNED_PHRASES,
+  PROTECTION_GAP_PROVIDER_NAMES as PROVIDER_NAMES,
+  PROTECTION_GAP_HORIZON_MONTHS,
+  euroText
+} from './protection_gap_math.js';
 
 /* ------------------------------------------------------------------ constants */
 
@@ -107,37 +112,6 @@ const NARROW = Object.freeze({
 });
 
 /** The phrases that must never reach a client, and the names of providers. */
-const BANNED_PHRASES = Object.freeze([
-  /\bwe recommend\b/i,
-  /\byou should\b/i,
-  /\bbest option\b/i,
-  /\bbest\b/i,
-  /\bideal\b/i,
-  /\boptimal\b/i,
-  /\bp\.a\./i,
-  /\bcover(s|ed|ing|age)?\b/i,
-  /premium/i,
-  /\bpolic(y|ies)\b/i,
-  /insur/i,
-  /\bquote/i,
-  /income protection/i,
-  /serious illness/i,
-  /\b(he|she|his|her|hers|him)\b/i,
-  /the household/i,
-  /the client/i
-]);
-
-const PROVIDER_NAMES = Object.freeze([
-  /\bbank of ireland\b/i,
-  /\baib\b/i,
-  /\bptsb\b/i,
-  /\bpermanent tsb\b/i,
-  /\brevolut\b/i,
-  /\bzurich\b/i,
-  /\birish life\b/i,
-  /\bdavy\b/i
-]);
-
 /* --------------------------------------------------------------------- helpers */
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));

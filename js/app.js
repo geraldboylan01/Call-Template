@@ -2470,6 +2470,9 @@ function applyEditableGeneratedPatch(module, patch) {
 
   const root = path[1];
   if (root === 'summaryHtml' && path.length === 2) {
+    if (module.generated.protectionGapInputs) {
+      throw new Error('The protection gap summary is written from the screen\'s own answers, so it cannot be edited here.');
+    }
     module.generated.summaryHtml = sanitizeEditableGeneratedHtml(patch.value);
     return;
   }

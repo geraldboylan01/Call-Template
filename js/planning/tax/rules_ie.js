@@ -399,6 +399,7 @@ export const IE_LEGISLATED_SCHEDULES = Object.freeze({
       rate: 0.35,
       status: 'announced',
       announcedBy: 'Budget 2027',
+      announcedOn: '2026-10-06',
       verifiedOn: '2026-10-14',
       source: S.budget2027TaxPolicyChanges
     })
@@ -515,6 +516,7 @@ export const IE_INVESTMENT_RULES = Object.freeze({
     ruleId: 'ie.investment_account.2027',
     status: 'announced',
     announcedBy: 'Budget 2027',
+    announcedOn: '2026-10-06',
     verifiedOn: '2026-10-14',
     opensOn: '2027-07-01',
     annualContributionCap: 12_000,
