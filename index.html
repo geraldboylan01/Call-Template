@@ -35,6 +35,7 @@
     <link rel="shortcut icon" href="./favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
     <link rel="stylesheet" href="./styles/landing.css" />
+    <link rel="stylesheet" href="./styles/module-videos.css" />
     <link rel="stylesheet" href="./styles/cases.css" />
     <noscript>
       <style>
@@ -299,6 +300,64 @@
           </div>
         </section>
 
+        <section class="content-section module-videos-section" id="module-examples" aria-labelledby="moduleVideosTitle">
+          <div class="section-heading" data-reveal>
+            <p class="section-eyebrow">See the figures move</p>
+            <h2 id="moduleVideosTitle">Three questions, brought to life.</h2>
+            <p>Choose a short, silent example to watch the options change. These are fictional figures from the Planéir app.</p>
+          </div>
+          <div class="module-video-grid">
+            <a class="module-video-card" data-module-video href="./assets/examples/future-cost-fund.mp4" aria-labelledby="collegeVideoTitle" aria-describedby="collegeVideoDescription">
+              <div class="module-video-thumbnail">
+                <img src="./assets/examples/future-cost-fund-poster.webp" alt="" width="1920" height="1080" loading="lazy" />
+                <span class="module-video-play" aria-hidden="true">▶</span>
+                <span class="module-video-duration">34 sec · Silent</span>
+              </div>
+              <div class="module-video-copy">
+                <p class="section-eyebrow">Future Cost Fund</p>
+                <h3 id="collegeVideoTitle">How will you fund college?</h3>
+                <p id="collegeVideoDescription">€15,000 a year today for student charges, accommodation and living costs. Compare four ways to fund it, with inflation included.</p>
+                <span class="module-video-watch">Watch example <span aria-hidden="true">↗</span></span>
+              </div>
+            </a>
+            <a class="module-video-card" data-module-video href="./assets/examples/household-cash-flow.mp4" aria-labelledby="cashFlowVideoTitle" aria-describedby="cashFlowVideoDescription">
+              <div class="module-video-thumbnail">
+                <img src="./assets/examples/household-cash-flow-poster.webp" alt="" width="1920" height="1080" loading="lazy" />
+                <span class="module-video-play" aria-hidden="true">▶</span>
+                <span class="module-video-duration">27 sec · Silent</span>
+              </div>
+              <div class="module-video-copy">
+                <p class="section-eyebrow">Household Cash Flow</p>
+                <h3 id="cashFlowVideoTitle">What is left at the end of the year?</h3>
+                <p id="cashFlowVideoDescription">See how clearing a car loan, adding to pensions or doing both changes one household’s yearly cash flow.</p>
+                <span class="module-video-watch">Watch example <span aria-hidden="true">↗</span></span>
+              </div>
+            </a>
+            <a class="module-video-card" data-module-video href="./assets/examples/protection-gap.mp4" aria-labelledby="protectionVideoTitle" aria-describedby="protectionVideoDescription">
+              <div class="module-video-thumbnail">
+                <img src="./assets/examples/protection-gap-poster.webp" alt="" width="1920" height="1080" loading="lazy" />
+                <span class="module-video-play" aria-hidden="true">▶</span>
+                <span class="module-video-duration">27 sec · Silent</span>
+              </div>
+              <div class="module-video-copy">
+                <p class="section-eyebrow">Protection Gap</p>
+                <h3 id="protectionVideoTitle">If one income stopped?</h3>
+                <p id="protectionVideoDescription">Compare the gap and how long savings last if either person cannot work, or the household changes after a death.</p>
+                <span class="module-video-watch">Watch example <span aria-hidden="true">↗</span></span>
+              </div>
+            </a>
+          </div>
+          <dialog class="module-video-dialog" aria-labelledby="moduleVideoTitle" aria-describedby="moduleVideoContext">
+            <div class="module-video-dialog-header">
+              <h2 id="moduleVideoTitle">Planéir example</h2>
+              <button type="button" class="button button-secondary button-sm" data-module-video-close autofocus>Close</button>
+            </div>
+            <video controls muted playsinline preload="none" aria-label="Silent app example"></video>
+            <p id="moduleVideoContext"></p>
+            <p class="module-video-error" data-module-video-error hidden>The video could not play. <a class="inline-link" data-module-video-fallback>Open the video directly</a>.</p>
+          </dialog>
+        </section>
+
         <section class="content-section latest-cases-section" aria-labelledby="latestCasesTitle">
           <div class="section-heading" data-reveal>
             <p class="section-eyebrow">Latest cases</p>
@@ -423,5 +482,6 @@
       window.__WORKER_BASE_URL = "https://api.planeir.ie";
     </script>
     <script type="module" src="./js/landing.js"></script>
+    <script type="module" src="./js/workspace/module-videos.js"></script>
   </body>
 </html>

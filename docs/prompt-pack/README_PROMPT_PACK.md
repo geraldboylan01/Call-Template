@@ -27,6 +27,7 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
 - `15_net_retirement_cashflow_playbook.md`
 - `16_liquidity_playbook.md`
 - `17_house_purchase_playbook.md`
+- `18_future_cost_fund_playbook.md`
 - `20_education_playbook.md`
 - `21_report_playbook.md`
 - `22_protection_playbook.md`
@@ -59,9 +60,10 @@ The assembled master prompt should include these files in this order:
 9. `15_net_retirement_cashflow_playbook.md`
 10. `16_liquidity_playbook.md`
 11. `17_house_purchase_playbook.md`
-12. `20_education_playbook.md`
-13. `21_report_playbook.md`
-14. `22_protection_playbook.md`
+12. `18_future_cost_fund_playbook.md`
+13. `20_education_playbook.md`
+14. `21_report_playbook.md`
+15. `22_protection_playbook.md`
 
 `02_schema_capability_matrix.md`, `03_irish_tax_overlay.md`, and `90_examples_and_regression_prompts.md` are maintenance/reference files. The live project should still use `MASTER_PROJECT_PROMPT.md`, plus the uploaded `irish_tax_ai_cheat_sheet_v1.1.md` file.
 
@@ -73,9 +75,9 @@ The assembled master prompt should include these files in this order:
 5. Keep the old prompt bundle available for at least one week after cutover.
 
 ## Success Criteria
-- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the liquidity playbook`, `use the college funding playbook`, `use the house purchase playbook`, and similar short commands.
+- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the liquidity playbook`, `use the college funding playbook`, `use the house purchase playbook`, `use the future cost fund playbook`, and similar short commands.
 - JSON pastes into the current app without schema rejection.
-- House purchase, mortgage, loan, retirement, and net retirement cash-flow modules stay JS-backed.
+- House purchase, mortgage, loan, retirement, net retirement cash-flow, college funding and future cost fund modules stay JS-backed.
 - House Purchase payloads contain only `generated.summaryHtml` and `generated.housePurchaseInputs`; every result remains runtime-owned.
 - Education, report, and protection outputs become visually stronger and less repetitive.
 - Tax scenarios use the uploaded cheat sheet as a logic overlay without forcing a separate tax playbook.

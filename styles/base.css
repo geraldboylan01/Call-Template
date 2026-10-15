@@ -10858,3 +10858,1156 @@ body.overview-has-selection .toast-host {
   font-weight: 500;
   line-height: 1.45;
 }
+
+/* ======================================================================
+   Household cash flow (.hcf-)
+
+   After everything you pay, what is left each year. A staircase on a wide
+   screen and a single bar on a phone, drawn by js/household_cash_flow_module.js
+   from the geometry in js/household_cash_flow_view.js. Every mark is placed
+   there; this block only dresses it.
+   ====================================================================== */
+
+.hcf {
+  --hcf-income: #7d8a92;
+  --hcf-cost: #434f58;
+  --hcf-changed: #3f7391;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  /* Amounts are centred on their bar and may reach a little past the plot. */
+  padding-inline: 28px;
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.hcf [hidden] {
+  display: none !important;
+}
+
+.hcf-probe {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.hcf-muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.35vw, 26px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-heading {
+  margin: 6px 0 0;
+  font-size: clamp(24px, 3.1vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.hcf-cases {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hcf-case {
+  appearance: none;
+  min-height: 64px;
+  padding: 8px 29px;
+  border: 1px solid rgba(247, 244, 238, 0.16);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: clamp(15px, 1.25vw, 24px);
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.hcf-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.hcf-case:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+/* The thicker border is the non-colour cue, with aria-pressed. The padding
+   gives back what the border takes, so the button is the same size selected. */
+.hcf-case.is-active {
+  padding: 8px 28px;
+  border: 2px solid var(--electric-blue);
+  background: rgba(106, 167, 200, 0.16);
+  color: var(--text);
+}
+
+.hcf.is-bar .hcf-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hcf.is-bar .hcf-case {
+  padding: 8px 13px;
+  font-size: 15px;
+}
+
+.hcf.is-bar .hcf-case.is-active {
+  padding: 8px 12px;
+}
+
+/* ------------------------------------------------------------------ answer */
+
+.hcf-stage {
+  display: block;
+  min-width: 0;
+}
+
+.hcf-stage.is-beside {
+  display: flex;
+  align-items: flex-end;
+  gap: 48px;
+}
+
+.hcf-answer {
+  display: flex;
+  flex-direction: column;
+}
+
+.hcf-stage.is-beside .hcf-answer {
+  width: 328px;
+  flex: none;
+}
+
+.hcf-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+
+.hcf-swatch.is-left_over {
+  background: var(--accent-green);
+}
+
+.hcf-swatch.is-tight {
+  background: var(--accent-amber);
+}
+
+.hcf-swatch.is-short {
+  background: var(--accent-red);
+}
+
+.hcf-figure {
+  margin-top: 12px;
+  font-size: clamp(44px, 4.2vw, 80px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.hcf-unit {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-monthly {
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: clamp(15px, 1.25vw, 24px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-sentence {
+  margin: 0;
+  font-size: clamp(18px, 2.1vw, 40px);
+  font-weight: 500;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.hcf.is-bar .hcf-sentence {
+  min-height: 5.6em;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.hcf-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.1vw, 18px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ chart */
+
+.hcf-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.hcf-floor {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.32);
+}
+
+.hcf-connector {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.3);
+}
+
+.hcf-bar {
+  position: absolute;
+  background: var(--hcf-cost);
+}
+
+.hcf-bar.is-income {
+  background: var(--hcf-income);
+}
+
+.hcf-bar.is-changed {
+  background: var(--hcf-changed);
+}
+
+.hcf-bar.is-left {
+  background: var(--accent-green);
+}
+
+/* Today's bar where it was: an outline, never a fill. */
+.hcf-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(247, 244, 238, 0.55);
+  pointer-events: none;
+}
+
+.hcf-amount {
+  position: absolute;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hcf-name {
+  position: absolute;
+  text-align: center;
+}
+
+.hcf-name-label {
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-name-delta {
+  margin-top: 6px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-amount.is-quiet,
+.hcf-name.is-quiet {
+  opacity: 0.55;
+}
+
+.hcf-key {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-key-swatch {
+  display: inline-block;
+  width: 36px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(247, 244, 238, 0.55);
+}
+
+.hcf-last-label {
+  position: absolute;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hcf-last-label-today {
+  color: var(--muted);
+}
+
+.hcf-end-mark {
+  position: absolute;
+  height: 3px;
+  background: var(--accent-amber);
+  opacity: 0;
+}
+
+/* -------------------------------------------------------------------- bar */
+
+.hcf-bar-head {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.hcf-bar-head-label {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.hcf-bar-head-amount {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.hcf-bar-rule {
+  position: absolute;
+  top: 32px;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.18);
+}
+
+.hcf-track {
+  position: absolute;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--bg-0);
+}
+
+.hcf-segment {
+  position: absolute;
+  left: 0;
+  background: var(--hcf-cost);
+}
+
+.hcf-segment.is-changed {
+  background: var(--hcf-changed);
+}
+
+.hcf-segment.is-left {
+  background: var(--accent-green);
+}
+
+.hcf-cleared-tick {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  background: var(--electric-blue);
+  opacity: 0;
+}
+
+.hcf-bar-end-mark {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  background: var(--accent-amber);
+  opacity: 0;
+}
+
+.hcf-row {
+  position: absolute;
+}
+
+.hcf-row-stub {
+  position: absolute;
+  top: 10px;
+  left: -16px;
+  width: 12px;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.4);
+}
+
+.hcf-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.hcf-row-name {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.hcf-row-leader {
+  flex: 1;
+  height: 1px;
+  align-self: flex-end;
+  margin-bottom: 5px;
+  border-bottom: 1px solid rgba(247, 244, 238, 0.14);
+}
+
+.hcf-row-amount {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.hcf-row-delta {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hcf * {
+    transition: none !important;
+  }
+}
+
+/* ======================================================= Protection gap (.pg-) */
+
+.pg {
+  --pg-floor: rgba(106, 167, 200, 0.66);
+  --pg-earn: rgba(106, 167, 200, 0.38);
+  --pg-short: rgba(201, 111, 98, 0.42);
+  --pg-filled: rgba(102, 184, 158, 0.5);
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 28px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.pg--rail {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  column-gap: 116px;
+  align-items: start;
+  padding-right: 20px;
+}
+
+.pg-rail,
+.pg-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pg--rail .pg-rail {
+  gap: 48px;
+}
+
+.pg-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.pg-household {
+  margin: 10px 0 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 38px;
+}
+
+.pg-household[hidden],
+.pg-status[hidden],
+.pg-seg-l2[hidden],
+.pg-seg-text[hidden],
+.pg-label[hidden],
+.pg-bracket[hidden],
+.pg-word[hidden],
+.pg-end[hidden],
+.pg-end-tick[hidden] {
+  display: none;
+}
+
+.pg-savings {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.pg-cases {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pg--row .pg-cases {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pg--grid .pg-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pg-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  align-items: center;
+  padding: 6px 24px;
+  border: 1px solid rgba(247, 244, 238, 0.16);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.pg-case:hover {
+  border-color: rgba(247, 244, 238, 0.34);
+  color: var(--text);
+}
+
+.pg-case:focus-visible {
+  outline: 3px solid var(--electric-blue);
+  outline-offset: 3px;
+}
+
+/* The same outer size selected or not: the thicker edge is an inset shadow. */
+.pg-case.is-active {
+  border-color: var(--electric-blue);
+  background: rgba(106, 167, 200, 0.14);
+  box-shadow: inset 0 0 0 1px var(--electric-blue);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.pg-headline {
+  margin: 0;
+  font-size: clamp(30px, 2.7vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+/* Line 1 and the status word sit on one line; line 2 starts the next. */
+.pg-line1 {
+  display: inline;
+}
+
+.pg-line2 {
+  display: block;
+}
+
+.pg-status {
+  display: inline-block;
+  margin-left: 14px;
+  color: var(--accent-amber);
+  font-size: 0.5em;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.pg-sentence {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: clamp(16px, 1.35vw, 26px);
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+.pg-block {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pg-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.pg-bar,
+.pg-strip {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.pg-track,
+.pg-strip-track {
+  position: absolute;
+  left: 0;
+  background: var(--bg-1);
+}
+
+.pg-seg,
+.pg-gap,
+.pg-fill,
+.pg-short,
+.pg-divider,
+.pg-bracket,
+.pg-need-tick,
+.pg-end-tick,
+.pg-axis-tick {
+  position: absolute;
+}
+
+.pg-seg {
+  overflow: hidden;
+  box-shadow: inset 1px 0 0 var(--bg-0);
+}
+
+.pg-seg-floor {
+  background: var(--pg-floor);
+}
+
+.pg-seg-takeHome {
+  background: var(--pg-earn);
+}
+
+.pg-seg-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 360px;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.pg-seg-floor .pg-seg-text {
+  width: 220px;
+  padding: 0 14px;
+}
+
+.pg-seg-l1,
+.pg-seg-l2 {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.pg-seg-floor .pg-seg-l1,
+.pg-seg-floor .pg-seg-l2 {
+  font-size: 16px;
+  line-height: 18px;
+}
+
+.pg-seg-amount {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+}
+
+.pg-seg-floor .pg-seg-amount {
+  font-size: 26px;
+  line-height: 30px;
+}
+
+.pg-gap {
+  background: var(--pg-short);
+}
+
+.pg.is-left-over .pg-gap {
+  background: var(--pg-filled);
+}
+
+.pg-bracket {
+  box-sizing: border-box;
+  border: 2px solid rgba(247, 244, 238, 0.55);
+  border-bottom: none;
+}
+
+.pg-need-tick,
+.pg-end-tick {
+  width: 2px;
+  background: var(--text);
+}
+
+.pg-label {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.pg-label-title {
+  display: block;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.pg-label[data-key='gap'] .pg-label-title {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pg-label-amount {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 36px;
+}
+
+.pg-label[data-key^='seg'] .pg-label-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pg-label[data-key^='seg'] .pg-label-amount {
+  font-size: 22px;
+  line-height: 26px;
+}
+
+.pg-scale {
+  position: absolute;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.pg-scale-start {
+  left: 0;
+}
+
+.pg-scale-end {
+  right: 0;
+}
+
+.pg-fill {
+  background: var(--pg-filled);
+}
+
+.pg-short {
+  background: var(--pg-short);
+}
+
+.pg-divider {
+  width: 1px;
+  background: rgba(247, 244, 238, 0.12);
+}
+
+.pg-divider.is-year {
+  background: rgba(247, 244, 238, 0.4);
+}
+
+.pg-word {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  font-size: 30px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pg-end {
+  position: absolute;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-end-lead {
+  display: block;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 24px;
+}
+
+.pg-end-text {
+  display: block;
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 72px;
+}
+
+.pg-axis-tick {
+  width: 1px;
+  height: 10px;
+  background: rgba(247, 244, 238, 0.5);
+}
+
+.pg-axis-name {
+  position: absolute;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.pg-axis-name.is-center {
+  transform: translateX(-50%);
+}
+
+.pg-axis-name.is-right {
+  transform: translateX(-100%);
+}
+
+.pg-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+
+/* The phone: smaller type, the same drawing. */
+.pg.is-narrow .pg-kicker { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-household { font-size: 20px; line-height: 28px; margin-top: 2px; }
+.pg.is-narrow .pg-savings { font-size: 16px; line-height: 22px; margin-top: 2px; }
+.pg.is-narrow .pg-case { min-height: 56px; padding: 6px 14px; font-size: 16px; }
+.pg.is-narrow .pg-headline { font-size: 28px; line-height: 34px; }
+.pg.is-narrow .pg-status { margin-left: 10px; }
+.pg.is-narrow .pg-sentence { font-size: 16px; line-height: 22px; }
+.pg.is-narrow .pg-caption { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-seg-text { width: 200px; padding: 0 8px; }
+.pg.is-narrow .pg-seg-l1,
+.pg.is-narrow .pg-seg-l2 { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-seg-amount,
+.pg.is-narrow .pg-seg-floor .pg-seg-amount { font-size: 20px; line-height: 24px; }
+.pg.is-narrow .pg-label-title { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-label[data-key='gap'] .pg-label-title { font-size: 15px; }
+.pg.is-narrow .pg-label-amount { font-size: 20px; line-height: 26px; }
+.pg.is-narrow .pg-label[data-key^='seg'] .pg-label-title { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-label[data-key^='seg'] .pg-label-amount { font-size: 18px; line-height: 22px; }
+.pg.is-narrow .pg-scale { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-word { font-size: 16px; }
+.pg.is-narrow .pg-end-lead { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-end-text { font-size: 32px; line-height: 40px; }
+.pg.is-narrow .pg-axis-name { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-footnote { font-size: 14px; line-height: 20px; }
+
+/* =========================================================================
+   RENTAL, KEEP OR SELL
+
+   One bar, cut down step by step from the headline to what is left, in the
+   brand tokens at the top of this file. One element carries the screen: the
+   bars. Everything around it stays quiet. Blue is the headline; the result is
+   green when money is left over and red when it is short, and is always
+   beside its word. Text stays in text colours.
+
+   Nothing animates through CSS. The only motion in this module is the bars
+   travelling between Keep and Sell, and that is driven by the module's own
+   clock so that it can be settled, cancelled and left alone under reduced
+   motion.
+
+   The sizes below are the ones js/rental_keep_or_sell_view.js lays out with.
+   ========================================================================= */
+
+.rks {
+  --rks-selected: #16222b;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.rks-title {
+  max-width: 1500px;
+  margin: 0;
+  font-size: clamp(20px, 2.2vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
+}
+
+.rks-cases {
+  display: grid;
+  max-width: 1060px;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
+  gap: clamp(8px, 1vw, 20px);
+}
+
+.rks-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 64px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 2px solid rgba(247, 244, 238, 0.14);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.rks.is-narrow .rks-cases {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rks:not(.is-narrow) .rks-case {
+  min-height: 88px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+}
+
+.rks-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.rks-case:focus-visible {
+  outline: 2px solid var(--electric-blue);
+  outline-offset: 2px;
+}
+
+.rks-case.is-active {
+  border-color: var(--electric-blue);
+  background: var(--rks-selected);
+}
+
+.rks-case-name {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.rks:not(.is-narrow) .rks-case-name {
+  font-size: clamp(20px, 1.55vw, 30px);
+}
+
+.rks-case.is-active .rks-case-name {
+  font-weight: 800;
+}
+
+.rks-case-answer {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.rks:not(.is-narrow) .rks-case-answer {
+  font-size: clamp(16px, 1.35vw, 26px);
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.rks-stage {
+  min-width: 0;
+  padding: 30px 48px 40px;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+
+.rks-stage.is-narrow {
+  padding: 20px 16px;
+}
+
+.rks-headline {
+  min-height: 2.72em;
+  margin: 0 0 clamp(16px, 2vw, 32px);
+  font-size: clamp(16px, 1.45vw, 28px);
+  font-weight: 500;
+  line-height: 1.36;
+}
+
+.rks-stage.is-narrow .rks-headline {
+  min-height: 69px;
+  font-size: 16px;
+  line-height: 23px;
+}
+
+.rks-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.rks-chart.is-narrow {
+  margin: 0 auto;
+}
+
+.rks-zero {
+  position: absolute;
+  top: 0;
+  width: 0;
+  border-left: 1px solid rgba(247, 244, 238, 0.45);
+}
+
+.rks-headline-line {
+  position: absolute;
+  top: 0;
+  width: 0;
+  border-left: 1px dashed rgba(247, 244, 238, 0.3);
+}
+
+.rks-zero-label {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.rks-chart.is-narrow .rks-zero-label {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.rks-connector {
+  position: absolute;
+  width: 1px;
+  background: rgba(247, 244, 238, 0.35);
+}
+
+.rks-bar {
+  position: absolute;
+  border-radius: 4px;
+}
+
+.rks-bar.is-start {
+  background: var(--electric-blue);
+}
+
+.rks-bar.is-cut {
+  background: rgba(247, 244, 238, 0.28);
+}
+
+.rks-bar.is-result.is-left-over {
+  background: var(--accent-green);
+}
+
+.rks-bar.is-result.is-short {
+  background: var(--accent-red);
+}
+
+.rks-bar.is-result.is-level {
+  background: rgba(247, 244, 238, 0.55);
+}
+
+.rks-name {
+  position: absolute;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 25px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.rks-name.is-start,
+.rks-name.is-result {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.rks-chart.is-narrow .rks-name {
+  padding-right: 6px;
+  background: var(--bg-1);
+  font-size: 16px;
+}
+
+/* A name or a label sits over the zero and headline lines, so the lines stop
+   behind it. The shadow widens the mask without moving the text. */
+.rks-label {
+  position: absolute;
+  background: var(--bg-1);
+  box-shadow: -6px 0 0 0 var(--bg-1), 6px 0 0 0 var(--bg-1);
+  white-space: nowrap;
+}
+
+.rks-value {
+  color: var(--text);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.rks-word {
+  margin-left: 12px;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.rks-word[hidden] {
+  display: none;
+}
+
+.rks-chart.is-narrow .rks-value {
+  font-size: 19px;
+}
+
+.rks-chart.is-narrow .rks-word {
+  margin-left: 6px;
+  font-size: 14px;
+}
+
+.rks-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(12px, 1vw, 20px);
+  font-weight: 500;
+  line-height: 1.45;
+}
