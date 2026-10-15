@@ -1083,6 +1083,8 @@ export function runIeTaxTests() {
     assert(exitTaxRateOn('2040-06-01', rules).rate === 0.35, 'the last rate is held');
     assertThrows(() => exitTaxRateOn('2014-12-31', rules), /No exit tax rate is recorded/, 'before the first entry');
     assertThrows(() => exitTaxRateOn('14/10/2026', rules), /YYYY-MM-DD/, 'a date in another format');
+    assertThrows(() => exitTaxRateOn('2026-13-40', rules), /valid calendar date/, 'a date that does not exist');
+    assertThrows(() => exitTaxRateOn('2026-02-30', rules), /valid calendar date/, 'the 30th of February');
     assert(rules.investmentFunds.deemedDisposal.everyYears === 8, 'the eight-year rule');
     assert(JSON.stringify(resolveTaxRules(2031).investmentFunds) === JSON.stringify(rules.investmentFunds), 'held unchanged in later years');
   }));
@@ -1113,6 +1115,15 @@ export function runIeTaxTests() {
     const noFigures = renderTaxDisclosures(afterTaxInvestmentDisclosures({ asOf: '2026-10-14', rules, pensionAtReliefLimit: true }), { rules })[0].text;
     assert(noFigures === 'Your pension contributions are at the most income tax relief allows at your age. Money you invest beyond that gets no income tax relief.', `without the limit's figures: ${noFigures}`);
     assertThrows(() => afterTaxInvestmentDisclosures({ asOf: '2026-10', rules }), /YYYY-MM-DD/, 'asOf must be a date');
+  }));
+
+  cases.push(runCase('Before Budget day nothing is called announced: a date earlier than the announcement gets the law as it stood', () => {
+    const rules = resolveTaxRules(2026);
+    const before = afterTaxInvestmentDisclosures({ asOf: '2026-01-01', rules }).map((entry) => entry.code);
+    assert(JSON.stringify(before) === JSON.stringify(['INVESTMENT_FUND_TAX']), `before Budget 2027: ${before}`);
+    const onTheDay = afterTaxInvestmentDisclosures({ asOf: '2026-10-06', rules }).map((entry) => entry.code);
+    assert(JSON.stringify(onTheDay) === JSON.stringify(['INVESTMENT_FUND_TAX', 'INVESTMENT_FUND_TAX_ANNOUNCED', 'INVESTMENT_ACCOUNT']), `on Budget day: ${onTheDay}`);
+    assert(exitTaxRateOn('2026-01-01', rules).rate === 0.38, '38% at the start of 2026');
   }));
 
   cases.push(runCase('In 2027 the announced 35% is the rate in force, and the note still says it is not yet law', () => {
