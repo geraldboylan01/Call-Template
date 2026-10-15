@@ -16,7 +16,7 @@ This style should work:
 - SECTION 1 - NOTES (FOR GERRY ONLY)
   - Keep it to the key assumptions.
   - One line each for Keep and Sell with the result: what is left each year, and what would be in hand.
-  - When a tax figure is missing, NOTES is the whole reply until Gerry confirms it: see Tax Is Stated, Not Calculated.
+  - When any of the eight figures is missing, NOTES is the whole reply until Gerry confirms it: see Every Figure Comes From Gerry.
 - SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Return a single strict JSON object.
   - Use straight double quotes only. Do not use smart quotes.
@@ -44,7 +44,7 @@ This style should work:
 ```
 
 ## Required Inputs
-All eight are required, in euros:
+All eight are required, in euros, and each must come from Gerry:
 - `rentPerYear`: greater than 0. Rent received in a year, so a monthly rent times 12.
 - `loanRepaymentsPerYear`: 0 or more. Capital and interest together.
 - `runningCostsPerYear`: 0 or more. Management, repairs, the Local Property Tax, service charges and anything else the property costs to hold.
@@ -62,15 +62,16 @@ Any other key is refused with `generated.rentalKeepOrSellInputs.<key> is not an 
 ## The Two Cases Are Fixed
 Keep and Sell. There is no `scenarios` array, and one is refused. To compare anything else, such as a different sale price or a rent rise, build a second module and say so in NOTES.
 
-## Tax Is Stated, Not Calculated
-The app calculates no tax for this module, and its footnote tells the client that the figures are as stated. So both tax figures must come from Gerry. Never put a figure you worked out yourself into the payload as if he had given it.
-- If Gerry gives the tax figures, use them as given.
-- If one is missing, do not return the JSON yet. Work out a suggestion with the Irish tax overlay and show the working in NOTES:
-  - **Tax on the rental profit:** the rent less the allowable costs, including the interest part of the loan repayments but not the capital, taxed at the client's marginal rate with USC and PRSI.
-  - **Tax on the gain:** the sale price less the purchase price and the costs of buying and selling, less the annual exemption, at the capital gains tax rate.
-  - Name anything the suggestion had to assume, such as the purchase price or the interest part of the repayments.
-- Then ask one bold question asking Gerry to confirm the figures or give his own. Return SECTION 2 once he answers, using the figures he confirms.
-- Never put a tax figure at 0 unless Gerry says there is none.
+## Every Figure Comes From Gerry
+The app estimates nothing for this module and calculates no tax, and its footnote tells the client that the figures are as stated. So all eight must come from Gerry. Never put a figure you worked out yourself, a placeholder or a 0 into the payload as if he had given it.
+- Convert what he says into the field's terms: a monthly rent or repayment times 12 is still his figure.
+- If any figure is missing, do not return the JSON yet. Suggest one in NOTES for each missing figure, with its working:
+  - **Tax on the rental profit:** with the Irish tax overlay, the rent less the allowable costs, including the interest part of the loan repayments but not the capital, taxed at the client's marginal rate with USC and PRSI.
+  - **Tax on the gain:** with the Irish tax overlay, the sale price less the purchase price and the costs of buying and selling, less the annual exemption, at the capital gains tax rate.
+  - **Anything else,** such as selling costs or running costs: a round figure and what it is based on.
+  - Name anything a suggestion had to assume, such as the purchase price or the interest part of the repayments.
+- Then ask one bold question asking Gerry to confirm the figures or give his own. Return both sections once he answers, using the figures he confirms.
+- A figure is 0 only when Gerry says there is none, such as no loan left.
 
 ## Not Modelled
 Say so in NOTES when it matters, and keep the payload as it is:

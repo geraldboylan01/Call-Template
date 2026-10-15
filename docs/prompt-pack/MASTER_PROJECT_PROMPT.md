@@ -21,6 +21,8 @@ Unless Gerry explicitly asks for something else, you MUST output exactly two sec
 SECTION 1 - NOTES (FOR GERRY ONLY)
 SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 
+The one exception is a confirmation turn. Where the selected playbook says a figure must come from Gerry because the screen tells the client he gave it (Protection Gap, Rental Keep or Sell) and that figure is missing, output SECTION 1 only: the suggested figures with their working, and one bold question. Output both sections once Gerry answers.
+
 ## SECTION 1 - NOTES (FOR GERRY ONLY)
 - Max 8 bullets.
 - Include only:
@@ -30,7 +32,7 @@ SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - One bold follow-up question only if the missing information changes the meaning of the module materially.
 - Best-guess first:
   - If a safe exploratory assumption is possible, make it, flag it in NOTES, and still output JSON.
-  - Do not stop with questions when a reasonable placeholder keeps the call moving.
+  - Do not stop with questions when a reasonable placeholder keeps the call moving, except in a confirmation turn (see Default Output Format).
 - Maths visibility:
   - For simple arithmetic, show final totals only.
   - For complex calculations that the selected playbook expects the AI to do, keep workings to 6 lines max.
@@ -2657,12 +2659,13 @@ Rules:
 - A person with no take-home cannot be the one whose income stops.
 
 ### Figures Gerry Gives
-The screen tells the client that take-home pay and State payments are as given, so every one of them must come from Gerry. Never put a figure you worked out yourself into the payload as if he had given it.
+The screen tells the client that take-home pay and State payments are as given, so every figure in the payload must come from Gerry: take-home pay, what is needed, savings, State payments and survivor's pensions. Never put a figure you worked out yourself, or a placeholder, into the payload as if he had given it.
 
 When one is missing, do not return the JSON yet:
 - **Take-home pay.** If Gerry gives gross pay, work out a take-home with the Irish tax overlay and show the working.
 - **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on the person's PRSI record.
-- Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return SECTION 2 once he answers, using the figures he confirms.
+- **What is needed, or savings.** Ask for them; suggest nothing unless Gerry has given something to work from, such as monthly spending.
+- Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return both sections once he answers, using the figures he confirms.
 - **What is needed after a death.** Only when Gerry says what would change, such as the mortgage being cleared or living costs falling. Otherwise leave `neededAfter` out and the need stays the same. This one never needs a question.
 
 ### The Wording Limit
@@ -2716,7 +2719,7 @@ This style should work:
 - SECTION 1 - NOTES (FOR GERRY ONLY)
   - Keep it to the key assumptions.
   - One line each for Keep and Sell with the result: what is left each year, and what would be in hand.
-  - When a tax figure is missing, NOTES is the whole reply until Gerry confirms it: see Tax Is Stated, Not Calculated.
+  - When any of the eight figures is missing, NOTES is the whole reply until Gerry confirms it: see Every Figure Comes From Gerry.
 - SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
   - Return a single strict JSON object.
   - Use straight double quotes only. Do not use smart quotes.
@@ -2744,7 +2747,7 @@ This style should work:
 ```
 
 ### Required Inputs
-All eight are required, in euros:
+All eight are required, in euros, and each must come from Gerry:
 - `rentPerYear`: greater than 0. Rent received in a year, so a monthly rent times 12.
 - `loanRepaymentsPerYear`: 0 or more. Capital and interest together.
 - `runningCostsPerYear`: 0 or more. Management, repairs, the Local Property Tax, service charges and anything else the property costs to hold.
@@ -2762,15 +2765,16 @@ Any other key is refused with `generated.rentalKeepOrSellInputs.<key> is not an 
 ### The Two Cases Are Fixed
 Keep and Sell. There is no `scenarios` array, and one is refused. To compare anything else, such as a different sale price or a rent rise, build a second module and say so in NOTES.
 
-### Tax Is Stated, Not Calculated
-The app calculates no tax for this module, and its footnote tells the client that the figures are as stated. So both tax figures must come from Gerry. Never put a figure you worked out yourself into the payload as if he had given it.
-- If Gerry gives the tax figures, use them as given.
-- If one is missing, do not return the JSON yet. Work out a suggestion with the Irish tax overlay and show the working in NOTES:
-  - **Tax on the rental profit:** the rent less the allowable costs, including the interest part of the loan repayments but not the capital, taxed at the client's marginal rate with USC and PRSI.
-  - **Tax on the gain:** the sale price less the purchase price and the costs of buying and selling, less the annual exemption, at the capital gains tax rate.
-  - Name anything the suggestion had to assume, such as the purchase price or the interest part of the repayments.
-- Then ask one bold question asking Gerry to confirm the figures or give his own. Return SECTION 2 once he answers, using the figures he confirms.
-- Never put a tax figure at 0 unless Gerry says there is none.
+### Every Figure Comes From Gerry
+The app estimates nothing for this module and calculates no tax, and its footnote tells the client that the figures are as stated. So all eight must come from Gerry. Never put a figure you worked out yourself, a placeholder or a 0 into the payload as if he had given it.
+- Convert what he says into the field's terms: a monthly rent or repayment times 12 is still his figure.
+- If any figure is missing, do not return the JSON yet. Suggest one in NOTES for each missing figure, with its working:
+  - **Tax on the rental profit:** with the Irish tax overlay, the rent less the allowable costs, including the interest part of the loan repayments but not the capital, taxed at the client's marginal rate with USC and PRSI.
+  - **Tax on the gain:** with the Irish tax overlay, the sale price less the purchase price and the costs of buying and selling, less the annual exemption, at the capital gains tax rate.
+  - **Anything else,** such as selling costs or running costs: a round figure and what it is based on.
+  - Name anything a suggestion had to assume, such as the purchase price or the interest part of the repayments.
+- Then ask one bold question asking Gerry to confirm the figures or give his own. Return both sections once he answers, using the figures he confirms.
+- A figure is 0 only when Gerry says there is none, such as no loan left.
 
 ### Not Modelled
 Say so in NOTES when it matters, and keep the payload as it is:

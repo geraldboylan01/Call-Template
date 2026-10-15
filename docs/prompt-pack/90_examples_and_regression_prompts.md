@@ -460,8 +460,8 @@ Prompt:
 `Use the rental keep or sell playbook. Rent 1200 a month, repayments 900 a month, costs about 3000 a year, and he's a higher-rate taxpayer. It could sell for 280000; he bought it for 190000 in 2015 and owes 150000. Should he sell?`
 
 Checks:
-- no JSON yet: both tax figures are missing
-- NOTES suggests both tax figures with the working, names what it had to assume (the interest part of the repayments, the costs of buying and selling), and neither suggestion is 0
+- no JSON yet: both tax figures and the selling costs are missing
+- NOTES suggests both tax figures and the selling costs with the working, names what it had to assume (the interest part of the repayments, the costs of buying and selling), and no suggestion is 0
 - one bold question asks Gerry to confirm the figures or give his own
 - once Gerry confirms, the payload uses exactly the figures he confirmed, and the summary speaks to the client as `you`, never says which case is better, and never says `you should`, `best` or `we recommend`
 - NOTES answers "should he sell" by saying the module shows both cases side by side, not a recommendation

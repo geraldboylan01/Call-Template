@@ -92,12 +92,13 @@ Rules:
 - A person with no take-home cannot be the one whose income stops.
 
 ## Figures Gerry Gives
-The screen tells the client that take-home pay and State payments are as given, so every one of them must come from Gerry. Never put a figure you worked out yourself into the payload as if he had given it.
+The screen tells the client that take-home pay and State payments are as given, so every figure in the payload must come from Gerry: take-home pay, what is needed, savings, State payments and survivor's pensions. Never put a figure you worked out yourself, or a placeholder, into the payload as if he had given it.
 
 When one is missing, do not return the JSON yet:
 - **Take-home pay.** If Gerry gives gross pay, work out a take-home with the Irish tax overlay and show the working.
 - **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on the person's PRSI record.
-- Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return SECTION 2 once he answers, using the figures he confirms.
+- **What is needed, or savings.** Ask for them; suggest nothing unless Gerry has given something to work from, such as monthly spending.
+- Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return both sections once he answers, using the figures he confirms.
 - **What is needed after a death.** Only when Gerry says what would change, such as the mortgage being cleared or living costs falling. Otherwise leave `neededAfter` out and the need stays the same. This one never needs a question.
 
 ## The Wording Limit
