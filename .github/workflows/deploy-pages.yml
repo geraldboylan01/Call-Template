@@ -80,6 +80,12 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Checkout rollout checks
+        uses: actions/checkout@v4
+
+      - name: Wait for the demo API before publishing its UI
+        run: node ./scripts/check-demo-deployment.mjs
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

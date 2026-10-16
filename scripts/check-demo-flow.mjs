@@ -98,6 +98,21 @@ try {
   assert.equal((await runtime.call('/api/demo/invitations/redeem', { token: upgradeToken })).status, 410);
   assert.equal((await runtime.call(`/api/demo/requests/${upgrade.json.id}/confirm`, { revision: 1 }, { headers: upgradeHeaders })).status, 200, 'Revoking the invitation does not revoke participants.');
 
+  const raceInvite = await runtime.call('/api/advisor/demo/invitations', { maxUses: 1 }, { headers: admin });
+  const raceToken = new URL(raceInvite.json.url).hash.slice(8);
+  const raceSessions = await Promise.all([runtime.call('/api/demo/invitations/redeem', { token: raceToken }), runtime.call('/api/demo/invitations/redeem', { token: raceToken })]);
+  const raceOwners = await Promise.all(raceSessions.map(headersFor));
+  const raceResults = await Promise.all(raceOwners.map((headers, i) => runtime.call('/api/demo/requests', make(`race-${i}@example.com`), { headers })));
+  assert.deepEqual(raceResults.map(result => result.status).sort(), [201, 410], 'Exactly one concurrent enrolment wins the last invitation place.');
+  assert.equal(runtime.sql.prepare('SELECT uses FROM demo_invitations WHERE id=?').get(raceInvite.json.id).uses, 1);
+  const duplicate = make('retry-race@example.com');
+  const duplicateResults = await Promise.all([runtime.call('/api/demo/requests', duplicate), runtime.call('/api/demo/requests', duplicate)]);
+  assert.equal(duplicateResults[0].json.id, duplicateResults[1].json.id);
+  assert.deepEqual(duplicateResults.map(result => result.status).sort(), [200, 201]);
+  const raceAccess = tokenFor('retry-race@example.com');
+  const redemptions = await Promise.all([runtime.call('/api/demo/access/redeem', { token: raceAccess }), runtime.call('/api/demo/access/redeem', { token: raceAccess })]);
+  assert.deepEqual(redemptions.map(result => result.status).sort(), [200, 410]);
+
   const expiredInvite = await runtime.call('/api/advisor/demo/invitations', { maxUses: 1 }, { headers: admin });
   const expiredToken = new URL(expiredInvite.json.url).hash.slice(8);
   const beforeExpiry = await runtime.call('/api/demo/invitations/redeem', { token: expiredToken });

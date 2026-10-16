@@ -1,13 +1,14 @@
 /**
- * THE WORKSPACE FORM PREVIEW.
+ * THE SAVED DEMO REQUEST AND INVITED REVIEW FORM.
  *
  * One page, one submit. The form is rendered from js/case_application/schema.js
  * so the questions, the live write-up and the Worker's validation all read the
- * same description. Nothing is required except the question, a name, an email
- * and the workspace acknowledgements; every figure can be skipped or marked "Not sure".
+ * same description. Name, email and demo acknowledgements are required;
+ * goals and financial figures can be skipped or marked "Not sure".
  *
  * Answers are saved in this browser as the person types, so they can go and
- * find a statement and come back. This preview has no submission transport.
+ * find a statement and come back. Explicit submission saves to the demo API.
+ * Approved confirmation records a snapshot; it never starts an analysis.
  */
 
 import {
@@ -511,7 +512,7 @@ function buildField(field, path) {
   if (path === 'household.age') field = { ...field, min: 18, hint: 'Age at your last birthday. The workspace is for adults aged 18 or older.' };
   if (field.type === 'choice') return choiceField(field, path);
   if (field.type === 'month') return monthField(field, path);
-  if (field.type === 'text' || field.type === 'longtext') return textField(field, path, { required: path === 'question' });
+  if (field.type === 'text' || field.type === 'longtext') return textField(field, path);
   if (isNumericField(field)) return numberField(field, path);
   return null;
 }
@@ -787,9 +788,8 @@ function validate() {
   return errors;
 }
 
-// Keep this contract separate from the old case-application payload. The
-// transport is deliberately absent until generation, saved access, deletion
-// and booking are implemented. No browser override may enable the old API.
+// Demo storage has its own acknowledgements and transport. Historical
+// publication permissions are never accepted as demo permission.
 function prepareWorkspaceDraft() {
   const errors = validate();
   if (errors.length) throw new Error(errors[0].message);

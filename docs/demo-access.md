@@ -92,12 +92,15 @@ resend a fresh link after final failure. Emails contain no financial figures.
 
 1. Run `npm run check:demo`, `npm run check:demo-browser`, workspace/browser,
    education-call, historical intake and build checks.
-2. Apply additive migrations to `LEADS_DB` before deploying the Worker.
-3. Provision the demo key once; deploy using the existing production workflow
+2. Run `node scripts/provision-demo-key.mjs` once to install a new key in the
+   Worker and back it up in the protected GitHub production environment. It
+   refuses to replace an existing key.
+3. Apply additive migrations to `LEADS_DB` before deploying the Worker.
+4. With the key provisioned, deploy using the existing production workflow
    so consumer bindings and protected runtime configuration are retained.
-4. Verify private return access, storage/deletion and service email delivery
+5. Verify private return access, storage/deletion and service email delivery
    before setting the protected `DEMO_REQUESTS_ENABLED` variable to true.
-5. Publish the static pages only after `/api/demo/config` reports contract
+6. Publish the static pages only after `/api/demo/config` reports contract
    `demo-v1`. A disabled intake continues to show the form with a clear notice.
 
 Rollback new enrolments by setting `DEMO_REQUESTS_ENABLED=false`. Existing

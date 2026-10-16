@@ -1001,6 +1001,24 @@ jobs:
       - name: Check demo access flow
         run: npm run check:demo
 
+      - name: Ensure demo encryption key is provisioned
+        working-directory: ./worker
+        env:
+          DEMO_DATA_ENCRYPTION_KEY: ${{ secrets.DEMO_DATA_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          if ! printf '%s' "$inventory" | node --input-type=module -e '
+            let input=""; for await (const chunk of process.stdin) input+=chunk;
+            process.exit(JSON.parse(input).some(secret=>secret.name==="DEMO_DATA_ENCRYPTION_KEY") ? 0 : 1);
+          '; then
+            if [[ -z "$DEMO_DATA_ENCRYPTION_KEY" ]]; then
+              echo "Provision DEMO_DATA_ENCRYPTION_KEY in the production environment before publishing demo access." >&2
+              exit 1
+            fi
+            printf '%s' "$DEMO_DATA_ENCRYPTION_KEY" | wrangler secret put DEMO_DATA_ENCRYPTION_KEY --config wrangler.production.generated.toml
+          fi
+
       - name: Apply remote adviser D1 migrations
         working-directory: ./worker
         run: wrangler d1 migrations apply LEADS_DB --remote --config wrangler.production.generated.toml

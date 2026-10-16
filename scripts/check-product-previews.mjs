@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const output = resolve(root, '.worker-dry-run/product-previews');
 await mkdir(output, { recursive: true });
 const manifest = JSON.parse(await readFile(resolve(root, 'assets/examples/product-preview-manifest.json'), 'utf8'));
-assert.equal(manifest.clips.length, 4);
+assert.equal(manifest.clips.length, 10);
 for (const clip of manifest.clips) {
   for (const format of ['mp4', 'webm']) {
     const path = resolve(root, `assets/examples/${clip.kind}-preview-${clip.size}.${format}`);
@@ -45,8 +45,8 @@ try {
     await page.click('[data-preview-play]');
     await page.waitForFunction(() => !document.querySelector('[data-preview-video]').paused);
 
-    for (const kind of ['mortgage', 'balance-sheet']) {
-      if (kind === 'balance-sheet') await page.click('[data-preview-module="balance-sheet"]');
+    for (const kind of ['mortgage', 'balance-sheet', 'future-cost-fund', 'household-cash-flow', 'protection-gap']) {
+      await page.click(`[data-preview-module="${kind}"]`);
       await page.waitForFunction(kind => {
         const video = document.querySelector('[data-preview-video]');
         return video.readyState >= 2 && video.currentSrc.includes(kind);

@@ -22,6 +22,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
   <link rel="stylesheet" href="./styles/landing.css" />
   <link rel="stylesheet" href="./styles/cases.css" />
+  <link rel="stylesheet" href="./styles/product-preview.css" />
   <link rel="stylesheet" href="./styles/workspace.css" />
   <script type="application/ld+json">{
   "@context": "https://schema.org",
@@ -133,13 +134,20 @@
       <p class="hero-subtitle">Use your goals and figures to explore different choices, compare the trade-offs and get a clearer picture of the way forward.</p>
       <div class="hero-actions"><a class="button button-primary" href="./apply/">Request demo access</a><a class="button button-secondary" href="#how-it-works">How it works</a></div>
     </div>
-    <figure class="workspace-example product-preview" data-product-preview>
-      <div class="preview-tabs" role="tablist" aria-label="Example modules"><button id="previewMortgageTab" type="button" role="tab" aria-selected="true" aria-controls="previewPanel" data-preview-module="mortgage">Mortgage</button><button id="previewBalanceTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="balance-sheet">Personal balance sheet</button></div>
-      <div id="previewPanel" class="preview-stage" role="tabpanel" aria-labelledby="previewMortgageTab"><video data-preview-video muted playsinline preload="none" poster="./assets/examples/mortgage-preview-desktop-poster.png" width="1440" height="1080" aria-label="Mortgage scenario comparison using fictional figures"><source type="video/mp4" /><source type="video/webm" /></video></div>
-      <div class="preview-controls"><span>Actual modules · Fictional figures</span><div><button type="button" data-preview-play>Play preview</button><button type="button" data-preview-enlarge>Enlarge</button></div></div>
-      <figcaption data-preview-caption aria-live="polite">Compare how extra repayments change the finish date and interest cost.</figcaption>
-      <dialog class="preview-dialog" aria-labelledby="previewDialogTitle"><div class="preview-dialog-header"><h2 id="previewDialogTitle">Planéir example · Fictional figures</h2><button type="button" data-preview-close>Close</button></div><video controls muted playsinline preload="none" aria-label="Enlarged module example"><source type="video/mp4" /><source type="video/webm" /></video><div class="preview-dialog-footer"><a class="button button-primary" href="./apply/">Request demo access</a></div></dialog>
-    </figure>
+          <figure id="module-examples" class="workspace-example product-preview" data-product-preview>
+            <div class="preview-tabs" role="tablist" aria-label="Example modules">
+                <button id="previewMortgageTab" type="button" role="tab" aria-selected="true" aria-controls="previewPanel" data-preview-module="mortgage">Mortgage</button>
+                <button id="previewBalanceTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="balance-sheet">Personal balance sheet</button>
+                <button id="previewCollegeTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="future-cost-fund">College funding</button>
+                <button id="previewCashFlowTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="household-cash-flow">Household cash flow</button>
+                <button id="previewProtectionTab" type="button" role="tab" aria-selected="false" aria-controls="previewPanel" tabindex="-1" data-preview-module="protection-gap">Protection gap</button>
+            </div>
+            <div id="previewPanel" class="preview-stage" role="tabpanel" aria-labelledby="previewMortgageTab"><video data-preview-video muted playsinline preload="none" poster="./assets/examples/mortgage-preview-desktop-poster.png" width="1440" height="1080" aria-label="Mortgage scenario comparison using fictional figures"><source type="video/mp4" /><source type="video/webm" /></video></div>
+            <div class="preview-controls"><span>Actual modules · Fictional figures</span><div><button type="button" data-preview-play>Play preview</button>
+                <button type="button" data-preview-enlarge>Enlarge</button></div></div>
+            <figcaption data-preview-caption aria-live="polite">Compare how extra repayments change the finish date and interest cost.</figcaption>
+            <dialog class="preview-dialog" aria-labelledby="previewDialogTitle"><div class="preview-dialog-header"><h2 id="previewDialogTitle">Planéir example · Fictional figures</h2><button type="button" data-preview-close>Close</button></div><video controls muted playsinline preload="none" aria-label="Enlarged module example"><source type="video/mp4" /><source type="video/webm" /></video><p data-preview-context></p><div class="preview-dialog-footer"><a class="button button-primary" href="./apply/">Request demo access</a></div></dialog>
+          </figure>
   </section>
   <section class="trust-row-section" aria-label="About Planéir"><div class="trust-row"><span>Designed by Gerry Boylan, QFA</span><span class="trust-row-divider" aria-hidden="true"></span><span>Built for Ireland</span><span class="trust-row-divider" aria-hidden="true"></span><span>Financial education</span></div></section>
   <section id="how-it-works" class="content-section how-section" aria-labelledby="howTitle"><div class="section-heading"><p class="section-eyebrow">How Planéir works</p><h2 id="howTitle">From your figures to a clearer picture.</h2></div><div class="how-grid">
