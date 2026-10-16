@@ -149,7 +149,6 @@
     "check:workspace-copy": "node ./scripts/generate-workspace-pages.mjs --check && node ./scripts/check-workspace-copy.mjs",
     "check:workspace-browser": "node ./scripts/check-workspace-browser.mjs",
     "check:education-call": "node ./scripts/check-education-call.mjs",
-    "generate:product-previews": "node ./scripts/create-product-preview-videos.mjs",
     "check:product-previews": "node ./scripts/check-product-previews.mjs",
     "check:demo": "node ./scripts/check-demo-flow.mjs",
     "check:demo-browser": "node ./scripts/check-demo-browser.mjs"

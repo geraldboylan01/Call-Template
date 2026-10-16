@@ -1,6 +1,6 @@
 // Public, read-only contract check. The API is deployed before the Pages UI.
 const base = process.env.WORKER_BASE_URL || 'https://api.planeir.ie';
-const attempts = Number(process.env.DEMO_DEPLOY_ATTEMPTS || 30);
+const attempts = Number(process.env.DEMO_DEPLOY_ATTEMPTS || 120);
 let verified = false;
 for (let attempt = 0; attempt < attempts; attempt += 1) {
   try {

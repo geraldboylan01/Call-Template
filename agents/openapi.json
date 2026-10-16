@@ -3,7 +3,7 @@
   "info": {
     "title": "Planéir demo request form",
     "version": "demo-v1",
-    "description": "No public API submission operations are available. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request."
+    "description": "No assistant submission operations are advertised. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request."
   },
   "paths": {},
   "components": {
