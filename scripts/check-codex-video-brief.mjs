@@ -340,6 +340,42 @@ assert(rentalKeepOrSellBriefModule.calculationStatus === 'resolved', 'Codex brie
 assert(rentalKeepOrSellBriefModule.activeScenario.id === 'sell', 'Codex brief must name the selected rental case.');
 assert(!JSON.stringify(rentalKeepOrSellBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied rental outputs.');
 
+const homeTradeDownBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Home Client',
+    order: ['home'],
+    modules: [{
+      id: 'home',
+      title: 'Home trade down',
+      generated: {
+        homeTradeDownInputs: {
+          homeValue: 650000,
+          mortgageBalance: 280000,
+          currentAnnualRepayments: 30000,
+          sellingCosts: 15000,
+          buyingCosts: 12000,
+          newLoanTermYears: 15,
+          newLoanAnnualRate: 0.04,
+          baseScenarioId: 'stay',
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'repay-18000', kind: 'move', annualRepayment: 18000 },
+            { id: 'repay-12000', kind: 'move', annualRepayment: 12000 }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { homeTradeDownScenarioId: new Map([['home', 'repay-18000']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const homeTradeDownBriefModule = homeTradeDownBrief.call.modules[0];
+assert(homeTradeDownBriefModule.moduleKind === 'home-trade-down', 'Codex brief must recognize a home trade down module.');
+assert(homeTradeDownBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the home trade down projection.');
+assert(homeTradeDownBriefModule.activeScenario.id === 'repay-18000', 'Codex brief must name the selected home case.');
+assert(!JSON.stringify(homeTradeDownBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied home trade down outputs.');
+
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');
 assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');

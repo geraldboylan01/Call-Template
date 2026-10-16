@@ -78,7 +78,7 @@ function getOrderedModules(session) {
 function normalizeScenarioSelection(activeScenarios, moduleId) {
   const byModule = asObject(activeScenarios);
   const selected = {};
-  ['pbsScenarioId', 'pensionScenarioId', 'netRetirementScenarioId', 'futureCostFundScenarioId', 'householdCashFlowScenarioId', 'protectionGapScenarioId', 'rentalKeepOrSellScenarioId'].forEach((key) => {
+  ['pbsScenarioId', 'pensionScenarioId', 'netRetirementScenarioId', 'futureCostFundScenarioId', 'householdCashFlowScenarioId', 'protectionGapScenarioId', 'rentalKeepOrSellScenarioId', 'homeTradeDownScenarioId'].forEach((key) => {
     const values = byModule[key];
     if (values instanceof Map) {
       selected[key] = asTrimmedText(values.get(moduleId));
