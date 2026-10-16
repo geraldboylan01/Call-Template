@@ -2647,6 +2647,7 @@ All money is in whole euros. A figure with cents is refused.
 Each case is `{ id, title?, description?, event? }`. A case with no `event` is today. A case changes one thing:
 
 - **Cannot work:** `"event": { "type": "cannotWork", "personId": "niamh", "statePayment": 13000 }`. That person's take-home stops and a State payment starts. `statePayment` is per year, in whole euros, greater than 0.
+  - If Gerry says the person would get no State payment at all, this screen cannot show that case yet: 0 is refused. Leave the case out, say so in NOTES, and never put in a token figure to make it fit. Do not suggest a payment he has ruled out.
 - **Dies:** `"event": { "type": "dies", "personId": "niamh", "survivorsPension": 13500 }`. Needs two people. That person's take-home stops and a survivor's pension starts, per year, 0 or more.
   - `neededAfter` is optional: what the household would need after the death, lower than `needed`. A higher need is refused.
   - `neededBecause` is optional and needs `neededAfter`: `mortgageCleared`, `livingCostsLower`, or both. The app names the reason in its sentence.

@@ -39,7 +39,7 @@ For each prompt below:
 - Pass only if NOTES carries one line per case with that case's headline number, except where the playbook says the app solves the amounts (Future Cost Fund, Protection Gap): then one line per case naming what it does, with no estimated amount.
 
 ## Summary Clarity Checklist
-Every regression output should pass this client-clarity test:
+Every regression output should pass this client-clarity test. Protection Gap is exempt, since it emits no summary: the app writes it.
 - the summary says what the module is doing
 - the summary names the client facts driving the view
 - the summary tells the client how to read the first screen
