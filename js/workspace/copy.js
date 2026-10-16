@@ -25,10 +25,10 @@ export function workspaceLaunchReady(release = WORKSPACE_RELEASE) {
 }
 
 export const WORKSPACE_COPY = Object.freeze({
-  headline: 'Personalised financial education shouldn’t be reserved for the few.',
-  description: 'Financial education beyond the wealthy few. Planéir models your income, savings, pensions and mortgage using your own figures.',
-  introduction: 'Detailed financial modelling has too often been reserved for those who can afford specialist advice. Planéir uses technology to bring it to your own income, savings, pensions and mortgage — and show how different choices change the outcome.',
-  create: 'Create my workspace',
+  headline: 'See the different routes to your financial goals.',
+  description: 'Explore different routes to your financial goals with Planéir. Currently available for demos only.',
+  introduction: 'Use your goals and figures to explore different choices, compare the trade-offs and get a clearer picture of the way forward.',
+  create: 'Request demo access',
   closed: 'Workspace creation is unavailable in this preview. Your draft stays on this device and is not sent to Planéir.',
   founder: 'I’m Gerry Boylan, a Qualified Financial Adviser. I’ve worked with clients across every part of the financial advice process. I built Planéir because the depth of financial understanding available to wealthy clients should be within everyone’s reach.',
   founderContext: 'Technology lets us bring that depth to more people: a clear picture of where you stand, comparisons of the choices ahead, and the assumptions behind each outcome.',
@@ -66,13 +66,12 @@ export function workspaceAcknowledgements(values) {
 }
 
 export const WORKSPACE_FAQS = Object.freeze([
-  ['What is Planéir?', 'Planéir brings detailed financial education beyond the wealthy few. Designed by Gerry Boylan, who has worked with clients across every part of the financial advice process, it uses technology to help you understand your own figures and compare the effect of different choices.'],
-  ['Is the workspace free?', 'Yes. Creating and using your workspace is free.'],
-  ['Does Gerry review my result?', 'Results are generated automatically. Gerry designed the app but does not routinely review individual results. You can request an optional call after viewing your analysis.'],
-  ['How does AI help?', `${WORKSPACE_COPY.aiNotice} ${WORKSPACE_COPY.assumptionsNotice}`],
-  ['Is my workspace private?', 'Your workspace is not published. Service providers process information to run the app, and authorised support may access it when needed. The privacy notice explains this.'],
-  ['Can I return to my workspace?', 'Yes. Your workspace stays saved until you delete it.'],
-  ['What if I don’t know a figure?', 'Estimates are fine, and you can skip figures you do not know. Missing information may prevent a particular calculation. The app identifies what is needed.'],
-  ['Is this financial advice?', 'Planéir provides financial education and modelled comparisons. It does not provide regulated advice or recommend financial products. Read all the assumptions and take appropriate professional advice before acting.'],
-  ['Can I talk through my results with Gerry?', 'Yes. After you receive your analysis, you can request an optional call with Gerry Boylan, the person who created Planéir. You’ll find the details beside your results.']
+  ['What is Planéir?', 'Planéir helps you understand the different routes to your financial goals through modelled comparisons of your choices, figures and assumptions. It is built for Ireland and currently available for demos only.'],
+  ['How do I get demo access?', 'Share your goals and figures using the demo request form. We save your information and email you when access is available. If you already have a demo invitation, you can use it to continue directly.'],
+  ['What can I do in this demo?', 'You can save, review and confirm your information. Analysis generation is not connected yet. No analysis starts when you request access or confirm your figures.'],
+  ['How will AI help with the analysis?', `${WORKSPACE_COPY.aiNotice} AI processing is not connected to the demo request form.`],
+  ['Is my information private?', 'Your saved information is not published. Service providers process information to run the service, and authorised support may access it when needed. The privacy notice explains this.'],
+  ['Can I return to my information?', 'Yes. Use your private email link to reopen and update your saved form, including while waiting for approval. Your information stays saved until you delete it.'],
+  ['What if I don’t know a figure?', 'Estimates are fine. Skip anything you don’t know. You can return to update your information later.'],
+  ['Is this financial advice?', 'Planéir provides financial education and modelled comparisons. It does not provide regulated advice or recommend financial products. Read all the assumptions and take appropriate professional advice before acting.']
 ]);

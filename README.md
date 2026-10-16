@@ -9,27 +9,26 @@ Planeir now ships as two connected experiences:
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
-## Private financial education workspace
+## Demo requests and private access
 
-The public homepage and `/apply/` now introduce the planned free, automatic
-workspace. The form is a **local preview only**: it saves a browser draft and
-has no submission transport. It does not send data to the case-video pipeline
-or an AI provider. The homepage mentions an optional call without pricing. Its €100, 40-minute
-Zoom offer appears only after analysis. Call requests use the existing client
-pipeline and Zoom scheduler; payment collection remains a separate dependency.
+Planéir now centres on helping people understand different routes to their
+financial goals and is currently available for demos only. `/apply/` saves demo
+requests, `/demo/` restores private information and accepts reusable invitations,
+and `/app/demos.html` provides approval, access-email and invitation management.
+Goals and financial figures do not block a public request. Existing optional
+calls remain secondary and appear beside completed results in the separate
+analysis service.
 
-The homepage previews the real mortgage and personal balance sheet modules in
-short videos using fictional, engine-calculated figures. Both have desktop and
-mobile versions, play once, and support pause, replay and enlargement. Production
-and verification are documented in [Homepage module previews](docs/product-preview-videos.md).
+Approved people choose **Generate my analysis** to save a confirmed revision.
+Analysis generation is not connected to this flow. No calculations or AI calls
+start from requesting access or confirming information.
 
-The desired workspace retention is until user deletion, with no inactivity
-expiry. This does not alter the invited beta's seven-day sessions. The main
-privacy routes present one workspace notice; original application and beta
-notices are preserved separately.
+See [Demo access](docs/demo-access.md) for the API, encryption, session and email
+architecture, configuration, tests and rollout order. The original invited beta
+and case-video records keep their own access, notices and retention policies.
 
-Release dependencies, copy sources and verification are documented in
-[Workspace copy release](docs/workspace-copy-release.md).
+The homepage previews actual mortgage and personal balance sheet modules using
+fictional figures; see [Homepage module previews](docs/product-preview-videos.md).
 
 ## Local Development
 

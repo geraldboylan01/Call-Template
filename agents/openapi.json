@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Planéir workspace preview",
-    "version": "workspace-v1",
-    "description": "No public API submission operations are available. Use the local form preview only with the user’s agreement."
+    "title": "Planéir demo request form",
+    "version": "demo-v1",
+    "description": "No public API submission operations are available. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request."
   },
   "paths": {},
   "components": {
@@ -12,7 +12,7 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://planeir.ie/agents/application.schema.json",
         "title": "Planéir workspace information",
-        "description": "Fields for a local workspace form preview. This schema does not grant permission or provide a submission endpoint.",
+        "description": "Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.",
         "type": "object",
         "additionalProperties": false,
         "required": [

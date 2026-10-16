@@ -1,22 +1,22 @@
 # Planéir
 
-> Planéir brings detailed financial education beyond the wealthy few. Designed by Gerry Boylan, who has worked with clients across every part of the financial advice process, it uses technology to help people understand their own figures and compare different outcomes.
+> See the different routes to your financial goals. Use your goals and figures to explore different choices, compare the trade-offs and get a clearer picture of the way forward. Currently available for demos only.
 
-- The workspace is free, with automatic results and no routine review by Gerry Boylan, its designer and a Qualified Financial Adviser.
-- AI helps identify scenarios from the user’s objectives and organise the relevant modules. Planéir’s calculation engines calculate the figures. Users should read all the assumptions included with their results.
-- A saved workspace remains until the user deletes it.
-- An optional call with Gerry can be requested after the analysis is generated. Call details appear beside the results. Calls are private and unrecorded by default.
-- This is financial education, not regulated advice, product recommendations or a lending approval.
-- The form is currently a local preview and sends nothing to Planéir or an AI provider. No public submission API is available. Never send financial data to the former case-video application endpoints or reinterpret publication permission as workspace permission.
-- With the user’s agreement, an assistant may prepare a form-prefill link. The user must check the answers; the preview does not submit them. Do not include sensitive identifiers or documents.
+- Request demo access through the form. Information is saved so the person can return, update it while waiting, and review it when approved.
+- Reusable demo invitations grant access directly. Each participant has independent saved information and a private return link.
+- Generate my analysis saves the approved person's confirmed information. Analysis generation is not connected yet; no AI or calculations run in this flow.
+- Saved information remains until the person deletes it from their private form. Clear this device removes the local draft and browser session only.
+- Financial education, not regulated advice or product recommendations. Optional calls are secondary and appear only beside completed results in the separate analysis service.
+- With the person's agreement, an assistant may prepare a form-prefill link. The person must check, acknowledge the notices and submit it themselves. Never submit through the old case-video endpoints or grant acknowledgements on their behalf. Exclude sensitive identifiers and documents.
 
 ## Links
 
 - [Home](https://planeir.ie/)
-- [Workspace form preview](https://planeir.ie/apply/)
+- [Request demo access](https://planeir.ie/apply/)
+- [Return to saved information](https://planeir.ie/demo/)
 - [For AI assistants](https://planeir.ie/for-ai-assistants/)
 - [Information schema](https://planeir.ie/agents/application.schema.json)
-- [API description — no active operations](https://planeir.ie/agents/openapi.json)
+- [API description — no assistant submission operations](https://planeir.ie/agents/openapi.json)
 - [Privacy notice](https://planeir.ie/privacy/)
 - [Terms of Use](https://planeir.ie/terms/)
 

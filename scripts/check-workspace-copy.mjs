@@ -55,8 +55,8 @@ assert.doesNotMatch(home, /€100|\bpaid\b|paidBooking|\bfee\b|\bcharging\b|\bpa
 for (const file of ['apply/index.html', 'apply/preparing/index.html', 'privacy/index.html', 'plan/privacy.html', 'terms/index.html', 'llms.txt']) {
   assert.doesNotMatch(await source(file), /€100|\bpaid\b|\bcharging\b|\bfee\b|\bpayment\b|40[ -]min/i, `Call pricing must wait until the analysis: ${file}`);
 }
-assert.match(home, /optional call with Gerry/);
-assert.match(home, /technology/);
+assert.doesNotMatch(home, /optional call with Gerry|Can I talk through my results with Gerry/);
+assert.match(home, /technology/i);
 assert.match(home, /worked with clients across every part of the financial advice process/);
 assert.doesNotMatch(home, /being built|being developed|in development|planned service|not open yet|at launch|will prepare|will be generated|AI-powered|unlock/i);
 assert.doesNotMatch(home, /1%|thousands of euros|equivalent to professional advice/i);
@@ -67,8 +67,12 @@ for (const file of ['index.html', 'apply/index.html', 'privacy/index.html', 'pla
 }
 assert.doesNotMatch(home, /<iframe|VideoObject|ApplyAction|cases:latest|href="[^\"]*cases\//);
 assert.match(form, /id="applySubmit"[^>]*disabled/);
+assert.match(home, /Currently available for demos only/);
+assert.match(home, /different routes to your financial goals/);
 assert.doesNotMatch(form, /applyConsentVideo|applyVoiceNote|Send my application|Gerry reads every/);
-assert.doesNotMatch(app, /fetch\(|\/api\/applications|createApplicationVoice|consentVideo|sentPayload/);
+assert.doesNotMatch(app, /\/api\/applications|createApplicationVoice|consentVideo|sentPayload/);
+assert.match(app, /demoApi/);
+assert.match(app, /DEMO_CONFIRMED/);
 assert.match(app, /planeir\.workspace\.draft\.v1/);
 assert.match(privacy, /until you delete it/);
 assert.match(await source('plan/privacy-legacy.html'), /seven days/);

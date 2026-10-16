@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://planeir.ie/agents/application.schema.json",
   "title": "Planéir workspace information",
-  "description": "Fields for a local workspace form preview. This schema does not grant permission or provide a submission endpoint.",
+  "description": "Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.",
   "type": "object",
   "additionalProperties": false,
   "required": [

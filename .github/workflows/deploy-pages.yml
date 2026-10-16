@@ -39,6 +39,7 @@ jobs:
           npm run check:cases
           npm run check:agent-docs
           npm run check:workspace-copy
+          npm run check:demo
           npm run check:education-call
 
       - name: Build dist artifact

@@ -4,24 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
     <meta
       name="description"
-      content="Create your private financial education workspace with your own goals and figures. Estimates are fine, and you can skip what you don’t know."
+      content="Request access to the Planéir demo. Share your goals and figures so your information is ready when you are invited."
     />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://planeir.ie/apply/" />
     <meta property="og:site_name" content="Planeir" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://planeir.ie/apply/" />
-    <meta property="og:title" content="Create my workspace | Planéir" />
+    <meta property="og:title" content="Request demo access | Planéir" />
     <meta
       property="og:description"
-      content="Your goals and figures, brought together in a private financial education workspace."
+      content="Share your goals and figures, request demo access and return to your saved information."
     />
     <meta property="og:image" content="https://planeir.ie/assets/brand/planeir-social-card-newgrange.png" />
     <meta property="og:locale" content="en_IE" />
     <meta name="twitter:card" content="summary_large_image" />
-    <title>Create my workspace | Planéir</title>
+    <title>Request demo access | Planéir</title>
     <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
     <link rel="shortcut icon" href="../favicon.ico" />
@@ -57,17 +58,17 @@
 
       <main class="apply-main">
         <section class="apply-intro">
-          <p class="section-eyebrow">Your private workspace · Form preview</p>
+          <p class="section-eyebrow">Currently available for demos only</p>
           <h1 class="apply-title">Start with your own figures.</h1>
           <p class="apply-lede">
             Fill in what you can. Estimates are fine. Skip anything you don’t know.
-            Missing details may prevent a particular calculation; the app identifies what is needed.
+            Your information will be ready to review when you receive demo access.
           </p>
           <ul class="request-reassurance-list" aria-label="About your workspace">
-            <li>Free workspace</li>
+            <li>Demo access by invitation</li>
             <li>Your workspace is not published</li>
             <li>Education only</li>
-            <li>Automatic results</li>
+            <li>Save and return to your information</li>
           </ul>
           <p class="apply-assistant-hint">
             Talking this through with ChatGPT or Claude? It can fill in this page for you.
@@ -82,13 +83,51 @@
           </p>
         </noscript>
 
-        <div id="workspaceLaunchNotice" class="workspace-notice" role="status"><h2>Form preview</h2><p>Workspace creation is unavailable in this preview. Your draft stays on this device and is not sent to Planéir or an AI provider.</p></div>
+        <div id="workspaceLaunchNotice" class="workspace-notice" role="status"><h2>Currently available for demos only</h2><p>Checking demo availability. Your unfinished draft stays on this device.</p></div>
+        <section id="demoAccessGate" class="apply-card" hidden aria-labelledby="demoAccessTitle">
+          <h2 id="demoAccessTitle">Open your private demo form</h2>
+          <p>Continue to use this invitation or open your saved information.</p>
+          <button id="demoContinue" type="button" class="button button-primary">Continue</button>
+          <p id="demoAccessStatus" role="status"></p>
+          <p><a href="../apply/" class="inline-link">Request demo access</a></p>
+        </section>
         <div class="apply-layout">
           <form id="applyForm" class="apply-form" novalidate>
             <section id="applyAssistantNote" class="apply-card apply-assistant-note" role="status" hidden>
               <h2 class="apply-card-title">Your assistant filled in these answers</h2>
               <p class="apply-card-intro">
-                Check them and change anything that is wrong. This is a local preview; nothing is sent to Planéir.
+                Check them and change anything that is wrong. Nothing is sent until you choose the button below.
+              </p>
+            </section>
+
+            <section class="apply-card apply-details" aria-labelledby="applyDetailsTitle">
+              <h2 id="applyDetailsTitle" class="apply-card-title">Your details</h2>
+              <div class="apply-pair">
+                <label class="field">
+                  <span>Name <em>(a first name is fine)</em></span>
+                  <input id="applyName" name="fullName" type="text" autocomplete="given-name" maxlength="120" required />
+                </label>
+                <label class="field">
+                  <span>Email</span>
+                  <input id="applyEmail" name="email" type="email" autocomplete="email" maxlength="160" required />
+                </label>
+              </div>
+              <label class="apply-honeypot" aria-hidden="true">
+                Website
+                <input id="applyWebsite" name="website" type="text" tabindex="-1" autocomplete="off" />
+              </label>
+              <p class="apply-card-intro">Your email is used for private return links and demo service messages. Once saved, contact hello@planeir.ie if you need to change it.</p>
+              <div class="consent-grid">
+                <label class="consent-check"><input id="applyAdultConfirmed" name="adultConfirmed" type="checkbox" required /><span>I am 18 or older and entitled to share the household information I enter.</span></label>
+                <label class="consent-check"><input id="applyEducationAcknowledged" name="educationAcknowledged" type="checkbox" required /><span>I understand this is financial education, with modelled outcomes rather than regulated advice or product recommendations.</span></label>
+                <p class="form-privacy">This demo saves your information and confirmation. Analysis generation is not connected yet, and this form does not send your figures to an AI provider.</p>
+                <label class="consent-check"><input id="applyPrivacyAcknowledged" name="privacyNoticeAcknowledged" type="checkbox" required /><span>I have read the <a class="inline-link" href="../privacy/">privacy notice</a>.</span></label>
+                <label class="consent-check"><input id="applyTermsAccepted" name="termsAccepted" type="checkbox" required /><span>I agree to the <a class="inline-link" href="../terms/">Terms of Use</a>.</span></label>
+              </div>
+              <p class="form-privacy">
+                Do not include PPS numbers, account numbers, an exact address or documents.
+                Read how we save and handle your demo information in the
+                <a class="inline-link" href="../privacy/">privacy notice</a>.
               </p>
             </section>
 
@@ -129,46 +168,16 @@
               </details>
             </section>
 
-            <section class="apply-card apply-details" aria-labelledby="applyDetailsTitle">
-              <h2 id="applyDetailsTitle" class="apply-card-title">Your details</h2>
-              <div class="apply-pair">
-                <label class="field">
-                  <span>Name <em>(a first name is fine)</em></span>
-                  <input id="applyName" name="fullName" type="text" autocomplete="given-name" maxlength="120" required />
-                </label>
-                <label class="field">
-                  <span>Email</span>
-                  <input id="applyEmail" name="email" type="email" autocomplete="email" maxlength="160" required />
-                </label>
-              </div>
-              <label class="apply-honeypot" aria-hidden="true">
-                Website
-                <input id="applyWebsite" name="website" type="text" tabindex="-1" autocomplete="off" />
-              </label>
-              <p class="apply-card-intro">Your email is used for return access and service messages. In this preview, it stays on your device.</p>
-              <div class="consent-grid">
-                <label class="consent-check"><input id="applyAdultConfirmed" name="adultConfirmed" type="checkbox" required /><span>I am 18 or older and entitled to share the household information I enter.</span></label>
-                <label class="consent-check"><input id="applyEducationAcknowledged" name="educationAcknowledged" type="checkbox" required /><span>I understand this is financial education, with modelled outcomes rather than regulated advice or product recommendations.</span></label>
-                <label class="consent-check"><input id="applyAiAcknowledged" name="aiProcessingAcknowledged" type="checkbox" required /><span>I understand AI helps identify scenarios from my objectives and organise the relevant modules. Calculations run in Planéir’s calculation engines, and individual results are not routinely reviewed by Gerry.</span></label>
-                <label class="consent-check"><input id="applyPrivacyAcknowledged" name="privacyNoticeAcknowledged" type="checkbox" required /><span>I have read the <a class="inline-link" href="../privacy/">privacy notice</a>.</span></label>
-                <label class="consent-check"><input id="applyTermsAccepted" name="termsAccepted" type="checkbox" required /><span>I agree to the <a class="inline-link" href="../terms/">Terms of Use</a>.</span></label>
-              </div>
-              <p class="form-privacy">
-                Do not include PPS numbers, account numbers, an exact address or documents.
-                Read how the workspace and local preview handle information in the
-                <a class="inline-link" href="../privacy/">privacy notice</a>.
-              </p>
-            </section>
-
             <div id="applyStatus" class="form-status" aria-live="polite" tabindex="-1"></div>
 
             <button id="applySubmit" class="button button-primary button-submit" type="submit" disabled aria-describedby="workspaceLaunchNotice">
-              Create my workspace
+              Request demo access
             </button>
 
             <p class="apply-saved-note">
-              <span id="applySavedNote">Your draft is saved on this device. Nothing is sent to Planéir.</span>
-              <button id="applyClear" class="apply-link-button" type="button">Clear form</button>
+              <span id="applySavedNote">Unfinished edits are saved on this device. Use the button above to save them to Planéir.</span>
+              <button id="applyClear" class="apply-link-button" type="button">Clear this device</button>
+              <button id="demoDelete" class="apply-link-button" type="button" hidden>Delete my saved information</button>
             </p>
           </form>
 
@@ -179,7 +188,12 @@
             </nav>
           </aside>
         </div>
-
+        <section class="apply-card demo-recovery" aria-labelledby="demoRecoveryTitle">
+          <h2 id="demoRecoveryTitle">Already sent your information?</h2>
+          <p>We can email you a fresh private link to your saved form.</p>
+          <form id="demoRecovery"><label class="field"><span>Email</span><input id="demoRecoveryEmail" type="email" autocomplete="email" maxlength="160" required /></label><button class="button button-secondary" type="submit">Email me my saved form</button></form>
+          <p id="demoRecoveryStatus" role="status"></p>
+        </section>
       </main>
 
       <footer class="site-footer">

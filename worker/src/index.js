@@ -1,4 +1,5 @@
 import { EDUCATION_CALL, isPrivateEducationCall, educationCallScheduleIntroduction } from '../../js/workspace/education_call.js';
+import { demoRouteMethods, handleDemoRequest, processDemoOutbox } from './demo/router.js';
 import { ensureAudioAccess, voiceMetadata, handlePublicAudio, deleteVoiceNotes, cleanupVoiceNotes } from './application_audio.js';
 import { hasVoicePublicationConsent } from '../../js/case_application/voice_contract.js';
 
@@ -58,6 +59,7 @@ const MAX_ADVISOR_SESSION_TOKEN_LENGTH = 4096;
 const PREFLIGHT_MAX_AGE_SECONDS = 86_400;
 const ALLOWED_REQUEST_HEADER_NAMES = new Set([
   'content-type',
+  'x-demo-csrf',
   'x-advisor-csrf',
   'x-published-capability',
   'x-consumer-session',
@@ -71,6 +73,7 @@ const ALLOWED_REQUEST_HEADER_NAMES = new Set([
 ]);
 const DEFAULT_ALLOWED_REQUEST_HEADERS = [
   'Content-Type',
+  'X-Demo-CSRF',
   'X-Advisor-CSRF',
   'X-Published-Capability',
   'X-Consumer-Session',
@@ -318,6 +321,8 @@ export { ConsumerRealtimeSession } from './consumer/realtime_session.js';
 export { ConsumerLiveSession } from './consumer/live/live_session.js';
 
 function getRouteConfig(pathname) {
+  const demoMethods = demoRouteMethods(pathname);
+  if (demoMethods) return { methods: demoMethods };
   if (/^\/api\/applications\/voice-note\/(config|access|prepare|upload|discard)$/.test(pathname)) {
     return { methods: pathname.endsWith('/config') ? 'GET,OPTIONS' : pathname.endsWith('/upload') ? 'PUT,OPTIONS' : 'POST,OPTIONS' };
   }
@@ -1869,9 +1874,10 @@ function buildEmailIdempotencyKey(leadId, createdAt, kind) {
   return `lead-${base}-${kind}`;
 }
 
-async function sendEmailWithResend(config, payload, idempotencyKey) {
+async function sendEmailWithResend(config, payload, idempotencyKey, signal) {
   const response = await fetch(RESEND_EMAILS_API_URL, {
     method: 'POST',
+    ...(signal ? { signal } : {}),
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       'Content-Type': 'application/json',
@@ -8941,6 +8947,9 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
 
 export default {
   async scheduled(controller, env, ctx) {
+    ctx.waitUntil(processDemoOutbox(env, {
+      emailConfig: () => getLeadEmailConfig(env), sendEmail: sendEmailWithResend
+    }).catch(() => console.error('Demo email maintenance failed.')));
     ctx.waitUntil(cleanupVoiceNotes(env).catch(() => console.error('Voice-note cleanup failed; will retry.')));
     ctx.waitUntil(
       cleanupExpiredLeadScheduleProposals(env).then((result) => {
@@ -9057,6 +9066,18 @@ export default {
       }
 
       return optionsResponse(request, origin, routeConfig.methods);
+    }
+
+    if (pathname.startsWith('/api/demo/') || pathname.startsWith('/api/advisor/demo/')) {
+      return handleDemoRequest(request, env, {
+        trustedOrigin: Boolean(origin),
+        adminConfigured: getAdvisorAuthConfig(env).enabled,
+        respond: (data, status, methods, extra) => jsonResponse(data, status, origin, methods, requestHeaders, { ...noStoreHeaders(), ...extra }),
+        requireAdmin: requireCsrf => requireAdvisorSession(request, env, origin, routeConfig?.methods || 'OPTIONS', { requireCsrf, rateScope: 'demo-admin' }),
+        rateLimit: (scope, max, key) => checkPersistentRateLimit(env, scope, key || getClientIp(request), 3600000, max),
+        emailConfig: () => getLeadEmailConfig(env), sendEmail: sendEmailWithResend,
+        waitUntil: promise => ctx.waitUntil(promise)
+      });
     }
 
     // Protected agent-test transport. Adviser authenticated with CSRF on every

@@ -37,6 +37,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: "https://api.planeir.ie"
+      DEMO_REQUESTS_ENABLED: ${{ vars.DEMO_REQUESTS_ENABLED || 'false' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
       RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
@@ -733,6 +734,9 @@ jobs:
             return input.replace(expression, name + ' = ' + JSON.stringify(value));
           };
           let generatedSource = source;
+          const demoEnabled = envValue('DEMO_REQUESTS_ENABLED') || 'false';
+          if (!['true', 'false'].includes(demoEnabled)) throw new Error('DEMO_REQUESTS_ENABLED must be true or false.');
+          generatedSource = replaceTomlString(generatedSource, 'DEMO_REQUESTS_ENABLED', demoEnabled);
           if (betaEnabled) {
             if (!databaseId) {
               throw new Error('CONSUMER_DB_ID is required for the protected beta.');
@@ -993,6 +997,9 @@ jobs:
       - name: Verify protected-beta static security headers
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
         run: node ./scripts/check-consumer-static-headers.mjs
+
+      - name: Check demo access flow
+        run: npm run check:demo
 
       - name: Apply remote adviser D1 migrations
         working-directory: ./worker

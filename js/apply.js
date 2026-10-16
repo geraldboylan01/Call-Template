@@ -41,7 +41,8 @@ import {
   topicLabels
 } from './case_application/index.js';
 import { stillUsefulQuestions } from './case_application/agent.js';
-import { WORKSPACE_COPY, workspaceAcknowledgements } from './workspace/copy.js';
+import { DEMO_POLICY, DEMO_ACKNOWLEDGEMENTS, DEMO_SAVED, DEMO_CONFIRMED, demoAcknowledgements } from './workspace/demo_contract.js';
+import { demoApi, setDemoCsrf } from './demo_api.js';
 
 // A new draft namespace prevents old publication permissions or pending case
 // submissions from being restored as workspace acknowledgements.
@@ -131,6 +132,13 @@ const state = {
   submissionId: '',
   saveTimer: 0
 };
+let savedRequest = null;
+let intakeEnabled = false;
+let invitationValid = false;
+let remoteLoaded = false;
+let accessToken = '';
+let invitationToken = '';
+const privatePage = window.location.pathname.startsWith('/demo/');
 
 function emptyDraft() {
   return { topics: [], added: [], unsure: [], none: [] };
@@ -238,9 +246,11 @@ function saveDraft() {
       via: state.via,
       contact: { fullName: ui.name?.value || '', email: ui.email?.value || '' },
       submissionId: state.submissionId,
+      requestId: savedRequest?.id || null,
+      serverRevision: savedRequest?.revision || null,
       savedAt: new Date().toISOString()
     }));
-    ui.savedNote.textContent = 'Your draft is saved on this device. Nothing is sent to Planéir.';
+    ui.savedNote.textContent = 'Edits are saved on this device as you type. Use the button above to save them to Planéir.';
   } catch (_error) {
     ui.savedNote.textContent = 'This browser cannot save your draft. Keep this page open while you work.';
     // Private windows and full storage both land here. The form still works;
@@ -758,14 +768,10 @@ function markInvalid(node, invalid) {
   node.closest('.consent-check')?.classList.toggle('is-invalid', invalid);
 }
 
-const acknowledgementFields = ['adultConfirmed', 'educationAcknowledged', 'privacyNoticeAcknowledged', 'termsAccepted', 'aiProcessingAcknowledged'];
+const acknowledgementFields = DEMO_ACKNOWLEDGEMENTS;
 
 function validate() {
   const errors = [];
-  const question = String(getPath(state.draft, 'question') || '').trim();
-  const questionInput = document.getElementById(fieldId('question'));
-  markInvalid(questionInput, !question);
-  if (!question) errors.push({ node: questionInput, message: 'Add what you want to understand.' });
   const name = ui.name.value.trim();
   markInvalid(ui.name, !name);
   if (!name) errors.push({ node: ui.name, message: 'Add your name. A first name is fine.' });
@@ -776,7 +782,7 @@ function validate() {
   if (age !== undefined && age < 18) errors.push({ node: document.getElementById(fieldId('household.age')), message: 'The workspace is for adults aged 18 or older.' });
   for (const field of acknowledgementFields) {
     markInvalid(ui[field], !ui[field].checked);
-    if (!ui[field].checked) errors.push({ node: ui[field], message: 'Read and confirm each statement before creating your workspace.' });
+    if (!ui[field].checked) errors.push({ node: ui[field], message: 'Read and confirm each statement before saving your information.' });
   }
   return errors;
 }
@@ -788,25 +794,127 @@ function prepareWorkspaceDraft() {
   const errors = validate();
   if (errors.length) throw new Error(errors[0].message);
   return {
-    format: 'planeir.workspace-request.v1',
+    format: 'planeir.demo-request.v1',
     submissionId: state.submissionId,
     contact: { fullName: ui.name.value.trim(), email: ui.email.value.trim() },
-    acknowledgements: workspaceAcknowledgements(Object.fromEntries(acknowledgementFields.map((field) => [field, ui[field].checked]))),
+    acknowledgements: demoAcknowledgements(Object.fromEntries(acknowledgementFields.map((field) => [field, ui[field].checked]))),
     information: pruneToVisible(prepared())
   };
 }
 
-function onSubmit(event) {
+async function onSubmit(event) {
   event.preventDefault();
-  // This also protects Enter-key and programmatic submissions, regardless of
-  // the disabled button. Previewing or acknowledging terms sends no data.
-  setStatus('error', WORKSPACE_COPY.closed);
-  ui.status.focus();
+  if (state.submitting) return;
+  if (!remoteLoaded || (!savedRequest && !intakeEnabled)) { setStatus('error', 'Demo requests are currently unavailable. Your draft stays on this device.'); return; }
+  if (savedRequest?.accessStatus === 'revoked') { setStatus('error', 'Demo access has been revoked. You can still delete your saved information.'); return; }
+  const errors = validate();
+  if (errors.length) { setStatus('error', errors[0].message); errors[0].node?.focus(); return; }
+  state.submitting = true;
+  syncDemoChrome();
+  try {
+    const payload = prepareWorkspaceDraft();
+    let saved;
+    if (savedRequest) saved = await demoApi(`/api/demo/requests/${savedRequest.id}`, { method: 'PATCH', body: { ...payload, revision: savedRequest.revision } });
+    else saved = await demoApi('/api/demo/requests', { method: 'POST', body: { ...payload, website: ui.website.value } });
+    if (!saved.id) throw new Error('Your request could not be saved. Please try again.');
+    if (saved.csrfToken) setDemoCsrf(saved.csrfToken);
+    savedRequest = { ...savedRequest, id: saved.id, revision: saved.revision, accessStatus: saved.accessStatus };
+    ui.email.readOnly = true;
+    document.getElementById('demoDelete').hidden = false;
+    saveDraft();
+    if (savedRequest.accessStatus === 'approved') {
+      const confirmed = await demoApi(`/api/demo/requests/${savedRequest.id}/confirm`, { method: 'POST', body: { revision: savedRequest.revision } });
+      savedRequest.confirmedRevision = confirmed.revision;
+      setStatus('success', DEMO_CONFIRMED);
+    } else setStatus('success', saved.revision === 1 ? DEMO_SAVED : 'Your changes are saved. We’ll email you when demo access is available.');
+  } catch (error) { setStatus('error', error.message); }
+  finally { state.submitting = false; syncDemoChrome(); ui.status.focus(); }
+}
+
+function syncDemoChrome() {
+  const approved = savedRequest?.accessStatus === 'approved' || (!savedRequest && invitationValid);
+  const revoked = savedRequest?.accessStatus === 'revoked';
+  ui.submit.textContent = state.submitting ? 'Saving…' : approved ? 'Generate my analysis' : savedRequest ? 'Save changes' : 'Request demo access';
+  ui.submit.disabled = state.submitting || !remoteLoaded || revoked || (!savedRequest && !intakeEnabled);
+  ui.form.inert = state.submitting;
+  const notice = document.getElementById('workspaceLaunchNotice');
+  notice.querySelector('h2').textContent = revoked ? 'Demo access revoked' : approved ? 'Your demo access is available' : savedRequest ? 'Your demo request is saved' : 'Currently available for demos only';
+  notice.querySelector('p').textContent = revoked ? 'You can delete your saved information below. Contact hello@planeir.ie for help with access.' : approved ? 'Review your information, then choose Generate my analysis to confirm it. Analysis generation is not connected yet.' : savedRequest ? 'You can update your figures while waiting for approval. Changes are saved when you choose Save changes.' : intakeEnabled ? 'Fill in what you can. Estimates are fine. Skip anything you don’t know. We’ll save your information when you request demo access.' : 'Demo requests are currently unavailable. Your draft stays on this device.';
+}
+
+async function loadRemoteForm() {
+  const session = await demoApi('/api/demo/session');
+  setDemoCsrf(session.csrfToken);
+  invitationValid = session.invitationValid === true;
+  if (session.request) {
+    const local = loadDraft();
+    const keepLocalEdits = local?.requestId === session.request.id && local?.serverRevision === session.request.revision;
+    savedRequest = session.request;
+    state.draft = { ...emptyDraft(), ...(keepLocalEdits ? local.draft : session.request.information) };
+    ui.name.value = keepLocalEdits ? local.contact.fullName : session.request.contact.fullName;
+    ui.email.value = session.request.contact.email;
+    ui.email.readOnly = true;
+    acknowledgementFields.forEach(key => { ui[key].checked = session.request.acknowledgements?.version === DEMO_POLICY.version && session.request.acknowledgements?.[key] === true; });
+    document.getElementById('demoDelete').hidden = false;
+    state.via = '';
+    render();
+    if (savedRequest.confirmedRevision === savedRequest.revision) setStatus('success', DEMO_CONFIRMED);
+  }
+  ui.layout.hidden = privatePage && !savedRequest && !invitationValid;
+  document.getElementById('demoAccessGate').hidden = !accessToken && !invitationToken;
+  remoteLoaded = true;
+  syncDemoChrome();
+}
+
+async function connectDemo() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  accessToken = params.get('access') || '';
+  invitationToken = params.get('invite') || '';
+  if (accessToken || invitationToken) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  const gate = document.getElementById('demoAccessGate');
+  const gateButton = document.getElementById('demoContinue');
+  gateButton.disabled = true;
+  gate.hidden = !accessToken && !invitationToken;
+  gateButton.textContent = invitationToken ? 'Use demo invitation' : 'Continue to my saved form';
+  gateButton.addEventListener('click', async () => {
+    gateButton.disabled = true;
+    try {
+      await demoApi(invitationToken ? '/api/demo/invitations/redeem' : '/api/demo/access/redeem', { method: 'POST', body: { token: invitationToken || accessToken } });
+      invitationToken = ''; accessToken = ''; gate.hidden = true;
+      await loadRemoteForm();
+      setStatus('', '');
+    } catch (error) { document.getElementById('demoAccessStatus').textContent = error.message; }
+    finally { gateButton.disabled = false; }
+  });
+  document.getElementById('demoRecovery').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('button'); button.disabled = true;
+    try {
+      const result = await demoApi('/api/demo/return-links', { method: 'POST', body: { email: document.getElementById('demoRecoveryEmail').value } });
+      document.getElementById('demoRecoveryStatus').textContent = result.message;
+    } catch (error) { document.getElementById('demoRecoveryStatus').textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  document.getElementById('demoDelete').addEventListener('click', async () => {
+    if (!savedRequest || !window.confirm('Delete your saved information from Planéir? This cannot be undone.')) return;
+    try {
+      await demoApi(`/api/demo/requests/${savedRequest.id}`, { method: 'DELETE' });
+      window.clearTimeout(state.saveTimer);
+      clearSavedDraft(); window.location.assign('../apply/?deleted=1');
+    } catch (error) { setStatus('error', error.message); }
+  });
+  try {
+    const config = await demoApi('/api/demo/config'); intakeEnabled = config.enabled === true;
+    await loadRemoteForm();
+  } catch {
+    ui.layout.hidden = privatePage;
+    syncDemoChrome();
+  } finally { gateButton.disabled = false; }
 }
 
 /* ---------- start ---------- */
 
-function start() {
+async function start() {
   if (!ui.form) return;
 
   const saved = loadDraft();
@@ -826,7 +934,8 @@ function start() {
   // earlier draft on this device: following the link is the newer intent.
   // The fragment is then removed, so the figures do not sit in the address bar
   // or in the browser history.
-  const prefill = parsePrefill(window.location.hash);
+  const hasAccessToken = /(?:^#|&)(?:access|invite)=/.test(window.location.hash);
+  const prefill = hasAccessToken ? null : parsePrefill(window.location.hash);
   if (prefill) {
     state.submissionId = '';
     state.draft = { ...emptyDraft(), ...includeAnsweredSections(normalizeApplication(prefill)) };
@@ -849,7 +958,15 @@ function start() {
   acknowledgementFields.forEach((field) => ui[field].addEventListener('change', () => markInvalid(ui[field], false)));
   ui.clear.addEventListener('click', async () => {
     if (!window.confirm('Clear all your answers from this device?')) return;
+    try {
+      await demoApi('/api/demo/session', { method: 'DELETE' });
+    } catch (error) {
+      if (savedRequest || invitationValid) { setStatus('error', 'Your private session could not be cleared. Please try again.'); return; }
+    }
+    window.clearTimeout(state.saveTimer);
     clearSavedDraft();
+    savedRequest = null; invitationValid = false; setDemoCsrf(''); ui.email.readOnly = false;
+    document.getElementById('demoDelete').hidden = true;
     state.submissionId = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     state.draft = emptyDraft();
     state.via = '';
@@ -857,11 +974,13 @@ function start() {
     ui.form.reset();
     setStatus('', '');
     render();
+    syncDemoChrome();
+    ui.layout.hidden = privatePage;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
   render();
-
+  await connectDemo();
 }
 
 start();

@@ -1,37 +1,10 @@
 # Private workspace copy release
 
-The public site introduces the new service without opening submissions or paid
-booking. The form is a browser-local preview. Its submit handler always stops
-before transport, including Enter-key and programmatic submissions. Existing
-case-video intake endpoints return 410 by default; earlier confirmations,
-records, audio permissions and erasure remain part of their original service.
-
-Marketing copy is written for the finished service, in the present tense. It
-centres on bringing detailed financial education beyond the wealthy few through
-technology and Gerry's experience with clients across every part of the advice
-process. No numerical exclusivity claim or equivalence to professional advice
-is made. Actual preview limits appear at the form and in the notices; writing
-launch copy does not enable workspace generation, return access or deletion.
-
-## Copy and policy sources
-
-- `js/workspace/copy.js`: headline, founder story, FAQs, status messages and
-  versioned workspace acknowledgements. There is no automatic conversion from
-  video publication consent. The workspace draft has its own storage key.
-- `scripts/generate-workspace-pages.mjs`: homepage, identical public privacy
-  routes and workspace terms. `npm run generate:workspace-copy` regenerates
-  these; `npm run check:workspace-copy` detects drift and tests closed intake.
-- `apply/index.html` and `js/apply.js`: topic-based form, estimates, local draft,
-  assistant-prefill review and clearing. No microphone or upload feature.
-- `js/workspace/status.js`: accessible renderer for actual job events. It does
-  not poll, invent percentages, advance on a timer or show results without a job.
-- `js/workspace/output_copy.js`: ready-to-connect receipt/report templates and
-  assumptions wording. These are not sent or used to claim that a preview
-  created a workspace.
-- Assistant guides and schemas describe prefill only. Their public OpenAPI
-  paths remain empty until a workspace submission interface is implemented.
-- The case generator keeps historical pages but no longer reinserts a video
-  gallery into the homepage. Historical case pages are outside the launch path.
+The demo request and invitation flow supersedes the former browser-only form
+preview. See [Demo access](demo-access.md) for the current architecture, behaviour,
+configuration, validation and rollout. This historical document retains the
+original workspace launch dependencies below; these are not claims that the
+current demo generates an analysis.
 
 ## Required before opening the workspace
 

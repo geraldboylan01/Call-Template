@@ -136,7 +136,7 @@ async function readIfExists(file) {
 
 async function main() {
   const outputs = new Map();
-  const informationSchema = { ...buildApplicationJsonSchema(), title: 'Planéir workspace information', description: 'Fields for a local workspace form preview. This schema does not grant permission or provide a submission endpoint.' };
+  const informationSchema = { ...buildApplicationJsonSchema(), title: 'Planéir workspace information', description: 'Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.' };
   delete informationSchema.properties.videoName;
   informationSchema.properties.anythingElse.description = 'Anything else you want to add.';
   informationSchema.properties.mortgage.properties.lender.description = 'Lender. Optional; its name is not needed for the comparison.';
@@ -144,7 +144,7 @@ async function main() {
   outputs.set(path.join(ROOT, 'agents', 'application.schema.json'), `${JSON.stringify(informationSchema, null, 2)}\n`);
   outputs.set(path.join(ROOT, 'agents', 'openapi.json'), `${JSON.stringify({
     openapi: '3.1.0',
-    info: { title: 'Planéir workspace preview', version: 'workspace-v1', description: 'No public API submission operations are available. Use the local form preview only with the user’s agreement.' },
+    info: { title: 'Planéir demo request form', version: 'demo-v1', description: 'No public API submission operations are available. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request.' },
     paths: {},
     components: { schemas: { WorkspaceInformation: informationSchema } }
   }, null, 2)}\n`);

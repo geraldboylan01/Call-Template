@@ -29,15 +29,15 @@ try {
     }
     await page.goto(`${base}/`);
     await page.locator('.faq-item').first().locator('summary').click();
-    assert.match(await page.locator('.faq-item').first().innerText(), /beyond the wealthy few/);
+    assert.match(await page.locator('.faq-item').first().innerText(), /different routes to your financial goals/);
     assert.doesNotMatch(await page.locator('body').innerText(), /being built|in development|planned service|not open yet/i);
     await page.locator('.faq-item').first().screenshot({ path: `${output}/faq-${name}.png` });
-    const aiFaq = page.locator('.faq-item').filter({ hasText: 'How does AI help?' });
+    const aiFaq = page.locator('.faq-item').filter({ hasText: 'How will AI help with the analysis?' });
     await aiFaq.locator('summary').click();
     assert.match(await aiFaq.innerText(), /scenarios to model from your objectives/);
-    assert.match(await aiFaq.innerText(), /Read all the assumptions/);
+    assert.match(await aiFaq.innerText(), /not connected/);
     await aiFaq.screenshot({ path: `${output}/ai-faq-${name}.png` });
-    const savedFaq = page.locator('.faq-item').filter({ hasText: 'Can I return to my workspace?' });
+    const savedFaq = page.locator('.faq-item').filter({ hasText: 'Can I return to my information?' });
     await savedFaq.locator('summary').click();
     assert.match(await savedFaq.innerText(), /until you delete it\./);
     assert.doesNotMatch(await page.locator('body').innerText(), /check the figures|check the assumptions|no inactivity expiry|AI[^.]*explain the modules/i);
@@ -63,7 +63,7 @@ try {
     assert.doesNotMatch(await page.locator('body').innerText(), /Name to use in the video|Anything else Gerry should know|Never shown in videos/);
     // Bypass the disabled button to exercise the transport boundary itself.
     await page.evaluate(() => document.getElementById('applyForm').requestSubmit());
-    await page.waitForFunction(() => document.getElementById('applyStatus').textContent.includes('unavailable in this preview'));
+    await page.waitForFunction(() => document.getElementById('applyStatus').textContent.includes('currently unavailable'));
     assert.deepEqual(submissions, []);
     await page.screenshot({ path: `${output}/form-${name}.png`, fullPage: true });
     page.once('dialog', (dialog) => dialog.accept());
@@ -73,7 +73,7 @@ try {
     assert.equal(await page.inputValue('#f-question'), '');
 
     await page.goto(`${base}/dev/education-call-preview.html`);
-    await page.waitForSelector('.education-call-cta');
+    await page.waitForSelector('.education-call-cta').catch(error => { throw new Error(`${error.message} Browser errors: ${errors.join('; ')}`); });
     assert.match(await page.locator('.education-call-cta').innerText(), /Talk through your results with Gerry\./);
     assert.match(await page.locator('.education-call-cta').innerText(), /person who built Planéir/);
     assert.match(await page.locator('.education-call-cta').innerText(), /€100.*40 minutes on Zoom/);

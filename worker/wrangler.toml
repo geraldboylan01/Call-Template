@@ -58,6 +58,7 @@ new_sqlite_classes = ["ConsumerLiveSession"]
 crons = ["5 * * * *"]
 
 [vars]
+DEMO_REQUESTS_ENABLED = "false"
 # Historical application records remain available; new public case intake is closed.
 CASE_APPLICATIONS_ENABLED = "false"
 
@@ -130,7 +131,7 @@ CONSUMER_SESSION_TTL_DAYS = "30"
 CONSUMER_MAX_MESSAGE_LENGTH = "4000"
 CONSUMER_MAX_TURNS_PER_SESSION = "80"
 CONSUMER_DATA_ENCRYPTION_KEY_ID = "consumer-v1"
-CONSUMER_REKEY_BATCH_SIZE = "25"
+# CONSUMER_REKEY_BATCH_SIZE defaults to 25 in the repository; override only when needed.
 CONSUMER_INVITE_MAX_TTL_HOURS = "168"
 # Empty policy identifiers deliberately keep AI and handoff fail closed even if
 # their feature flags are accidentally changed.

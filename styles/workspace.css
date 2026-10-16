@@ -40,3 +40,21 @@
   .preview-tabs button { font-size: .82rem; padding: .6rem .65rem; }
   .preview-dialog { padding: .8rem; }
 }
+/* Hidden private forms must stay hidden even when the layout uses CSS grid. */
+.apply-layout[hidden], [hidden].apply-card { display: none; }
+.demo-recovery { margin-top: 2rem; }
+.demo-recovery form { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; }
+.demo-recovery .field { flex: 1 1 16rem; }
+.demo-admin-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr); gap: 1.5rem; }
+.demo-admin-list { display: grid; gap: .75rem; max-height: 40rem; overflow: auto; }
+.demo-admin-list button { text-align: left; width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.demo-admin-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+.demo-admin-detail { overflow-wrap: anywhere; }
+.demo-admin-detail dt { font-weight: 600; margin-top: .75rem; }
+.demo-admin-detail dd { margin: .25rem 0; }
+.demo-admin-link { width: 100%; min-width: 0; }
+.demo-admin-header .site-header-actions { flex-wrap: wrap; }
+.demo-admin-actions .field { margin: 0; }
+#demoInvitationForm { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1rem; }
+#demoInvitationForm .field { flex: 1 1 10rem; }
+@media (max-width: 700px) { .demo-admin-grid { grid-template-columns: 1fr; } }
