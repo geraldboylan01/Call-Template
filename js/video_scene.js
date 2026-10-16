@@ -1,5 +1,12 @@
 import { computePensionProjection } from './pension_math.js';
 import { computeCollegeFundingProjection } from './college_funding_math.js';
+import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
+import { computeHouseholdCashFlowProjection } from './household_cash_flow_math.js';
+import { computeProtectionGapProjection } from './protection_gap_math.js';
+import { computeRentalKeepOrSellProjection } from './rental_keep_or_sell_math.js';
+import { buildRentalCopy } from './rental_keep_or_sell_view.js';
+import { computeHomeTradeDownProjection } from './home_trade_down_math.js';
+import { buildTradeDownCopy } from './home_trade_down_view.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
 import { computeHousePurchaseProjection } from './house_purchase/engine.js';
@@ -89,6 +96,21 @@ export function getVideoModuleKind(module) {
   }
   if (generated.netRetirementInputs) {
     return { id: 'net-retirement', label: 'Net retirement cash flow' };
+  }
+  if (generated.futureCostFundInputs) {
+    return { id: 'future-cost-fund', label: 'Future cost fund' };
+  }
+  if (generated.householdCashFlowInputs) {
+    return { id: 'household-cash-flow', label: 'Household cash flow' };
+  }
+  if (generated.protectionGapInputs) {
+    return { id: 'protection-gap', label: 'Protection gap' };
+  }
+  if (generated.rentalKeepOrSellInputs) {
+    return { id: 'rental-keep-or-sell', label: 'Rental keep or sell' };
+  }
+  if (generated.homeTradeDownInputs) {
+    return { id: 'home-trade-down', label: 'Home trade down' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -216,6 +238,245 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
           id: projection.debug?.scenarioId || scenarioId || 'base',
           title: projection.debug?.scenario?.title || 'Current cash-flow case'
         },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'future-cost-fund') {
+      // The video shows the case that is selected on screen: its own figures
+      // and its own fund line, not the first case's.
+      const requestedId = asTrimmedText(activeScenario.futureCostFundScenarioId);
+      const base = computeFutureCostFundProjection(generated.futureCostFundInputs);
+      const known = base.debug.cases.find((entry) => entry.id === requestedId);
+      const selected = known || base.debug.cases.find((entry) => entry.id === base.debug.baseScenarioId) || base.debug.cases[0];
+      const projection = selected.id === base.debug.baseScenarioId
+        ? base
+        : computeFutureCostFundProjection({ ...generated.futureCostFundInputs, baseScenarioId: selected.id });
+      const row = projection.outputsTable.rows[projection.debug.cases.findIndex((entry) => entry.id === selected.id)] || [];
+      // The figures that add up come first: what the client pays in, what
+      // growth adds, and the total, because a story shows only the first few.
+      // What the case asks of them, a lump sum or a yearly amount, follows, and
+      // anything that is nothing in this case is left out.
+      const order = ['You pay in', 'Growth', 'Total cost', 'Lump sum today', 'Yearly saving', 'Years of saving'];
+      const rank = (column) => {
+        const found = order.findIndex((name) => column.startsWith(name));
+        return found < 0 ? order.length : found;
+      };
+      const figures = projection.outputsTable.columns.slice(1)
+        .map((column, index) => [column, row[index + 1]])
+        .filter(([, value]) => value !== 0)
+        .sort((a, b) => rank(a[0]) - rank(b[0]));
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      // A video chart holds MAX_CHART_LABELS points, and a fund can run for up
+      // to 70 years. Sample the whole horizon, keeping the year the cost starts
+      // and the last year, so the line always reaches the cost.
+      const costStart = generated.futureCostFundInputs.startsInYears;
+      resolved.generated.charts = projection.charts.map((chart) => sampleChartAcross(chart, [costStart - 1, costStart]));
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'household-cash-flow') {
+      // The video shows the case that is selected on screen: its own figures and
+      // its own bars, not today's. Today stays the base case, because a case's
+      // changes are measured against it.
+      const requestedId = asTrimmedText(activeScenario.householdCashFlowScenarioId);
+      const projection = computeHouseholdCashFlowProjection(generated.householdCashFlowInputs);
+      const cases = projection.debug.cases;
+      const known = cases.find((entry) => entry.id === requestedId);
+      const selected = known || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
+      const index = cases.findIndex((entry) => entry.id === selected.id);
+      const row = projection.summary.cases[index];
+      const shown = (amount) => Math.round(amount / 100) * 100;
+      // The figures that add up come first: what comes in, what goes out and
+      // what is left, because a story shows only the first few. Anything that is
+      // nothing in this case is left out.
+      const figures = [
+        ['Your income before tax (€)', shown(row.income.total)],
+        ['Goes out (€)', selected.shownIncome - selected.shownLeftOver],
+        ['Left over (€)', selected.shownLeftOver],
+        ['Tax (€)', shown(row.outgoings.tax)],
+        ['Pensions (€)', shown(row.outgoings.pensionContributions)],
+        ['Other outgoings (€)', shown(row.outgoings.statedTotal)]
+      ].filter(([, value]) => value !== 0);
+      const drawn = projection.debug.drawnLines;
+      const chart = {
+        title: 'Where a year of your income goes',
+        subtitle: `For “${selected.title}”.`,
+        type: 'bar',
+        labels: ['Your income before tax', ...drawn.map((line) => line.label), 'Left over'],
+        datasets: [{
+          label: 'A year',
+          data: [
+            selected.shownIncome,
+            ...drawn.map((line) => selected.lines.find((entry) => entry.id === line.id).shownAmount),
+            selected.shownLeftOver
+          ]
+        }],
+        display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: 'A year' }
+      };
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = [chart];
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'protection-gap') {
+      // The video shows the case that is selected on screen: its own figures,
+      // its own answer and its own sentence, not the first case's. The engine
+      // wrote those words, so the video says what the screen says.
+      const requestedId = asTrimmedText(activeScenario.protectionGapScenarioId);
+      const projection = computeProtectionGapProjection(generated.protectionGapInputs);
+      const cases = projection.debug.cases;
+      const known = cases.find((entry) => entry.id === requestedId);
+      const selected = known || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
+      // The figures that add up come first: what comes in, what you need and
+      // the gap, because a story shows only the first few. Anything that is
+      // nothing in this case is left out.
+      let savingsLast = null;
+      if (selected.beyond) {
+        savingsLast = ['Savings last', 'Beyond three years'];
+      } else if (selected.months !== null) {
+        savingsLast = ['Savings last (months)', selected.months];
+      }
+      const figures = [
+        ['What comes in (€)', selected.moneyIn],
+        ['What you need (€)', selected.needed],
+        selected.gap > 0 ? ['Gap (€)', selected.gap] : ['Left over (€)', selected.spare],
+        savingsLast
+      ].filter((entry) => entry && entry[1] !== 0);
+      const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      const chart = {
+        title: 'What comes in and what you need',
+        subtitle: `A year, for “${selected.title}”.`,
+        type: 'bar',
+        labels: ['What comes in', 'What you need'],
+        datasets: [{ label: 'A year', data: [selected.moneyIn, selected.needed] }],
+        display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: '€ a year' }
+      };
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = [chart];
+      resolved.generated.summaryHtml = `<p>${escapeHtml(selected.headline.line1)} ${escapeHtml(selected.headline.line2)}</p>`
+        + `<p>${escapeHtml(selected.sentence)}</p>`;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'rental-keep-or-sell') {
+      // The video shows the case that is selected on screen: its own figures,
+      // its own bars and its own sentence, not the first case's.
+      const requestedId = asTrimmedText(activeScenario.rentalKeepOrSellScenarioId);
+      const base = computeRentalKeepOrSellProjection(generated.rentalKeepOrSellInputs);
+      const known = base.debug.cases.find((entry) => entry.id === requestedId);
+      const selected = known
+        || base.debug.cases.find((entry) => entry.id === base.debug.baseScenarioId)
+        || base.debug.cases[0];
+      const projection = selected.id === base.debug.baseScenarioId
+        ? base
+        : computeRentalKeepOrSellProjection({ ...generated.rentalKeepOrSellInputs, baseScenarioId: selected.id });
+      const entry = projection.debug.cases.find((candidate) => candidate.id === selected.id);
+      const [start, ...rest] = entry.rows;
+      const cuts = rest.filter((row) => row.key !== 'result');
+      const yearly = entry.id === 'keep' ? ' a year' : '';
+      // THREE FIGURES THAT ADD UP COME FIRST, because a story shows only the
+      // first few: the headline, what comes off it, and what is left. What comes
+      // off is a sum made for the video and named for what it is, so the three
+      // still add up. The screen never prints it. The lines it is made of
+      // follow, and any that is nothing in this case is left out.
+      //
+      // All of them are the SHOWN figures, the ones on the screen: what comes off
+      // is the sum of the cuts as shown and the result is the shown start less
+      // that, so the three add up even when the inputs have cents.
+      const figures = [
+        [`${start.name}${yearly} (€)`, start.shownAmount],
+        [`${entry.comesOffName}${yearly} (€)`, entry.shownComesOff],
+        [`${entry.resultName} (€)`, entry.shownResult],
+        ...cuts
+          .map((row) => [`${row.name}${yearly} (€)`, row.shownAmount])
+          .filter(([, value]) => value !== 0)
+      ];
+      const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = projection.charts;
+      // The module wrote these words, so the video says what the screen says.
+      resolved.generated.summaryHtml = `<p>${escapeHtml(buildRentalCopy(projection, selected.id).headline)}</p>`;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'home-trade-down') {
+      // The video shows the case that is selected on screen: its own figures,
+      // its own blocks and its own sentence, not the first case's.
+      const requestedId = asTrimmedText(activeScenario.homeTradeDownScenarioId);
+      const projection = computeHomeTradeDownProjection(generated.homeTradeDownInputs);
+      const { cases } = projection.debug;
+      const selected = cases.find((entry) => entry.id === requestedId)
+        || cases.find((entry) => entry.id === projection.debug.baseScenarioId)
+        || cases[0];
+      const copy = buildTradeDownCopy(projection, selected.id);
+      const sentence = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+      // THREE FIGURES THAT ADD UP COME FIRST, because a story shows only the
+      // first few: what the sale leaves (or, staying, your share of the home),
+      // the loan (or the mortgage), and the home they make. Then the year: what
+      // is still repaid and what is freed. They are the SHOWN figures, the ones
+      // on the screen, so the three add up and the two add to today's
+      // repayments even when the inputs have cents.
+      const figures = [
+        [`${copy.block1.name} (€)`, selected.block1],
+        [`${sentence(copy.block2.name)} (€)`, selected.block2],
+        [`${sentence(copy.figure.word)} (€)`, selected.homeBudget],
+        ['Still repaid a year (€)', selected.shownRepaid],
+        ['Freed a year (€)', selected.shownFreed]
+      ];
+      const escapeHtml = (text) => String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = { columns: ['Figure', selected.title], rows: figures };
+      resolved.generated.tables = projection.tables;
+      resolved.generated.charts = projection.charts;
+      // The module wrote these words, so the video says what the screen says.
+      resolved.generated.summaryHtml = `<p>${escapeHtml(copy.headline)}</p>`;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
         projectionDebug: projection.debug,
         calculationStatus: 'resolved'
       };
@@ -401,6 +662,33 @@ function extractStoryMetrics(module, kind) {
     }));
 
   return [...metrics, ...chartInsights].slice(0, MAX_STORY_METRICS);
+}
+
+/**
+ * A chart cut to MAX_CHART_LABELS points spread across its whole length,
+ * keeping the first and last points and any named ones. A chart that already
+ * fits is returned as it is.
+ */
+function sampleChartAcross(chart, keepIndices = []) {
+  const labels = Array.isArray(chart?.labels) ? chart.labels : [];
+  const count = labels.length;
+  if (count <= MAX_CHART_LABELS) {
+    return chart;
+  }
+  const keep = new Set([0, count - 1, ...keepIndices.filter((index) => Number.isInteger(index) && index > 0 && index < count - 1)]);
+  const slots = MAX_CHART_LABELS - keep.size;
+  for (let step = 1; step <= slots; step += 1) {
+    keep.add(Math.round((step * (count - 1)) / (slots + 1)));
+  }
+  const picked = [...keep].sort((a, b) => a - b);
+  return {
+    ...chart,
+    labels: picked.map((index) => labels[index]),
+    datasets: (Array.isArray(chart.datasets) ? chart.datasets : []).map((dataset) => ({
+      ...dataset,
+      data: picked.map((index) => (Array.isArray(dataset?.data) ? dataset.data[index] : undefined))
+    }))
+  };
 }
 
 function normalizeChart(chart, index) {

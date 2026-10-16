@@ -2,7 +2,73 @@
 
 App change brief for Claude Code. Paste this whole file as the prompt. Suggested repo path: `docs/property-decisions-app-change.md`.
 
-Status: designs chosen (A1 "cut down" and B1 "two blocks"), not started. Written 13 October 2026.
+Status: both modules built and wired. The rental merged as #64 and #66; the home is the second pull request. Written 13 October 2026, decisions recorded the same day, build status updated 15 October 2026.
+
+## Build status
+
+**Both modules are built and wired.** Each follows the "Wiring a new engine module" list in `docs/future-cost-fund-app-change.md`, rows 4 to 21, and each was opened as its own pull request, the rental first. The rental's build status is the first section below and the home's the second.
+
+### Rental keep or sell
+
+| | Rental |
+|---|---|
+| Engine | `js/rental_keep_or_sell_math.js` |
+| View (words, geometry, label checks, no DOM) | `js/rental_keep_or_sell_view.js` |
+| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/rental_keep_or_sell_module.js` |
+| Suites | engine 13, view 12, module 14, wiring 9, plus the reference calculator |
+| Check | `npm run check:rental-keep-or-sell` (also in `consumer-regression.yml` and `deploy-worker.yml`) |
+| Preview | `dev/rental-keep-or-sell-preview.html` |
+| Styles | `.rks-` in `styles/base.css` |
+| Shared files touched | `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, `scripts/check-video-scene.mjs`, `scripts/check-codex-video-brief.mjs`, `package.json` |
+
+Row 1 to 3 of the list (a central rate, a statutory rate, the catalogue identity fixture) do not apply: the rental reads no central assumption and calculates no tax.
+
+Decided for the video: three figures that add up. The headline, what comes off it, and what is left, where "what comes off" is derived for the video only and named: "Loan repayments, running costs and tax" for Keep and "Selling costs, the loan and tax" for Sell. The engine returns it as `comesOff` and `comesOffName` in `debug`, and no table or chart carries it. The video says the sentence the module wrote.
+
+Differences from this brief as first written:
+
+- **The scale tightens when a label would not fit** to the right of its bar. At the reference size nothing binds, so Sell still puts zero at 8% and the headline at 78%, and Keep puts zero at 12.4%. At narrower widths the bars are shorter and nothing is clipped, so the headline line moves between cases there.
+- **The outputs table has no derived total.** One row per case, with the same five columns for both ("Rent or sale price", "Loan", "Running or selling costs", "Tax", "Net each year or in hand").
+- **A payload with a `scenarios` array is refused** as "not an input of this module", on paste and on import.
+- **What is shown adds down.** Every row carries the amount shown and the result is the shown start less the shown cuts, as the household cash flow does, in the screen, the outputs table, the tables, the chart data and the video. With cents in the inputs a start of 100.40 less three cuts of 33.40 shows 100, 33, 33, 33 and 1, not 0. The exact figures stay beside them in `debug`.
+- **Names wrap, and 252px is checked.** The app's mobile shell leaves about 252px for the module on a 320px phone. A name that is too long wraps to a second line instead of being cut off, decided over both cases so every row has the same height, and on a chart narrower than 300px the word goes under the number. The layout checks run at 252, 280 and 320 as well as 358 and up.
+- **The module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes. Wide from 1200, stacked and capped at 720 under that. It was looked at in the real DOM at 1366 (wide), 1024 and 844 (stacked): no label past its chart, no sideways scroll.
+- **Styles:** the selected button's name is at 800, the zero and headline lines stop behind names and labels, and the two buttons sit side by side on a phone.
+- **The Dev Panel example** is "Rental Property: Keep or Sell", with the sample figures.
+
+### Home trade down
+
+| | Home |
+|---|---|
+| Engine | `js/home_trade_down_math.js` |
+| View (words, geometry, label checks, no DOM) | `js/home_trade_down_view.js` |
+| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/home_trade_down_module.js` |
+| Suites | engine 17, view 14, module 15, wiring 11, plus the reference calculator |
+| Check | `npm run check:home-trade-down` (also in `consumer-regression.yml` and `deploy-worker.yml`) |
+| Preview | `dev/home-trade-down-preview.html` (`?width=252` holds the module to a width) |
+| Styles | `.htd-` in `styles/base.css` |
+| Shared files touched | `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, `scripts/check-video-scene.mjs`, `scripts/check-codex-video-brief.mjs`, `package.json`, `styles/base.css` (one line) |
+
+Rows 1 to 3 do not apply: the home reads no central assumption and calculates no tax. The loan's term and rate are the client's own inputs (decision 3).
+
+The summary card is the AI-written one, as for the rental, under the prompt pack's usual summary rules. Only a module whose summary is written by its own engine (the protection gap) gets a read-only card. The video says the sentence the module wrote, as the rental's does.
+
+Decided for the video: three figures that add up, all as shown. Moving: the money from selling after buying costs, the new loan, and the home budget they make. Staying: your share of the home, the mortgage, and what the home is worth. What is still repaid and what is freed follow. The three that add up come first because a story shows only the first few.
+
+Differences from this brief as first written:
+
+- **What is shown adds down.** Each input is rounded on its own and every figure that depends on them is derived from the rounded figures: released and cash toward the home from the inputs as shown, the staying blocks to the home as shown, and freed as today's repayments as shown less repaid as shown, in the screen, the outputs table, the tables, the track, the sentence and the video. With cents in the inputs 18,000.60 repaid today and 6,000.40 on the new loan show 18,001, 6,000 and 12,001, not 12,000. The exact figures stay beside them (`repaid`, `freed`, `released`, `cashTowardHome`, and `debug.shown`).
+- **A sale that clears by under a euro is refused** on the figures as shown as well as the exact ones, so nothing is ever shown below nothing.
+- **Banned wording is checked in the normaliser.** A case title or description the payload supplies is refused with the engine's message if it says "we", "us" or "our", or recommends. The engine owns the list (`HOME_TRADE_DOWN_BANNED_PHRASES`) and the view's own scan uses it.
+- **The base case may be any case.** `baseScenarioId` is optional and defaults to the first case. The importer cuts a fifth case and keeps the base case among those kept, in place of the last, with a warning.
+- **A saved session that cannot be read clears the figures stored beside it** (assumptions, outputs, tables, charts), through `RUNTIME_OWNED_INPUT_KEYS`, so nothing stale shows as a generic analysis.
+- **Side by side from 1632 wide, not 1200.** The first block's label has to fit under the first block, and the smallest that block gets is a little over half of the bar. That needs a bar of about 840px beside a 380px year, so under 1632 the year sits under the home, in a chart capped at 720. The rental module still changes arrangement at 1200.
+- **Compact under a 400px chart (a module under 432px), which is every phone.** The app's mobile shell leaves about 252px for the module on a 320px phone, which is a 220px chart. The figures put their word beneath them in one font fitted to the chart, the two labels sit one above the other behind a swatch of their block, the year's rows put their name over their amount, and the note and the track note wrap to two lines. It was looked at in the real app at 1366 (stacked, 720 chart), 1024, 844, 390 (322 module, 290 chart) and 320 (252 module, 220 chart), over all four cases: no text past its chart, no two lines of text meeting, no sideways scroll.
+- **The generated grid's column shrinks on a phone.** Under 900px the column is `minmax(0, 1fr)`, not `1fr`. A `1fr` column will not go narrower than its widest card, so the outputs table grew it to 382px in a 252px slot and the module was laid out, and cut off, at 382. A table now scrolls inside its own wrapper. This is a shared line in `styles/base.css`.
+- **When the buying costs leave the first block too short to hold its label, the second label moves right** to clear it instead of meeting it. A first block of a sliver is checked.
+- **"A budget above the current home" is refused by the normaliser,** not only by the projection, so the paste validator catches it. It compares the budget as shown with today's home to the euro.
+- **The module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes.
+- **The Dev Panel example** is "Home: Trade Down", with the sample.
 
 ## Context
 
@@ -10,16 +76,16 @@ Two modules, built one after the other in this change. Each is complete without 
 
 | | Rental: keep or sell | Home: trade down |
 |---|---|---|
-| The one question | What does this property give us each year if we keep it, and what would we have in hand if we sold it? | If we set a yearly repayment we are comfortable with, what home does that buy? |
+| The one question | What does this property give you each year if you keep it, and what would you have in hand if you sold it? | If you set a yearly repayment you are comfortable with, what home does that buy? |
 | Cases | Two, fixed: Keep and Sell | One to four: stay, or move at a stated yearly repayment |
-| The idea it has to land | A headline price shrinking to what actually reaches us, set against a yearly figure that is smaller than the rent suggests | The trade between yearly breathing room and the size of the home, with the money freed each year shown beside the home budget |
+| The idea it has to land | A headline price shrinking to what actually reaches you, set against a yearly figure that is smaller than the rent suggests | The trade between yearly breathing room and the size of the home, with the money freed each year shown beside the home budget |
 | The picture (one element carries the screen) | One bar, cut down step by step from the headline to what is left | A home budget built from two blocks, released money and a loan, where the loan block changes by case |
 
 They are two modules because a rental's net income and the cash freed by downsizing a home are different questions with different inputs. A "trade down a rental" module would put a rental-yield assumption in charge of the answer, so it is not in this change (see Out of scope). Do not join the two, and do not share state between them.
 
 Nothing in the app answers either question today. They do not overlap `house_purchase` (buying with savings) or `mortgage_analysis` (changing an existing mortgage).
 
-Reference frames, in the design canvas (private link: https://claude.ai/artifact/E51jWyHBiprkbuWUuAreb7):
+Reference frames, in the Claude Design canvas "Property decisions" (private link: https://claude.ai/artifact/E51jWyHBiprkbuWUuAreb7):
 
 | Frame | File | What it shows |
 |---|---|---|
@@ -32,29 +98,30 @@ Reference frames, in the design canvas (private link: https://claude.ai/artifact
 
 The canvas also holds options A2, A3, B2 and B3. They were not chosen. Do not build them.
 
-The frames carry the exact geometry and copy and were drawn from the same arithmetic as this brief, but they have not been opened and checked in a browser, so treat them as a drawing, not a reference implementation. Where this brief and a frame disagree, the brief wins, and tell me which.
+The frames carry the exact geometry and copy and were drawn from the same arithmetic as this brief, but they have not been opened and checked in a browser, so treat them as a drawing, not a reference implementation. Where this brief and a frame disagree, the brief wins, and tell me which. The known disagreement is the voice: the frames still say "we" and "us" in the two headings and the Sell sentence, and the brief says "you" (decision 5).
 
 Use each module two ways at once. It is shared at 1920×1080 on a call while the adviser clicks between cases, and it is re-opened later by the client alone on a laptop or phone with nobody talking. Nothing may depend on spoken context.
 
-## Decisions I need to make
+## Decisions made
 
-Code can start without these. Each has a default that is used if I do not answer.
+All settled on 13 October 2026. The defaults from the first draft were accepted as written, with one change: the voice is "you".
 
-1. **Names and keys.** Module ids `rental_keep_or_sell` and `home_trade_down`. Payload keys `generated.rentalKeepOrSellInputs` and `generated.homeTradeDownInputs`. Files `js/rental_keep_or_sell_math.js`, `js/rental_keep_or_sell_module.js`, `js/home_trade_down_math.js`, `js/home_trade_down_module.js`, each with a `js/tests_*_math.js`.
-2. **Selling costs.** The sample states that selling releases 355,000, not what the costs are. The payload therefore carries `sellingCosts`, and the sample's value is 15,000 (650,000 less 280,000 less 355,000). If you would rather the payload carry the released amount directly, say so. The model is otherwise identical.
-3. **New-loan terms.** There is no central mortgage rate or term in `PLANEIR_ASSUMPTIONS` (the house purchase adapter has an illustrative default of its own, which is not a central assumption). So `newLoanTermYears` and `newLoanAnnualRate` are **required inputs with no default**. The sample uses 15 years at 4%. They are named in the footnote, read from the model, never typed. Adding a central, versioned entry is a separate decision of the kind the future cost fund brief describes.
-4. **Rounding.** Rental: every amount is shown as stated, to the euro. Home: the new loan is rounded to the nearest €1,000 and the home budget shown is the sum of the two blocks as shown, so the bar always adds up. At the sample this reproduces 203,000, 135,000, 546,000 and 478,000 (unrounded they are 202,788, 135,192, 545,788 and 478,192). The footnote says so.
-5. **Voice.** The two questions are in "we", so the sentences follow them ("what we would have in hand"). The future cost fund module speaks to "you". Default: keep "we" in these two modules. Tell me if the app should be consistent.
-6. **Release surface.** Adviser-only through the Dev Panel and presenter, `consumer: false`. No consumer routing, no voice, no planner facts in this change.
+1. **Names and keys.** Accepted. Module ids `rental_keep_or_sell` and `home_trade_down`. Payload keys `generated.rentalKeepOrSellInputs` and `generated.homeTradeDownInputs`. Files `js/rental_keep_or_sell_math.js`, `js/rental_keep_or_sell_module.js`, `js/home_trade_down_math.js`, `js/home_trade_down_module.js`, each with a `js/tests_*_math.js`.
+2. **Selling costs.** Decided: a field. The sample states that selling releases 355,000, not what the costs are, so the payload carries `sellingCosts`, and the sample's value is 15,000 (650,000 less 280,000 less 355,000).
+3. **New-loan terms.** Decided: required, no default. There is no central mortgage rate or term in `PLANEIR_ASSUMPTIONS` (the house purchase adapter has an illustrative default of its own, which is not a central assumption). So `newLoanTermYears` and `newLoanAnnualRate` are **required inputs with no default**. The sample uses 15 years at 4%. They are named in the footnote, read from the model, never typed. Adding a central, versioned entry is a separate decision of the kind the future cost fund brief describes.
+4. **Rounding.** Decided. Rental: every amount is shown as stated, to the euro. Home: the new loan is rounded to the nearest €1,000 and the home budget shown is the sum of the two blocks as shown, so the bar always adds up. At the sample this reproduces 203,000, 135,000, 546,000 and 478,000 (unrounded they are 202,788, 135,192, 545,788 and 478,192). The footnote says so.
+5. **Voice.** Decided: "you", not "we". Every on-screen word speaks to the client as "you", to match the tax notes and the other modules. That covers the two headings (given in the shell table), the sentences ("what you would have in hand") and the `aria-label`s. The frames still say "we", so follow this brief. "Your share of the home" was already second person.
+6. **Release surface.** Decided: adviser-only, through the Dev Panel and presenter, `consumer: false`. No consumer routing, no voice, no planner facts in this change.
+7. **Plan first.** Decided: give me the plan under Before you write code, then wait for my go-ahead before implementing.
 
 ## Before you write code
 
-- Pull `main` and create a new branch, for example `property-decisions`.
+- Work on `module/property-decisions`, in your own git worktree and not in the shared checkout. Bring the branch up to date with `main` once the future cost fund screen has landed.
 - Read `js/repayment_case_module.js` end to end. It is the closest precedent and both modules should feel like its siblings: same clock, same settling discipline, same `build...Module({ rawInputs, selectedCaseId, onSelectCase })` shape, same standalone dev preview (`dev/repayment-module-preview.html`). Then read the commit message of `1d0e895` for the acceptance rule on motion.
 - Read `js/mortgage_math.js`: `computeMonthlyPayment(principal, annualInterestRate, monthCount)` (rate is a decimal, months an integer), `getMortgageScenarioCases`, `baseScenarioId` and the scenario error strings.
 - Read `js/scenario_cap.js`, the mortgage case-selection wiring in `js/app.js` (`setMortgageScenarioForModule`, `window.__setMortgageScenario`), `js/state.js` (`normalizeGenerated`, `normalizeModuleUi`, `mortgageScenarioId`) and `js/render.js` (`buildMortgageScenarioShell`).
 - Read `js/presenter_catalogue.js` (`moduleKind`, `scenarios`), `js/video_scene.js` (`getVideoModuleKind`) and `js/codex_video_brief.js`, because a module the presenter cannot select a case in, or the video cannot describe, is half a module.
-- `docs/future-cost-fund-app-change.md` is a sibling brief for a module that is not built yet. It has the same family, the same shell and the same wiring list. If it lands first, follow what it did. If it does not, do not wait for it, and **do not build a shared shell for the three modules in this change**. Resist the refactor. Tell me if a third module makes it worth extracting.
+- **Wait for the future cost fund screen to land on `main`. It sets the pattern, and you copy its wiring.** As of 13 October 2026 only its engine is on `module/future-cost-fund` (`js/future_cost_fund_math.js`, its tests and `scripts/check-future-cost-fund.mjs`). Its renderer and wiring have not landed. Read `docs/future-cost-fund-app-change.md`, then what actually merged, and copy its wiring for state, render, app, presenter catalogue, video scene, codex video brief, dev preview and package scripts. The mortgage wiring below is the fallback where the future cost fund did something different, and where they differ the future cost fund wins. Copy it, do not extract it: **do not build a shared shell for the three modules in this change**. Resist the refactor. Tell me if a third module makes it worth extracting.
 - Then give me a short plan: final field names, the file list, how the selected case is persisted, and where the pure layout functions sit. **Wait for my go-ahead before implementing.**
 
 ## Part 1: what both modules share
@@ -65,7 +132,7 @@ Identical in both, and drawn in every frame. Reference sizes are the 1920 frame.
 
 | Thing | Rule |
 |---|---|
-| Heading | The question, verbatim, not configurable in Stage 1. 42/52 at 600. Wraps to two lines. |
+| Heading | The question, in these exact words, not configurable in Stage 1. Rental: `What does this property give you each year if you keep it, and what would you have in hand if you sold it?` Home: `If you set a yearly repayment you are comfortable with, what home does that buy?` 42/52 at 600. Wraps to two lines. |
 | Case buttons | One row, 20px apart, 88 tall, radius 8, 2px border. Selected: fill `#16222b`, 2px `--electric-blue` border, name at 800, `aria-pressed`. Unselected: `--bg-1` fill, 14% text border. Each shows the case title and a derived answer line. |
 | Sentence | The answer for the selected case, at the top of the stage. 28/38 at 500. Up to two lines. |
 | Stage | `--bg-1`, radius 12, one element inside it carries the screen. |
@@ -92,6 +159,8 @@ The same rule as the repayment module, from `1d0e895`. Do not use CSS transition
 ### Words
 
 Plain, sentence case, euro with thousands separators ("€18,000"), "a year" never "p.a.". Minus is the true minus sign `−`. It shows what is and what each case would change, nothing else.
+
+Speak to the client as "you" (decision 5). No "we", "us" or "our" anywhere in the visible text or the `aria-label`s.
 
 Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", or the name of any product or provider. Test it.
 
@@ -230,7 +299,7 @@ Sentence, derived:
 | Keep, short | `The rent does not cover the loan repayments, running costs and tax: €1,200 short each year.` |
 | Keep, left over | `The rent covers the loan repayments, running costs and tax, with €1,200 left over each year.` |
 | Keep, level | `The rent exactly covers the loan repayments, running costs and tax.` |
-| Sell | `Selling costs, the loan and tax come off the price: €113,000 is what we would have in hand.` |
+| Sell | `Selling costs, the loan and tax come off the price: €113,000 is what you would have in hand.` |
 | Sell, nothing | `Selling costs, the loan and tax take the whole price: nothing would be in hand.` |
 | Sell, short | `Selling costs, the loan and tax come to more than the price: €4,000 short.` |
 
@@ -308,13 +377,14 @@ Sample (the Dev Panel example, four cases exactly):
 
 ### Rounding
 
-The new loan is rounded to the nearest €1,000 for display (decision 4). The home budget shown is block 1 as shown plus the loan as shown. Money stated in the payload and the freed amounts are exact.
+The new loan is rounded to the nearest €1,000 for display (decision 4). Every other amount is shown to the euro, and what is shown adds up: each input is rounded on its own, and what depends on them is derived from the rounded figures. Released and cash toward the home are the inputs as shown; the home budget is block 1 as shown plus the loan as shown; staying, the two blocks add to the home as shown; and freed is today's repayments as shown less repaid as shown. The exact figures stay beside them in `debug`.
 
 ### Outputs
 
 `computeHomeTradeDownProjection(rawInputs)`: `assumptionsTable`, `outputsTable` (one row per case), `tables`, `charts`, `debug`.
 
-- `debug.cases[]`: `id`, `title`, `description`, `kind`, `annualRepayment`, `block1`, `block2`, `loanUnrounded`, `homeBudget`, `repaid`, `freed`.
+- `debug.cases[]`: `id`, `title`, `description`, `kind`, `annualRepayment`, `block1`, `block2`, `loanUnrounded`, `homeBudget`, `repaid`, `freed` (exact), `shownRepaid`, `shownFreed` (derived from the figures shown), `released`.
+- `debug.shown`: the inputs as shown and what follows from them (`homeValue`, `mortgageBalance`, `sellingCosts`, `buyingCosts`, `currentAnnualRepayments`, `released`, `cashTowardHome`).
 - `debug.assumptionsUsed`: the term and rate actually used and where they came from (the payload).
 - `charts` carries one ordinary chart (home budget by case) for the video summary.
 - `getHomeTradeDownCases(rawInputs)` returns `[{ id, title, description }]` for the presenter.
@@ -325,6 +395,7 @@ The new loan is rounded to the nearest €1,000 for display (decision 4). The ho
 - `generated.homeTradeDownInputs.scenarios[1] (Repay €18,000 a year): annualRepayment must be a number from 0 up to currentAnnualRepayments.`
 - `generated.homeTradeDownInputs.sellingCosts: selling would not clear the mortgage.`
 - `generated.homeTradeDownInputs.scenarios[2] (Repay €12,000 a year): the home budget is more than the current home. This module shows trading down.`
+- `generated.homeTradeDownInputs.scenarios[0].title ("What we can afford"): this screen shows what a repayment buys, never a recommendation, and speaks to you, never as "we", "us" or "our".` (also for a `description`)
 - Also: duplicate id, unknown case key, `baseScenarioId` not matching, `buyingCosts` more than the released amount, a rate or term out of range, a non-integer term.
 - The session importer in `js/state.js` treats `scenarios` like the other capped arrays: tolerate on the way in, cap with an import warning, never throw.
 - `homeTradeDownInputs` is mutually exclusive with the other engine keys and is cleared by a `videoSummary`, as above.
@@ -396,7 +467,7 @@ Footnote: `Education only. New loans run 15 years at 4%, and buying costs are �
 
 ## Wiring
 
-Follow the mortgage wiring, one file at a time, once for each module.
+Copy the future cost fund wiring, one file at a time, once for each module. The list below is what that wiring was briefed to touch. The merged change is the authority, and the mortgage wiring is the fallback.
 
 - `js/state.js`: the two input keys in `createEmptyGenerated`, `normalizeGenerated` (including the mutual exclusions and the `videoSummary` clearing), and a selected-case id for each in `normalizeModuleUi`.
 - `js/render.js`: a module check where `isCollegeFundingModule` is checked, and the mount, in the manner of `buildMortgageScenarioShell`. The assumptions and outputs cards still render from the engine's tables.
@@ -439,17 +510,19 @@ The samples, which must reproduce exactly.
 3. **Rejections** with the exact messages above, and for each: a negative, a non-finite number, a missing field, a fifth case, a duplicate id, an unknown key, a bad `baseScenarioId`.
 4. **Layout, in Node.** For both modules at 1776 and at 358 wide: every label sits inside its container and no two labels overlap; the Sell bar's zero is at 8% and a result of −€10,000 on rent of €18,000 keeps every bar inside the plot; the home bar's scale is identical across the four cases.
 5. **Motion discipline.** After any sequence of clicks, including a rapid one and one in a throttled tab, the drawn state equals a fresh render of the last case, and no two figures on the screen disagree.
-6. **Words.** Render every case and scan the visible text and `aria-label`s for the banned phrases, a provider name, "p.a.", a bare hyphen used as a minus, and any amount without a thousands separator.
+6. **Words.** Render every case and scan the visible text and `aria-label`s for the banned phrases, "we", "us" and "our", a provider name, "p.a.", a bare hyphen used as a minus, and any amount without a thousands separator.
 7. **Wiring.** Presenter case selection by id, the video scene and the codex video brief each resolve the selected case's figures. Extend `check-video-scene.mjs` and `check-codex-video-brief.mjs`.
 
 Before finishing, run `npm run build`, both new `check:` scripts, `check:video-scene`, `check:codex-video-brief`, `check:consumer-session-payload` and `check:mortgage-math-audit`.
 
 ## Out of scope
 
+Everything parked here stays parked.
+
 - **Intelligent scenarios.** Choosing cases from a household's profile, deriving any figure from planner facts, consumer routing, voice, the manifest, the playbook and goal catalogue entries. I am doing that separately, and both engines take plain stated figures so it can feed them later. Follow the retirement precedent: do not edit `docs/prompt-pack/`.
-- **Calculating tax.** `taxOnRentalProfitPerYear` and `taxOnGain` are stated. Do not call the tax engine. Deriving them is a later change on top of `docs/irish-tax-app-change.md`, whose Part B designs capital gains but is not built.
+- **Calculating tax.** `taxOnRentalProfitPerYear` and `taxOnGain` are stated in Stage 1. Do not call the tax engine. Deriving them is a later change, and it is no longer blocked: capital gains tax on a property sale is in the engine (`propertyDisposal`, PR #54, `docs/cgt-property-handback.md`). Its sample is a €320,000 sale with €6,000 of costs, the same as this module's. It is more than swapping one number, because the event needs a disposal date, an acquisition date and cost, how the property was acquired and whether it was ever a home, none of which this payload carries. Tax on the rental profit has to be attributed to one property, which means running the engine with and without it and taking the difference. That is a design decision for the later change, not this one.
 - **Trading down a rental** (sell this one, buy a smaller one). Parked. It needs a rent-for-each-euro assumption that does most of the work, and the cost and tax lines do not scale with price. If it is built, it is its own module with the assumptions visible and changeable on screen, not a variant of either of these.
-- **A link between the two modules**, for example the rental's "in hand" feeding the home. It needs the existing mortgage's remaining term, which the sample does not give.
+- **A link between the two modules**, for example the rental's "in hand" feeding the home. The plan routes will handle it later, not this module. Do not add a field, a hook or a reference for it. It would also need the existing mortgage's remaining term, which the sample does not give.
 - **Amber and "tight".** Needs a threshold. Rental results are green, red, or level. I will draw those frames before they are built.
 - **Cases the frames do not show.** A repayment above today's, trading up, a household with no mortgage, a rental with no rent, a second property.
 - Changing `js/mortgage_math.js` or any central assumption.

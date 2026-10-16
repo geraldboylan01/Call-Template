@@ -20,11 +20,14 @@ For each prompt below:
 - Pass if the selected playbook is correct.
 - Pass if unsupported keys are omitted.
 - Pass if the module feels usable on a live call.
-- Pass only if `generated.summaryHtml` is understandable without knowing the playbook name.
+- Pass only if `generated.summaryHtml` is understandable without knowing the playbook name. Protection Gap is exempt: it emits no summary, because the app writes it.
 - Pass only if client-facing JSON avoids internal words such as `browser app`, `payload`, `engine`, `runtime`, `JSON`, validators, and schemas.
 - Pass only if SECTION 2 starts with `{` and ends with `}` as one complete top-level object.
 - PBS outputs pass only if the summary section uses `key: "summary"`, the exact row label `Net worth`, and `subtotalLabel: "Net worth"`.
 - House Purchase outputs pass only if `generated` contains exactly `summaryHtml` and `housePurchaseInputs`; all results remain runtime-owned.
+- Future Cost Fund outputs pass only if `generated` contains exactly `summaryHtml` and `futureCostFundInputs`, no rate field appears, and no case states a euro amount.
+- Protection Gap outputs pass only if `generated` contains exactly `protectionGapInputs` (no `summaryHtml`), every amount is whole euros, the first case has no event, and no title, description, household line or name contains a word from the playbook's wording limit.
+- Rental Keep or Sell outputs pass only if `generated` contains exactly `summaryHtml` and `rentalKeepOrSellInputs`, all eight figures are present, no `scenarios` array appears, and the summary never says which case is better.
 - Fresh-start House Purchase outputs pass only when `lendingCategory` and each applicant's `schemeBuyerStatus` remain separate.
 - Fail if the model asks unnecessary questions instead of using a safe best guess.
 - Fail if the visual playbooks become generic or repetitive.
@@ -33,10 +36,10 @@ For each prompt below:
 - PBS multi-case outputs pass only if every alternative carries all six sections and reconciles to its own `Gross assets`, `Total liabilities`, and `Net worth`.
 - Fail if a case is written as a change note against another case instead of a complete case.
 - Fail if a multi-case payload stops before the final closing brace.
-- Pass only if NOTES carries one line per case with that case's headline number.
+- Pass only if NOTES carries one line per case with that case's headline number, except where the playbook says the app solves the amounts (Future Cost Fund, Protection Gap): then one line per case naming what it does, with no estimated amount.
 
 ## Summary Clarity Checklist
-Every regression output should pass this client-clarity test:
+Every regression output should pass this client-clarity test. Protection Gap is exempt, since it emits no summary: the app writes it.
 - the summary says what the module is doing
 - the summary names the client facts driving the view
 - the summary tells the client how to read the first screen
@@ -383,6 +386,86 @@ Prompt:
 Checks:
 - placeholder start date only if needed
 - correct loan wording in summary
+
+## Future Cost Fund Regression Prompts
+
+### FUND-1
+Prompt:
+`Use the future cost fund playbook. College in 8 years for four years, 15000 a year in today's money. Show a lump sum, saving every year, half and half, and starting in 3 years.`
+
+Checks:
+- `generated` contains exactly `summaryHtml` and `futureCostFundInputs`
+- `costKind` is `"education"`, `startsInYears` 8, `durationYears` 4, `annualCostToday` 15000
+- four cases with unique ids: `lumpShare` 1, 0 and 0.5, and 0 with `savingStartsInYears` 3
+- no euro amount in any case, and no rate field anywhere in the payload
+- NOTES does not estimate the amounts; the app calculates them
+
+### FUND-2
+Prompt:
+`Use the future cost fund playbook. Care for her mother from about five years out, for three years, roughly 24000 a year today. Assume savings earn 3 percent. What if they save 5000 a year?`
+
+Checks:
+- `costKind` is `"general"`
+- no `savingsGrowthRate` or other rate field; NOTES says the 3% is not used because rates are central
+- no case carries a stated amount; NOTES says a stated saving amount is not modelled and names the closest case
+- `summaryHtml` speaks to the client as `you` and never says `you should`, `best` or `we recommend`
+
+## Protection Gap Regression Prompts
+
+### GAP-1
+Prompt:
+`Use the protection gap playbook. Niamh and Dara, both 45. Niamh takes home 57000, Dara 45000. They need 96000 a year and have 60000 in savings. Show either of them unable to work on 13000 a year from the State, and Niamh dying: survivor's pension 13500, the mortgage cleared and living costs lower, so they'd need 60000.`
+
+Checks:
+- `generated` contains exactly `protectionGapInputs`, with no `summaryHtml`
+- two people with unique ids, `needed` 96000, `savings` 60000
+- four cases: the first has no event, then two `cannotWork` events with `statePayment` 13000, and one `dies` event with `survivorsPension` 13500, `neededAfter` 60000 and `neededBecause` `["mortgageCleared", "livingCostsLower"]`
+- no `title` on any case, so the app names them
+- NOTES names what each case changes and does not estimate the gap or the months
+
+### GAP-2
+Prompt:
+`Use the protection gap playbook. Sinéad is on her own, takes home 48000, needs 44000 a year and has 10000 saved. What if she couldn't work, on about 13000 a year from the State? And how much income protection should she take out?`
+
+Checks:
+- one person, and two cases: today, and Sinéad unable to work with `statePayment` 13000
+- no death case, since a death needs two people
+- no cover amount, premium or product anywhere in the payload, and NOTES says this screen never shows one and that the Protection playbook is the place for it
+- no title, description or household line contains a word from the wording limit: not `her` from Gerry's "on her own", and not `income protection`
+- the payload pastes without refusal
+
+### GAP-3
+Prompt:
+`Use the protection gap playbook. Ciara and Tom. Ciara takes home 51000 and Tom earns 70000 gross. They need 82000 a year and have 30000 saved. What if Tom couldn't work?`
+
+Checks:
+- no JSON yet: Tom's take-home and the State payment are both missing
+- NOTES suggests Tom's take-home with its working, and names the State payment that would fit with its weekly rate and the PRSI caveat
+- one bold question asks Gerry to confirm the figures or give his own
+- once Gerry confirms, the payload uses exactly the figures he confirmed
+
+## Rental Keep or Sell Regression Prompts
+
+### RENT-1
+Prompt:
+`Use the rental keep or sell playbook. Rent 1500 a month. Loan repayments 13000 a year, running costs 2500, tax on the rent about 3700. It would sell for 320000 with 6000 of selling costs, they owe 180000, and the tax on the gain would be about 21000.`
+
+Checks:
+- `generated` contains exactly `summaryHtml` and `rentalKeepOrSellInputs`
+- `rentPerYear` 18000 and all eight figures as given
+- no `scenarios` array
+- NOTES gives Keep at €1,200 short each year and Sell at €113,000 in hand
+
+### RENT-2
+Prompt:
+`Use the rental keep or sell playbook. Rent 1200 a month, repayments 900 a month, costs about 3000 a year, and he's a higher-rate taxpayer. It could sell for 280000; he bought it for 190000 in 2015 and owes 150000. Should he sell?`
+
+Checks:
+- no JSON yet: both tax figures and the selling costs are missing
+- NOTES suggests both tax figures and the selling costs with the working, names what it had to assume (the interest part of the repayments, the costs of buying and selling), and no suggestion is 0
+- one bold question asks Gerry to confirm the figures or give his own
+- once Gerry confirms, the payload uses exactly the figures he confirmed, and the summary speaks to the client as `you`, never says which case is better, and never says `you should`, `best` or `we recommend`
+- NOTES answers "should he sell" by saying the module shows both cases side by side, not a recommendation
 
 ## Education Regression Prompts
 

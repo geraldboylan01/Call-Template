@@ -750,7 +750,7 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 .module-media-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 12px;
 }
 
@@ -1249,7 +1249,7 @@ body.focus-mode:not(.compare-mode) #focusLayer {
 
 .retirement-scenario-options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 8px;
   min-width: 0;
 }
@@ -1451,7 +1451,7 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   /* auto-fit needs a definite width to count its tracks, and as a flex item
      with a content-based basis it would resolve to a single column. */
   flex: 1 1 auto;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
   grid-auto-flow: row;
   gap: 6px;
   min-width: 0;
@@ -1545,7 +1545,7 @@ body.focus-mode:not(.compare-mode) #focusLayer {
   /* auto-fit needs a definite width to count its tracks, and as a flex item
      with a content-based basis it would resolve to a single column. */
   flex: 1 1 auto;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
   grid-auto-flow: row;
   gap: 6px;
   min-width: 0;
@@ -2406,7 +2406,7 @@ button.pbs-health-badge {
 
 .pbs-net-worth-context-benchmarks {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   gap: 10px;
 }
 
@@ -3597,7 +3597,7 @@ a.liquidity-evidence-source:focus-visible {
 .artifact-metric-grid,
 .chart-insight-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
   gap: 8px;
 }
 
@@ -3661,7 +3661,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .chart-annotation-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   gap: 8px;
   margin-top: 10px;
 }
@@ -3806,7 +3806,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .college-scenario-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 10px;
 }
 
@@ -3900,7 +3900,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .education-metric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
   gap: 9px;
 }
 
@@ -4118,7 +4118,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .education-support-scenes-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 12px;
 }
 
@@ -4407,7 +4407,7 @@ a.liquidity-evidence-source:focus-visible {
   }
 
   .education-step-tabs {
-    grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 142px), 1fr));
   }
 
   .education-hero-scene-card .education-svg-host {
@@ -4840,7 +4840,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .report-kpi-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   gap: 10px;
 }
 
@@ -4932,7 +4932,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .report-insight-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 10px;
 }
 
@@ -4998,7 +4998,7 @@ a.liquidity-evidence-source:focus-visible {
 
 .report-scenario-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 10px;
 }
 
@@ -7546,8 +7546,12 @@ body.overview-has-selection .toast-host {
     min-height: 82px;
   }
 
+  /* minmax(0, 1fr), not 1fr: a column of 1fr will not go narrower than its widest
+     card's min-content, so a table of four or five columns grew the column to 382px
+     in a 252px slot and the module was laid out at the width it was cut off at. A
+     table now scrolls inside its own wrapper, which is what the wrapper is for. */
   .generated-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .retirement-generated-grid {
@@ -9119,7 +9123,7 @@ body.overview-has-selection .toast-host {
 
 .house-purchase-scheme-facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 135px), 1fr));
   gap: 7px;
   margin: 0 0 13px;
 }
@@ -9689,7 +9693,7 @@ body.overview-has-selection .toast-host {
 
 .rcm-ladder {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 10px;
   min-width: 0;
 }
@@ -9878,7 +9882,7 @@ body.overview-has-selection .toast-host {
 
 .rcm-hero-band {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   align-items: start;
   gap: clamp(20px, 3vw, 44px);
   min-width: 0;
@@ -10107,7 +10111,7 @@ body.overview-has-selection .toast-host {
 
 .rcm-charts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
   gap: clamp(22px, 3vw, 40px);
   min-width: 0;
 }
@@ -10318,7 +10322,7 @@ body.overview-has-selection .toast-host {
    reads that difference as a contradiction. */
 .rcm-notes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 22px 36px;
   padding: clamp(18px, 2.4vw, 28px);
 }
@@ -10432,7 +10436,7 @@ body.overview-has-selection .toast-host {
 
 .rcm-stat-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 18px 30px;
   border-top: 1px solid rgba(149, 188, 225, 0.14);
   padding-top: clamp(4px, 1vw, 8px);
@@ -10500,3 +10504,2036 @@ body.overview-has-selection .toast-host {
 #clientVoiceNote[hidden] { display: none !important; }
 #clientVoiceNote .voice-download-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 #clientVoiceNote h4, #clientVoiceNote p { margin: 0; }
+
+/* ============================================================================
+   THE FUTURE COST FUND
+
+   The fund over the years, in the brand tokens at the top of this file. One
+   element carries the screen: the line. Everything around it stays quiet.
+   Blue marks the fund and the selected case; green appears once, as the dot
+   beside "Covered", and never without that word. Text stays in text colours.
+
+   Nothing animates through CSS. The only motion in this module is the fund
+   line travelling between cases, and that is driven by the module's own clock
+   so that it can be settled, cancelled and left alone under reduced motion.
+   ========================================================================= */
+
+.fcf {
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.fcf-title {
+  margin: 0;
+  font-size: clamp(28px, 3.4vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.14;
+}
+
+.fcf-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.25vw, 20px);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.fcf-cases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: clamp(8px, 1vw, 16px);
+  min-width: 0;
+}
+
+.fcf-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--surface-line);
+  border-radius: var(--radius-ui);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.fcf-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.fcf-case:focus-visible {
+  outline: 2px solid var(--electric-blue);
+  outline-offset: 2px;
+}
+
+.fcf-case.is-active {
+  border-color: var(--electric-blue);
+  background: var(--bg-1);
+  box-shadow: 0 0 0 1px var(--electric-blue);
+}
+
+.fcf-case-name {
+  font-size: clamp(15px, 1.35vw, 22px);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.fcf-case.is-active .fcf-case-name {
+  font-weight: 800;
+}
+
+.fcf-case-amount {
+  color: var(--muted);
+  font-size: clamp(13px, 1.1vw, 18px);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.fcf-headline {
+  margin: 0;
+  font-size: clamp(20px, 2.3vw, 44px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.fcf-support {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.15vw, 22px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ chart */
+
+.fcf-chart {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.fcf-chart.has-header-row {
+  margin-top: 44px;
+}
+
+.fcf-panel {
+  position: absolute;
+  top: 0;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+
+.fcf-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.fcf-grid {
+  stroke: rgba(247, 244, 238, 0.12);
+  stroke-width: 1;
+}
+
+.fcf-base {
+  stroke: rgba(247, 244, 238, 0.32);
+  stroke-width: 1;
+}
+
+.fcf-area {
+  fill: rgba(106, 167, 200, 0.3);
+  stroke: none;
+}
+
+.fcf-line {
+  fill: none;
+  stroke: var(--electric-blue);
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.fcf-chart.is-narrow .fcf-line {
+  stroke-width: 2.5;
+}
+
+.fcf-grid-label {
+  position: absolute;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.fcf-chart.is-narrow .fcf-grid-label {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.fcf-block {
+  position: absolute;
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid rgba(247, 244, 238, 0.92);
+  border-radius: 4px;
+  background: rgba(247, 244, 238, 0.08);
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.fcf-chart.is-narrow .fcf-block {
+  border-radius: 3px;
+}
+
+.fcf-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-green);
+}
+
+.fcf-panel-head {
+  position: absolute;
+}
+
+.fcf-panel-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 30px;
+}
+
+.fcf-panel-amount {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 20px;
+}
+
+.fcf-panel-covered {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+
+.fcf-chart.is-narrow .fcf-panel-title {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.fcf-chart.is-narrow .fcf-panel-covered {
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.fcf-chart.is-narrow .fcf-panel-covered .fcf-dot {
+  width: 8px;
+  height: 8px;
+}
+
+.fcf-panel-head.is-above {
+  text-align: right;
+}
+
+.fcf-panel-head.is-above .fcf-panel-covered {
+  justify-content: flex-end;
+}
+
+.fcf-label {
+  position: absolute;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 30px;
+  white-space: nowrap;
+}
+
+.fcf-label-muted {
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.fcf-label-fund {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 26px;
+}
+
+.fcf-chart.is-narrow .fcf-label {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.fcf-chart.is-narrow .fcf-label-muted,
+.fcf-chart.is-narrow .fcf-label-fund {
+  font-size: 12px;
+  line-height: 16px;
+  white-space: normal;
+}
+
+.fcf-tick {
+  position: absolute;
+  width: 1px;
+  height: 8px;
+  background: rgba(247, 244, 238, 0.32);
+}
+
+.fcf-axis-label {
+  position: absolute;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.fcf-axis-label.is-cost {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.fcf-chart.is-narrow .fcf-axis-label {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.fcf-chart.is-narrow .fcf-axis-label.is-first {
+  transform: none;
+}
+
+/* ------------------------------------------------------------- under it */
+
+.fcf-covered {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.fcf-by-year {
+  margin: -8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.fcf-covered[hidden],
+.fcf-by-year[hidden] {
+  display: none;
+}
+
+.fcf-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(12px, 1vw, 18px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ======================================================================
+   Household cash flow (.hcf-)
+
+   After everything you pay, what is left each year. A staircase on a wide
+   screen and a single bar on a phone, drawn by js/household_cash_flow_module.js
+   from the geometry in js/household_cash_flow_view.js. Every mark is placed
+   there; this block only dresses it.
+   ====================================================================== */
+
+.hcf {
+  --hcf-income: #7d8a92;
+  --hcf-cost: #434f58;
+  --hcf-changed: #3f7391;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  /* Amounts are centred on their bar and may reach a little past the plot. */
+  padding-inline: 28px;
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.hcf [hidden] {
+  display: none !important;
+}
+
+.hcf-probe {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.hcf-muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.35vw, 26px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-heading {
+  margin: 6px 0 0;
+  font-size: clamp(24px, 3.1vw, 60px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.hcf-cases {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.hcf-case {
+  appearance: none;
+  min-height: 64px;
+  padding: 8px 29px;
+  border: 1px solid rgba(247, 244, 238, 0.16);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: clamp(15px, 1.25vw, 24px);
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.hcf-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.hcf-case:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+/* The thicker border is the non-colour cue, with aria-pressed. The padding
+   gives back what the border takes, so the button is the same size selected. */
+.hcf-case.is-active {
+  padding: 8px 28px;
+  border: 2px solid var(--electric-blue);
+  background: rgba(106, 167, 200, 0.16);
+  color: var(--text);
+}
+
+.hcf.is-bar .hcf-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.hcf.is-bar .hcf-case {
+  padding: 8px 13px;
+  font-size: 15px;
+}
+
+.hcf.is-bar .hcf-case.is-active {
+  padding: 8px 12px;
+}
+
+/* ------------------------------------------------------------------ answer */
+
+.hcf-stage {
+  display: block;
+  min-width: 0;
+}
+
+.hcf-stage.is-beside {
+  display: flex;
+  align-items: flex-end;
+  gap: 48px;
+}
+
+.hcf-answer {
+  display: flex;
+  flex-direction: column;
+}
+
+.hcf-stage.is-beside .hcf-answer {
+  width: 328px;
+  flex: none;
+}
+
+.hcf-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+
+.hcf-swatch.is-left_over {
+  background: var(--accent-green);
+}
+
+.hcf-swatch.is-tight {
+  background: var(--accent-amber);
+}
+
+.hcf-swatch.is-short {
+  background: var(--accent-red);
+}
+
+.hcf-figure {
+  margin-top: 12px;
+  font-size: clamp(44px, 4.2vw, 80px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.hcf-unit {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: clamp(18px, 1.5vw, 28px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-monthly {
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: clamp(15px, 1.25vw, 24px);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-sentence {
+  margin: 0;
+  font-size: clamp(18px, 2.1vw, 40px);
+  font-weight: 500;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.hcf.is-bar .hcf-sentence {
+  min-height: 5.6em;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.hcf-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(14px, 1.1vw, 18px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ chart */
+
+.hcf-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.hcf-floor {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.32);
+}
+
+.hcf-connector {
+  position: absolute;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.3);
+}
+
+.hcf-bar {
+  position: absolute;
+  background: var(--hcf-cost);
+}
+
+.hcf-bar.is-income {
+  background: var(--hcf-income);
+}
+
+.hcf-bar.is-changed {
+  background: var(--hcf-changed);
+}
+
+.hcf-bar.is-left {
+  background: var(--accent-green);
+}
+
+/* Today's bar where it was: an outline, never a fill. */
+.hcf-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(247, 244, 238, 0.55);
+  pointer-events: none;
+}
+
+.hcf-amount {
+  position: absolute;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hcf-name {
+  position: absolute;
+  text-align: center;
+}
+
+.hcf-name-label {
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-name-delta {
+  margin-top: 6px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.hcf-amount.is-quiet,
+.hcf-name.is-quiet {
+  opacity: 0.55;
+}
+
+.hcf-key {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.hcf-key-swatch {
+  display: inline-block;
+  width: 36px;
+  height: 18px;
+  box-sizing: border-box;
+  border: 1.5px solid rgba(247, 244, 238, 0.55);
+}
+
+.hcf-last-label {
+  position: absolute;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.hcf-last-label-today {
+  color: var(--muted);
+}
+
+.hcf-end-mark {
+  position: absolute;
+  height: 3px;
+  background: var(--accent-amber);
+  opacity: 0;
+}
+
+/* -------------------------------------------------------------------- bar */
+
+.hcf-bar-head {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  white-space: nowrap;
+}
+
+.hcf-bar-head-label {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.hcf-bar-head-amount {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.hcf-bar-rule {
+  position: absolute;
+  top: 32px;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.18);
+}
+
+.hcf-track {
+  position: absolute;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--bg-0);
+}
+
+.hcf-segment {
+  position: absolute;
+  left: 0;
+  background: var(--hcf-cost);
+}
+
+.hcf-segment.is-changed {
+  background: var(--hcf-changed);
+}
+
+.hcf-segment.is-left {
+  background: var(--accent-green);
+}
+
+.hcf-cleared-tick {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  background: var(--electric-blue);
+  opacity: 0;
+}
+
+.hcf-bar-end-mark {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  background: var(--accent-amber);
+  opacity: 0;
+}
+
+.hcf-row {
+  position: absolute;
+}
+
+.hcf-row-stub {
+  position: absolute;
+  top: 10px;
+  left: -16px;
+  width: 12px;
+  height: 1px;
+  background: rgba(247, 244, 238, 0.4);
+}
+
+.hcf-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.hcf-row-name {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.hcf-row-leader {
+  flex: 1;
+  height: 1px;
+  align-self: flex-end;
+  margin-bottom: 5px;
+  border-bottom: 1px solid rgba(247, 244, 238, 0.14);
+}
+
+.hcf-row-amount {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.hcf-row-delta {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hcf * {
+    transition: none !important;
+  }
+}
+
+/* ======================================================= Protection gap (.pg-) */
+
+.pg {
+  --pg-floor: rgba(106, 167, 200, 0.66);
+  --pg-earn: rgba(106, 167, 200, 0.38);
+  --pg-short: rgba(201, 111, 98, 0.42);
+  --pg-filled: rgba(102, 184, 158, 0.5);
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 28px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.pg--rail {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  column-gap: 116px;
+  align-items: start;
+  padding-right: 20px;
+}
+
+.pg-rail,
+.pg-main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.pg--rail .pg-rail {
+  gap: 48px;
+}
+
+.pg-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.pg-household {
+  margin: 10px 0 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 38px;
+}
+
+.pg-household[hidden],
+.pg-status[hidden],
+.pg-seg-l2[hidden],
+.pg-seg-text[hidden],
+.pg-label[hidden],
+.pg-bracket[hidden],
+.pg-word[hidden],
+.pg-end[hidden],
+.pg-end-tick[hidden] {
+  display: none;
+}
+
+.pg-savings {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 24px;
+  line-height: 30px;
+}
+
+.pg-cases {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pg--row .pg-cases {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pg--grid .pg-cases {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pg-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  align-items: center;
+  padding: 6px 24px;
+  border: 1px solid rgba(247, 244, 238, 0.16);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.pg-case:hover {
+  border-color: rgba(247, 244, 238, 0.34);
+  color: var(--text);
+}
+
+.pg-case:focus-visible {
+  outline: 3px solid var(--electric-blue);
+  outline-offset: 3px;
+}
+
+/* The same outer size selected or not: the thicker edge is an inset shadow. */
+.pg-case.is-active {
+  border-color: var(--electric-blue);
+  background: rgba(106, 167, 200, 0.14);
+  box-shadow: inset 0 0 0 1px var(--electric-blue);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.pg-headline {
+  margin: 0;
+  font-size: clamp(30px, 2.7vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+/* Line 1 and the status word sit on one line; line 2 starts the next. */
+.pg-line1 {
+  display: inline;
+}
+
+.pg-line2 {
+  display: block;
+}
+
+.pg-status {
+  display: inline-block;
+  margin-left: 14px;
+  color: var(--accent-amber);
+  font-size: 0.5em;
+  font-weight: 600;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.pg-sentence {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: clamp(16px, 1.35vw, 26px);
+  font-weight: 500;
+  line-height: 1.32;
+}
+
+.pg-block {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pg-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+}
+
+.pg-bar,
+.pg-strip {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.pg-track,
+.pg-strip-track {
+  position: absolute;
+  left: 0;
+  background: var(--bg-1);
+}
+
+.pg-seg,
+.pg-gap,
+.pg-fill,
+.pg-short,
+.pg-divider,
+.pg-bracket,
+.pg-need-tick,
+.pg-end-tick,
+.pg-axis-tick {
+  position: absolute;
+}
+
+.pg-seg {
+  overflow: hidden;
+  box-shadow: inset 1px 0 0 var(--bg-0);
+}
+
+.pg-seg-floor {
+  background: var(--pg-floor);
+}
+
+.pg-seg-takeHome {
+  background: var(--pg-earn);
+}
+
+.pg-seg-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 360px;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 16px;
+  white-space: nowrap;
+}
+
+.pg-seg-floor .pg-seg-text {
+  width: 220px;
+  padding: 0 14px;
+}
+
+.pg-seg-l1,
+.pg-seg-l2 {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.pg-seg-floor .pg-seg-l1,
+.pg-seg-floor .pg-seg-l2 {
+  font-size: 16px;
+  line-height: 18px;
+}
+
+.pg-seg-amount {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 32px;
+}
+
+.pg-seg-floor .pg-seg-amount {
+  font-size: 26px;
+  line-height: 30px;
+}
+
+.pg-gap {
+  background: var(--pg-short);
+}
+
+.pg.is-left-over .pg-gap {
+  background: var(--pg-filled);
+}
+
+.pg-bracket {
+  box-sizing: border-box;
+  border: 2px solid rgba(247, 244, 238, 0.55);
+  border-bottom: none;
+}
+
+.pg-need-tick,
+.pg-end-tick {
+  width: 2px;
+  background: var(--text);
+}
+
+.pg-label {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.pg-label-title {
+  display: block;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+.pg-label[data-key='gap'] .pg-label-title {
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.pg-label-amount {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 36px;
+}
+
+.pg-label[data-key^='seg'] .pg-label-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pg-label[data-key^='seg'] .pg-label-amount {
+  font-size: 22px;
+  line-height: 26px;
+}
+
+.pg-scale {
+  position: absolute;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 22px;
+}
+
+.pg-scale-start {
+  left: 0;
+}
+
+.pg-scale-end {
+  right: 0;
+}
+
+.pg-fill {
+  background: var(--pg-filled);
+}
+
+.pg-short {
+  background: var(--pg-short);
+}
+
+.pg-divider {
+  width: 1px;
+  background: rgba(247, 244, 238, 0.12);
+}
+
+.pg-divider.is-year {
+  background: rgba(247, 244, 238, 0.4);
+}
+
+.pg-word {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  font-size: 30px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pg-end {
+  position: absolute;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pg-end-lead {
+  display: block;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 24px;
+}
+
+.pg-end-text {
+  display: block;
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 72px;
+}
+
+.pg-axis-tick {
+  width: 1px;
+  height: 10px;
+  background: rgba(247, 244, 238, 0.5);
+}
+
+.pg-axis-name {
+  position: absolute;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.pg-axis-name.is-center {
+  transform: translateX(-50%);
+}
+
+.pg-axis-name.is-right {
+  transform: translateX(-100%);
+}
+
+.pg-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 26px;
+}
+
+/* The phone: smaller type, the same drawing. */
+.pg.is-narrow .pg-kicker { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-household { font-size: 20px; line-height: 28px; margin-top: 2px; }
+.pg.is-narrow .pg-savings { font-size: 16px; line-height: 22px; margin-top: 2px; }
+.pg.is-narrow .pg-case { min-height: 56px; padding: 6px 14px; font-size: 16px; }
+.pg.is-narrow .pg-headline { font-size: 28px; line-height: 34px; }
+.pg.is-narrow .pg-status { margin-left: 10px; }
+.pg.is-narrow .pg-sentence { font-size: 16px; line-height: 22px; }
+.pg.is-narrow .pg-caption { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-seg-text { width: 200px; padding: 0 8px; }
+.pg.is-narrow .pg-seg-l1,
+.pg.is-narrow .pg-seg-l2 { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-seg-amount,
+.pg.is-narrow .pg-seg-floor .pg-seg-amount { font-size: 20px; line-height: 24px; }
+.pg.is-narrow .pg-label-title { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-label[data-key='gap'] .pg-label-title { font-size: 15px; }
+.pg.is-narrow .pg-label-amount { font-size: 20px; line-height: 26px; }
+.pg.is-narrow .pg-label[data-key^='seg'] .pg-label-title { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-label[data-key^='seg'] .pg-label-amount { font-size: 18px; line-height: 22px; }
+.pg.is-narrow .pg-scale { font-size: 14px; line-height: 18px; }
+.pg.is-narrow .pg-word { font-size: 16px; }
+.pg.is-narrow .pg-end-lead { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-end-text { font-size: 32px; line-height: 40px; }
+.pg.is-narrow .pg-axis-name { font-size: 15px; line-height: 20px; }
+.pg.is-narrow .pg-footnote { font-size: 14px; line-height: 20px; }
+
+/* =========================================================================
+   RENTAL, KEEP OR SELL
+
+   One bar, cut down step by step from the headline to what is left, in the
+   brand tokens at the top of this file. One element carries the screen: the
+   bars. Everything around it stays quiet. Blue is the headline; the result is
+   green when money is left over and red when it is short, and is always
+   beside its word. Text stays in text colours.
+
+   Nothing animates through CSS. The only motion in this module is the bars
+   travelling between Keep and Sell, and that is driven by the module's own
+   clock so that it can be settled, cancelled and left alone under reduced
+   motion.
+
+   The sizes below are the ones js/rental_keep_or_sell_view.js lays out with.
+   ========================================================================= */
+
+.rks {
+  --rks-selected: #16222b;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.rks-title {
+  max-width: 1500px;
+  margin: 0;
+  font-size: clamp(20px, 2.2vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
+}
+
+.rks-cases {
+  display: grid;
+  max-width: 1060px;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
+  gap: clamp(8px, 1vw, 20px);
+}
+
+.rks-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 64px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 2px solid rgba(247, 244, 238, 0.14);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.rks.is-narrow .rks-cases {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rks:not(.is-narrow) .rks-case {
+  min-height: 88px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+}
+
+.rks-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.rks-case:focus-visible {
+  outline: 2px solid var(--electric-blue);
+  outline-offset: 2px;
+}
+
+.rks-case.is-active {
+  border-color: var(--electric-blue);
+  background: var(--rks-selected);
+}
+
+.rks-case-name {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.rks:not(.is-narrow) .rks-case-name {
+  font-size: clamp(20px, 1.55vw, 30px);
+}
+
+.rks-case.is-active .rks-case-name {
+  font-weight: 800;
+}
+
+.rks-case-answer {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.rks:not(.is-narrow) .rks-case-answer {
+  font-size: clamp(16px, 1.35vw, 26px);
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.rks-stage {
+  min-width: 0;
+  padding: 30px 48px 40px;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+
+.rks-stage.is-narrow {
+  padding: 20px 16px;
+}
+
+.rks-headline {
+  min-height: 2.72em;
+  margin: 0 0 clamp(16px, 2vw, 32px);
+  font-size: clamp(16px, 1.45vw, 28px);
+  font-weight: 500;
+  line-height: 1.36;
+}
+
+.rks-stage.is-narrow .rks-headline {
+  min-height: 69px;
+  font-size: 16px;
+  line-height: 23px;
+}
+
+.rks-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.rks-chart.is-narrow {
+  margin: 0 auto;
+}
+
+.rks-zero {
+  position: absolute;
+  top: 0;
+  width: 0;
+  border-left: 1px solid rgba(247, 244, 238, 0.45);
+}
+
+.rks-headline-line {
+  position: absolute;
+  top: 0;
+  width: 0;
+  border-left: 1px dashed rgba(247, 244, 238, 0.3);
+}
+
+.rks-zero-label {
+  position: absolute;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.rks-chart.is-narrow .rks-zero-label {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.rks-connector {
+  position: absolute;
+  width: 1px;
+  background: rgba(247, 244, 238, 0.35);
+}
+
+.rks-bar {
+  position: absolute;
+  border-radius: 4px;
+}
+
+.rks-bar.is-start {
+  background: var(--electric-blue);
+}
+
+.rks-bar.is-cut {
+  background: rgba(247, 244, 238, 0.28);
+}
+
+.rks-bar.is-result.is-left-over {
+  background: var(--accent-green);
+}
+
+.rks-bar.is-result.is-short {
+  background: var(--accent-red);
+}
+
+.rks-bar.is-result.is-level {
+  background: rgba(247, 244, 238, 0.55);
+}
+
+.rks-name {
+  position: absolute;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 25px;
+  font-weight: 500;
+  /* A name that is too long wraps to a second line. The layout sizes the box
+     for it, so it is never cut off. */
+  white-space: normal;
+}
+
+.rks-name.is-start,
+.rks-name.is-result {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.rks-chart.is-narrow .rks-name {
+  /* A name sits on its bar. When the box is two lines tall for a long name, a
+     short one is not left hanging at the top of it. */
+  display: flex;
+  align-items: flex-end;
+  padding-right: 6px;
+  background: var(--bg-1);
+  font-size: 16px;
+}
+
+/* A name or a label sits over the zero and headline lines, so the lines stop
+   behind it. The shadow widens the mask without moving the text. */
+.rks-label {
+  position: absolute;
+  background: var(--bg-1);
+  box-shadow: -6px 0 0 0 var(--bg-1), 6px 0 0 0 var(--bg-1);
+  white-space: nowrap;
+}
+
+.rks-value {
+  color: var(--text);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.rks-word {
+  margin-left: 12px;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.rks-word[hidden] {
+  display: none;
+}
+
+.rks-chart.is-narrow .rks-value {
+  font-size: 19px;
+}
+
+.rks-chart.is-narrow .rks-word {
+  margin-left: 6px;
+  font-size: 14px;
+}
+
+/* On a very narrow chart the word sits under the number, so the bars keep
+   their room. */
+.rks-chart.is-stacked .rks-label {
+  white-space: normal;
+}
+
+.rks-chart.is-stacked .rks-value,
+.rks-chart.is-stacked .rks-word {
+  display: block;
+}
+
+.rks-chart.is-stacked .rks-value {
+  line-height: 22px;
+}
+
+.rks-chart.is-stacked .rks-word {
+  margin-left: 0;
+  line-height: 16px;
+}
+
+.rks-chart.is-stacked .rks-word[hidden] {
+  display: none;
+}
+
+.rks-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(12px, 1vw, 20px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* =========================================================================
+   HOME, TRADE DOWN
+
+   A home budget built from two blocks, in the brand tokens at the top of this
+   file: the money from selling after buying costs, and a new loan whose block
+   changes by case. Beside it, a track of what is repaid on the mortgage today,
+   split into what is still repaid and what is freed. One element carries the
+   screen: the bar. Everything around it stays quiet. Blue is the home; green
+   appears only as the freed part of the track, and always beside the word
+   "Freed". Text stays in text colours.
+
+   The home and the year are on different scales, and each says so. Nothing
+   animates through CSS. The only motion in this module is the blocks and the
+   track travelling between cases, and that is driven by the module's own clock
+   so that it can be settled, cancelled and left alone under reduced motion.
+
+   The sizes below are the ones js/home_trade_down_view.js lays out with.
+   ========================================================================= */
+
+.htd {
+  --htd-selected: #16222b;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.htd-title {
+  max-width: 1300px;
+  margin: 0;
+  font-size: clamp(20px, 2.2vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
+}
+
+.htd-cases {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 405px));
+  gap: clamp(8px, 1vw, 20px);
+}
+
+.htd.is-narrow .htd-cases {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.htd-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 56px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 2px solid rgba(247, 244, 238, 0.14);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.htd:not(.is-narrow) .htd-case {
+  min-height: 88px;
+  padding: 0 24px;
+}
+
+.htd-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.htd-case:focus-visible {
+  outline: 2px solid var(--electric-blue);
+  outline-offset: 2px;
+}
+
+.htd-case.is-active {
+  border-color: var(--electric-blue);
+  background: var(--htd-selected);
+}
+
+.htd-case-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.htd:not(.is-narrow) .htd-case-name {
+  font-size: clamp(20px, 1.4vw, 27px);
+}
+
+.htd-case.is-active .htd-case-name {
+  font-weight: 800;
+}
+
+.htd-case-sub {
+  display: none;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.htd:not(.is-narrow) .htd-case-sub {
+  display: block;
+  font-size: clamp(16px, 1.15vw, 22px);
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.htd-stage {
+  min-width: 0;
+  padding: 30px 48px 40px;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+
+.htd-stage.is-narrow {
+  padding: 20px 16px;
+}
+
+.htd-headline {
+  min-height: 2.72em;
+  margin: 0 0 clamp(16px, 2vw, 32px);
+  font-size: clamp(16px, 1.45vw, 28px);
+  font-weight: 500;
+  line-height: 1.36;
+}
+
+.htd-stage.is-narrow .htd-headline {
+  min-height: 69px;
+  font-size: 16px;
+  line-height: 23px;
+}
+
+.htd-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.htd-chart.is-narrow {
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- the home */
+
+.htd-figure {
+  position: absolute;
+  line-height: 84px;
+  white-space: nowrap;
+}
+
+.htd-figure-value {
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.htd-figure-word {
+  margin-left: 16px;
+  color: var(--muted);
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.htd-chart.is-narrow .htd-figure {
+  line-height: 52px;
+}
+
+.htd-chart.is-narrow .htd-figure-value {
+  font-size: 44px;
+}
+
+.htd-chart.is-narrow .htd-figure-word {
+  margin-left: 10px;
+  font-size: 16px;
+}
+
+.htd-today-line {
+  position: absolute;
+  width: 0;
+  border-left: 1px dashed rgba(247, 244, 238, 0.4);
+}
+
+.htd-today-label {
+  position: absolute;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 30px;
+}
+
+.htd-today-name,
+.htd-today-value {
+  display: block;
+}
+
+.htd-today-value {
+  color: var(--text);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.htd-chart.is-narrow .htd-today-label {
+  font-size: 14px;
+  line-height: 18px;
+  text-align: right;
+}
+
+.htd-chart.is-narrow .htd-today-name,
+.htd-chart.is-narrow .htd-today-value {
+  display: inline;
+}
+
+.htd-chart.is-narrow .htd-today-value {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.htd-block {
+  position: absolute;
+}
+
+.htd-block.is-one {
+  border-radius: 4px 0 0 4px;
+  background: var(--electric-blue);
+}
+
+.htd-block.is-two {
+  border-radius: 0 4px 4px 0;
+  background: rgba(106, 167, 200, 0.28);
+  box-shadow: inset 0 0 0 2px var(--electric-blue);
+}
+
+.htd-label {
+  position: absolute;
+}
+
+.htd-amount {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 44px;
+}
+
+.htd-name {
+  color: var(--muted);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 30px;
+}
+
+.htd-note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.htd-note[hidden] {
+  display: none;
+}
+
+.htd-chart.is-narrow .htd-amount {
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.htd-chart.is-narrow .htd-name {
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.htd-note-full {
+  position: absolute;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+/* ---------------------------------------------------------------- the year */
+
+.htd-rule {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 0 solid rgba(247, 244, 238, 0.14);
+}
+
+.htd-chart:not(.is-narrow) .htd-rule {
+  border-left-width: 1px;
+}
+
+.htd-chart.is-narrow .htd-rule {
+  border-top-width: 1px;
+}
+
+.htd-freed {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.htd-freed-value {
+  display: block;
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 84px;
+}
+
+.htd-freed-word {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 32px;
+}
+
+.htd-chart.is-narrow .htd-freed-value,
+.htd-chart.is-narrow .htd-freed-word {
+  display: inline;
+}
+
+.htd-chart.is-narrow .htd-freed-value {
+  font-size: 40px;
+  line-height: 48px;
+}
+
+.htd-chart.is-narrow .htd-freed-word {
+  margin-left: 10px;
+  font-size: 16px;
+}
+
+.htd-track {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(247, 244, 238, 0.08);
+}
+
+.htd-track-repaid {
+  position: absolute;
+  background: rgba(247, 244, 238, 0.26);
+}
+
+.htd-track-freed {
+  position: absolute;
+  background: var(--accent-green);
+}
+
+.htd-row {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.htd-row-name {
+  color: var(--muted);
+  font-size: 24px;
+}
+
+.htd-row-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.htd-chart.is-narrow .htd-row-name {
+  font-size: 16px;
+}
+
+.htd-chart.is-narrow .htd-row-value {
+  font-size: 18px;
+}
+
+.htd-track-note {
+  position: absolute;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.htd-chart.is-narrow .htd-track-note {
+  font-size: 13px;
+  line-height: 17px;
+}
+
+/* ------------------------------------------------------------- compact */
+
+/* A chart under 400px (a phone: the app's shell leaves 252px for the module on
+   a 320px one). The figures put their word beneath them, the two labels sit one
+   above the other behind a swatch of their block, and each year row puts its
+   name over its amount. Sizes the figure and the freed amount are fitted in
+   js/home_trade_down_view.js and set inline. */
+
+.htd-chart.is-compact .htd-figure {
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.htd-chart.is-compact .htd-figure-value,
+.htd-chart.is-compact .htd-figure-word {
+  display: block;
+}
+
+.htd-chart.is-compact .htd-figure-word {
+  margin-left: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-today-label {
+  white-space: nowrap;
+}
+
+.htd-chart.is-compact .htd-label {
+  box-sizing: border-box;
+  padding-left: 20px;
+}
+
+.htd-chart.is-compact .htd-label::before {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  content: '';
+}
+
+.htd-chart.is-compact .htd-label.is-one::before {
+  background: var(--electric-blue);
+}
+
+.htd-chart.is-compact .htd-label.is-two::before {
+  background: rgba(106, 167, 200, 0.28);
+  box-shadow: inset 0 0 0 2px var(--electric-blue);
+}
+
+.htd-chart.is-compact .htd-freed {
+  white-space: normal;
+}
+
+.htd-chart.is-compact .htd-freed-value,
+.htd-chart.is-compact .htd-freed-word {
+  display: block;
+}
+
+.htd-chart.is-compact .htd-freed-word {
+  margin-top: 4px;
+  margin-left: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-row {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.htd-chart.is-compact .htd-row-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-row-value {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.htd-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(12px, 1vw, 20px);
+  font-weight: 500;
+  line-height: 1.45;
+}

@@ -27,9 +27,12 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
 - `15_net_retirement_cashflow_playbook.md`
 - `16_liquidity_playbook.md`
 - `17_house_purchase_playbook.md`
+- `18_future_cost_fund_playbook.md`
 - `20_education_playbook.md`
 - `21_report_playbook.md`
 - `22_protection_playbook.md`
+- `23_protection_gap_playbook.md`
+- `24_rental_keep_or_sell_playbook.md`
 - `irish_tax_ai_cheat_sheet_v1.1.md`
   - the tax logic source file to upload alongside the master prompt
 - `90_examples_and_regression_prompts.md`
@@ -59,9 +62,12 @@ The assembled master prompt should include these files in this order:
 9. `15_net_retirement_cashflow_playbook.md`
 10. `16_liquidity_playbook.md`
 11. `17_house_purchase_playbook.md`
-12. `20_education_playbook.md`
-13. `21_report_playbook.md`
-14. `22_protection_playbook.md`
+12. `18_future_cost_fund_playbook.md`
+13. `20_education_playbook.md`
+14. `21_report_playbook.md`
+15. `22_protection_playbook.md`
+16. `23_protection_gap_playbook.md`
+17. `24_rental_keep_or_sell_playbook.md`
 
 `02_schema_capability_matrix.md`, `03_irish_tax_overlay.md`, and `90_examples_and_regression_prompts.md` are maintenance/reference files. The live project should still use `MASTER_PROJECT_PROMPT.md`, plus the uploaded `irish_tax_ai_cheat_sheet_v1.1.md` file.
 
@@ -73,9 +79,10 @@ The assembled master prompt should include these files in this order:
 5. Keep the old prompt bundle available for at least one week after cutover.
 
 ## Success Criteria
-- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the liquidity playbook`, `use the college funding playbook`, `use the house purchase playbook`, and similar short commands.
+- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the liquidity playbook`, `use the college funding playbook`, `use the house purchase playbook`, `use the future cost fund playbook`, `use the protection gap playbook`, `use the rental keep or sell playbook`, and similar short commands.
 - JSON pastes into the current app without schema rejection.
-- House purchase, mortgage, loan, retirement, and net retirement cash-flow modules stay JS-backed.
+- House purchase, mortgage, loan, retirement, net retirement cash-flow, college funding, future cost fund, protection gap and rental keep or sell modules stay JS-backed.
+- Protection Gap payloads contain only `generated.protectionGapInputs`: the app writes the summary, and nothing in the payload mentions cover, a premium or a product.
 - House Purchase payloads contain only `generated.summaryHtml` and `generated.housePurchaseInputs`; every result remains runtime-owned.
 - Education, report, and protection outputs become visually stronger and less repetitive.
 - Tax scenarios use the uploaded cheat sheet as a logic overlay without forcing a separate tax playbook.

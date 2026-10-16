@@ -1,0 +1,100 @@
+{
+  "fictionalFigures": true,
+  "fps": 30,
+  "clips": [
+    {
+      "kind": "mortgage",
+      "size": "desktop",
+      "seconds": 14,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 420063,
+      "webmBytes": 483568,
+      "fps": 30
+    },
+    {
+      "kind": "mortgage",
+      "size": "mobile",
+      "seconds": 14,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 361320,
+      "webmBytes": 430616,
+      "fps": 30
+    },
+    {
+      "kind": "balance-sheet",
+      "size": "desktop",
+      "seconds": 18,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 698262,
+      "webmBytes": 727283,
+      "fps": 30
+    },
+    {
+      "kind": "balance-sheet",
+      "size": "mobile",
+      "seconds": 18,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 558600,
+      "webmBytes": 614069,
+      "fps": 30
+    },
+    {
+      "kind": "future-cost-fund",
+      "size": "desktop",
+      "seconds": 18,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 576416,
+      "webmBytes": 591611
+    },
+    {
+      "kind": "future-cost-fund",
+      "size": "mobile",
+      "seconds": 18,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 454428,
+      "webmBytes": 489790
+    },
+    {
+      "kind": "household-cash-flow",
+      "size": "desktop",
+      "seconds": 18,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 468859,
+      "webmBytes": 429634
+    },
+    {
+      "kind": "household-cash-flow",
+      "size": "mobile",
+      "seconds": 18,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 405346,
+      "webmBytes": 391176
+    },
+    {
+      "kind": "protection-gap",
+      "size": "desktop",
+      "seconds": 18,
+      "width": 1440,
+      "height": 1080,
+      "mp4Bytes": 676018,
+      "webmBytes": 676852
+    },
+    {
+      "kind": "protection-gap",
+      "size": "mobile",
+      "seconds": 18,
+      "width": 720,
+      "height": 1290,
+      "mp4Bytes": 597422,
+      "webmBytes": 633570
+    }
+  ]
+}

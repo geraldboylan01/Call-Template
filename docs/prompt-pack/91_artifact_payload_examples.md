@@ -654,6 +654,90 @@ House Purchase examples must contain only `generated.summaryHtml` and `generated
 }
 ```
 
+## Future Cost Fund
+
+One dated cost and the ways of having the money ready. A case says how the cost is funded, never how much: the app solves the lump sum and the yearly amount. No rate is ever in the payload. `costKind` is `general` here, so prices rise at the central 2% rather than the education rate.
+
+```json
+{
+  "title": "Care for Mam - Ways to Have the Money Ready",
+  "generated": {
+    "summaryHtml": "<p>Care for your mother is expected to start in 5 years and run for three, at about €24,000 a year in today's money. This shows four ways of having that money ready, and every way covers the same cost: what changes is when the money leaves your hands. Start with the buttons, then follow your fund to the year the care begins.</p>",
+    "futureCostFundInputs": {
+      "costTitle": "Care for Mam",
+      "costKind": "general",
+      "startsInYears": 5,
+      "durationYears": 3,
+      "annualCostToday": 24000,
+      "scenarios": [
+        { "id": "lump-sum", "title": "Lump sum today", "lumpShare": 1 },
+        { "id": "every-year", "title": "Save every year", "lumpShare": 0 },
+        { "id": "part-now", "title": "Part now, part each year", "lumpShare": 0.5 },
+        { "id": "start-later", "title": "Start in 2 years", "lumpShare": 0, "savingStartsInYears": 2 }
+      ]
+    }
+  }
+}
+```
+
+## Protection Gap
+
+If one income stopped: how big the gap would be, and how long savings would fill it. One person here has no income of their own, so only the earner's income can stop. There is no `summaryHtml`: the app writes the summary from its own figures. State payments are as given, and NOTES marks them for Gerry to confirm.
+
+```json
+{
+  "title": "Protection Gap - If One Income Stopped",
+  "generated": {
+    "protectionGapInputs": {
+      "householdLabel": "Aoife and Cian, with two children",
+      "people": [
+        { "id": "aoife", "label": "Aoife", "takeHome": 62000 },
+        { "id": "cian", "label": "Cian", "takeHome": 0 }
+      ],
+      "needed": 58000,
+      "savings": 25000,
+      "scenarios": [
+        { "id": "today" },
+        { "id": "aoife-cannot-work", "event": { "type": "cannotWork", "personId": "aoife", "statePayment": 17000 } },
+        {
+          "id": "aoife-died",
+          "event": {
+            "type": "dies",
+            "personId": "aoife",
+            "survivorsPension": 15000,
+            "neededAfter": 44000,
+            "neededBecause": ["mortgageCleared"]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+## Rental Keep or Sell
+
+One rental property: what it gives each year if kept, against what would be in hand if sold. Every figure is stated, the two tax figures included. The two cases are fixed, so there is no `scenarios` array.
+
+```json
+{
+  "title": "Rental Property - Keep or Sell",
+  "generated": {
+    "summaryHtml": "<p>This shows what your rental property gives you each year if you keep it, and what you would have in hand if you sold it. It uses the rent, the loan repayments, the running costs and the tax as you gave them, and today's sale price. Start with Keep, then press Sell to see the price cut down to what would reach you.</p>",
+    "rentalKeepOrSellInputs": {
+      "rentPerYear": 21600,
+      "loanRepaymentsPerYear": 9600,
+      "runningCostsPerYear": 3000,
+      "taxOnRentalProfitPerYear": 4100,
+      "salePrice": 375000,
+      "sellingCosts": 7500,
+      "loanBalance": 120000,
+      "taxOnGain": 30000
+    }
+  }
+}
+```
+
 ## Education
 
 ```json

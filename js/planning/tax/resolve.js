@@ -15,6 +15,7 @@
 
 import {
   IE_CGT_FIXED_RULES,
+  IE_INVESTMENT_RULES,
   IE_LEGISLATED_SCHEDULES,
   IE_TAX_FIRST_YEAR,
   IE_TAX_RULES_BY_YEAR,
@@ -163,16 +164,17 @@ function resolvePrsiRate(year, catalogue = DEFAULT_IE_TAX_CATALOGUE) {
 }
 
 /**
- * The CGT rate schedule, checked: dates must rise and every entry needs a
- * rate and a status. Disposals use the last entry on or before their date,
- * so the final rate is held for later years like any Budget parameter.
+ * A rate schedule by date (CGT, exit tax), checked: dates must rise and every
+ * entry needs a rate and a status. An event uses the last entry on or before
+ * its date, so the final rate is held for later years like any Budget
+ * parameter.
  */
-function validateCgtRateSchedule(schedule) {
+function validateRateSchedule(schedule, name) {
   if (!Array.isArray(schedule) || schedule.length === 0) {
-    throw new Error('capitalGainsTaxRate must be a non-empty array.');
+    throw new Error(`${name} must be a non-empty array.`);
   }
   schedule.forEach((entry, index) => {
-    const field = `capitalGainsTaxRate[${index}]`;
+    const field = `${name}[${index}]`;
     if (!entry || typeof entry !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.effectiveFrom || '')) {
       throw new Error(`${field}.effectiveFrom must be a YYYY-MM-DD date.`);
     }
@@ -195,10 +197,27 @@ function buildCapitalGainsRules(block, catalogue) {
   }
   return Object.freeze({
     ...block.capitalGainsTax,
-    rateSchedule: validateCgtRateSchedule(catalogue.schedules.capitalGainsTaxRate),
+    rateSchedule: validateRateSchedule(catalogue.schedules.capitalGainsTaxRate, 'capitalGainsTaxRate'),
     indexation: IE_CGT_FIXED_RULES.indexation,
     section604A: IE_CGT_FIXED_RULES.section604A,
     principalPrivateResidence: IE_CGT_FIXED_RULES.principalPrivateResidence
+  });
+}
+
+/**
+ * What an after-tax investment is subject to. Held unchanged in every year:
+ * the exit tax rate is read for a date from its schedule, and the eight-year
+ * rule and the Investment Account carry their own status.
+ */
+function buildInvestmentFundRules(catalogue) {
+  const schedule = catalogue.schedules.investmentFundExitTaxRate;
+  if (!schedule) {
+    return null;
+  }
+  return Object.freeze({
+    exitTaxRateSchedule: validateRateSchedule(schedule, 'investmentFundExitTaxRate'),
+    deemedDisposal: (catalogue.investmentRules || IE_INVESTMENT_RULES).deemedDisposal,
+    investmentAccount: (catalogue.investmentRules || IE_INVESTMENT_RULES).investmentAccount
   });
 }
 
@@ -246,6 +265,8 @@ function buildResolvedRules(year, catalogue) {
     sft,
     sftBasis: sft.basis,
     capitalGainsTax: buildCapitalGainsRules(block, catalogue),
+    investmentFunds: buildInvestmentFundRules(catalogue),
+    dirt: block.dirt,
     // What the standing disclosures say the law has already fixed, read from
     // the schedules so the sentence moves when the schedules do.
     legislatedChanges: Object.freeze({

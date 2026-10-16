@@ -202,6 +202,180 @@ assert(housePurchaseBriefModule.activeScenario.housePurchaseScenarioOverrides.ta
 assert(housePurchaseBriefModule.generated.housePurchaseResult, 'Codex brief must include the runtime semantic house-purchase result.');
 assert(!JSON.stringify(housePurchaseBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied house-purchase calculations.');
 
+const futureCostFundBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Future Cost Fund Client',
+    order: ['fund'],
+    modules: [{
+      id: 'fund',
+      title: 'College',
+      generated: {
+        futureCostFundInputs: {
+          costTitle: 'College',
+          costKind: 'education',
+          startsInYears: 8,
+          durationYears: 4,
+          annualCostToday: 15000,
+          scenarios: [
+            { id: 'lump-sum', title: 'Lump sum today', lumpShare: 1 },
+            { id: 'start-later', title: 'Start in 3 years', lumpShare: 0, savingStartsInYears: 3 }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { futureCostFundScenarioId: new Map([['fund', 'start-later']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const futureCostFundBriefModule = futureCostFundBrief.call.modules[0];
+assert(futureCostFundBriefModule.moduleKind === 'future-cost-fund', 'Codex brief must recognize a future cost fund module.');
+assert(futureCostFundBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the future cost fund projection.');
+assert(futureCostFundBriefModule.activeScenario.id === 'start-later', 'Codex brief must name the selected future cost fund case.');
+assert(!JSON.stringify(futureCostFundBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied future cost fund outputs.');
+
+const householdCashFlowBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Household Cash Flow Client',
+    order: ['cash'],
+    modules: [{
+      id: 'cash',
+      title: 'Household cash flow',
+      generated: {
+        householdCashFlowInputs: {
+          householdTaxStatus: 'married_or_civil_partners',
+          people: [
+            { id: 'niamh', age: 45, label: 'Niamh' },
+            { id: 'dara', age: 45, label: 'Dara' }
+          ],
+          income: [
+            { personId: 'niamh', type: 'employment', amount: 75000 },
+            { personId: 'dara', type: 'employment', amount: 75000 }
+          ],
+          outgoings: [
+            { id: 'mortgage', label: 'Mortgage', amount: 30000 },
+            { id: 'car', label: 'Car loan', amount: 6000 },
+            { id: 'living', label: 'Living costs', amount: 48000 }
+          ],
+          scenarios: [
+            { id: 'today' },
+            { id: 'clear-car', changes: [{ type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' }] }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { householdCashFlowScenarioId: new Map([['cash', 'clear-car']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const householdCashFlowBriefModule = householdCashFlowBrief.call.modules[0];
+assert(householdCashFlowBriefModule.moduleKind === 'household-cash-flow', 'Codex brief must recognize a household cash flow module.');
+assert(householdCashFlowBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the household cash flow projection.');
+assert(householdCashFlowBriefModule.activeScenario.id === 'clear-car', 'Codex brief must name the selected household cash flow case.');
+assert(!JSON.stringify(householdCashFlowBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied household cash flow outputs.');
+
+const protectionGapBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Protection Gap Client',
+    order: ['gap'],
+    modules: [{
+      id: 'gap',
+      title: 'Protection gap',
+      generated: {
+        protectionGapInputs: {
+          householdLabel: 'Niamh and Dara, both 45',
+          people: [
+            { id: 'niamh', label: 'Niamh', takeHome: 57000 },
+            { id: 'dara', label: 'Dara', takeHome: 45000 }
+          ],
+          needed: 96000,
+          savings: 60000,
+          scenarios: [
+            { id: 'today' },
+            { id: 'niamh-cannot-work', event: { type: 'cannotWork', personId: 'niamh', statePayment: 13000 } }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { protectionGapScenarioId: new Map([['gap', 'niamh-cannot-work']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const protectionGapBriefModule = protectionGapBrief.call.modules[0];
+assert(protectionGapBriefModule.moduleKind === 'protection-gap', 'Codex brief must recognize a protection gap module.');
+assert(protectionGapBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the protection gap projection.');
+assert(protectionGapBriefModule.activeScenario.id === 'niamh-cannot-work', 'Codex brief must name the selected protection gap case.');
+assert(!JSON.stringify(protectionGapBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied protection gap outputs.');
+
+const rentalKeepOrSellBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Rental Client',
+    order: ['rental'],
+    modules: [{
+      id: 'rental',
+      title: 'Rental keep or sell',
+      generated: {
+        rentalKeepOrSellInputs: {
+          rentPerYear: 18000,
+          loanRepaymentsPerYear: 13000,
+          runningCostsPerYear: 2500,
+          taxOnRentalProfitPerYear: 3700,
+          salePrice: 320000,
+          sellingCosts: 6000,
+          loanBalance: 180000,
+          taxOnGain: 21000
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { rentalKeepOrSellScenarioId: new Map([['rental', 'sell']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const rentalKeepOrSellBriefModule = rentalKeepOrSellBrief.call.modules[0];
+assert(rentalKeepOrSellBriefModule.moduleKind === 'rental-keep-or-sell', 'Codex brief must recognize a rental keep or sell module.');
+assert(rentalKeepOrSellBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the rental keep or sell projection.');
+assert(rentalKeepOrSellBriefModule.activeScenario.id === 'sell', 'Codex brief must name the selected rental case.');
+assert(!JSON.stringify(rentalKeepOrSellBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied rental outputs.');
+
+const homeTradeDownBrief = buildCodexVideoBrief({
+  session: {
+    clientName: 'Home Client',
+    order: ['home'],
+    modules: [{
+      id: 'home',
+      title: 'Home trade down',
+      generated: {
+        homeTradeDownInputs: {
+          homeValue: 650000,
+          mortgageBalance: 280000,
+          currentAnnualRepayments: 30000,
+          sellingCosts: 15000,
+          buyingCosts: 12000,
+          newLoanTermYears: 15,
+          newLoanAnnualRate: 0.04,
+          baseScenarioId: 'stay',
+          scenarios: [
+            { id: 'stay', kind: 'stay' },
+            { id: 'repay-18000', kind: 'move', annualRepayment: 18000 },
+            { id: 'repay-12000', kind: 'move', annualRepayment: 12000 }
+          ]
+        },
+        outputs: { columns: ['Metric', 'Value'], rows: [['MODEL-SUPPLIED', 999999999]] }
+      }
+    }]
+  },
+  activeScenarios: { homeTradeDownScenarioId: new Map([['home', 'repay-18000']]) },
+  now: '2026-07-12T12:00:00.000Z'
+});
+const homeTradeDownBriefModule = homeTradeDownBrief.call.modules[0];
+assert(homeTradeDownBriefModule.moduleKind === 'home-trade-down', 'Codex brief must recognize a home trade down module.');
+assert(homeTradeDownBriefModule.calculationStatus === 'resolved', 'Codex brief must recompute the home trade down projection.');
+assert(homeTradeDownBriefModule.activeScenario.id === 'repay-18000', 'Codex brief must name the selected home case.');
+assert(!JSON.stringify(homeTradeDownBriefModule.generated).includes('MODEL-SUPPLIED'), 'Codex brief must replace model-supplied home trade down outputs.');
+
 assert(brief.version === CODEX_VIDEO_BRIEF_VERSION, 'Brief version mismatch.');
 assert(brief.reviewRequired === true, 'Brief must require review.');
 assert(brief.delivery.requiredFiles.includes('quality-review.md'), 'Brief must require a quality review file.');

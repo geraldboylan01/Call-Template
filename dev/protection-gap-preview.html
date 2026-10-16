@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Protection gap module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. Resize the window, or
+         use ?width=390, to see the buttons move from a rail to a row to a grid
+         and the type step down. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #070c10;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 72px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1920px; margin: 0 auto; }
+      #params { color: #a9b5bd; font: 13px/1.5 system-ui; margin: 0 0 18px; }
+      #params a { color: #6aa7c8; }
+    </style>
+  </head>
+  <body>
+    <p id="params"></p>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildProtectionGapModule } from '../js/protection_gap_module.js';
+
+      const params = new URLSearchParams(location.search);
+      const preset = params.get('preset') || 'sample';
+      const caseId = params.get('case') || null;
+      const width = Number(params.get('width')) || null;
+
+      // The sample household, exactly as the design frames were drawn.
+      const sample = {
+        householdLabel: 'Niamh and Dara, both 45',
+        people: [
+          { id: 'niamh', label: 'Niamh', takeHome: 57000 },
+          { id: 'dara', label: 'Dara', takeHome: 45000 }
+        ],
+        needed: 96000,
+        savings: 60000,
+        scenarios: [
+          { id: 'today' },
+          { id: 'niamh-cannot-work', event: { type: 'cannotWork', personId: 'niamh', statePayment: 13000 } },
+          { id: 'dara-cannot-work', event: { type: 'cannotWork', personId: 'dara', statePayment: 13000 } },
+          {
+            id: 'niamh-died',
+            event: {
+              type: 'dies',
+              personId: 'niamh',
+              survivorsPension: 13500,
+              neededAfter: 60000,
+              neededBecause: ['mortgageCleared', 'livingCostsLower']
+            }
+          }
+        ]
+      };
+
+      const presets = {
+        // The four sample cases: 19 months, 28 months, beyond three years.
+        sample,
+        // One person: a death is not offered, and the base sentence changes.
+        'one-person': {
+          householdLabel: 'Ann',
+          people: [{ id: 'ann', label: 'Ann', takeHome: 50000 }],
+          needed: 62000,
+          savings: 35500,
+          scenarios: [
+            { id: 'base' },
+            { id: 'stops', event: { type: 'cannotWork', personId: 'ann', statePayment: 13000 } }
+          ]
+        },
+        // A gap and nothing to fill it with.
+        'no-savings': { ...sample, savings: 0 },
+        // Savings so large every gap is filled beyond the three years shown.
+        beyond: { ...sample, savings: 2000000 },
+        // Money in above what is needed in the base case; no gap at all.
+        'left-over': { ...sample, needed: 60000, scenarios: sample.scenarios.slice(0, 3) },
+        // Money in equals what is needed exactly: the amber "Tight" word.
+        tight: {
+          householdLabel: 'Ann and Bo',
+          people: [
+            { id: 'ann', label: 'Ann', takeHome: 30000 },
+            { id: 'bo', label: 'Bo', takeHome: 20000 }
+          ],
+          needed: 50000,
+          savings: 20000,
+          scenarios: [
+            { id: 'base' },
+            { id: 'bo-stops', event: { type: 'cannotWork', personId: 'bo', statePayment: 5000 } }
+          ]
+        },
+        // A lower need after a death with no reason given, and with one.
+        'need-lower': {
+          ...sample,
+          scenarios: [
+            sample.scenarios[0],
+            {
+              id: 'no-reason',
+              title: 'If Niamh died, no reason',
+              event: { type: 'dies', personId: 'niamh', survivorsPension: 13500, neededAfter: 70000 }
+            },
+            {
+              id: 'one-reason',
+              title: 'If Niamh died, one reason',
+              event: {
+                type: 'dies',
+                personId: 'niamh',
+                survivorsPension: 13500,
+                neededAfter: 70000,
+                neededBecause: ['mortgageCleared']
+              }
+            }
+          ]
+        },
+        // The longest names the payload allows, to see labels take a second row.
+        'long-names': {
+          householdLabel: 'Bartholomew-Alexander and Guinevere-Marguerite',
+          people: [
+            { id: 'a', label: 'Bartholomew-Alexander', takeHome: 61000 },
+            { id: 'b', label: 'Guinevere-Marguerite', takeHome: 52000 }
+          ],
+          needed: 120000,
+          savings: 85000,
+          scenarios: [
+            { id: 'base' },
+            { id: 'a-stops', event: { type: 'cannotWork', personId: 'a', statePayment: 14000 } },
+            { id: 'a-died', event: { type: 'dies', personId: 'a', survivorsPension: 14500, neededAfter: 70000, neededBecause: ['mortgageCleared'] } }
+          ]
+        },
+        // Seven-figure amounts.
+        large: {
+          householdLabel: 'Ann and Bo',
+          people: [
+            { id: 'a', label: 'Ann', takeHome: 1250000 },
+            { id: 'b', label: 'Bo', takeHome: 900000 }
+          ],
+          needed: 2400000,
+          savings: 3000000,
+          scenarios: [
+            { id: 'base' },
+            { id: 'a-stops', event: { type: 'cannotWork', personId: 'a', statePayment: 15000 } }
+          ]
+        },
+        // Two cases only: two buttons, not four.
+        two: { ...sample, scenarios: sample.scenarios.slice(0, 2) },
+        // One case: no buttons.
+        one: { ...sample, scenarios: sample.scenarios.slice(1, 2) }
+      };
+
+      const chosen = presets[preset] || presets.sample;
+      const names = Object.keys(presets);
+      document.getElementById('params').innerHTML = 'preset: '
+        + names.map((name) => (name === preset
+          ? `<strong>${name}</strong>`
+          : `<a href="?preset=${name}">${name}</a>`)).join(' · ')
+        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case'
+        + ' &nbsp;|&nbsp; <code>?width=390</code> holds the module at that width';
+
+      const mount = document.getElementById('mount');
+      if (width) mount.style.maxWidth = `${width}px`;
+
+      const module = buildProtectionGapModule({
+        rawInputs: chosen,
+        selectedCaseId: caseId,
+        widthHint: width
+      });
+      if (!module) {
+        mount.textContent = 'The payload could not be projected.';
+      } else {
+        mount.append(module);
+      }
+    </script>
+  </body>
+</html>

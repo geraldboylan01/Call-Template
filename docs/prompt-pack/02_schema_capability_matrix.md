@@ -27,6 +27,10 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `charts`
 - `pensionInputs`
 - `netRetirementInputs`
+- `collegeFundingInputs`
+- `futureCostFundInputs`
+- `protectionGapInputs`
+- `rentalKeepOrSellInputs`
 - `housePurchaseInputs`
 - `mortgageInputs`
 - `loanInputs`
@@ -80,6 +84,9 @@ Playbooks should only emit the subset they are responsible for.
 - Retirement: `generated.pensionInputs.rentalIncomeScenarios` holds at most 4 cases.
 - Net Retirement Cash Flow: `generated.netRetirementInputs.scenarios` holds at most 4 cases.
 - College Funding: `generated.collegeFundingInputs.scenarios` holds at most 4 cases, which is exactly what the at-home / away-from-home shorthand produces. Do not combine the shorthand with an explicit `scenarios` array.
+- Future Cost Fund: `generated.futureCostFundInputs.scenarios` holds 1 to 4 cases, enforced by the engine: a fifth is rejected with `generated.futureCostFundInputs.scenarios supports at most 4 cases; received 5.`
+- Protection Gap: `generated.protectionGapInputs.scenarios` holds 1 to 4 cases, enforced by the engine: a fifth is rejected with `generated.protectionGapInputs.scenarios supports at most 4 cases; received 5.` With more than one case, the base case is today and an event on it is refused.
+- Rental Keep or Sell: two fixed cases, `keep` and `sell`. A `scenarios` array is refused.
 - Case `id` values must be unique inside a module. A repeated id breaks case selection.
 - Every case carries its own fully recalculated figures. Nothing is inherited from the case before it.
 - An over-limit payload is rejected with a validation error naming the module and the case count, rather than rendering a partial set.
@@ -219,6 +226,60 @@ Playbooks should only emit the subset they are responsible for.
 - Shorthand at-home/away inputs are also supported: `atHomeAnnualCostTodayPerChild`, `awayAnnualCostTodayPerChild`, and `carSupportTodayPerChild`. These produce four standard scenarios, which fills the 4-case limit, so do not send them alongside an explicit `scenarios` array.
 - The runtime validates unique child ids, non-negative current ages, start age greater than current age, positive durations, non-negative inflation, and plain numeric money inputs.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables`, and `generated.charts`; the playbook should not hand-build those fields.
+
+## Future Cost Fund Support
+- Use `generated.futureCostFundInputs`. The only other `generated` key for this playbook is `summaryHtml`.
+- Runtime-supported keys:
+  - `costTitle`: string, 1 to 60 characters
+  - `costKind`: `"education"` or `"general"`, required, no default
+  - `startsInYears`: whole number, 1 to 40
+  - `durationYears`: whole number, 1 to 30
+  - `annualCostToday`: number greater than 0, in today's money
+  - `baseScenarioId`: optional, must match a case id
+  - `scenarios`: 1 to 4 cases
+- Each case supports `id` (required, unique), `title`, `description`, `lumpShare` (0 to 1, default 0) and `savingStartsInYears` (whole number, default 0, less than `startsInYears` unless `lumpShare` is 1). Any other case key is rejected.
+- Rates are central, never in the payload. `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` and `dirtRate` are each rejected with `generated.futureCostFundInputs.<field> is not accepted. Rates are set centrally in the Planéir assumptions.`
+- The runtime takes education costs at 4% a year and general costs at 2%, holds the fund in cash at 0.2% before DIRT with DIRT at 33% from the Irish tax catalogue, puts every flow at the start of a year, and solves each case's lump sum and yearly amount so the fund closes at zero in the last cost year.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables` and `generated.charts`, and draws its own screen; the playbook should not hand-build those fields.
+- Not modelled: money already set aside, a stated saving amount, investing the fund, grants, and more than one cost per module.
+
+## Protection Gap Support
+- Use `generated.protectionGapInputs` and nothing else. Do not send `summaryHtml`: the app writes the summary from the engine's own answers and replaces any summary sent with this module, on paste, on a summary sent on its own, on import and on load.
+- Runtime-supported keys:
+  - `householdLabel`: optional string, 1 to 60 characters
+  - `people`: 1 or 2 of `{ id, label, takeHome }`. `id` is lower case letters, numbers, `-` or `_`, and unique. `label` is 1 to 24 characters. `takeHome` is net per year in whole euros, 0 or more.
+  - `needed`: whole euros per year, greater than 0
+  - `savings`: whole euros, 0 or more
+  - `baseScenarioId`: optional, must match a case id. The default is the first case.
+  - `scenarios`: 1 to 4 cases
+- Each case supports `id` (required, unique), `title` (up to 40 characters; the app derives `Today`, `{Name} cannot work` or `If {Name} died` when it is left out), `description` and one `event`. Any other key is refused with `generated.protectionGapInputs.scenarios[i] (<title>): "<key>" is not a field.`
+- Events:
+  - `{ "type": "cannotWork", "personId", "statePayment" }`: `statePayment` is whole euros per year, greater than 0.
+  - `{ "type": "dies", "personId", "survivorsPension", "neededAfter"?, "neededBecause"? }`: needs two people. `survivorsPension` is whole euros per year, 0 or more. `neededAfter` must be lower than `needed`. `neededBecause` lists `mortgageCleared` and/or `livingCostsLower` and needs `neededAfter`.
+  - The person whose income stops must have a take-home above 0.
+- The wording limit is enforced on the way in:
+  - a key containing `cover`, `premium`, `policy`, `product`, `provider`, `insurer` or `quote`, at any level, is refused with `generated.protectionGapInputs.<key>: this screen shows the gap and the time, never a cover amount, a premium or a product.`
+  - a title, description, household line or person's name containing any of `we recommend`, `you should`, `best`, `ideal`, `optimal`, `p.a.`, `cover` (and `covers`, `covered`, `covering`, `coverage`), `premium`, `policy`, `policies`, a word starting `insur` or `quote`, `income protection`, `serious illness`, `he`, `she`, `his`, `her`, `hers`, `him`, `the household`, `the client`, or a provider (`Bank of Ireland`, `AIB`, `PTSB`, `Permanent TSB`, `Revolut`, `Zurich`, `Irish Life`, `Davy`) is refused with a message naming the field. The list is `PROTECTION_GAP_BANNED_PHRASES` and `PROTECTION_GAP_PROVIDER_NAMES` in `js/protection_gap_math.js`.
+  - `gap`, `months`, `spare` and `leftOver` are refused with `generated.protectionGapInputs.<key> is not accepted. It is calculated.`
+- The model: what comes in is the State payment or survivor's pension plus the take-home of everyone whose income has not stopped. The gap is what is needed less that, and savings fill it for savings x 12 / gap months, to the nearest month, shown as `beyond three years` from 36. No tax, interest or inflation.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables` and `generated.charts`, writes `generated.summaryHtml`, and draws its own screen.
+
+## Rental Keep or Sell Support
+- Use `generated.rentalKeepOrSellInputs`. The only other `generated` key for this playbook is `summaryHtml`.
+- Runtime-supported keys, all required except `baseScenarioId`:
+  - `rentPerYear`: number greater than 0
+  - `loanRepaymentsPerYear`: number, 0 or more, capital and interest together
+  - `runningCostsPerYear`: number, 0 or more
+  - `taxOnRentalProfitPerYear`: number, 0 or more, as stated
+  - `salePrice`: number greater than 0
+  - `sellingCosts`: number, 0 or more
+  - `loanBalance`: number, 0 or more, repaid from the sale
+  - `taxOnGain`: number, 0 or more, as stated
+  - `baseScenarioId`: optional, `"keep"` or `"sell"`, default `"keep"`
+- Any other key, `scenarios` included, is refused with `generated.rentalKeepOrSellInputs.<key> is not an input of this module.` A missing or negative figure is refused with `generated.rentalKeepOrSellInputs.<field> must be a number greater than 0.` or `... must be a number greater than or equal to 0.`
+- The model: Keep is the rent less loan repayments, running costs and tax on the rental profit. Sell is the sale price less selling costs, the loan and tax on the gain. Either may be negative. Amounts are shown to the nearest euro and the result shown is derived from the rows shown, so every row adds down.
+- No tax is calculated. Both tax figures arrive as stated.
+- The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables` and `generated.charts`, and draws its own screen; the playbook should not hand-build those fields.
 
 ## House Purchase Support
 - Use `generated.housePurchaseInputs`.
