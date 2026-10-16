@@ -66,7 +66,9 @@ function monthsByLogarithm(loan, monthly, annualRate) {
   if (monthlyRate === 0) {
     return loan / monthly;
   }
-  return -Math.log(1 - (loan * monthlyRate) / monthly) / Math.log(1 + monthlyRate);
+  // log1p, not log(1 - x) and log(1 + r): at a rate of 1e-16 the first is log(1)
+  // and the second divides by zero, which is the flaw the engine's loan had.
+  return -Math.log1p(-(loan * monthlyRate) / monthly) / Math.log1p(monthlyRate);
 }
 
 const toThousand = (amount) => Math.round(amount / 1_000) * 1_000;
@@ -160,13 +162,17 @@ check('the sample reaches the loans and budgets the design is drawn from', () =>
   assert.equal(343_000 + rounded(loan12), HOME_TRADE_DOWN_EXPECTED.homeBudget[2]);
 });
 
-check('a longer term, a higher rate, no interest and a one-year loan match too', () => {
+check('a longer term, a higher rate, no interest, a rate near zero and a one-year loan match too', () => {
   [
     { newLoanTermYears: 30, newLoanAnnualRate: 0.045 },
     { newLoanTermYears: 7, newLoanAnnualRate: 0.0725 },
     { newLoanTermYears: 20, newLoanAnnualRate: 0 },
     { newLoanTermYears: 1, newLoanAnnualRate: 0.04 },
-    { newLoanTermYears: 40, newLoanAnnualRate: 0.15 }
+    { newLoanTermYears: 40, newLoanAnnualRate: 0.15 },
+    // Rates so near zero that 1 + r is 1, or nearly: the loan is still the payments.
+    { newLoanTermYears: 15, newLoanAnnualRate: 1e-16 },
+    { newLoanTermYears: 15, newLoanAnnualRate: 1e-14 },
+    { newLoanTermYears: 12, newLoanAnnualRate: 1e-9 }
   ].forEach((patch, index) => {
     const payload = {
       ...HOME_TRADE_DOWN_SAMPLE,

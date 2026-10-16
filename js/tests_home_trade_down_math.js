@@ -496,6 +496,42 @@ export function runHomeTradeDownTests() {
     );
   }));
 
+  cases.push(runCase('A rate near zero gives the loan of no interest, not zero or a rounding of it', () => {
+    // 12,000 a year for 15 years is 180,000 with no interest, and a rate this
+    // small adds nothing a euro could show. The textbook form (1 - (1 + r)^-n) / r
+    // loses it: at 1e-16 the 1 + r is exactly 1 and the loan comes out as 0, and
+    // at 1e-14 only a few digits of the 1 - (1 + r)^-n survive.
+    const noInterest = loanFromAnnualRepayment(12_000, 15, 0);
+    assertEqual(noInterest, 180_000, 'no interest');
+    [1e-16, 1e-14, 1e-12, 1e-10, 1e-8].forEach((rate) => {
+      const loan = loanFromAnnualRepayment(12_000, 15, rate);
+      assertWithin(loan, 180_000, 1, `a rate of ${rate}`);
+      assert(loan <= noInterest + 1e-6, `a rate of ${rate} never gives more than no interest`);
+    });
+
+    // The rate steps are in order: more interest, never a larger loan.
+    let previous = noInterest;
+    [1e-16, 1e-14, 1e-12, 1e-10, 1e-8, 1e-6, 1e-4, 0.01, 0.04].forEach((rate) => {
+      const loan = loanFromAnnualRepayment(12_000, 15, rate);
+      assert(loan <= previous + 1e-6, `a rate of ${rate} is no larger than the one below it (${loan} vs ${previous})`);
+      previous = loan;
+    });
+
+    // Through the engine, in a payload.
+    [1e-16, 1e-14].forEach((rate) => {
+      const projection = computeHomeTradeDownProjection({
+        ...HOME_TRADE_DOWN_SAMPLE,
+        newLoanAnnualRate: rate,
+        scenarios: [{ id: 'stay', kind: 'stay' }, { id: 'a', kind: 'move', annualRepayment: 12_000 }],
+        baseScenarioId: 'stay'
+      });
+      const [, move] = projection.debug.cases;
+      assertWithin(move.loanUnrounded, 180_000, 1, `the loan at ${rate}`);
+      assertEqual(move.block2, 180_000, `the loan as shown at ${rate}`);
+      assertEqual(move.homeBudget, 343_000 + 180_000, `the home budget at ${rate}`);
+    });
+  }));
+
   cases.push(runCase('Engine text holds no banned phrase, "we", "us", "our" or "p.a."', () => {
     const projection = computeHomeTradeDownProjection(HOME_TRADE_DOWN_SAMPLE);
     const text = collectStrings({

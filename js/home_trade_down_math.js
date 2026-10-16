@@ -133,7 +133,13 @@ export function loanFromAnnualRepayment(annualRepayment, termYears, annualRate) 
   if (monthlyRate === 0) {
     return monthly * months;
   }
-  return (monthly * (1 - (1 + monthlyRate) ** -months)) / monthlyRate;
+  // 1 - (1 + r)^-n, written so that a rate near zero keeps its digits. Computed
+  // directly, 1 + r is exactly 1 at a rate of 1e-16 (the loan comes out as 0) and
+  // keeps only a few digits at 1e-14 (a loan of 191,847 where 180,000 is right).
+  // log1p and expm1 do not form 1 + r or subtract two numbers that are nearly
+  // equal, and they agree with the direct form at every ordinary rate.
+  const growth = -Math.expm1(-months * Math.log1p(monthlyRate));
+  return (monthly * growth) / monthlyRate;
 }
 
 /**
