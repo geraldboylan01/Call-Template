@@ -1,19 +1,19 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026 and revised the same evening, when the four decisions in section 4 were settled. This sets the order of work for the next stage of the app: the module screens that are already briefed, and the plan layer that sits over them. It is a plan, not a brief. Each step gets its own brief before it is built, and the plan pack brief (step B0) is the next one to write.
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 16 October 2026 after #72 merged. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; the plan-pack brief (B0) is next.
 
 ## 1. Where things stand
 
 | Piece | Where | State |
 |---|---|---|
-| Future cost fund | `main` (PR #55, merged 13 October) | Engine, central cash rate and DIRT built and tested. Screen and wiring not started. |
-| Household cash flow | `module/household-cash-flow` | Brief settled (D1 to D7). Nothing built. |
-| Goals and resources | `module/goals-and-resources` | Brief and pricing script, amended 13 October (evening) for decisions 1 and 4. Figures provisional until the script is rerun. Engine not built. |
-| Protection gap | `module/protection-gap` | Brief settled. Nothing built. The engine may start now; the screen waits for the future cost fund screen. |
-| Property decisions | `module/property-decisions` | Brief settled. Nothing built. Not in the first version of the plan. |
+| Future cost fund | `main` (#55 and #57) | Engine, screen, wiring, central cash rate and DIRT built and tested. Prompt-pack entry merged. |
+| Household cash flow | Engine, screen and wiring on `main`; short-state changes in #71 | #71 includes bounded charts, the negative-tax fix and phone layout checked with #72. Fresh review and CI precede its merge. Today's pension contributions remain a separate follow-up. |
+| Goals and resources | Engine on `main` (#58, #67, #70); timeline fields in #75; screen in draft #76 | Engine and earnings-cap fixes built. #75 adds year offsets and calendar-year ledger labels. #76 implements Proposal A, but app wiring and conditional relief footnotes remain to be finished. |
+| Protection gap | `main` (#61, #65); zero-payment extension in #77 | Engine, screen, wiring and prompt-pack entry built. #77 allows a confirmed €0 State payment and records sourced Irish payment references. Entitlement is not inferred from a maximum rate. |
+| Property decisions | Rental on `main` (#64, #66); home trade down on `main` (#72) | Both modules built and wired. Shared phone grids also include #73. Property chapters remain outside the first version of the plan. |
 | On `main` | | Mortgage, loan, pension, net retirement, college cost, cash reserve and balance sheet engines. The Irish tax engine, now with CGT on property. Household profile v1 with its adapters, module registry and orchestrator. Case packs and the presenter. |
 
-The four module branches hold briefs only. Each brief reaches `main` together with its module's code.
+Module briefs accompany the code. Open-PR references above are a dated snapshot, not additional dependencies on the B0 brief. Prompt-pack entries for cash flow and home trade down follow their final merged contracts; the protection-gap zero-payment entry follows #77.
 
 ## 2. What the first version does, end to end
 
@@ -75,7 +75,7 @@ The ledger's assumptions say this order in plain words. The goals module uses th
 Small changes to modules already briefed, needed before the plan can use them for a real household. None changes a design.
 
 - **Cash flow does not accept today's pension contributions.** Its Stage 1 household pays none. Niamh and Dara pay 5% and 4%. Now in its brief as the first follow-up after the screen lands.
-- **The red "short" state.** Cash flow rejects a case that leaves less than nothing (its D3) until the short state is designed, and the goals frames wait for the same state. It must land before the plan view, because routes are compared against a current position that is usually short. One Claude Design task covers both modules.
+- **The red "short" state.** Designed and implemented in #71, including signed summary figures, a status based on the shown amount, bounded chart geometry and the narrow phone layout. Its merge is required before the plan view uses a short current position. No new design task is needed for that state.
 - **Protection reads cash flow in a plan.** `needed` maps to cash flow's outgoings without tax and pensions (`outgoings.statedTotal`), and `people[].takeHome` to `takeHome.byPerson[].takeHome`, which is marked `allocated` for a jointly assessed couple. `savings` is the cash the route leaves (decision 3). The field names stay as briefed.
 - **Goals reads cash flow in a plan.** `leftOverEachYear` becomes cash flow's `summary.cases[].leftOver.amount` for the base case. The goals brief already expects this.
 - **Each brief has its own sample household.** The golden plan pack is the first time every chapter sees one household (Niamh and Dara), so its figures will differ from every brief's sample. That is expected, not a defect.
@@ -107,11 +107,11 @@ Two tracks run side by side. Track A builds the module screens, one Claude Code 
 
 | Step | What | Waits for | Who |
 |---|---|---|---|
-| D1 | The red "short" state for cash flow and goals | | Claude Design |
-| A1 | Future cost fund screen and wiring. It sets the wiring pattern the other modules copy. | | Future cost fund chat |
-| A2 | Household cash flow engine now; its screen after A1; then today's pension contributions; then lifting the D3 rejection after D1 | A1 for wiring, D1 for the lift | Cash flow chat |
-| A3 | Protection gap engine now; its screen after A1 | A1 for the screen | Protection chat |
-| A4 | Goals and resources: merge `main`, apply the 13 October changes, rerun the script; then the engine; then the screen | D1 for the screen | Goals chat |
+| D1 | Red "short" state designed; cash flow implementation in #71 and goals drawing in #76 | Merge #71; finish goals integration | Module work |
+| A1 | Future cost fund screen and wiring complete on `main`; its updated wiring list remains the pattern | Complete | Future cost fund module |
+| A2 | Cash flow engine, screen and wiring complete; merge #71, then add today's pension contributions in its own change | Clean final review and CI for #71; contribution input contract | Cash flow module |
+| A3 | Protection gap complete; confirmed zero-payment extension in #77 | Clean review and CI for #77 | Protection module |
+| A4 | Goals engine complete; merge #75, retarget #76 to `main`, finish app wiring and conditional relief footnotes, then review the screen | #75 for timeline fields; screen wiring checks | Goals module |
 | P | Prompt pack entries for each module, from its contract summary (section 8) | Each module merged | Claude |
 | B0 | Plan pack v1: format, validator, compiler for the modules on `main`, and `check:plan-pack` | | Plan chat |
 | B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | B0 and the A4 engine. Left over is stated until A2 lands. | Plan chat |
@@ -134,7 +134,7 @@ Every new module needs its place in `docs/prompt-pack/`, so an author can write 
 - **The module chats do not touch `docs/prompt-pack/`.** Their briefs already say so.
 - **Consumer routing stays off.** Playbooks carry a `planeir-planning-module` marker that feeds `js/planning/playbook_manifest.generated.js`. A new module's playbook leaves that marker out until the module has a registry entry and an adapter (B2), so the consumer pipeline never routes to a module it cannot run.
 
-Order, by when each module lands: future cost fund first, then household cash flow, protection gap, goals and resources, and the two property modules.
+Already merged: future cost fund, protection gap and rental keep or sell. Next: household cash flow and home trade down once #71 and #72 are merged, plus the protection-gap zero-payment contract after #77. Goals and resources follows the finished screen integration. Keep documentation updates separate from module-code changes.
 
 ## 9. The plan pack and the ledger, in outline
 
@@ -175,6 +175,6 @@ The B0 and B1 briefs set these out in full. The shape, for review:
 
 ## 10. Next
 
-1. Paste the replies into the four module chats (future cost fund, cash flow, protection, goals). Property waits for the future cost fund screen.
-2. Claude writes the B0 brief (plan pack v1) for a new plan chat, and the Claude Design prompt for the red "short" state.
-3. Claude adds the future cost fund to the prompt pack once its screen merges.
+1. Complete the remaining module reviews and merges above. Keep the pension-contribution input contract and goals wiring as explicit follow-ups.
+2. Write the B0 brief for plan pack v1: its format, validator, module compiler and `check:plan-pack`. This can proceed in parallel with module integration using the engines already on `main`.
+3. Add prompt-pack entries from final merged module contracts. B1 supplies the resource ledger; B2 adds profile adapters; B3 supplies the route-linked plan view. None is implied to be built by merging this plan.
