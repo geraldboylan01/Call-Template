@@ -5,9 +5,7 @@
   "description": "Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "question"
-  ],
+  "required": [],
   "properties": {
     "topics": {
       "type": "array",

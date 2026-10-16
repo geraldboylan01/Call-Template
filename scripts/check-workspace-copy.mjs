@@ -78,6 +78,7 @@ assert.match(privacy, /until you delete it/);
 assert.match(await source('plan/privacy-legacy.html'), /seven days/);
 assert.match(await source('privacy/legacy-applications.html'), /12 months/);
 assert.equal(JSON.parse(await source('agents/application.schema.json')).properties.household.properties.age.minimum, 18);
+assert.ok(!JSON.parse(await source('agents/application.schema.json')).required.includes('question'), 'Demo goals must not block access requests.');
 const openapi = JSON.parse(await source('agents/openapi.json'));
 assert.deepEqual(openapi.paths, {}, 'Do not advertise the old case-video submission API as a workspace API');
 

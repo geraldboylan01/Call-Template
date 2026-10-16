@@ -36,6 +36,7 @@ try {
     await page.screenshot({ path: `${output}/homepage-${name}.png`, fullPage: true });
     await page.goto(`${server.origin}/apply/`);
     await page.waitForFunction(() => !document.getElementById('applySubmit').disabled);
+    assert.equal(await page.locator('#f-question').getAttribute('required'), null);
     await page.fill('#applyName', `${name} Person`); await page.fill('#applyEmail', email); await acknowledge(page);
     // No goal or financial figure is needed for a public request.
     await page.click('#applySubmit'); await page.waitForFunction(() => document.getElementById('applyStatus').textContent.includes('Your demo request is saved'));
@@ -44,8 +45,13 @@ try {
     await page.fill('#f-question', 'Compare the routes to my goals'); await page.click('#applySubmit');
     await page.waitForFunction(() => document.getElementById('applyStatus').textContent.includes('Your changes are saved'));
     await page.reload(); await page.waitForFunction(() => document.getElementById('f-question').value === 'Compare the routes to my goals');
+    await page.fill('#f-question', 'Unfinished edits stay on this device');
+    await page.waitForFunction(() => localStorage.getItem('planeir.workspace.draft.v1').includes('Unfinished edits stay on this device'));
+    await page.reload(); await page.waitForFunction(() => document.getElementById('f-question').value === 'Unfinished edits stay on this device');
     await page.screenshot({ path: `${output}/saved-${name}.png`, fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    page.once('dialog', dialog => dialog.accept()); await page.click('#applyClear');
+    assert.equal(runtime.sql.prepare('SELECT COUNT(*) AS n FROM demo_requests WHERE id=?').get(id).n, 1, 'Clearing the browser must retain server information.');
 
     const device2 = await context(viewport), restored = await device2.newPage();
     await restored.goto(latestLink(email));

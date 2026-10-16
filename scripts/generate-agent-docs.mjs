@@ -138,6 +138,7 @@ async function main() {
   const outputs = new Map();
   const informationSchema = { ...buildApplicationJsonSchema(), title: 'Planéir workspace information', description: 'Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.' };
   delete informationSchema.properties.videoName;
+  informationSchema.required = (informationSchema.required || []).filter(field => field !== 'question');
   informationSchema.properties.anythingElse.description = 'Anything else you want to add.';
   informationSchema.properties.mortgage.properties.lender.description = 'Lender. Optional; its name is not needed for the comparison.';
   informationSchema.properties.household.properties.age = { type: 'integer', minimum: 18, maximum: 100, description: 'Your age. A whole number from 18 to 100.' };
