@@ -2,11 +2,13 @@
 
 App change brief for Claude Code. Paste this whole file as the prompt. Suggested repo path: `docs/property-decisions-app-change.md`.
 
-Status: designs chosen (A1 "cut down" and B1 "two blocks") and decisions made, not started. Written 13 October 2026, decisions recorded the same day. The build waits for the future cost fund screen to land on `main`, because it sets the wiring pattern (see Before you write code).
+Status: both modules built and wired. The rental merged as #64 and #66; the home is the second pull request. Written 13 October 2026, decisions recorded the same day, build status updated 15 October 2026.
 
 ## Build status
 
-**The rental keep or sell is built and wired.** It follows the "Wiring a new engine module" list in `docs/future-cost-fund-app-change.md`, rows 4 to 21, and it was opened as its own pull request, ahead of the home. The home trade down is not on this branch: its engine, view, module and styles are on `module/property-decisions` and wait for this to merge, after which they are wired the same way.
+**Both modules are built and wired.** Each follows the "Wiring a new engine module" list in `docs/future-cost-fund-app-change.md`, rows 4 to 21, and each was opened as its own pull request, the rental first. The rental's build status is the first section below and the home's the second.
+
+### Rental keep or sell
 
 | | Rental |
 |---|---|
@@ -33,6 +35,40 @@ Differences from this brief as first written:
 - **The module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes. Wide from 1200, stacked and capped at 720 under that. It was looked at in the real DOM at 1366 (wide), 1024 and 844 (stacked): no label past its chart, no sideways scroll.
 - **Styles:** the selected button's name is at 800, the zero and headline lines stop behind names and labels, and the two buttons sit side by side on a phone.
 - **The Dev Panel example** is "Rental Property: Keep or Sell", with the sample figures.
+
+### Home trade down
+
+| | Home |
+|---|---|
+| Engine | `js/home_trade_down_math.js` |
+| View (words, geometry, label checks, no DOM) | `js/home_trade_down_view.js` |
+| Module (DOM, the 520ms clock, `presenterSelectScenario`) | `js/home_trade_down_module.js` |
+| Suites | engine 17, view 14, module 15, wiring 11, plus the reference calculator |
+| Check | `npm run check:home-trade-down` (also in `consumer-regression.yml` and `deploy-worker.yml`) |
+| Preview | `dev/home-trade-down-preview.html` (`?width=252` holds the module to a width) |
+| Styles | `.htd-` in `styles/base.css` |
+| Shared files touched | `js/state.js`, `js/module_pipeline.js`, `js/app.js`, `js/render.js`, `js/presenter_catalogue.js`, `js/video_scene.js`, `js/codex_video_brief.js`, `scripts/check-video-scene.mjs`, `scripts/check-codex-video-brief.mjs`, `package.json`, `styles/base.css` (one line) |
+
+Rows 1 to 3 do not apply: the home reads no central assumption and calculates no tax. The loan's term and rate are the client's own inputs (decision 3).
+
+The summary card is the AI-written one, as for the rental, under the prompt pack's usual summary rules. Only a module whose summary is written by its own engine (the protection gap) gets a read-only card. The video says the sentence the module wrote, as the rental's does.
+
+Decided for the video: three figures that add up, all as shown. Moving: the money from selling after buying costs, the new loan, and the home budget they make. Staying: your share of the home, the mortgage, and what the home is worth. What is still repaid and what is freed follow. The three that add up come first because a story shows only the first few.
+
+Differences from this brief as first written:
+
+- **What is shown adds down.** Each input is rounded on its own and every figure that depends on them is derived from the rounded figures: released and cash toward the home from the inputs as shown, the staying blocks to the home as shown, and freed as today's repayments as shown less repaid as shown, in the screen, the outputs table, the tables, the track, the sentence and the video. With cents in the inputs 18,000.60 repaid today and 6,000.40 on the new loan show 18,001, 6,000 and 12,001, not 12,000. The exact figures stay beside them (`repaid`, `freed`, `released`, `cashTowardHome`, and `debug.shown`).
+- **A sale that clears by under a euro is refused** on the figures as shown as well as the exact ones, so nothing is ever shown below nothing.
+- **Banned wording is checked in the normaliser.** A case title or description the payload supplies is refused with the engine's message if it says "we", "us" or "our", or recommends. The engine owns the list (`HOME_TRADE_DOWN_BANNED_PHRASES`) and the view's own scan uses it.
+- **The base case may be any case.** `baseScenarioId` is optional and defaults to the first case. The importer cuts a fifth case and keeps the base case among those kept, in place of the last, with a warning.
+- **A saved session that cannot be read clears the figures stored beside it** (assumptions, outputs, tables, charts), through `RUNTIME_OWNED_INPUT_KEYS`, so nothing stale shows as a generic analysis.
+- **Side by side from 1632 wide, not 1200.** The first block's label has to fit under the first block, and the smallest that block gets is a little over half of the bar. That needs a bar of about 840px beside a 380px year, so under 1632 the year sits under the home, in a chart capped at 720. The rental module still changes arrangement at 1200.
+- **Compact under a 400px chart (a module under 432px), which is every phone.** The app's mobile shell leaves about 252px for the module on a 320px phone, which is a 220px chart. The figures put their word beneath them in one font fitted to the chart, the two labels sit one above the other behind a swatch of their block, the year's rows put their name over their amount, and the note and the track note wrap to two lines. It was looked at in the real app at 1366 (stacked, 720 chart), 1024, 844, 390 (322 module, 290 chart) and 320 (252 module, 220 chart), over all four cases: no text past its chart, no two lines of text meeting, no sideways scroll.
+- **The generated grid's column shrinks on a phone.** Under 900px the column is `minmax(0, 1fr)`, not `1fr`. A `1fr` column will not go narrower than its widest card, so the outputs table grew it to 382px in a 252px slot and the module was laid out, and cut off, at 382. A table now scrolls inside its own wrapper. This is a shared line in `styles/base.css`.
+- **When the buying costs leave the first block too short to hold its label, the second label moves right** to clear it instead of meeting it. A first block of a sliver is checked.
+- **"A budget above the current home" is refused by the normaliser,** not only by the projection, so the paste validator catches it. It compares the budget as shown with today's home to the euro.
+- **The module's width, not the viewport's, picks the arrangement,** read from the module and re-laid-out when it resizes.
+- **The Dev Panel example** is "Home: Trade Down", with the sample.
 
 ## Context
 
@@ -341,13 +377,14 @@ Sample (the Dev Panel example, four cases exactly):
 
 ### Rounding
 
-The new loan is rounded to the nearest €1,000 for display (decision 4). The home budget shown is block 1 as shown plus the loan as shown. Money stated in the payload and the freed amounts are exact.
+The new loan is rounded to the nearest €1,000 for display (decision 4). Every other amount is shown to the euro, and what is shown adds up: each input is rounded on its own, and what depends on them is derived from the rounded figures. Released and cash toward the home are the inputs as shown; the home budget is block 1 as shown plus the loan as shown; staying, the two blocks add to the home as shown; and freed is today's repayments as shown less repaid as shown. The exact figures stay beside them in `debug`.
 
 ### Outputs
 
 `computeHomeTradeDownProjection(rawInputs)`: `assumptionsTable`, `outputsTable` (one row per case), `tables`, `charts`, `debug`.
 
-- `debug.cases[]`: `id`, `title`, `description`, `kind`, `annualRepayment`, `block1`, `block2`, `loanUnrounded`, `homeBudget`, `repaid`, `freed`.
+- `debug.cases[]`: `id`, `title`, `description`, `kind`, `annualRepayment`, `block1`, `block2`, `loanUnrounded`, `homeBudget`, `repaid`, `freed` (exact), `shownRepaid`, `shownFreed` (derived from the figures shown), `released`.
+- `debug.shown`: the inputs as shown and what follows from them (`homeValue`, `mortgageBalance`, `sellingCosts`, `buyingCosts`, `currentAnnualRepayments`, `released`, `cashTowardHome`).
 - `debug.assumptionsUsed`: the term and rate actually used and where they came from (the payload).
 - `charts` carries one ordinary chart (home budget by case) for the video summary.
 - `getHomeTradeDownCases(rawInputs)` returns `[{ id, title, description }]` for the presenter.
@@ -358,6 +395,7 @@ The new loan is rounded to the nearest €1,000 for display (decision 4). The ho
 - `generated.homeTradeDownInputs.scenarios[1] (Repay €18,000 a year): annualRepayment must be a number from 0 up to currentAnnualRepayments.`
 - `generated.homeTradeDownInputs.sellingCosts: selling would not clear the mortgage.`
 - `generated.homeTradeDownInputs.scenarios[2] (Repay €12,000 a year): the home budget is more than the current home. This module shows trading down.`
+- `generated.homeTradeDownInputs.scenarios[0].title ("What we can afford"): this screen shows what a repayment buys, never a recommendation, and speaks to you, never as "we", "us" or "our".` (also for a `description`)
 - Also: duplicate id, unknown case key, `baseScenarioId` not matching, `buyingCosts` more than the released amount, a rate or term out of range, a non-integer term.
 - The session importer in `js/state.js` treats `scenarios` like the other capped arrays: tolerate on the way in, cap with an import warning, never throw.
 - `homeTradeDownInputs` is mutually exclusive with the other engine keys and is cleared by a `videoSummary`, as above.
