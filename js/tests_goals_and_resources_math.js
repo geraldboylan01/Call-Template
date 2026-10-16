@@ -615,6 +615,66 @@ export function runGoalsAndResourcesTests() {
     assertEqual(sample.states[2].firstShortYear, 0, 'short from this year');
   }));
 
+  cases.push(runCase('Each goal says when it is first short, when money first reaches it, and when it is covered from', () => {
+    const offsets = (entry) => entry.states.map((goal) => [goal.firstShortYear, goal.firstMoneyYear, goal.coveredFromYear].map(String).join('/'));
+
+    // The sample, case 1 (years are offsets: 0 is this year). The first child is
+    // met every year. The second is short in years 0 to 7 and covered from 8.
+    // The mortgage gets nothing until year 8, part of it in 8 and 9, and is
+    // covered from 10. Retirement gets nothing until year 10, then some of it
+    // and never all of it.
+    assertEqual(offsets(projection().debug.cases[0]).join(' '), 'null/0/null 0/0/8 0/8/10 0/10/null', 'case 1');
+
+    // Never covered again: case 4's retirement is short from this year to the end.
+    assertEqual(offsets(projection().debug.cases[3]).join(' '), 'null/0/null null/0/null null/null/null 0/0/null', 'case 4');
+
+    // Covered this year, short later, and covered again: €14,500 left over.
+    const tight = computeGoalsAndResourcesProjection({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 14_500 }).debug.cases;
+    assertEqual(offsets(tight.find((entry) => entry.id === 'mortgage-then-college')).pop(), '1/0/8', 'short from year 1, covered again from 8');
+    assertEqual(offsets(tight.find((entry) => entry.id === 'college-today')).pop(), '6/0/15', 'short from year 6, covered again from 15');
+
+    // Nothing at all: not covered in any year, so no money ever reaches a goal.
+    const none = computeGoalsAndResourcesProjection({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 0 }).debug.cases[0];
+    assertEqual(offsets(none).join(' '), '0/null/null 0/null/null 0/null/null 0/null/null', 'with nothing left over');
+
+    // Plenty: never short, so nothing to recover from.
+    const plenty = computeGoalsAndResourcesProjection({ ...GOALS_AND_RESOURCES_SAMPLE, leftOverEachYear: 40_000 }).debug.cases[0];
+    assertEqual(offsets(plenty).join(' '), 'null/0/null null/0/null null/0/null null/0/null', 'with plenty');
+
+    // The later option carries them too.
+    const laterStates = projection().debug.cases[0].laterRetirement.states;
+    laterStates.forEach((goal) => {
+      assert('firstMoneyYear' in goal && 'coveredFromYear' in goal, `${goal.goal}: the later option carries the offsets`);
+    });
+
+    // Consistency, for every case of every household here: a goal covered from
+    // year N is fully met in that year and every year after it that it needs money.
+    const ledgerOf = (entry) => entry.ledger;
+    [projection().debug.cases, tight, none && [none], plenty && [plenty]].flat().forEach((entry) => {
+      entry.states.forEach((goal) => {
+        if (goal.coveredFromYear !== null) {
+          assert(goal.firstShortYear !== null && goal.coveredFromYear > goal.firstShortYear, `${entry.id} ${goal.goal}: recovery follows a shortfall`);
+          assert(goal.coveredFromYear < ledgerOf(entry).length, `${entry.id} ${goal.goal}: and is inside the ledger`);
+        }
+        if (goal.state === 'not') assertEqual(goal.firstMoneyYear, null, `${entry.id} ${goal.goal}: nothing ever reaches an uncovered goal`);
+        if (goal.state === 'covered') assertEqual(goal.firstShortYear, null, `${entry.id} ${goal.goal}: a covered goal is never short`);
+      });
+    });
+  }));
+
+  cases.push(runCase('The ledger table is headed by calendar years, so a client can read it', () => {
+    const rows = computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE).tables[0].rows;
+    assertEqual(rows.length, 20, 'a row for every year to the last goal');
+    assertEqual(rows[0][0], '2026', 'the first row is the calculation year, not "This year"');
+    assertEqual(rows[1][0], '2027', 'then the next');
+    assertEqual(rows[19][0], '2045', 'to the last');
+    // The calculation year can be given, and the table follows it.
+    const later = computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE, { calculationYear: 2030 }).tables[0].rows;
+    assertEqual(`${later[0][0]}/${later[19][0]}`, '2030/2049', 'for 2030');
+    const labels = computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE).tables.flatMap((table) => table.rows.map((row) => row[0]));
+    assert(labels.every((label) => /^\d{4}$/.test(label)), 'every label is a four-digit year');
+  }));
+
   cases.push(runCase('At the relief limit with the target out of reach, the notes beside an after-tax investment are carried', () => {
     const raw = { ...GOALS_AND_RESOURCES_SAMPLE, retirement: { retirementAge: 62, targetIncomeToday: 200_000 } };
     const { debug } = computeGoalsAndResourcesProjection(raw);

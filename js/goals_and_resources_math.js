@@ -877,8 +877,15 @@ function byHowMuchTheyChange(a, b) {
  *              cost (wage growth) or a later goal's start leaves short later
  *
  * `need` and `covered` are this year's, which is what the screen's picture
- * shows; `firstShortYear` is the first year (0 is this year) a goal is not
- * fully met, or null.
+ * shows. Three year offsets say when, with 0 as this year and a screen turning
+ * them into calendar years:
+ *
+ *  - `firstShortYear`   the first year the goal is not fully met, or null
+ *  - `firstMoneyYear`   the first active year any yearly money reaches it, or
+ *                       null if none does (including a goal paid in full today)
+ *  - `coveredFromYear`  the first year from which it is fully met in every year
+ *                       it still needs money, after having been short; null if
+ *                       it was never short, or is still short in its last year
  */
 function goalStates(inputs, { college, pension, ledger }) {
   const ordered = college.perChild
@@ -932,11 +939,16 @@ function goalStates(inputs, { college, pension, ledger }) {
       state = 'partly';
     }
     const { needs, ...rest } = entry;
+    const lastShort = short.length > 0 ? short[short.length - 1].year : null;
+    const recovered = lastShort === null ? undefined : active.find((row) => row.year > lastShort);
+    const funded = active.find((row) => row.got > 0);
     return {
       ...rest,
       need: needs[0],
       covered: gets[index][0],
       firstShortYear: short.length > 0 ? short[0].year : null,
+      firstMoneyYear: funded ? funded.year : null,
+      coveredFromYear: recovered ? recovered.year : null,
       state,
       stateWord: STATE_WORDS[state]
     };
@@ -1088,7 +1100,7 @@ function buildOutputsTable(cases, hasLater) {
   };
 }
 
-function buildTables(inputs, cases) {
+function buildTables(inputs, cases, year) {
   return cases.map((entry) => ({
     title: `${entry.words.title}: what you need each year`,
     columns: [
@@ -1100,7 +1112,9 @@ function buildTables(inputs, cases) {
       'Against what you have (€)'
     ],
     rows: entry.ledger.map((row) => [
-      row.year === 0 ? 'This year' : `Year ${row.year}`,
+      // Calendar years, so the table and the screen agree: a client cannot know
+      // that this year counts as year 0.
+      String(year + row.year),
       Math.round(row.mortgage),
       ...row.children.map((value) => Math.round(value)),
       Math.round(row.pension),
@@ -1211,7 +1225,7 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
   return {
     assumptionsTable: buildAssumptionsTable(inputs, { fundAssumptions: fundRates, year }),
     outputsTable: buildOutputsTable(cases, pensionLater !== null),
-    tables: buildTables(inputs, cases),
+    tables: buildTables(inputs, cases, year),
     charts: buildCharts(inputs, cases),
     debug: {
       inputs,
