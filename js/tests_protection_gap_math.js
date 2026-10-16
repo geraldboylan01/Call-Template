@@ -72,7 +72,7 @@ export const PROTECTION_GAP_EXPECTED = Object.freeze({
     'Niamh’s take-home stops and a survivor’s pension starts. You need €60,000, because your mortgage is cleared and your living costs drop.'
   ],
   footnote: 'Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. '
-    + 'State payments are as given and depend on each person’s PRSI record. '
+    + 'State payments are as given and depend on eligibility. '
     + 'When one income stops, the other person’s tax can change, so your take-home may differ from what is shown.'
 });
 
@@ -391,6 +391,30 @@ export function runProtectionGapTests() {
     assertEqual(solved.segments[0].amount, 0, 'the floor slot is there with nothing in it');
   }));
 
+  cases.push(runCase('No State payment is a valid cannot-work case, with the full gap and no payment announced', () => {
+    const raw = sampleWith([
+      { id: 'today' },
+      { id: 'no-payment', event: { type: 'cannotWork', personId: 'niamh', statePayment: 0 } }
+    ]);
+    const projection = computeProtectionGapProjection(raw);
+    const solved = projection.debug.cases[1];
+    assertEqual(solved.moneyIn, 45_000, 'only Dara’s take-home remains');
+    assertEqual(solved.gap, 51_000, 'the full shortfall');
+    assertEqual(solved.months, 14, 'savings fill the larger gap for 14 months');
+    assertEqual(solved.segments[0].amount, 0, 'the State payment segment has no width');
+    assertEqual(solved.sentence, 'Niamh’s take-home stops. You still need €96,000.', 'no payment is announced');
+    assert(protectionGapSummaryHtml(projection).includes('€51,000'), 'the generated summary uses the full shortfall');
+
+    const one = computeProtectionGapProjection({
+      people: [{ id: 'ann', label: 'Ann', takeHome: 50_000 }],
+      needed: 60_000, savings: 30_000,
+      scenarios: [{ id: 'today' }, { id: 'stops', event: { type: 'cannotWork', personId: 'ann', statePayment: 0 } }]
+    }).debug.cases[1];
+    assertEqual(one.moneyIn, 0, 'one person has no remaining income');
+    assertEqual(one.gap, 60_000, 'all spending must come from savings');
+    assertEqual(one.months, 6, 'savings last six months');
+  }));
+
   cases.push(runCase('A person with no take-home contributes nothing and is not counted as an earner', () => {
     const payload = {
       people: [{ id: 'a', label: 'Ann', takeHome: 0 }, { id: 'b', label: 'Bo', takeHome: 40_000 }],
@@ -444,8 +468,10 @@ export function runProtectionGapTests() {
       `${FIELD}.scenarios[0].event.type must be "cannotWork" or "dies".`, 'unknown event');
     assertThrows(run(make({ scenarios: [{ id: 'a', event: { type: 'cannotWork', personId: 'zed', statePayment: 1 } }] })),
       `${FIELD}.scenarios[0] (a): personId "zed" is not one of the people.`, 'unknown person');
-    assertThrows(run(make({ scenarios: [{ id: 'a', event: { type: 'cannotWork', personId: 'niamh', statePayment: 0 } }] })),
-      `${FIELD}.scenarios[0] (Niamh cannot work): statePayment must be a whole number of euros greater than 0.`, 'no State payment');
+    [-1, 0.5, null, undefined].forEach((statePayment) => {
+      assertThrows(run(make({ scenarios: [{ id: 'a', event: { type: 'cannotWork', personId: 'niamh', statePayment } }] })),
+        `${FIELD}.scenarios[0] (Niamh cannot work): statePayment must be a whole number of euros, 0 or more.`, 'invalid State payment');
+    });
     assertThrows(run(make({ scenarios: [{ id: 'a', event: { type: 'cannotWork', personId: 'niamh', statePayment: 1, survivorsPension: 1 } }] })),
       `${FIELD}.scenarios[0].event (a): "survivorsPension" is not a field.`, 'a field of the other event');
     assertThrows(run(make({ scenarios: [{ id: 'a', event: [{ type: 'cannotWork' }] }] })),
