@@ -421,7 +421,7 @@ test('Completed results remain available after AI-consent withdrawal', async () 
   await sleep(30);
   assert.equal(creates, 0);
   assert.equal(state.view, 'results');
-  assert.match(nodes.get('appRoot').textContent, /Your educational analysis/);
+  assert.match(nodes.get('appRoot').textContent, /Your financial picture/);
 });
 
 test('Type failures preserve the saved conversation without voice-only copy', async () => {

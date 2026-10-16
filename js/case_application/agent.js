@@ -31,7 +31,7 @@ import {
   setPath
 } from './schema.js';
 
-export const AGENT_REQUEST_FORMAT = 'planeir.agent-application.v1';
+const AGENT_REQUEST_FORMAT = 'planeir.agent-application.v1';
 const SITE_URL = 'https://planeir.ie';
 const API_URL = 'https://api.planeir.ie';
 const CONFIRMATION_DAYS = 7;

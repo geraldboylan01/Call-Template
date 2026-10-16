@@ -10,11 +10,12 @@ const DEPLOYED_HTML = [
   'app/clients.html', 'app/analytics.html', 'app/modules.html', 'app/access.html',
   'app/leads.html', 'app/video.html', 'plan/index.html', 'plan/privacy.html'
 ];
-// The video-first public pages. Each carries the site header, as does every
+// The public workspace pages and archived notices. Each carries the site header, as does every
 // generated case page under cases/<slug>/.
 const PUBLIC_PAGES = [
   'apply/index.html', 'apply/confirm/index.html', 'privacy/index.html',
-  'cases/index.html', 'for-ai-assistants/index.html'
+  'cases/index.html', 'for-ai-assistants/index.html', 'terms/index.html',
+  'apply/preparing/index.html', 'privacy/legacy-applications.html', 'plan/privacy-legacy.html'
 ];
 const BASE_HEADER_COUNT = 9;
 

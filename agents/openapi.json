@@ -1,141 +1,21 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Planeir case video applications",
-    "version": "1.0.0",
-    "description": "Apply, on a person’s behalf and with their agreement, for a free Planeir case video. Gerry Boylan, a Qualified Financial Adviser in Ireland, reads every application and explains some in short education videos, with names left out and figures rounded. Planeir is financial education, not financial advice, and does not recommend products. Nothing reaches Gerry until the person confirms from an email. Guide: https://planeir.ie/for-ai-assistants/",
-    "contact": {
-      "email": "hello@planeir.ie",
-      "url": "https://planeir.ie/for-ai-assistants/"
-    }
+    "title": "Planéir demo request form",
+    "version": "demo-v1",
+    "description": "No assistant submission operations are advertised. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request."
   },
-  "servers": [
-    {
-      "url": "https://api.planeir.ie"
-    }
-  ],
-  "paths": {
-    "/api/agent/applications/check": {
-      "post": {
-        "operationId": "checkCaseApplication",
-        "summary": "Check an application before sending it",
-        "description": "Returns the application as Gerry will read it, what could not be used, and questions that would still help. Stores nothing. Show the person the summary before sending: it is the only review they see.",
-        "x-openai-isConsequential": false,
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CheckRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "How the application reads.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request could not be read.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too many requests. Try again later.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/agent/applications": {
-      "post": {
-        "operationId": "sendCaseApplication",
-        "summary": "Send an application for the person to confirm",
-        "description": "Only after the person has seen the summary and agreed. Planeir emails them a Confirm button; nothing reaches Gerry until they press it. The button works for 7 days.",
-        "x-openai-isConsequential": true,
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApplicationRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Waiting for the person to confirm by email.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SendResult"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Something required is missing, such as consent, the email address or the question.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too many applications for this email address or from this connection today.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Applications are not open right now.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  },
+  "paths": {},
   "components": {
     "schemas": {
-      "Application": {
-        "title": "Planeir case video application",
-        "description": "The application format planeir.application.v1. Only \"question\" is required. Leave out anything the person does not know, or list its path in \"unsure\". Use plain numbers for money (35000), percentages (4.2) and years (22). Planeir is financial education from Gerry Boylan, a Qualified Financial Adviser in Ireland. It is not financial advice.",
+      "WorkspaceInformation": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://planeir.ie/agents/application.schema.json",
+        "title": "Planéir workspace information",
+        "description": "Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.",
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "question"
-        ],
+        "required": [],
         "properties": {
           "topics": {
             "type": "array",
@@ -158,7 +38,7 @@
           "question": {
             "type": "string",
             "maxLength": 2000,
-            "description": "What do you want to understand. For example: should we overpay the mortgage or pay more into our pensions?. Text, up to 2000 characters. Never published.",
+            "description": "What do you want to understand. For example: how would overpaying the mortgage compare with increasing pension contributions?. Text, up to 2000 characters. Never published.",
             "minLength": 1
           },
           "upcoming": {
@@ -174,7 +54,7 @@
           "worries": {
             "type": "string",
             "maxLength": 1000,
-            "description": "What worries you most. Optional. Tell Gerry what is on your mind. Text, up to 1000 characters. Never published."
+            "description": "What worries you most. Optional. Describe what is on your mind. Text, up to 1000 characters. Never published."
           },
           "household": {
             "type": "object",
@@ -183,9 +63,9 @@
             "properties": {
               "age": {
                 "type": "integer",
-                "minimum": 16,
+                "minimum": 18,
                 "maximum": 100,
-                "description": "Your age. A whole number from 16 to 100."
+                "description": "Your age. A whole number from 18 to 100."
               },
               "partner": {
                 "type": "string",
@@ -426,7 +306,7 @@
               "lender": {
                 "type": "string",
                 "maxLength": 60,
-                "description": "Lender. Never shown in videos. Text, up to 60 characters. Read when home.status is \"mortgage\". Never published."
+                "description": "Lender. Optional; its name is not needed for the comparison."
               }
             }
           },
@@ -752,12 +632,7 @@
           "anythingElse": {
             "type": "string",
             "maxLength": 2000,
-            "description": "Anything else Gerry should know. Text, up to 2000 characters. Never published."
-          },
-          "videoName": {
-            "type": "string",
-            "maxLength": 60,
-            "description": "Name to use in the video. Optional. A made-up name is fine. Leave it blank and Gerry will not use a name. Text, up to 60 characters. Never published."
+            "description": "Anything else you want to add."
           },
           "unsure": {
             "type": "array",
@@ -779,196 +654,6 @@
               ]
             },
             "description": "Sections the person confirmed do not apply: \"pensions\" (no pensions), \"loans\" (no loans), \"properties\" (no other property)."
-          }
-        }
-      },
-      "CheckRequest": {
-        "type": "object",
-        "required": [
-          "application"
-        ],
-        "properties": {
-          "application": {
-            "$ref": "#/components/schemas/Application"
-          }
-        }
-      },
-      "ApplicationRequest": {
-        "type": "object",
-        "required": [
-          "person",
-          "consent",
-          "application"
-        ],
-        "properties": {
-          "format": {
-            "type": "string",
-            "enum": [
-              "planeir.agent-application.v1"
-            ]
-          },
-          "person": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "name",
-              "email"
-            ],
-            "properties": {
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 120,
-                "description": "The person’s name. A first name is fine."
-              },
-              "email": {
-                "type": "string",
-                "format": "email",
-                "maxLength": 160,
-                "description": "The person’s own email address. Planeir emails them a button to confirm the application."
-              }
-            }
-          },
-          "consent": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "videoPublication",
-              "educationOnly"
-            ],
-            "description": "Set both only after asking the person and hearing a clear yes. They confirm again with one button in an email.",
-            "properties": {
-              "videoPublication": {
-                "type": "boolean",
-                "enum": [
-                  true
-                ],
-                "description": "The person agrees Gerry may use their situation in a video published online, with their name removed and figures rounded, and that they will be emailed when it is live."
-              },
-              "educationOnly": {
-                "type": "boolean",
-                "enum": [
-                  true
-                ],
-                "description": "The person understands Planeir is education only. It is not financial advice and does not recommend products."
-              }
-            }
-          },
-          "application": {
-            "$ref": "#/components/schemas/Application"
-          },
-          "assistant": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "maxLength": 40,
-                "description": "The assistant sending this, for example ChatGPT or Claude."
-              }
-            }
-          }
-        }
-      },
-      "CheckResult": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean"
-          },
-          "ready": {
-            "type": "boolean",
-            "description": "True when the application has a question and can be sent."
-          },
-          "summary": {
-            "type": "string",
-            "description": "The application as Gerry will read it. Show it to the person before sending: the email only asks them to confirm."
-          },
-          "answered": {
-            "type": "integer"
-          },
-          "total": {
-            "type": "integer"
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "description": "The field the warning is about."
-                },
-                "message": {
-                  "type": "string",
-                  "description": "What happened, in plain words."
-                }
-              }
-            }
-          },
-          "stillUseful": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "question": {
-                  "type": "string",
-                  "description": "A question the assistant can ask its user."
-                },
-                "expects": {
-                  "type": "string",
-                  "description": "The form of answer that fits."
-                }
-              }
-            }
-          }
-        }
-      },
-      "SendResult": {
-        "type": "object",
-        "properties": {
-          "ok": {
-            "type": "boolean"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "waiting_for_confirmation"
-            ]
-          },
-          "message": {
-            "type": "string",
-            "description": "What to tell the person next."
-          },
-          "confirmBy": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "path": {
-                  "type": "string",
-                  "description": "The field the warning is about."
-                },
-                "message": {
-                  "type": "string",
-                  "description": "What happened, in plain words."
-                }
-              }
-            }
-          }
-        }
-      },
-      "Error": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
           }
         }
       }

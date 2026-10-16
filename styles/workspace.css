@@ -1,0 +1,40 @@
+.workspace-launch-note { max-width: 42rem; margin-top: 1.1rem; color: var(--text-muted, #b9c6d5); font-size: .9rem; line-height: 1.6; }
+.workspace-example { min-width: 0; margin: 0; align-self: center; }
+.workspace-example img { display: block; width: 100%; height: auto; border: 1px solid rgba(142, 210, 246, .3); border-radius: 18px; }
+.workspace-example figcaption { margin-top: .9rem; color: var(--text-muted, #b9c6d5); font-size: .9rem; line-height: 1.6; }
+.workspace-founder { max-width: 48rem; color: var(--text-muted, #b9c6d5); font-size: 1.1rem; line-height: 1.75; }
+.workspace-call { max-width: 55rem; }
+.workspace-call h2 { font-size: clamp(1.3rem, 2.5vw, 2rem); }
+.workspace-call p { margin-bottom: 1rem; }
+.workspace-notice { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid rgba(142, 210, 246, .3); border-radius: 14px; line-height: 1.65; }
+.workspace-notice h2 { margin-top: 0; font-size: 1.2rem; }
+.button:disabled { cursor: default; opacity: .65; }
+.workspace-processing { max-width: 42rem; margin: 4rem auto; }
+@media (max-width: 700px) { .workspace-founder { font-size: 1rem; } .workspace-notice { padding: 1rem; } }
+
+.page-content { display: grid; gap: 1rem; margin-top: 1.5rem; }
+.page-content .page-card { margin: 0; }
+.workspace-processing h1 { font-size: clamp(1.5rem, 4vw, 2.3rem); }
+
+.trust-row-section { width: min(calc(100% - 1.5rem), var(--landing-max-width)); margin: 0 auto; }
+
+/* Hidden private forms must stay hidden even when the layout uses CSS grid. */
+.apply-layout[hidden], [hidden].apply-card { display: none; }
+.demo-recovery { margin-top: 2rem; }
+.demo-recovery form { display: flex; align-items: end; flex-wrap: wrap; gap: 1rem; }
+.demo-recovery .field { flex: 1 1 16rem; }
+.demo-admin-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr); gap: 1.5rem; }
+.demo-admin-list { display: grid; gap: .75rem; max-height: 40rem; overflow: auto; }
+.demo-admin-list button { text-align: left; width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.demo-admin-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+.demo-admin-detail { overflow-wrap: anywhere; }
+.demo-admin-detail dt { font-weight: 600; margin-top: .75rem; }
+.demo-admin-detail dd { margin: .25rem 0; }
+.demo-admin-link { width: 100%; min-width: 0; }
+.demo-admin-header .site-header-actions { flex-wrap: wrap; }
+.demo-admin-actions .field { margin: 0; }
+#demoInvitationForm { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin-bottom: 1rem; }
+#demoInvitationForm .field { flex: 1 1 10rem; }
+@media (max-width: 700px) { .demo-admin-grid { grid-template-columns: 1fr; } }
+
+.demo-admin-actions .button-secondary, .demo-admin-list .button-secondary, .demo-recovery .button-secondary, .demo-admin-header .button-secondary { background: #142537; color: #eaf6ff; border-color: #426078; }

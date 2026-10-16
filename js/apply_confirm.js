@@ -50,7 +50,7 @@ function showConfirmed(name) {
   show({
     eyebrow: 'Confirmed',
     title: name ? `Thank you, ${name}.` : 'Thank you.',
-    body: 'Your application is confirmed and with Gerry. He reads every application. If yours is picked, he will email you when the video is live.',
+    body: 'Your earlier case-video application is confirmed. It is separate from the new private workspace and remains covered by the original application notice.',
     note: 'If you change your mind, email hello@planeir.ie and we will delete it.',
     action: { label: 'Watch the cases', href: '../../cases/' }
   });

@@ -5,9 +5,9 @@
  *
  * Writes, from js/case_application/:
  *
- *   agents/application.schema.json   JSON Schema for the application object
- *   agents/openapi.json              OpenAPI 3.1 for the check and send endpoints
- *   for-ai-assistants/index.html     the question guide and both examples,
+ *   agents/application.schema.json   JSON Schema for local workspace information
+ *   agents/openapi.json              OpenAPI 3.1 with no public submission operations
+ *   for-ai-assistants/index.html     the question guide and prefill example,
  *                                    between their marker comments
  *
  * Generated files are committed. `--check` fails when any is stale, so a
@@ -20,10 +20,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  AGENT_REQUEST_FORMAT,
   buildApplicationJsonSchema,
   buildFieldGuide,
-  buildOpenApiDocument,
   buildPrefillLink,
   prepareAgentApplication
 } from '../js/case_application/index.js';
@@ -35,7 +33,7 @@ const checkOnly = process.argv.includes('--check');
 // A made-up household, used only to show the format.
 const EXAMPLE_APPLICATION = {
   topics: ['mortgage', 'retirement'],
-  question: 'Should we overpay the mortgage or pay more into our pensions?',
+  question: 'How would overpaying our mortgage compare with increasing pension contributions?',
   upcoming: 'Our fixed rate ends in June 2027.',
   household: { age: 41, partner: 'yes', partnerAge: 39, married: 'yes', children: 'yes' },
   children: [{ age: 9 }, { age: 6 }],
@@ -74,10 +72,11 @@ function renderFieldGuide() {
     const meta = [`Shown for ${section.shownFor}.`];
     if (section.intro) meta.push(section.intro);
     if (section.none) meta.push(`If none apply, put "${section.none}" in <code>none</code>.`);
-    const rows = section.fields.map((field) => {
-      const notes = [escapeHtml(field.expects)];
+    const rows = section.fields.filter((field) => field.path !== 'videoName').map((field) => {
+      if (field.path === 'anythingElse') field = { ...field, question: 'Anything else you want to add?' };
+      const notes = [escapeHtml(field.path === 'household.age' ? 'A whole number from 18 to 100.' : field.expects)];
       if (field.when) notes.push(`Only when ${escapeHtml(field.when)}.`);
-      if (field.private) notes.push('Never published.');
+      if (field.private) notes.push('Private workspace information.');
       return `                  <tr>
                     <td>${escapeHtml(field.question)}</td>
                     <td><code>${escapeHtml(field.path)}</code></td>
@@ -115,18 +114,6 @@ function renderExampleLink() {
             <pre class="guide-code"><code>${escapeHtml(link)}</code></pre>`;
 }
 
-function renderExampleRequest() {
-  const request = {
-    format: AGENT_REQUEST_FORMAT,
-    person: { name: 'Aoife', email: 'aoife@example.com' },
-    consent: { videoPublication: true, educationOnly: true },
-    application: EXAMPLE_APPLICATION,
-    assistant: { name: 'ChatGPT' }
-  };
-  return `            <p>A request to send, for the same made-up household:</p>
-            <pre class="guide-code"><code>${escapeHtml(JSON.stringify(request, null, 2))}</code></pre>`;
-}
-
 function replaceBlock(html, name, content) {
   const start = `<!-- ${name}:start -->`;
   const end = `<!-- ${name}:end -->`;
@@ -149,13 +136,23 @@ async function readIfExists(file) {
 
 async function main() {
   const outputs = new Map();
-  outputs.set(path.join(ROOT, 'agents', 'application.schema.json'), `${JSON.stringify(buildApplicationJsonSchema(), null, 2)}\n`);
-  outputs.set(path.join(ROOT, 'agents', 'openapi.json'), `${JSON.stringify(buildOpenApiDocument(), null, 2)}\n`);
+  const informationSchema = { ...buildApplicationJsonSchema(), title: 'Planéir workspace information', description: 'Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.' };
+  delete informationSchema.properties.videoName;
+  informationSchema.required = (informationSchema.required || []).filter(field => field !== 'question');
+  informationSchema.properties.anythingElse.description = 'Anything else you want to add.';
+  informationSchema.properties.mortgage.properties.lender.description = 'Lender. Optional; its name is not needed for the comparison.';
+  informationSchema.properties.household.properties.age = { type: 'integer', minimum: 18, maximum: 100, description: 'Your age. A whole number from 18 to 100.' };
+  outputs.set(path.join(ROOT, 'agents', 'application.schema.json'), `${JSON.stringify(informationSchema, null, 2)}\n`);
+  outputs.set(path.join(ROOT, 'agents', 'openapi.json'), `${JSON.stringify({
+    openapi: '3.1.0',
+    info: { title: 'Planéir demo request form', version: 'demo-v1', description: 'No assistant submission operations are advertised. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request.' },
+    paths: {},
+    components: { schemas: { WorkspaceInformation: informationSchema } }
+  }, null, 2)}\n`);
 
   let guide = await readFile(GUIDE_FILE, 'utf8');
   guide = replaceBlock(guide, 'agent-field-guide', renderFieldGuide());
   guide = replaceBlock(guide, 'agent-example-link', renderExampleLink());
-  guide = replaceBlock(guide, 'agent-example-request', renderExampleRequest());
   outputs.set(GUIDE_FILE, guide);
 
   if (checkOnly) {
