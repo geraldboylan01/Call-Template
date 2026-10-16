@@ -23,7 +23,7 @@ import {
   GOALS_AND_RESOURCES_SAMPLE,
   runGoalsAndResourcesTests
 } from '../js/tests_goals_and_resources_math.js';
-import { computePensionProjection } from '../js/pension_math.js';
+import { PENSION_EARNINGS_CAP, computePensionProjection, normalizePensionInputs } from '../js/pension_math.js';
 import { computeTaxYear } from '../js/planning/tax/engine.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
@@ -230,11 +230,23 @@ check('pensions: the search ceiling is the room across the whole schedule, and a
   const stretched = computeGoalsAndResourcesProjection({ ...H, retirement: target });
   const base = stretched.debug.retirement.base;
   assert.equal(base.reachedCap, true);
-  // A person pays in until the year before they retire, at that year's age band,
-  // so their room is that band less what they pay in; the household's is the
-  // larger of its people's.
-  const ceiling = Math.max(...H.pensions.map((person) => reliefBand(target.retirementAge - 1) - person.personalPct));
-  near(base.extraPoints, ceiling, 1e-9, 'the ceiling is the last working year\'s band less the lower contribution');
+  // A person pays in until the year before they retire. In each year the age
+  // band's share of their salary up to the €115,000 earnings cap is relieved,
+  // which as a share of that year's salary is the band's rate under the cap and
+  // less above it, and the salary grows. Their room is the best year's share
+  // less what they pay in; the household's is the larger of its people's.
+  const wageGrowth = normalizePensionInputs(pensionPayload(target, 0)).wageGrowthRate;
+  const roomOf = (person) => {
+    let room = 0;
+    for (let year = 0; year < target.retirementAge - person.currentAge; year += 1) {
+      const salary = person.currentSalary * (1 + wageGrowth) ** year;
+      const share = reliefBand(person.currentAge + year) * Math.min(salary, PENSION_EARNINGS_CAP) / salary;
+      room = Math.max(room, share - person.personalPct);
+    }
+    return room;
+  };
+  const ceiling = Math.max(...H.pensions.map(roomOf));
+  near(base.extraPoints, ceiling, 1e-9, 'the ceiling is the best year\'s relievable share of salary less the lower contribution');
   near(base.capPointsAvailable, ceiling, 1e-9, 'and it is reported');
   assert.ok(base.gapLeftOver > 0, 'a gap is left');
 
