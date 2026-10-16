@@ -11325,6 +11325,33 @@ body.overview-has-selection .toast-host {
   line-height: 18px;
 }
 
+.hcf.is-compact .hcf-bar-head {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  white-space: normal;
+}
+
+.hcf.is-compact .hcf-bar-head-amount {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.hcf.is-compact .hcf-row-line {
+  display: block;
+  white-space: normal;
+}
+
+.hcf.is-compact .hcf-row-name,
+.hcf.is-compact .hcf-row-amount {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.hcf.is-compact .hcf-row-leader {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hcf * {
     transition: none !important;

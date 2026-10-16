@@ -297,6 +297,20 @@ function checkInvariants(projection, label) {
 export function runHouseholdCashFlowTests() {
   const cases = [];
 
+  cases.push(runCase('Income must remain above zero on the figures shown', () => {
+    [1, 49].forEach((amount) => {
+      const raw = {
+        people: [{ id: 'alex', age: 40 }],
+        income: [{ personId: 'alex', type: 'employment', amount }],
+        outgoings: [{ id: 'living', label: 'Living costs', amount: 100 }],
+        scenarios: [{ id: 'today' }]
+      };
+      let message = '';
+      try { computeHouseholdCashFlowProjection(raw); } catch (error) { message = error.message; }
+      assertEqual(message, `${FIELD}.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.`, `income of €${amount}`);
+    });
+  }));
+
   cases.push(runCase('Design fixture reproduces the frames: tax, pensions, car loan, left over, month and status', () => {
     const projection = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions());
     const expected = HOUSEHOLD_CASH_FLOW_DESIGN_EXPECTED;

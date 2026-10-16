@@ -602,6 +602,10 @@ export function normalizeHouseholdCashFlowInputs(raw) {
   }
 
   const { gross, earnings } = grossByPerson(people, income);
+  const incomeTotal = Object.values(gross).reduce((sum, value) => sum + value, 0);
+  if (roundToHundred(incomeTotal) === 0) {
+    throw new Error(`${FIELD}.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.`);
+  }
   people.forEach((person, index) => {
     if (person.statedTakeHome === null) {
       return;
@@ -657,7 +661,7 @@ export function normalizeHouseholdCashFlowInputs(raw) {
     todayContributions,
     grossByPerson: gross,
     earningsByPerson: earnings,
-    incomeTotal: Object.values(gross).reduce((sum, value) => sum + value, 0)
+    incomeTotal
   };
 }
 

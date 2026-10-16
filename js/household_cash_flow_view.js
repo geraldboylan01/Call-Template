@@ -47,6 +47,10 @@ const ANSWER_GAP = 48;
 /** Below the floor, past the deepest step, on the staircase, and on the bar. */
 const STAIRS_BAND_PAD = 20;
 const BAR_RESERVE_PAD = 16;
+// Maximum plotted spans, including the deepest shortfall. The scale stays the
+// same in every case; only an unusually deep shortfall reduces income's height.
+const STAIRS_MAX_SPAN = 600;
+const BAR_MAX_SPAN = 900;
 
 /** The pitch of the design frame (1728 of content, nine columns). */
 const REFERENCE_PITCH = 156;
@@ -304,8 +308,9 @@ export function layoutStairs(projection, { width } = {}) {
     // "€0" at the floor. It has to fit the 28px the module keeps either side.
     zero: clamp(18 * scale, 13, 18)
   };
-  const plotHeight = clamp(pitch * 2.9, 300, 450);
+  const preferredPlotHeight = clamp(pitch * 2.9, 300, 450);
   const income = model.income;
+  const plotHeight = Math.min(preferredPlotHeight, income * ((STAIRS_MAX_SPAN - STAIRS_BAND_PAD) / (income + model.deepest)));
   const perEuro = plotHeight / income;
   const amountGap = Math.round(fonts.amount + 14);
   const top = amountGap + 4;
@@ -616,11 +621,19 @@ export function checkStairsLayout(layout, model) {
 
 /* ------------------------------------------------------------------- the bar */
 
-/** The single bar for any width. One scale: 700px is the whole of income. */
+/** One scale for all cases; deep shortfalls share a fixed maximum span. */
 export function layoutBar(projection, { width } = {}) {
   const model = readCashFlowModel(projection);
   const contentWidth = Math.min(width, BAR.maxWidth);
-  const perEuro = BAR.height / model.income;
+  const compact = contentWidth < 400;
+  const headerHeight = compact
+    ? 20 * estimateLines('Your income before tax', 15, contentWidth, 500)
+      + 2 + 20 * Math.max(1, Math.ceil(estimateTextWidth(`${euroText(model.income)} a year`, 17, 700) / contentWidth))
+    : 20;
+  const headerRule = compact ? headerHeight + 12 : BAR.headerRule;
+  const barTop = headerRule + 20;
+  const barHeight = Math.min(BAR.height, model.income * ((BAR_MAX_SPAN - BAR_RESERVE_PAD) / (model.income + model.deepest)));
+  const perEuro = barHeight / model.income;
   // The costs run past the end of income, so the bar is as much taller as the
   // deepest case needs, in every case. Nothing when no case is short.
   const reserve = model.deepest > 0 ? Math.round(model.deepest * perEuro + BAR_RESERVE_PAD) : 0;
@@ -628,19 +641,21 @@ export function layoutBar(projection, { width } = {}) {
     mode: 'bar',
     width,
     contentWidth,
+    compact,
+    headerRule,
     offsetLeft: Math.max(0, (width - contentWidth) / 2),
     barWidth: BAR.width,
-    barHeight: BAR.height,
-    barTop: BAR.top,
+    barHeight,
+    barTop,
     labelLeft: BAR.labelLeft,
     labelWidth: contentWidth - BAR.labelLeft,
-    height: BAR.chartHeight + reserve,
+    height: barTop + barHeight + reserve + (BAR.chartHeight - BAR.top - BAR.height),
     perEuro,
     income: model.income,
     deepest: model.deepest,
     reserve,
     // Where income ends: a hairline across the bar once some case runs past it.
-    incomeEnd: BAR.top + BAR.height
+    incomeEnd: barTop + barHeight
   };
 }
 
@@ -685,7 +700,11 @@ export function barGeometry(layout, values) {
 export function placeBarRows(layout, specs) {
   const rows = specs.map((spec) => ({
     ...spec,
-    height: spec.hasDelta ? BAR.rowHeightWithDelta : BAR.rowHeight,
+    height: layout.compact
+      ? 20 * estimateLines(spec.label, 15, layout.labelWidth)
+        + 20 * Math.max(1, Math.ceil(estimateTextWidth(spec.amount, 17, 700) / layout.labelWidth))
+        + (spec.hasDelta ? 18 * estimateLines(spec.delta, 14, layout.labelWidth, 500) : 0)
+      : (spec.hasDelta ? BAR.rowHeightWithDelta : BAR.rowHeight),
     c: layout.barTop + spec.centre
   }));
   for (let index = 1; index < rows.length; index += 1) {
@@ -756,7 +775,9 @@ export function checkBarLayout(layout, model) {
       if (row.top + row.height > layout.barTop + layout.barHeight + layout.reserve + 12) {
         problems.push(`${entry.id}: row "${row.label}" is below the floor`);
       }
-      const need = estimateTextWidth(row.label, 15, 600) + 8 + estimateTextWidth(row.amount, 17, 700);
+      const need = layout.compact
+        ? Math.max(...row.label.split(/\s+/).map((word) => estimateTextWidth(word, 15, 600)))
+        : estimateTextWidth(row.label, 15, 600) + 8 + estimateTextWidth(row.amount, 17, 700);
       if (need > layout.labelWidth) {
         problems.push(`${entry.id}: row "${row.label}" does not fit ${Math.round(layout.labelWidth)}px`);
       }

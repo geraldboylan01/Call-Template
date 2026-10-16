@@ -645,7 +645,11 @@ Built as its own change on `household-cash-flow-short`, after the engine, screen
 
 **Tests.** Engine: the frames' sentences as golden strings under the design fixture, the three effect clauses that are not on a frame, a short case in each direction, status following the shown figure, and the sign of the month. Reference calculator: five short payloads (today short, tipped under, stated, assessed separately, and the design fixture) against the engine. View: every shape check also runs over three short shapes, plus the geometry below the floor and on the bar. Module: the colour follows the figure at every frame of a click that crosses the floor. Wiring: a short payload is accepted by the paste and kept by the session import. Video: a short case says "Short" and its size.
 
-**Looked at in a browser** at 1920, 1360 and 390 through the preview page (`?preset=short`, `?preset=tipped`, `?preset=shortdesign`). Not on a real phone.
+**Review follow-up (16 October).** Income that rounds to €0 is refused in the engine with `generated.householdCashFlowInputs.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.` This applies to the household total, using the screen's nearest-€100 rounding.
+
+The staircase's plotted span is at most 600px and the bar's at most 900px, including the shortfall padding. When income plus the deepest shortfall would exceed that span, income and every case use the same reduced scale. Ordinary cases keep their existing scale. Below 400px of chart width, the income header and each row stack their name above the amount; row heights include wrapping and the delta line. Node layout checks now include 252, 280 and 320px, plus 196px for a 252px module after its side padding.
+
+**Looked at in the real app** at 320 and 390, with the pending #72 grid declaration, through every short-fixture case: the modules measure 252 and 322px, no text runs past them, and the chart stays at the same position on a case change. Earlier preview checks covered 1920, 1360 and 390 (`?preset=short`, `?preset=tipped`, `?preset=shortdesign`). Not on a physical phone.
 
 ## When you finish
 

@@ -33,12 +33,12 @@ import {
  * THE WIDTHS. The staircase is checked at 1728 (the design frame), 1360 (the
  * widest the answer sits above), 1200, 976, 848 (the first width that takes the
  * staircase) and 832 (the narrowest it can be on, kept by the dead band). The
- * bar is checked at 560 (its widest), 390, 350 (a 390 phone less its sides) and
- * 320 (a 360 phone).
+ * bar is checked down to 196px: the content of a 252px module after its 28px
+ * side padding, including explicit 252, 280, 320 and 390px content checks.
  */
 
 const STAIRS_WIDTHS = Object.freeze([1728, 1360, 1200, 976, 848, 832]);
-const BAR_WIDTHS = Object.freeze([560, 390, 350, 320]);
+const BAR_WIDTHS = Object.freeze([560, 390, 350, 320, 280, 252, 196]);
 const CALCULATION = Object.freeze({ calculationYear: 2026 });
 
 function assert(condition, message) {
@@ -124,6 +124,37 @@ function project(shape) {
 
 export function runHouseholdCashFlowViewTests() {
   const cases = [];
+
+  cases.push(runCase('Outgoings ten times income fit a bounded drawing on one scale', () => {
+    const raw = {
+      people: [{ id: 'alex', age: 40 }],
+      income: [{ personId: 'alex', type: 'employment', amount: 10_000 }],
+      outgoings: [{ id: 'living', label: 'Living costs', amount: 100_000 }],
+      scenarios: [{ id: 'today' }, { id: 'clear', changes: [{ type: 'clearOutgoing', outgoingId: 'living' }] }]
+    };
+    [100_000, 1_000_000_000].forEach((outgoing) => {
+      raw.outgoings[0].amount = outgoing;
+      const projection = computeHouseholdCashFlowProjection(raw, CALCULATION);
+      const model = readCashFlowModel(projection);
+      const stairs = layoutStairs(projection, { width: 1728 });
+      const bar = layoutBar(projection, { width: 252 });
+      assert(Number.isFinite(stairs.height) && stairs.height <= 900, 'the staircase height is bounded');
+      assert(Number.isFinite(bar.height) && bar.height <= 1100, 'the phone chart height is bounded');
+      model.cases.forEach((entry) => {
+        const bars = stairsGeometry(stairs, entry.values).bars;
+        bars.forEach((mark) => {
+          assert(Number.isFinite(mark.top) && Number.isFinite(mark.height), 'finite staircase geometry');
+          assert(mark.top + mark.height <= stairs.namesTop, 'every mark fits above the names');
+        });
+        barGeometry(bar, entry.values).segments.forEach((segment) => {
+          assert(Number.isFinite(segment.top) && Number.isFinite(segment.height), 'finite bar geometry');
+          assert(segment.top + segment.raw <= bar.barHeight + bar.reserve + 0.01, 'every segment fits the track');
+        });
+        assert(Math.abs(bars[0].height - model.income * stairs.perEuro) < 0.01, 'income shares the staircase scale');
+        assert(Math.abs(bar.barHeight - model.income * bar.perEuro) < 0.01, 'income shares the bar scale');
+      });
+    });
+  }));
 
   cases.push(runCase('Fixed words: the muted line, the question and the income label are in the "you" voice', () => {
     const projection = project(SHAPES[0]);
@@ -325,7 +356,7 @@ export function runHouseholdCashFlowViewTests() {
       assert(Math.abs(left.top + left.raw - 700) < 0.01, `${entry.id}: what is left is the last piece`);
     });
     assertEqual(layout.reserve, 0, 'nothing is short, so no room is kept below the bar');
-    assertEqual(layout.height, 780, 'and the chart is its usual height');
+    assertEqual(layout.height, layout.barTop + 700 + 28, 'the header and footer contain the full bar');
   }));
 
   cases.push(runCase('Interpolation is exact at both ends, so a settled frame is the target', () => {
@@ -474,7 +505,7 @@ export function runHouseholdCashFlowViewTests() {
       const layout = layoutBar(projection, { width });
       const hang = model.deepest * layout.perEuro;
       assert(layout.reserve >= hang + 15 && layout.reserve <= hang + 17, `at ${width}: the reserve is the deepest case and 16`);
-      assertEqual(layout.height, 780 + layout.reserve, `at ${width}: the chart is that much taller, in every case`);
+      assertEqual(layout.height, layout.barTop + layout.barHeight + 28 + layout.reserve, `at ${width}: the chart includes its header and the deepest case`);
       assertEqual(layout.incomeEnd, layout.barTop + layout.barHeight, `at ${width}: income ends at 700`);
 
       model.cases.forEach((entry) => {

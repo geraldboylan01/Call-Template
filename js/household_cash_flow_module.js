@@ -309,6 +309,7 @@ export function buildHouseholdCashFlowModule({
     root.replaceChildren(...parts);
     root.classList.toggle('is-stairs', drawing === 'stairs');
     root.classList.toggle('is-bar', drawing === 'bar');
+    root.classList.toggle('is-compact', drawing === 'bar' && layout.compact);
   }
 
   /* ----------------------------------------------------------- staircase */
@@ -507,6 +508,7 @@ export function buildHouseholdCashFlowModule({
     const headAmount = el('span', 'hcf-bar-head-amount');
     barHead.append(headLabel, headAmount);
     const rule = el('div', 'hcf-bar-rule');
+    rule.style.top = px(layout.headerRule);
     rule.style.left = px(left);
     rule.style.width = px(layout.contentWidth);
     chartHost.append(barHead, rule);
