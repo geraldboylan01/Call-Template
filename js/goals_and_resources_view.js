@@ -130,13 +130,32 @@ function repaymentVerb(monthly, today) {
 
 const CHILD_ORDINALS = Object.freeze(['First', 'Second', 'Third', 'Fourth']);
 
+/** Proposal A: keep the state word and put dated coverage in the detail. */
+function goalTimeline(goal, year) {
+  if (goal.state !== 'partly') return '';
+  const calendarYear = (offset) => year + offset;
+  if (goal.covered <= 0.5) {
+    if (goal.coveredFromYear !== null) return `Nothing this year. Covered from ${calendarYear(goal.coveredFromYear)}.`;
+    if (goal.firstMoneyYear !== null) return `Nothing this year. Some of it from ${calendarYear(goal.firstMoneyYear)}, never all of it.`;
+    return 'Nothing this year.';
+  }
+  if (goal.covered < goal.need - 0.5) {
+    const part = `${eur(goal.covered)} of ${eur(goal.need)} a year`;
+    return goal.coveredFromYear === null ? part : `${part}. Covered from ${calendarYear(goal.coveredFromYear)}.`;
+  }
+  if (goal.firstShortYear !== null) {
+    return `Covered this year. Short from ${calendarYear(goal.firstShortYear)}`
+      + (goal.coveredFromYear === null ? '.' : `, covered again from ${calendarYear(goal.coveredFromYear)}.`);
+  }
+  return '';
+}
+
 /** One goal as the screen shows it: its block in the picture and its row in the list. */
 function buildGoal(goal, entry, debug, children) {
   const { need, covered } = goal;
-  // "€X of €Y a year" is this year's money, so it is only said when this year
-  // is itself part way: some covered and some not. A goal that is "partly
-  // covered" over the years with nothing this year, or all of it this year and
-  // a shortfall later, has no wording of its own yet and says only its state.
+  const timeline = goalTimeline(goal, debug.calculationYear);
+  // The relief-limit sentence remains explicit even when its yearly funding
+  // is covered later: finding the money does not make the target attainable.
   const partly = goal.state === 'partly' && covered > 0.5 && covered < need - 0.5
     ? `${eur(covered)} of ${eur(need)} a year`
     : '';
@@ -145,6 +164,8 @@ function buildGoal(goal, entry, debug, children) {
     need,
     covered,
     firstShortYear: goal.firstShortYear === undefined ? null : goal.firstShortYear,
+    firstMoneyYear: goal.firstMoneyYear,
+    coveredFromYear: goal.coveredFromYear,
     state: goal.state,
     stateWord: goal.stateWord
   };
@@ -166,7 +187,7 @@ function buildGoal(goal, entry, debug, children) {
       kind: 'college',
       shortName: ordinal,
       amount: need > 0.5 ? `${eur(need)} a year for ${years(child ? child.savingYears : 0)}` : 'Nothing a year',
-      detail: partly || detail
+      detail: timeline || detail
     };
   }
 
@@ -185,7 +206,7 @@ function buildGoal(goal, entry, debug, children) {
       kind: 'mortgage',
       shortName: GAR_WORDS.mortgage,
       amount,
-      detail: partly || detail
+      detail: timeline || detail
     };
   }
 
@@ -193,7 +214,7 @@ function buildGoal(goal, entry, debug, children) {
   // The money is then found and the target is not met, so "€X of €X a year"
   // would be nonsense: say what is true instead.
   const capped = entry.pension.reachedCap && entry.pension.gapLeftOver > 0.5;
-  let detail = partly || (need > 0.5 ? 'after income tax relief' : 'Already on track at what you pay in now');
+  let detail = timeline || (need > 0.5 ? 'after income tax relief' : 'Already on track at what you pay in now');
   if (capped) {
     detail = partly && covered < need - 0.5 ? `${partly}. ${GAR_WORDS.atTheLimit}` : GAR_WORDS.atTheLimit;
   }

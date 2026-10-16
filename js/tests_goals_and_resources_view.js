@@ -218,12 +218,9 @@ export function runGoalsAndResourcesViewTests() {
 
     assertEqual(rows('cash-stays').join('\n'), [
       'College, first child | €3,603 a year for 8 years | Covered | ',
-      'College, second child | €3,113 a year for 10 years | Partly covered | €2,397 of €3,113 a year',
-      // Met in later years, once the colleges stop, so "partly" over the years
-      // with nothing this year: no "€0 of €4,081 a year", whose wording is not
-      // settled, so the row says its state and what it is.
-      'Your mortgage cleared by 60 | €4,081 a year more | Partly covered | Repayment rises to €2,811 a month',
-      'You retire at 62 on €50,000 a year | €9,265 a year | Partly covered | after income tax relief'
+      'College, second child | €3,113 a year for 10 years | Partly covered | €2,397 of €3,113 a year. Covered from 2034.',
+      'Your mortgage cleared by 60 | €4,081 a year more | Partly covered | Nothing this year. Covered from 2036.',
+      'You retire at 62 on €50,000 a year | €9,265 a year | Partly covered | Nothing this year. Some of it from 2036, never all of it.'
     ].join('\n'), 'case 1');
 
     assertEqual(rows('college-today').join('\n'), [
@@ -264,6 +261,43 @@ export function runGoalsAndResourcesViewTests() {
     });
   }));
 
+  cases.push(runCase('Proposal A dates the timeline and preserves the three state words', () => {
+    const later = modelFor({ ...SAMPLE, leftOverEachYear: 14_500 });
+    const retirement = byId(later, 'mortgage-then-college').year.goals.at(-1);
+    assertEqual(retirement.detail, 'Covered this year. Short from 2027, covered again from 2034.', 'covered now, short later, then covered again');
+    const partial = byId(modelFor(SAMPLE), 'mortgage-then-college').year.goals.at(-1);
+    assertEqual(partial.detail, '€863 of €9,265 a year', 'some this year, never all');
+
+    const earlier = { ...SAMPLE, retirement: { retirementAge: 60, targetIncomeToday: 50_000 } };
+    const initial = projectGoalsAndResources(earlier).debug.cases.find((entry) => entry.id === 'college-today');
+    const projection = projectGoalsAndResources({ ...earlier, leftOverEachYear: initial.neededThisYear + 100 });
+    const goal = byId(buildGarModel(projection), 'college-today').year.goals.at(-1);
+    assertEqual(goal.coveredFromYear, null, 'no recovery before retirement');
+    assert(goal.firstShortYear > 0, 'covered now, short in a later year');
+    assertEqual(goal.detail, `Covered this year. Short from ${2026 + goal.firstShortYear}.`, 'short later and never covered again');
+
+    const shifted = buildGarModel(projectGoalsAndResources(SAMPLE, { calculationYear: 2030 }));
+    const mortgage = byId(shifted, 'cash-stays').year.goals.find((goal) => goal.kind === 'mortgage');
+    assertEqual(mortgage.detail, `Nothing this year. Covered from ${2030 + mortgage.coveredFromYear}.`, 'calendar dates follow the calculation year');
+    [later, shifted].forEach((model) => model.cases.forEach((entry) => entry.year.goals.forEach((goal) => {
+      assert(['Covered', 'Partly covered', 'Not covered'].includes(goal.stateWord), 'the approved state word stays unchanged');
+      assert(!/\bfrom year \d+/i.test(goal.detail), 'no zero-based year reaches the detail');
+    })));
+  }));
+
+  cases.push(runCase('The future support line is generic when several goals become short together', () => {
+    const model = modelFor({
+      ...SAMPLE,
+      spareCash: 380_000,
+      leftOverEachYear: 1_000,
+      retirement: { retirementAge: 62, targetIncomeToday: 1 },
+      children: [0, 1, 2, 3].map((age) => ({ id: `child-${age}`, title: `Child ${age}`, age }))
+    });
+    const entry = byId(model, 'mortgage-all-cash');
+    assert(entry.year.goals.filter((goal) => goal.firstShortYear === 15).length > 1, 'several goals become short in 2041');
+    assert(entry.support.endsWith('From 2041, your goals need more than you have left over.'), 'the generic approved sentence');
+  }));
+
   cases.push(runCase('The target sentence is only said at the relief limit, never for a goal short in a later year', () => {
     const later = modelFor(GAR_STRESS_SHAPES.find((shape) => shape.name === 'money left this year, short in a later year').payload);
     const entry = later.cases.find((candidate) => candidate.id === 'mortgage-then-college');
@@ -271,7 +305,7 @@ export function runGoalsAndResourcesViewTests() {
     assertEqual(entry.headline.text, 'You have €98 a year left over', 'not "to spare": a goal is short later');
     assertEqual(
       entry.support,
-      'Your goals need €14,402 a year against the €14,500 you have.',
+      'Your goals need €14,402 a year against the €14,500 you have. From 2027, your retirement saving costs more than you have left over.',
       'and the support line is the ordinary one, not the relief-limit sentence'
     );
     const retirement = entry.year.goals[entry.year.goals.length - 1];

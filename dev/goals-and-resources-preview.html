@@ -58,6 +58,8 @@
         'mortgage-ends': { ...sample, mortgage: { ...sample.mortgage, remainingTermYears: 9 } },
         // Everything covered, with money to spare in every case.
         spare: { ...sample, leftOverEachYear: 26000 },
+        // Money remains this year, but retirement saving is short from next year.
+        'later-short': { ...sample, leftOverEachYear: 14500 },
         // No spare cash: one case, and "your money now" is empty.
         'no-cash': { ...sample, spareCash: 0 },
         // No later retirement option: the quiet line is not drawn.

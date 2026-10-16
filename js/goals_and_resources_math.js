@@ -1054,7 +1054,7 @@ const TARGET_NOT_MET_TEXT = 'Your retirement target is not met, even at the most
  * of their own: the case title, the amount line, the headline and the support
  * line, and the later option's label, needed line and result.
  */
-function caseWords(inputs, entry) {
+function caseWords(inputs, entry, year) {
   const label = USE_LABELS[`${entry.use.mortgage}/${entry.use.college}`]
     || { id: 'cash-used-differently', title: 'Cash used a different way' };
   const mortgage = entry.mortgageLump > 0.5
@@ -1081,6 +1081,15 @@ function caseWords(inputs, entry) {
   const needs = `Your goals need ${eur(entry.neededThisYear)} a year `
     + `against the ${eur(inputs.leftOverEachYear)} you have`
     + `${freed > 0 ? `, counting the ${eur(freed)} a lower repayment frees` : ''}.`;
+  const laterShort = entry.states.filter((goal) => goal.firstShortYear !== null && goal.firstShortYear > 0);
+  const firstShort = laterShort.length > 0 ? Math.min(...laterShort.map((goal) => goal.firstShortYear)) : null;
+  const firstGoals = laterShort.filter((goal) => goal.firstShortYear === firstShort);
+  const futureSupport = state === 'left' && firstShort !== null && !atTheReliefLimit(entry)
+    ? ` From ${year + firstShort}, `
+      + (firstGoals.length === 1 && firstGoals[0].kind === 'retirement'
+        ? 'your retirement saving costs more than you have left over.'
+        : 'your goals need more than you have left over.')
+    : '';
 
   return {
     id: label.id,
@@ -1092,7 +1101,7 @@ function caseWords(inputs, entry) {
     // The target sentence is only true at the relief limit. Money left over
     // with a goal short in a later year is a different reason, and says what
     // this year needs like any other case.
-    support: state === 'left' && atTheReliefLimit(entry) ? TARGET_NOT_MET_TEXT : needs
+    support: state === 'left' && atTheReliefLimit(entry) ? TARGET_NOT_MET_TEXT : needs + futureSupport
   };
 }
 
@@ -1258,7 +1267,7 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
     return {
       number: index + 1,
       ...entry,
-      words: caseWords(inputs, entry),
+      words: caseWords(inputs, entry, year),
       laterRetirement: withLater
         ? {
           retirementAge: pensionLater.retirementAge,
