@@ -9,12 +9,12 @@ const root = fileURLToPath(new URL('../dist/', import.meta.url));
 const output = fileURLToPath(new URL('../.worker-dry-run/product-previews/', import.meta.url));
 await mkdir(output, { recursive: true });
 const manifest = JSON.parse(await readFile(resolve(root, 'assets/examples/product-preview-manifest.json'), 'utf8'));
-assert.equal(manifest.clips.length, 7);
+assert.equal(manifest.clips.length, 10);
 for (const clip of manifest.clips) {
-  for (const format of clip.size === 'all' ? ['mp4'] : ['mp4', 'webm']) {
-    const path = resolve(root, `assets/examples/${clip.size === 'all' ? clip.kind : clip.kind + '-preview-' + clip.size}.${format}`);
+  for (const format of ['mp4', 'webm']) {
+    const path = resolve(root, `assets/examples/${clip.kind}-preview-${clip.size}.${format}`);
     assert.equal((await stat(path)).size, clip[`${format}Bytes`], `${path} must match the export manifest`);
-    assert.ok(clip[`${format}Bytes`] < (clip.size === 'all' ? 3_000_000 : 1_000_000), 'Previews must stay within their export size budget');
+    assert.ok(clip[`${format}Bytes`] < 1_000_000, 'Previews must stay within their export size budget');
   }
 }
 const server = await startPreviewServer(root);
@@ -62,7 +62,7 @@ try {
         video.pause();
         return { duration: video.duration, width: video.videoWidth, height: video.videoHeight };
       });
-      const expected = manifest.clips.find(clip => clip.kind === kind && (clip.size === size || clip.size === 'all'));
+      const expected = manifest.clips.find(clip => clip.kind === kind && clip.size === size);
       assert.ok(Math.abs(metadata.duration - expected.seconds) < .05, JSON.stringify(metadata));
       assert.equal(metadata.width, expected.width); assert.equal(metadata.height, expected.height);
       // Inspect both the comparison and final held result from the encoded video.
@@ -88,6 +88,19 @@ try {
       await page.click('[data-preview-close]');
       assert.equal(await page.locator('.preview-dialog video').evaluate(video => video.paused), true);
     }
+    // The same selected new module must switch to its independently composed
+    // portrait/desktop export when the viewport crosses the phone breakpoint.
+    await page.click('[data-preview-module="future-cost-fund"]');
+    const otherSize = size === 'desktop' ? 'mobile' : 'desktop';
+    await page.setViewportSize(size === 'desktop' ? {width:390,height:844} : {width:1440,height:1000});
+    await page.locator('[data-preview-video]').scrollIntoViewIfNeeded();
+    await page.waitForFunction(otherSize => {
+      const video = document.querySelector('[data-preview-video]');
+      return video.readyState >= 2 && video.currentSrc.includes(`future-cost-fund-preview-${otherSize}.mp4`);
+    }, otherSize);
+    assert.equal(await page.locator('[data-preview-module="future-cost-fund"]').getAttribute('aria-selected'), 'true');
+    await page.setViewportSize(viewport);
+    await page.waitForFunction(size => document.querySelector('[data-preview-video]').currentSrc.includes(`future-cost-fund-preview-${size}.mp4`), size);
     // Selecting a module stays on the page; the form remains the main CTA.
     assert.equal(new URL(page.url()).pathname, '/');
     await page.locator('[data-preview-module="balance-sheet"]').focus();

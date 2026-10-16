@@ -64,6 +64,7 @@ import {
   computePensionProjection,
   computePersonalContributionCosts,
   maxRelievableContributionRatePercent,
+  maxRelievablePersonalContribution,
   normalizePensionInputs
 } from './pension_math.js';
 import { computeFutureCostFundProjection } from './future_cost_fund_math.js';
@@ -631,18 +632,34 @@ function solveContribution(runAt, points, minX, maxX) {
  * anyone pays in: beyond it every person is at the relief limit in every
  * working year, so more points do nothing.
  *
- * The limit rises with age, and a person pays in until the year before they
- * retire, so their headroom is the limit in that last working year less what
- * they already pay in, not the limit in today's age band. A person who is at
- * today's limit but will reach a higher band still has room. The household's
- * ceiling is the largest of its people's, because one person's contributions
- * can rise while another's cannot.
+ * It is worked out the way the pension engine relieves a contribution, year by
+ * year. A person pays in until the year before they retire, and in each of
+ * those years the engine relieves the age band's share of their salary up to
+ * the earnings cap (`maxRelievablePersonalContribution`). As a share of that
+ * year's salary that is the band's rate while the salary is under the cap, and
+ * a smaller share once it is over, so a high earner has less room than the age
+ * band suggests, and wage growth lowers it a little more each year. The room is
+ * the largest such share over the working years, less what they already pay in.
+ * A person at today's limit who reaches a higher band still has room. The
+ * household's ceiling is the largest of its people's, because one person's
+ * contributions can rise while another's cannot.
+ *
+ * The ages, salaries and growth are the pension engine's own, from its
+ * normalised inputs, so they cannot drift from it.
  */
-function reliefCeilingPoints(inputs, target) {
-  return Math.max(...inputs.pensions.map((person) => {
-    const lastWorkingAge = Math.max(person.currentAge, target.retirementAge - 1);
-    const limit = maxRelievableContributionRatePercent(lastWorkingAge) / 100;
-    return Math.max(0, limit - person.personalPct);
+function reliefCeilingPoints(inputs, target, year) {
+  const household = normalizePensionInputs(pensionEnginePayload(inputs, target, 0, year));
+  return Math.max(0, ...household.pensions.map((member) => {
+    let room = 0;
+    for (let working = household.currentYear; working < member.retirementYear; working += 1) {
+      const sinceNow = working - household.currentYear;
+      const salary = member.currentSalary * (1 + member.wageGrowthRate) ** sinceNow;
+      if (salary > 0) {
+        const share = maxRelievablePersonalContribution(member.currentAge + sinceNow, salary) / salary;
+        room = Math.max(room, share - member.personalPct);
+      }
+    }
+    return room;
   }));
 }
 
@@ -676,7 +693,7 @@ function priceRetirement(inputs, target, year, { includeHeadroom, asOf }) {
   const f = (run) => run.rawGap - run.tolerance;
   const atToday = runAt(0);
   const costsToday = computePersonalContributionCosts(pensionEnginePayload(inputs, target, 0, year));
-  const capPoints = reliefCeilingPoints(inputs, target);
+  const capPoints = reliefCeilingPoints(inputs, target, year);
 
   let extraPoints = 0;
   let result = atToday;
@@ -860,8 +877,15 @@ function byHowMuchTheyChange(a, b) {
  *              cost (wage growth) or a later goal's start leaves short later
  *
  * `need` and `covered` are this year's, which is what the screen's picture
- * shows; `firstShortYear` is the first year (0 is this year) a goal is not
- * fully met, or null.
+ * shows. Three year offsets say when, with 0 as this year and a screen turning
+ * them into calendar years:
+ *
+ *  - `firstShortYear`   the first year the goal is not fully met, or null
+ *  - `firstMoneyYear`   the first active year any yearly money reaches it, or
+ *                       null if none does (including a goal paid in full today)
+ *  - `coveredFromYear`  the first year from which it is fully met in every year
+ *                       it still needs money, after having been short; null if
+ *                       it was never short, or is still short in its last year
  */
 function goalStates(inputs, { college, pension, ledger }) {
   const ordered = college.perChild
@@ -915,11 +939,16 @@ function goalStates(inputs, { college, pension, ledger }) {
       state = 'partly';
     }
     const { needs, ...rest } = entry;
+    const lastShort = short.length > 0 ? short[short.length - 1].year : null;
+    const recovered = lastShort === null ? undefined : active.find((row) => row.year > lastShort);
+    const funded = active.find((row) => row.got > 0);
     return {
       ...rest,
       need: needs[0],
       covered: gets[index][0],
       firstShortYear: short.length > 0 ? short[0].year : null,
+      firstMoneyYear: funded ? funded.year : null,
+      coveredFromYear: recovered ? recovered.year : null,
       state,
       stateWord: STATE_WORDS[state]
     };
@@ -1133,7 +1162,7 @@ function buildOutputsTable(cases, hasLater) {
   };
 }
 
-function buildTables(inputs, cases) {
+function buildTables(inputs, cases, year) {
   return cases.map((entry) => ({
     title: `${entry.words.title}: what you need each year`,
     columns: [
@@ -1145,7 +1174,9 @@ function buildTables(inputs, cases) {
       'Against what you have (€)'
     ],
     rows: entry.ledger.map((row) => [
-      row.year === 0 ? 'This year' : `Year ${row.year}`,
+      // Calendar years, so the table and the screen agree: a client cannot know
+      // that this year counts as year 0.
+      String(year + row.year),
       Math.round(row.mortgage),
       ...row.children.map((value) => Math.round(value)),
       Math.round(row.pension),
@@ -1264,7 +1295,7 @@ export function computeGoalsAndResourcesProjection(rawInputs, options = {}) {
   return {
     assumptionsTable: buildAssumptionsTable(inputs, { fundAssumptions: fundRates, year }),
     outputsTable: buildOutputsTable(cases, pensionLater !== null),
-    tables: buildTables(inputs, cases),
+    tables: buildTables(inputs, cases, year),
     charts: buildCharts(inputs, cases),
     debug: {
       inputs,
