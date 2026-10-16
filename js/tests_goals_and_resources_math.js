@@ -662,6 +662,19 @@ export function runGoalsAndResourcesTests() {
     });
   }));
 
+  cases.push(runCase('An unreachable retirement target never reports a coverage recovery', () => {
+    const result = computeGoalsAndResourcesProjection({
+      ...GOALS_AND_RESOURCES_SAMPLE,
+      leftOverEachYear: 30_000,
+      retirement: { retirementAge: 55, targetIncomeToday: 200_000 }
+    });
+    result.debug.cases.forEach((entry) => {
+      assert(entry.pension.reachedCap && entry.pension.gapLeftOver > 0, 'the target stays out of reach');
+      const retirement = entry.states.find((goal) => goal.kind === 'retirement');
+      assertEqual(retirement.coveredFromYear, null, `${entry.id}: finding the contributions does not cover the retirement goal`);
+    });
+  }));
+
   cases.push(runCase('The ledger table is headed by calendar years, so a client can read it', () => {
     const rows = computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE).tables[0].rows;
     assertEqual(rows.length, 20, 'a row for every year to the last goal');

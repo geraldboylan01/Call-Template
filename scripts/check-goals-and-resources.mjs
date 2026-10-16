@@ -316,7 +316,8 @@ check('states: the yearly money handed out by hand, year by year, in the plannin
       assert.equal(goal.firstShortYear, short[0]?.year ?? null, `${entry.id} ${goal.goal}: first short year`);
       assert.equal(goal.firstMoneyYear, active.find((row) => row.amount > 0)?.year ?? null, `${entry.id} ${goal.goal}: first funded year`);
       const lastShortYear = short.at(-1)?.year;
-      const recovery = lastShortYear === undefined ? null : active.find((row) => row.year > lastShortYear)?.year ?? null;
+      const unreachable = index === 3 && entry.pension.reachedCap && entry.pension.gapLeftOver > 0;
+      const recovery = lastShortYear === undefined || unreachable ? null : active.find((row) => row.year > lastShortYear)?.year ?? null;
       assert.equal(goal.coveredFromYear, recovery, `${entry.id} ${goal.goal}: covered for every remaining active year`);
       return state;
     });

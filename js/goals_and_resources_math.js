@@ -935,7 +935,8 @@ function goalStates(inputs, { college, pension, ledger }) {
     }
     // Contributions at the relief limit that still leave a gap cannot read
     // "covered": the money is found and the target is still not met.
-    if (entry.kind === 'retirement' && pension.reachedCap && pension.gapLeftOver > 0 && state === 'covered') {
+    const unreachable = entry.kind === 'retirement' && pension.reachedCap && pension.gapLeftOver > 0;
+    if (unreachable && state === 'covered') {
       state = 'partly';
     }
     const { needs, ...rest } = entry;
@@ -948,7 +949,7 @@ function goalStates(inputs, { college, pension, ledger }) {
       covered: gets[index][0],
       firstShortYear: short.length > 0 ? short[0].year : null,
       firstMoneyYear: funded ? funded.year : null,
-      coveredFromYear: recovered ? recovered.year : null,
+      coveredFromYear: !unreachable && recovered ? recovered.year : null,
       state,
       stateWord: STATE_WORDS[state]
     };
