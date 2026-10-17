@@ -1645,16 +1645,15 @@ const EXAMPLE_PAYLOADS = [
   },
   {
     id: 'household-cash-flow-stated-demo',
-    label: 'Household Cash Flow: Take-Home Pay Given',
+    label: 'Household Cash Flow: Bank Pay and Current Pensions',
     payload: {
-      title: 'Household Cash Flow - Take-Home Pay Given',
+      title: 'Household Cash Flow - Bank Pay and Current Pensions',
       generated: {
-        summaryHtml: '<p>Niamh gave her take-home pay from her payslips, so her tax is taken from that. Dara\'s is an estimate. The change each case makes to tax is always an estimate.</p>',
         householdCashFlowInputs: {
           householdTaxStatus: 'married_or_civil_partners',
           people: [
-            { id: 'niamh', age: 45, label: 'Niamh', statedTakeHome: 50000 },
-            { id: 'dara', age: 45, label: 'Dara' }
+            { id: 'niamh', age: 45, label: 'Niamh', statedTakeHome: 50000, personalPensionContribution: 5000 },
+            { id: 'dara', age: 45, label: 'Dara', personalPensionContribution: 3000 }
           ],
           income: [
             { personId: 'niamh', type: 'employment', amount: 75000 },

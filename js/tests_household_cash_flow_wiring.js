@@ -73,6 +73,18 @@ function refusalOf(patch) {
 
 export function runHouseholdCashFlowWiringTests() {
   const cases = [];
+  cases.push(runCase('Current pension deductions survive paste and import without reducing bank pay twice', () => {
+    const raw = JSON.parse(JSON.stringify(SAMPLE));
+    raw.people[0].personalPensionContribution = 5000;
+    raw.people[0].statedTakeHome = 50000;
+    const module = paste(createBlankModule(), { householdCashFlowInputs: raw });
+    const imported = normalizeGenerated(JSON.parse(JSON.stringify(module.generated)));
+    assertEqual(imported.householdCashFlowInputs.people[0].personalPensionContribution, 5000, 'saved contribution');
+    assertEqual(JSON.stringify(imported.outputs), JSON.stringify(module.generated.outputs), 'derived figures survive reopening');
+    ensureGenerated(module);
+    assertEqual(JSON.stringify(imported.tables), JSON.stringify(module.generated.tables), 'refresh and import agree');
+  }));
+
 
   cases.push(runCase('A pasted payload is accepted, and its tables are derived, never the payload\'s own', () => {
     const module = paste(createBlankModule(), {

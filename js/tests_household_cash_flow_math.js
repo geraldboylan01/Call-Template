@@ -297,6 +297,53 @@ function checkInvariants(projection, label) {
 export function runHouseholdCashFlowTests() {
   const cases = [];
 
+  cases.push(runCase('Current pension saving uses bank take-home once and cases add only the extra', () => {
+    const raw = {
+      householdTaxStatus: 'single', calculationYear: 2026,
+      people: [{ id: 'a', age: 40, personalPensionContribution: 5000, statedTakeHome: 50000 }],
+      income: [{ personId: 'a', type: 'employment', amount: 75000 }],
+      outgoings: [{ id: 'living', label: 'Living costs', amount: 20000 }],
+      scenarios: [{ id: 'today' }, { id: 'extra', changes: [{ type: 'extraPension', amount: 10000 }] }]
+    };
+    const projection = computeHouseholdCashFlowProjection(raw, { taxFor: ({ contributions }) => ({ a: 22000 - 0.4 * contributions.reduce((n, entry) => n + entry.amount, 0) }) });
+    checkInvariants(projection, 'current pensions');
+    const [today, extra] = projection.summary.cases;
+    assertEqual(today.outgoings.tax, 20000, 'gross less current pension and stated bank amount');
+    assertEqual(today.pensionContributions.gross, 5000, "today's full contribution");
+    assertEqual(today.leftOver.amount, 30000, 'stated bank amount less ordinary spending');
+    assertEqual(today.takeHome.byPerson[0].bankTakeHome, 50000, 'bank amount explicit in debug');
+    assertEqual(extra.outgoings.tax, 16000, 'case tax change from the pension-aware base');
+    assertEqual(extra.pensionContributions.gross, 15000, 'today plus extra');
+    assertEqual(extra.leftOver.amount, 24000, 'extra costs 6000 after relief');
+    assert(projection.debug.cases[1].sentence.includes('€10,000 more') && !projection.debug.cases[1].sentence.includes('€15,000 more'), 'wording compares with today');
+    const todayOnly = computeHouseholdCashFlowProjection({ ...raw, scenarios: [raw.scenarios[0]] });
+    assert(todayOnly.debug.drawnLines.some((line) => line.id === 'pensions'), 'current contributions have a drawn row without an extra case');
+    const normalized = normalizeHouseholdCashFlowInputs(raw);
+    assertEqual(JSON.stringify(normalizeHouseholdCashFlowInputs(normalized)), JSON.stringify(normalized), 'normalises to itself');
+  }));
+
+  cases.push(runCase('Existing and extra pension saving share the per-person relief limit', () => {
+    const base = {
+      householdTaxStatus: 'single', people: [{ id: 'a', age: 40, personalPensionContribution: 5000 }],
+      income: [{ personId: 'a', type: 'employment', amount: 75000 }],
+      outgoings: [{ id: 'living', label: 'Living costs', amount: 20000 }],
+      scenarios: [{ id: 'today' }, { id: 'extra', changes: [{ type: 'extraPension', amount: 14000 }] }]
+    };
+    let refused = false;
+    try { computeHouseholdCashFlowProjection(base); } catch (error) { refused = /relief|limit/i.test(error.message); }
+    assert(refused, '5000 plus 14000 exceeds the limit');
+    for (const amount of [-1, NaN, Infinity]) {
+      let invalid = false;
+      try { normalizeHouseholdCashFlowInputs({ ...base, people: [{ id: 'a', age: 40, personalPensionContribution: amount }] }); }
+      catch (_error) { invalid = true; }
+      assert(invalid, `bad current contribution ${amount} refused`);
+    }
+    let impossible = false;
+    try { normalizeHouseholdCashFlowInputs({ ...base, people: [{ id: 'a', age: 40, personalPensionContribution: 5000, statedTakeHome: 72000 }] }); }
+    catch (error) { impossible = /take.home|pension/i.test(error.message); }
+    assert(impossible, 'bank pay plus pension cannot exceed gross');
+  }));
+
   cases.push(runCase('Finite inputs whose calculated totals overflow are refused before rendering', () => {
     const fixtures = [
       ['income', (p) => { p.income.forEach((item) => { item.amount = 1e308; }); }],
@@ -750,7 +797,7 @@ export function runHouseholdCashFlowTests() {
 
     check((p) => {
       p.income.push({ personId: 'niamh', type: 'employmentPensionContribution', amount: 5_000 });
-    }, `${FIELD}.income[2]: today's pension contributions are not supported yet. A case's extraPension adds one.`,
+    }, `${FIELD}.income[2]: pension contributions are not income. Use people[].personalPensionContribution for today's gross contribution, or extraPension for an increase.`,
     'today\'s pension contribution in income');
   }));
 
