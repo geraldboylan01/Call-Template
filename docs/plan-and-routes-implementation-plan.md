@@ -114,6 +114,8 @@ The scenario must say **"Assumes the standard personal rate of Illness Benefit"*
 
 Implementation belongs to the protection adapter and shared tax engine. Add the correct illness-payment tax treatment and recalculate household tax after the salary stops before supplying spendable amounts to the gap engine. Do not treat the gross statutory rate as tax-free take-home. The existing Stage 1 engine accepts stated cash amounts and has no illness income type: until this adapter is built and tested, its manual payload contract remains in force. The B2 change updates the module's provenance, footnote, assumptions table and prompt-pack wording together, removing the requirement to confirm every hypothetical payment as a client fact. A stated amount, including an explicit zero after #77, remains distinct from a central assumption.
 
+Expense-label phrasing belongs to the final AI authoring stage, with no deterministic rewriting of natural language. The [expense-label decision note](backlog/ai-authored-expense-labels.md) records Gerry's instruction, the deferred implementation and the known #71 phone-layout edge case.
+
 ## 7. The order of work
 
 Two tracks run side by side. Track A builds the module screens, one Claude Code chat per module as now. Track B builds the plan layer in one new chat. Design tasks sit between them.
