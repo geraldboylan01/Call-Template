@@ -791,9 +791,10 @@ function normalizeFutureCostFundSessionInputs(futureCostFundInputs) {
  * Tolerant on the way in, like the other capped arrays: an over-cap list of
  * cases is cut with an import warning and never thrown over, because a link
  * that was valid when it was published is a promise already kept. What the
- * engine will not read at all (a stated tax line, a case that leaves less than
- * nothing, which this release does not draw) is dropped with a warning and the
- * module simply has no inputs. Projecting it here is what finds the second kind.
+ * engine will not read at all (a stated tax line, a relief limit exceeded) is
+ * dropped with a warning and the module simply has no inputs. Projecting it
+ * here is what finds the second kind. A case that leaves less than nothing is
+ * not one of them: it is kept, and drawn as Short.
  */
 function normalizeHouseholdCashFlowSessionInputs(householdCashFlowInputs) {
   if (householdCashFlowInputs === undefined || householdCashFlowInputs === null) {

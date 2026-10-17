@@ -4,7 +4,12 @@ import {
   buildHouseholdCashFlowModule,
   createCashFlowClock
 } from './household_cash_flow_module.js';
-import { HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions } from './tests_household_cash_flow_math.js';
+import {
+  HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE,
+  HOUSEHOLD_CASH_FLOW_SAMPLE,
+  HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
+  designFixtureOptions
+} from './tests_household_cash_flow_math.js';
 import { findForbiddenText } from './household_cash_flow_view.js';
 
 /**
@@ -410,6 +415,166 @@ export async function runHouseholdCashFlowModuleTests() {
     }
   }));
 
+  cases.push(runCase('Short is drawn: the word, a red mark beside it, the size, the frames\' sentence, and room below the floor', () => {
+    const env = installDom();
+    try {
+      [1728, 390].forEach((widthHint) => {
+        const root = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, widthHint });
+        const text = (name) => findAll(root, name)[0].textContent;
+        assertEqual(text('hcf-status-word'), 'Short', `${widthHint}: the word`);
+        assert(hasClass(findAll(root, 'hcf-swatch')[0], 'is-short'), `${widthHint}: red beside the word`);
+        assertEqual(text('hcf-figure'), '€6,000', `${widthHint}: the size, with no sign`);
+        assertEqual(text('hcf-monthly'), '€500 a month', `${widthHint}: and the month`);
+        assertEqual(
+          text('hcf-sentence'),
+          'Today, €156,000 goes out against your €150,000, and you are short by €6,000.',
+          `${widthHint}: today's sentence`
+        );
+        const marks = widthHint === 1728 ? findAll(root, 'hcf-bar') : findAll(root, 'hcf-segment');
+        assert(hasClass(marks[marks.length - 1], 'is-short'), `${widthHint}: the last mark is red`);
+        assert(
+          marks.slice(0, -1).every((mark) => !hasClass(mark, 'is-short')),
+          `${widthHint}: and nothing else is`
+        );
+        if (widthHint === 1728) {
+          assert(hasClass(findAll(root, 'hcf-floor')[0], 'has-band'), 'the floor is drawn stronger');
+          assertEqual(findAll(root, 'hcf-zero')[0].textContent, '€0', 'and named');
+          const names = findAll(root, 'hcf-name-label');
+          assertEqual(names[names.length - 1].textContent, 'Short', 'the last column is named Short');
+        } else {
+          assertEqual(findAll(root, 'hcf-bar-income-end').length, 1, 'income ends on the bar');
+          const rows = findAll(root, 'hcf-row').filter((row) => !row.hidden);
+          const last = rows[rows.length - 1];
+          assertEqual(findAll(last, 'hcf-row-name')[0].textContent, 'Short', 'the last row is named Short');
+          assertEqual(findAll(last, 'hcf-row-amount')[0].textContent, '€6,000', 'with the size');
+        }
+      });
+
+      // Cleared to nothing is Tight, and nothing is red.
+      const tight = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, selectedCaseId: 'clear-car' });
+      assertEqual(findAll(tight, 'hcf-status-word')[0].textContent, 'Tight', 'nothing left over is Tight');
+      assert(!hasClass(findAll(tight, 'hcf-swatch')[0], 'is-short'), 'and not red');
+      assert(findAll(tight, 'hcf-bar').every((mark) => !hasClass(mark, 'is-short')), 'no red mark');
+    } finally {
+      env.restore();
+    }
+  }));
+
+  cases.push(runCase('A click across the floor changes colour with the mark: red exactly while what is drawn is below it', () => {
+    const env = installDom();
+    try {
+      [[1728, 'hcf-bar'], [390, 'hcf-segment']].forEach(([widthHint, markClass]) => {
+        const root = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE, widthHint });
+        const last = () => {
+          const marks = findAll(root, markClass);
+          return marks[marks.length - 1];
+        };
+        const checkFrame = (where) => {
+          const values = root.cashFlowState().values;
+          assertEqual(
+            hasClass(last(), 'is-short'),
+            values[values.length - 1] < 0,
+            `${widthHint} ${where}: red follows the figure drawn (${values[values.length - 1]})`
+          );
+        };
+        checkFrame('opening');
+        assert(!hasClass(last(), 'is-short'), `${widthHint}: today is not short`);
+
+        // Left over to short, frame by frame, then back.
+        ['pension', 'today'].forEach((id) => {
+          button(root, id).click();
+          checkFrame(`${id} at the click`);
+          for (let step = 0; step < 40; step += 1) {
+            env.sched.advance(16);
+            checkFrame(`${id} frame ${step}`);
+          }
+          env.sched.advance(CLICK_MS);
+          checkFrame(`${id} settled`);
+        });
+        assert(!hasClass(last(), 'is-short'), `${widthHint}: back on today it is not red`);
+
+        button(root, 'pension').click();
+        env.sched.advance(CLICK_MS * 2);
+        assert(hasClass(last(), 'is-short'), `${widthHint}: and settled on the short case it is`);
+        assertEqual(findAll(root, 'hcf-status-word')[0].textContent, 'Short', `${widthHint}: with the word`);
+        assert(/you are short by €6,000\.$/.test(findAll(root, 'hcf-sentence')[0].textContent), `${widthHint}: and the sentence`);
+      });
+    } finally {
+      env.restore();
+    }
+  }));
+
+  cases.push(runCase('Short: any sequence of clicks ends on a fresh render, and outlines say where you were', () => {
+    const env = installDom();
+    try {
+      const sequences = [
+        ['clear-car', 'pension', 'both', 'today', 'pension'],
+        ['pension', 'clear-car', 'pension', 'both']
+      ];
+      [HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE].forEach((rawInputs, sample) => {
+        [1728, 390].forEach((widthHint) => {
+          sequences.forEach((sequence, run) => {
+            const root = mount({ rawInputs, widthHint });
+            sequence.forEach((id, index) => {
+              button(root, id).click();
+              const mode = (index + run) % 3;
+              if (mode === 0) env.sched.advance(80);
+              if (mode === 1) env.sched.advance(8);
+              if (mode === 2) env.sched.advance(30, { frames: false });
+            });
+            env.sched.advance(CLICK_MS * 3, { frames: false });
+            env.sched.advance(CLICK_MS * 2);
+            const last = sequence[sequence.length - 1];
+            assertEqual(
+              snapshotDiff(snapshot(root), snapshot(mount({ rawInputs, selectedCaseId: last, widthHint }))),
+              'identical',
+              `sample ${sample + 1} at ${widthHint}: sequence ${run + 1} ends on a fresh render of ${last}`
+            );
+          });
+        });
+      });
+
+      // Short today, cleared to nothing: the last column is outlined and says short.
+      const root = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, selectedCaseId: 'clear-car' });
+      const label = findAll(root, 'hcf-last-label')[0];
+      assertEqual(label.hidden, false, 'the last column is labelled');
+      assertEqual(label.children.map((node) => node.textContent).join(' '), 'Today €6,000 short', 'with where you were');
+    } finally {
+      env.restore();
+    }
+  }));
+
+  cases.push(runCase('A short-to-tight transition fades the zero mark by distance from zero', () => {
+    const env = installDom();
+    try {
+      [1728, 390].forEach((widthHint) => {
+        const root = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, widthHint });
+        button(root, 'clear-car').click();
+        env.sched.advance(100);
+        const marker = findAll(root, widthHint === 390 ? 'hcf-bar-end-mark' : 'hcf-end-mark')[0];
+        assert(marker, 'zero marker exists');
+        assertEqual(marker.style.opacity, '0', 'no zero marker while still visibly short');
+        env.sched.advance(CLICK_MS + 200);
+        assertEqual(marker.style.opacity, '1', 'zero marker at the settled tight case');
+      });
+    } finally { env.restore(); }
+  }));
+
+  cases.push(runCase('The sentence above the bar keeps the stylesheet\'s room, and the staircase leaves its sentence alone', () => {
+    const env = installDom();
+    try {
+      const phone = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, widthHint: 390 });
+      const sentence = findAll(phone, 'hcf-sentence')[0];
+      // The shim cannot measure, so the stylesheet's four lines stand; a browser
+      // measures the longest case's sentence and keeps that (checked by eye).
+      assert(sentence.style.minHeight === undefined || sentence.style.minHeight === '', 'nothing inline where nothing can be measured');
+      const wide = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, widthHint: 1728 });
+      assert(!findAll(wide, 'hcf-sentence')[0].style.minHeight, 'the staircase sets none');
+    } finally {
+      env.restore();
+    }
+  }));
+
   cases.push(runCase('Reduced motion: a click lands on the new case in the same call', () => {
     const env = installDom({ reducedMotion: true });
     try {
@@ -539,10 +704,9 @@ export async function runHouseholdCashFlowModuleTests() {
       assertEqual(buildHouseholdCashFlowModule({ rawInputs: { people: [] } }), null, 'a bad payload');
       const short = JSON.parse(JSON.stringify(HOUSEHOLD_CASH_FLOW_SAMPLE));
       short.outgoings[2].amount = 80_000;
-      assertEqual(
+      assert(
         buildHouseholdCashFlowModule({ rawInputs: short, projectionOptions: designFixtureOptions(), widthHint: 1728 }),
-        null,
-        'a short case is not drawn'
+        'a short case is drawn'
       );
       const single = buildHouseholdCashFlowModule({
         rawInputs: { ...JSON.parse(JSON.stringify(HOUSEHOLD_CASH_FLOW_SAMPLE)), scenarios: [{ id: 'only' }] },

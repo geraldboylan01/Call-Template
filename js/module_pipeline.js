@@ -2021,8 +2021,9 @@ function validateFutureCostFundInputsPayload(futureCostFundInputs) {
 
 function validateHouseholdCashFlowInputsPayload(householdCashFlowInputs) {
   const normalized = normalizeHouseholdCashFlowInputs(householdCashFlowInputs);
-  // A case that leaves less than nothing is found only when the engine projects
-  // it, and it is refused here rather than half applied.
+  // Projected as well, so what the engine will not put in order (a relief limit
+  // exceeded, say) is refused here and not half applied. A case that leaves less
+  // than nothing is not one of those: it is drawn as Short.
   computeHouseholdCashFlowProjection(normalized);
   return normalized;
 }

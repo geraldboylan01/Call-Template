@@ -25,7 +25,12 @@
     <div id="mount"></div>
     <script type="module">
       import { buildHouseholdCashFlowModule } from '../js/household_cash_flow_module.js';
-      import { HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions } from '../js/tests_household_cash_flow_math.js';
+      import {
+        HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE,
+        HOUSEHOLD_CASH_FLOW_SAMPLE,
+        HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
+        designFixtureOptions
+      } from '../js/tests_household_cash_flow_math.js';
 
       const params = new URLSearchParams(location.search);
       const preset = params.get('preset') || 'engine';
@@ -79,7 +84,12 @@
         statedboth: { raw: statedBoth, options: {} },
         oneperson: { raw: onePerson, options: {} },
         sixlines: { raw: sixLines, options: {} },
-        pensiononly: { raw: pensionOnly, options: {} }
+        pensiononly: { raw: pensionOnly, options: {} },
+        // The short state. Today is short (living costs 60,000), the frames' case.
+        short: { raw: clone(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE), options: {} },
+        // Today leaves money over and 20,000 into pensions tips it below nothing.
+        tipped: { raw: clone(HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE), options: {} },
+        shortdesign: { raw: clone(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE), options: designFixtureOptions() }
       };
 
       const chosen = presets[preset] || presets.engine;
