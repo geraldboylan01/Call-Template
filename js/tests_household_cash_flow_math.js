@@ -322,6 +322,20 @@ export function runHouseholdCashFlowTests() {
     assertEqual(JSON.stringify(normalizeHouseholdCashFlowInputs(normalized)), JSON.stringify(normalized), 'normalises to itself');
   }));
 
+  cases.push(runCase('A pension line is drawn only when a case shows a nonzero rounded contribution', () => {
+    const raw = payload((p) => {
+      p.people[0].personalPensionContribution = 20;
+      p.people[1].personalPensionContribution = 20;
+      p.scenarios = [{ id: 'today' }];
+    });
+    const tiny = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
+    assert(!tiny.debug.hasPensionColumn && !tiny.debug.drawnLines.some((line) => line.id === 'pensions'), '40 rounds to zero, no pension column');
+    raw.scenarios.push({ id: 'extra', changes: [{ type: 'extraPension', amount: 20 }] });
+    const visible = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
+    assert(visible.debug.hasPensionColumn, '60 rounds to 100 in another case, stable column');
+    assertEqual(visible.summary.cases[0].pensionContributions.gross, 40, 'exact current saving is retained');
+  }));
+
   cases.push(runCase('Existing and extra pension saving share the per-person relief limit', () => {
     const base = {
       householdTaxStatus: 'single', people: [{ id: 'a', age: 40, personalPensionContribution: 5000 }],

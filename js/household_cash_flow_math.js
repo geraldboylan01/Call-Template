@@ -853,9 +853,6 @@ function buildCaseModels(inputs, year, options) {
   const noContributions = Object.fromEntries(inputs.people.map((person) => [person.id, 0]));
   const outgoingsById = new Map(inputs.outgoings.map((line) => [line.id, line]));
 
-  const hasPensionColumn = Object.values(inputs.todayContributions).some((amount) => amount > 0)
-    || inputs.scenarios.some((scenario) => scenario.changes.some((change) => change.type === 'extraPension'));
-
   const personEstimatedInBase = {};
   inputs.people.forEach((person) => {
     personEstimatedInBase[person.id] = injected
@@ -972,6 +969,7 @@ function buildCaseModels(inputs, year, options) {
     };
   });
 
+  const hasPensionColumn = models.some((model) => roundToHundred(model.pensionsGross) !== 0);
   return { models, baseEstimate, hasPensionColumn, outgoingsById, injected };
 }
 
