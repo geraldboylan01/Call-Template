@@ -125,7 +125,7 @@ The two events that have been designed, and so the only two in Stage 1:
 
 | `type` | Fields | Meaning |
 |---|---|---|
-| `cannotWork` | `personId`, `statePayment` (integer > 0) | That person's take-home stops and a State payment of that amount starts. |
+| `cannotWork` | `personId`, `statePayment` (integer ≥ 0) | That person's take-home stops. A positive State payment starts; 0 means none. |
 | `dies` | `personId`, `survivorsPension` (integer ≥ 0), `neededAfter` (integer > 0, optional), `neededBecause` (optional list of `mortgageCleared`, `livingCostsLower`) | That person's take-home stops, a survivor's pension starts, and money needed may fall. Needs two people. |
 
 A case states what changes, never the result. There is no gap, months or left-over field: a payload that states any of them is rejected.
@@ -264,7 +264,7 @@ The sentence under it is derived from the event:
 |---|---|
 | none, two people | `Both of your take-home pays come in, and you need {€needed}.` |
 | none, one person | `Your take-home pay comes in, and you need {€needed}.` |
-| `cannotWork` | `{Name}’s take-home stops and a State payment starts. You still need {€needed}.` |
+| `cannotWork` | With a positive payment: `{Name}’s take-home stops and a State payment starts. You still need {€needed}.` With 0: `{Name}’s take-home stops. You still need {€needed}.` |
 | `dies`, needed unchanged | `{Name}’s take-home stops and a survivor’s pension starts. You still need {€needed}.` |
 | `dies`, needed lower | `{Name}’s take-home stops and a survivor’s pension starts. You need {€needed}, because {reason}.` |
 
@@ -283,7 +283,11 @@ Household line in the header: the `householdLabel`, then `Your savings €60,000
 
 Footnote, derived, one muted line (18/26 wide, 14/20 phone), **the one element not in a frame**:
 
-> Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. State payments are as given and depend on each person’s PRSI record. When one income stops, the other person’s tax can change, so your take-home may differ from what is shown.
+> Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. State payments are as given and depend on eligibility. When one income stops, the other person’s tax can change, so your take-home may differ from what is shown.
+
+### Irish payment references, checked 16 October 2026
+
+See [the current and announced Irish payment reference](irish-illness-disability-payment-reference.md). `statePayment` stays a confirmed yearly figure; missing entitlement information is not converted to 0, and a published maximum is not assigned automatically. The original €13,000 illustration is a stated design fixture, not a claim about the current maximum rate.
 
 The PRSI sentence is approved as written. The last sentence carries the approved meaning in this wording; if it is edited, the golden string changes with it.
 

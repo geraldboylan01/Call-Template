@@ -78,6 +78,21 @@ function refusalOf(patch) {
 export function runProtectionGapWiringTests() {
   const cases = [];
 
+  cases.push(runCase('A zero State payment survives paste, import and refresh with its derived figures', () => {
+    const raw = JSON.parse(JSON.stringify(SAMPLE));
+    raw.scenarios[1].event.statePayment = 0;
+    const pasted = paste(createBlankModule(), { protectionGapInputs: raw });
+    const imported = normalizeGenerated(JSON.parse(JSON.stringify(pasted.generated)));
+    const loaded = createBlankModule();
+    loaded.generated = imported;
+    ensureGenerated(loaded);
+    [pasted.generated, imported, loaded.generated].forEach((generated) => {
+      assertEqual(generated.protectionGapInputs.scenarios[1].event.statePayment, 0, 'zero is retained');
+      assert(generated.summaryHtml.includes('€51,000'), 'the summary carries the correct gap');
+      assert(JSON.stringify(generated.outputs).includes('51000'), 'the derived outputs retain the larger gap');
+    });
+  }));
+
   cases.push(runCase('A pasted payload is accepted, and its tables are derived, never the payload\'s own', () => {
     const module = paste(createBlankModule(), {
       protectionGapInputs: SAMPLE,
