@@ -1,7 +1,7 @@
 # Module Catalogue Reconciliation
 
 Requested before P2, to establish that the manifest registry represents the
-**complete** Planéir catalogue and cannot narrow the adviser portal. P2 is
+**complete** Planeir catalogue and cannot narrow the adviser portal. P2 is
 blocked until the corrective action in §7 lands.
 
 **Headline: the nine manifests authored in P1 were selected by the wrong

@@ -36,7 +36,7 @@ export function buildConsumerPlanHeaderRule(workerOrigin) {
       }
     },
     expression: '(http.request.uri.path eq "/plan" or starts_with(http.request.uri.path, "/plan/"))',
-    description: 'Planéir consumer planning security headers',
+    description: 'Planeir consumer planning security headers',
     ref: RULE_REF,
     enabled: true
   });

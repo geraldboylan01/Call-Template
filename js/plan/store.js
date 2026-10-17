@@ -128,7 +128,7 @@ export function normaliseBootstrap(payload) {
     privacyNoticeUrl: String(firstDefined(root.privacyNoticeUrl, '') || ''),
     inviteRequired: access.inviteRequired === true,
     voiceEnabled: flags.consumerVoiceEnabled === true || voice.enabled === true,
-    // Whether Planéir can hold a typed planning meeting. A boolean only:
+    // Whether Planeir can hold a typed planning meeting. A boolean only:
     // nothing about the planner, the model or the cohort crosses the boundary.
     typedLaneEnabled: flags.consumerTypedLaneEnabled === true,
     voiceRealtimeEnabled: flags.consumerVoiceRealtimeEnabled === true

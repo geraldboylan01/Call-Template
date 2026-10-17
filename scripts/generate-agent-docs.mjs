@@ -136,7 +136,7 @@ async function readIfExists(file) {
 
 async function main() {
   const outputs = new Map();
-  const informationSchema = { ...buildApplicationJsonSchema(), title: 'Planéir workspace information', description: 'Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.' };
+  const informationSchema = { ...buildApplicationJsonSchema(), title: 'Planeir workspace information', description: 'Fields for the Planeir demo request form. This schema does not grant permission or provide an assistant submission endpoint.' };
   delete informationSchema.properties.videoName;
   informationSchema.required = (informationSchema.required || []).filter(field => field !== 'question');
   informationSchema.properties.anythingElse.description = 'Anything else you want to add.';
@@ -145,7 +145,7 @@ async function main() {
   outputs.set(path.join(ROOT, 'agents', 'application.schema.json'), `${JSON.stringify(informationSchema, null, 2)}\n`);
   outputs.set(path.join(ROOT, 'agents', 'openapi.json'), `${JSON.stringify({
     openapi: '3.1.0',
-    info: { title: 'Planéir demo request form', version: 'demo-v1', description: 'No assistant submission operations are advertised. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request.' },
+    info: { title: 'Planeir demo request form', version: 'demo-v1', description: 'No assistant submission operations are advertised. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request.' },
     paths: {},
     components: { schemas: { WorkspaceInformation: informationSchema } }
   }, null, 2)}\n`);

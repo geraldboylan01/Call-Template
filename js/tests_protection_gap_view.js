@@ -62,6 +62,11 @@ function runCase(name, fn) {
 /** Household shapes the layout must hold for, besides the sample. */
 const SHAPES = Object.freeze({
   sample: PROTECTION_GAP_SAMPLE,
+  noStatePayment: {
+    people: [{ id: 'ann', label: 'Ann', takeHome: 50_000 }],
+    needed: 60_000, savings: 30_000,
+    scenarios: [{ id: 'base' }, { id: 'stops', event: { type: 'cannotWork', personId: 'ann', statePayment: 0 } }]
+  },
   onePerson: {
     people: [{ id: 'ann', label: 'Ann', takeHome: 50_000 }],
     needed: 62_000,

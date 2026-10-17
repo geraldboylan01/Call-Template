@@ -251,7 +251,7 @@ function saveDraft() {
       serverRevision: savedRequest?.revision || null,
       savedAt: new Date().toISOString()
     }));
-    ui.savedNote.textContent = 'Edits are saved on this device as you type. Use the button above to save them to Planéir.';
+    ui.savedNote.textContent = 'Edits are saved on this device as you type. Use the button above to save them to Planeir.';
   } catch (_error) {
     ui.savedNote.textContent = 'This browser cannot save your draft. Keep this page open while you work.';
     // Private windows and full storage both land here. The form still works;
@@ -896,7 +896,7 @@ async function connectDemo() {
     finally { button.disabled = false; }
   });
   document.getElementById('demoDelete').addEventListener('click', async () => {
-    if (!savedRequest || !window.confirm('Delete your saved information from Planéir? This cannot be undone.')) return;
+    if (!savedRequest || !window.confirm('Delete your saved information from Planeir? This cannot be undone.')) return;
     try {
       await demoApi(`/api/demo/requests/${savedRequest.id}`, { method: 'DELETE' });
       window.clearTimeout(state.saveTimer);

@@ -69,7 +69,7 @@ export async function checkPresenterRecording() {
     assert.equal(await page.evaluate(() => JSON.stringify({ ...localStorage })), original.storage);
     await page.goto(`${process.env.PRESENTER_BASE_URL || 'http://127.0.0.1:8788'}/app/recording.html`);
     await page.screenshot({ path: `${dir}/guide.png`, fullPage: true });
-    assert.equal(await page.locator('h1').innerText(), 'Record Planéir and yourself, then choose the picture');
+    assert.equal(await page.locator('h1').innerText(), 'Record Planeir and yourself, then choose the picture');
     assert.deepEqual(errors, []);
     await fs.writeFile(`${dir}/validation.json`, JSON.stringify({ status: 'passed', checks: ['validation gate', 'countdown does not consume cue', 'clean 1920 view', 'hidden HUD/camera/cursor controls', 'validation blocked during take', 'four paired moves with backward visit', 'retake and controls markers', 'resize flag', 'S finishes log', 'downloaded ZIP integrity', 'reload recovery', 'original case and financial storage unchanged', 'guide renders'], physicalCaptureTested: false }, null, 2));
     console.log('Clean recording browser checks passed; no physical devices used.');

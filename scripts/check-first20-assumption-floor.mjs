@@ -22,7 +22,7 @@
  *    pension exists. It says nothing about who chose the State Pension start
  *    age. Accepting the parent pointer let one owner-and-age quote withhold
  *    four genuine server defaults from the floor -- so the read-back could
- *    present a Planéir assumption as though the client had supplied it, which
+ *    present a Planeir assumption as though the client had supplied it, which
  *    is the exact false claim the verifier refuses college plans for.
  *
  * Record existence and leaf source attribution are different claims. Only a

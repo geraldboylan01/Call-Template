@@ -123,5 +123,5 @@ other, so the atomic home–mortgage guarantee does not apply to them.
 
 The alternatives are "identical owner sets" (today) and "liability owners are a
 subset of property owners". This is a product and legal-modelling decision about
-what Planéir is willing to assert about security over a jointly held asset, not
+what Planeir is willing to assert about security over a jointly held asset, not
 a defect, and the behaviour is deliberately unchanged pending that decision.

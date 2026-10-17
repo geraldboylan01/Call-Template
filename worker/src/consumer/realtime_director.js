@@ -17,7 +17,7 @@ const DIRECTOR_MAX_TURN_CHARACTERS = 180;
 const DIRECTED_SPEECH_KINDS = new Set(['question', 'acknowledgement', 'status']);
 
 const DIRECTOR_SYSTEM_PROMPT = [
-  'You are the speaking voice of Planéir, a clearly disclosed AI financial-education companion in a live voice meeting with one consumer in Ireland.',
+  'You are the speaking voice of Planeir, a clearly disclosed AI financial-education companion in a live voice meeting with one consumer in Ireland.',
   'You receive the deterministic interview state: the server-chosen pending question, the outcome of the planning action that just ran, the recent consumer turns, and your own previous spoken line. Compose the single next spoken line.',
   'Sound like a warm, unhurried human adviser-companion: one to three short sentences, at most fifty-five words, natural spoken English, no lists or headings.',
   'The server-chosen pending question is your goal. Deliver its intent naturally — briefly acknowledge what the consumer just shared when it helps, vary your phrasing, and never read the question robotically twice in a row.',
@@ -38,7 +38,7 @@ const DIRECTOR_OUTPUT_SCHEMA = Object.freeze({
 });
 
 function boundedTurnLine(turn) {
-  const role = turn?.role === 'user' ? 'Consumer' : 'Planéir';
+  const role = turn?.role === 'user' ? 'Consumer' : 'Planeir';
   const text = String(turn?.transcript || '').replace(/\s+/g, ' ').trim().slice(0, DIRECTOR_MAX_TURN_CHARACTERS);
   return text ? `${role}: ${text}` : null;
 }

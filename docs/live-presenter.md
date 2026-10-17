@@ -1,6 +1,6 @@
 # Live Presenter V1
 
-Planéir exposes real presentation targets and executes a package. Codex reads the case, writes the complete script, directs a restrained set of visual beats, records a source-grounded review, validates the package in the live app and generates the annotated script. There is no model/API key inside Presenter Mode.
+Planeir exposes real presentation targets and executes a package. Codex reads the case, writes the complete script, directs a restrained set of visual beats, records a source-grounded review, validates the package in the live app and generates the annotated script. There is no model/API key inside Presenter Mode.
 
 ## Automatic discovery and authoring
 
@@ -89,7 +89,7 @@ Preview and recording use this same controller. The recording core in `js/video_
 
 ## Separate camera and screen recording
 
-The default production workflow is **Open recording controls · iPhone + OBS**. A separate local window controls OBS through authenticated WebSocket v5 and shows confirmed output status/time. OBS captures the clean Planéir window plus the external Mac microphone; the iPhone records locally and is operated manually. See [the recording guide](presenter-recording.md) or the in-app `app/recording.html`.
+The default production workflow is **Open recording controls · iPhone + OBS**. A separate local window controls OBS through authenticated WebSocket v5 and shows confirmed output status/time. OBS captures the clean Planeir window plus the external Mac microphone; the iPhone records locally and is operated manually. See [the recording guide](presenter-recording.md) or the in-app `app/recording.html`.
 
 After validation at the capture size, Record hides captured controls and restarts at ready before starting OBS. Only a confirmed OBS recording starts the cue log/countdown/SYNC reference. Stop (or S in either window) confirms OBS is inactive before ending the log. Connection loss never reveals captured controls or implies recording has stopped. A failed start does not automatically stop a recording that might have started elsewhere. Reconnect and explicitly stop it. The iPhone and microphone routing cannot be verified by this protocol.
 

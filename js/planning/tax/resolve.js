@@ -1,5 +1,5 @@
 /**
- * The rules in force for one tax year, under Planéir's projection policy.
+ * The rules in force for one tax year, under Planeir's projection policy.
  *
  * 1. Parameters each Budget sets come from the latest catalogue year at or
  *    before the year asked for, unchanged in euro terms. Never indexed.
@@ -9,7 +9,7 @@
  * 3. A formula that depends on data not yet published (the SFT from 2030) is
  *    never evaluated or forecast. Step 2 holds the last known figure instead.
  *
- * The policy itself is recorded as the `taxProjection` Planéir assumption;
+ * The policy itself is recorded as the `taxProjection` Planeir assumption;
  * this file is its only implementation.
  */
 

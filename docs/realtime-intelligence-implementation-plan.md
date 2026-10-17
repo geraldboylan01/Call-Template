@@ -156,7 +156,7 @@ turn**; the vision question does not arrive until the client has spoken.
 
 | Beat | Purpose | Wording |
 |---|---|---|
-| **1 Settle** | lower stakes, invite openness, disclose | *(Gerry's wording, final)* "Thanks for taking the time to chat to me today, Planéir's AI assistant. This is really just a conversation where I try to learn about you, so I can understand what your goals and worries are and where I can help. The more you tell me, the higher quality my analysis can be, so don't hold back." |
+| **1 Settle** | lower stakes, invite openness, disclose | *(Gerry's wording, final)* "Thanks for taking the time to chat to me today, Planeir's AI assistant. This is really just a conversation where I try to learn about you, so I can understand what your goals and worries are and where I can help. The more you tell me, the higher quality my analysis can be, so don't hold back." |
 | **2 Frame** | agenda-setting; the anxiety reducer | "I'll ask a bit about what you'd like your money to do for you, then some specifics so I can pull up the analyses that actually fit. Takes about ten minutes, and you can skip anything you'd rather not answer." |
 | **3 Warm-up** | easy, concrete, gets them talking | "To start — tell me a bit about where you're at right now. Work, home, that kind of thing." |
 | **4 Vision (PEA)** | aspirational, no imposed horizon | "If things went really well with your money from here — what does that look like?" |
@@ -179,7 +179,7 @@ turn.
 let the client set their own horizon — and whatever they volunteer ("in about
 five years I'd like to…") is itself a routing signal T2 should capture.
 
-**Disclosure is carried by beat 1** — "me today, Planéir's AI assistant" — which
+**Disclosure is carried by beat 1** — "me today, Planeir's AI assistant" — which
 satisfies the standing requirement at
 [realtime_provider.js:186](../worker/src/consumer/realtime_provider.js:186) and
 [:234](../worker/src/consumer/realtime_provider.js:234) (*never pretend to be a

@@ -24,8 +24,8 @@ const credentialSafePrompt = buildSubscriptionAssistPrompt({
 });
 assert.doesNotMatch(credentialSafePrompt, /\bci1\./);
 assert.doesNotMatch(credentialSafePrompt, /\bcs_/);
-assert.match(credentialSafePrompt, /private Planéir invite removed/);
-assert.match(credentialSafePrompt, /private Planéir session credential removed/);
+assert.match(credentialSafePrompt, /private Planeir invite removed/);
+assert.match(credentialSafePrompt, /private Planeir session credential removed/);
 
 const viewsSource = readFileSync(new URL('../js/plan/views.js', import.meta.url), 'utf8');
 const appSource = readFileSync(new URL('../js/plan/app.js', import.meta.url), 'utf8');

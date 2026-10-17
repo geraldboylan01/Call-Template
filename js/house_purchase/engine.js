@@ -752,7 +752,7 @@ function calculateAffordability(inputs, mortgage, reserve, rules) {
       ? mortgage.monthlyPayment / inputs.monthlyNetHouseholdIncome
       : null,
     cashFlowAlignedMortgageCapacity: roundHousePurchaseMoney(cashFlowAlignedMortgageCapacity),
-    detail: 'Plan\u00e9ir cash-flow indicator; it does not reproduce lender underwriting.'
+    detail: 'Planeir cash-flow indicator; it does not reproduce lender underwriting.'
   };
 }
 
@@ -869,7 +869,7 @@ function buildActions({ bottlenecks, targetFunding, reserve, schemes, inputs }) 
     add('check-fhs', 'Check the First Home Scheme route', 'Confirm the participating lender, maximum mortgage, property ceiling and shared-equity implications.');
   }
   add('confirm-costs', 'Refresh the property and buying-cost estimates', `Validate the ${formatEuro(inputs.targetPropertyPrice)} target and professional-fee allowances before acting.`);
-  add('seek-lender-assessment', 'Seek a formal lender assessment', 'The Plan\u00e9ir figures are educational illustrations and do not constitute mortgage approval.');
+  add('seek-lender-assessment', 'Seek a formal lender assessment', 'The Planeir figures are educational illustrations and do not constitute mortgage approval.');
   return actions;
 }
 

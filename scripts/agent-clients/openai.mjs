@@ -8,7 +8,7 @@
  *      conversation. It never sees expected outcomes, module ids, goal codes,
  *      fact ids or any planning state, because it is playing the consumer and
  *      any of that would invalidate the test.
- *   2. Planéir under test — the real shared planning engine, unchanged.
+ *   2. Planeir under test — the real shared planning engine, unchanged.
  *   3. The judge (separate, later) — never shares a context with this.
  *
  * The client produces natural language ONLY. Extraction is still performed by

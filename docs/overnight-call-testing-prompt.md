@@ -10,7 +10,7 @@ document, and a stale one sends an agent down paths that no longer exist.
 
 ---
 
-You are testing and fixing Planéir, an Irish financial-planning app that holds
+You are testing and fixing Planeir, an Irish financial-planning app that holds
 a spoken planning meeting with a member of the public, captures what they say
 as structured facts, and runs deterministic analysis modules on the result.
 

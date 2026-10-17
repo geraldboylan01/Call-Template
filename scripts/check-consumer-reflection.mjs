@@ -139,7 +139,7 @@ check('the ceiling is still bounded',
  * because from its side nothing had been answered.
  *
  * Observed live on a real call: the client named three funds with amounts, and
- * Planéir replied "that's €80,000 jointly in Zurich Prisma 4, €12,000 in Prisma
+ * Planeir replied "that's €80,000 jointly in Zurich Prisma 4, €12,000 in Prisma
  * 5, and a separate €3,000 for the children" -- then re-asked the same question
  * word for word. It heard and did not record, and said so in the worst order.
  */

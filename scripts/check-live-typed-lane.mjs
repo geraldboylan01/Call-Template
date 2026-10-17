@@ -28,7 +28,7 @@ function equal(actual, expected, message) { checks += 1; assert.equal(actual, ex
 /* ------------------------------------------------------------------ prompt */
 
 // ONE PROMPT PACK, NOT TWO. The delivery shape may differ. Everything that
-// decides what Planéir does -- the analyses, the fact definitions, the safety
+// decides what Planeir does -- the analyses, the fact definitions, the safety
 // rules, the Ireland rules, the conversation stages -- may not. If a future
 // edit adds a typed-only rule about WHAT to collect, these fail.
 const voicePrompt = buildLiveCataloguePrompt({ directModulePlanning: true, channel: 'voice' });

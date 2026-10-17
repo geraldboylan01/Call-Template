@@ -54,7 +54,7 @@ function transcriptLines(turns) {
   return (Array.isArray(turns) ? turns : [])
     .slice(-MAX_TRANSCRIPT_TURNS)
     .map((turn) => {
-      const role = turn?.role === 'user' ? 'Client' : 'Planéir';
+      const role = turn?.role === 'user' ? 'Client' : 'Planeir';
       const text = String(turn?.transcript || '').replace(/\s+/g, ' ').trim()
         .slice(0, MAX_TRANSCRIPT_TURN_CHARACTERS);
       return text ? `${role}: ${text}` : null;
@@ -231,7 +231,7 @@ export async function renderAssistantText({
     const input = [
       ...transcriptLines(recentTurns).map((line) => ({
         role: line.startsWith('Client:') ? 'user' : 'assistant',
-        content: line.replace(/^(?:Client|Planéir): /, '')
+        content: line.replace(/^(?:Client|Planeir): /, '')
       }))
     ];
     if (input.length === 0) {

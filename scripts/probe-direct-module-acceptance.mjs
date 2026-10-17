@@ -5,7 +5,7 @@
  *
  * The scripted harness proves the plumbing; this proves the only part the
  * harness mocks. Every item here is one of the acceptance behaviours for the
- * first Planéir call: a spoken quantity, two owners, several figures in one
+ * first Planeir call: a spoken quantity, two owners, several figures in one
  * answer, a categorical "no others", and a spoken correction. Each is meaning,
  * so each belongs to the model -- none of them may become a parser.
  */

@@ -110,7 +110,7 @@ try {
   const link = new URL(options.planUrl);
   link.hash = new URLSearchParams({ invite: invite.token }).toString();
 
-  console.log('Generated a signed Plan\u00e9ir consumer invite (ci1 / HMAC-SHA-256).');
+  console.log('Generated a signed Planeir consumer invite (ci1 / HMAC-SHA-256).');
   console.log(`Cohort: ${invite.payload.cohort}`);
   console.log(`Expires: ${new Date(invite.payload.exp * 1_000).toISOString()}`);
   console.log(`Maximum uses: ${invite.payload.maxUses}`);

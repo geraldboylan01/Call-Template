@@ -9415,7 +9415,7 @@ async function openConsumerPlannerTest({ closeOverflow = false } = {}) {
         plannerWindow.opener = null;
         showToast('Private planner opened in a new tab.', 'success');
       } else {
-        showToast('Allow pop-ups for Planéir, then select Test Planner again.', 'error');
+        showToast('Allow pop-ups for Planeir, then select Test Planner again.', 'error');
       }
       return;
     }
