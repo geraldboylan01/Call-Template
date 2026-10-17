@@ -297,6 +297,23 @@ function checkInvariants(projection, label) {
 export function runHouseholdCashFlowTests() {
   const cases = [];
 
+  cases.push(runCase('Finite inputs whose calculated totals overflow are refused before rendering', () => {
+    const fixtures = [
+      ['income', (p) => { p.income.forEach((item) => { item.amount = 1e308; }); }],
+      ['outgoings', (p) => { p.outgoings[0].amount = 1e308; p.outgoings[1].amount = 1e308; }],
+      ['case total', (p) => { p.outgoings[0].amount = 1e308; }, {
+        calculationYear: 2026, taxFor: () => ({ niamh: 6e307, dara: 6e307 })
+      }]
+    ];
+    fixtures.forEach(([label, mutate, options]) => {
+      let message = '';
+      try {
+        computeHouseholdCashFlowProjection(payload(mutate), options || designFixtureOptions());
+      } catch (error) { message = error.message; }
+      assert(message.startsWith(FIELD) && message.includes('too large to calculate'), `${label}: clear engine refusal (${message})`);
+    });
+  }));
+
   cases.push(runCase('Income must remain above zero on the figures shown', () => {
     [1, 49].forEach((amount) => {
       const raw = {
@@ -758,6 +775,10 @@ export function runHouseholdCashFlowTests() {
       'Their mortgage',
       'The household\'s car loan',
       'Paid to AIB',
+      'Paid to Standard Life',
+      'Paid to standard life',
+      'Paid to aib',
+      'Paid to IRISH LIFE',
       'Savings of €12000'
     ];
     places.forEach(([name, set, where]) => {

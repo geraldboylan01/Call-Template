@@ -112,6 +112,14 @@ function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/** Finite inputs can still overflow when added or rounded. Refuse the result. */
+function requireFiniteAmount(value, where) {
+  if (!isFiniteNumber(value)) {
+    throw new Error(`${where}: the total is too large to calculate. Use smaller yearly amounts.`);
+  }
+  return value;
+}
+
 /** Present and not null: a normalised payload writes null for "not given". */
 function has(raw, key) {
   return Object.prototype.hasOwnProperty.call(raw, key)
@@ -162,14 +170,15 @@ export const HOUSEHOLD_CASH_FLOW_BANNED_PHRASES = Object.freeze([
 ]);
 
 export const HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES = Object.freeze([
-  /\bAIB\b/,
-  /\bBank of Ireland\b/,
-  /\bBOI\b/,
-  /\bRevolut\b/,
-  /\bZurich\b/,
-  /\bIrish Life\b/,
-  /\bAviva\b/,
-  /\bDavy\b/
+  /\bAIB\b/i,
+  /\bBank of Ireland\b/i,
+  /\bBOI\b/i,
+  /\bRevolut\b/i,
+  /\bZurich\b/i,
+  /\bIrish Life\b/i,
+  /\bAviva\b/i,
+  /\bDavy\b/i,
+  /\bStandard Life\b/i
 ]);
 
 /** Refuse text this screen may not show, naming where it came from. */
@@ -591,6 +600,7 @@ export function normalizeHouseholdCashFlowInputs(raw) {
 
   const income = normalizeIncome(raw, people);
   const outgoings = normalizeOutgoings(raw);
+  requireFiniteAmount(outgoings.reduce((sum, line) => sum + line.amount, 0), `${FIELD}.outgoings`);
 
   let calculationYear = null;
   if (has(raw, 'calculationYear')) {
@@ -602,7 +612,8 @@ export function normalizeHouseholdCashFlowInputs(raw) {
   }
 
   const { gross, earnings } = grossByPerson(people, income);
-  const incomeTotal = Object.values(gross).reduce((sum, value) => sum + value, 0);
+  const incomeTotal = requireFiniteAmount(Object.values(gross).reduce((sum, value) => sum + value, 0), `${FIELD}.income`);
+  requireFiniteAmount(roundToHundred(incomeTotal), `${FIELD}.income`);
   if (roundToHundred(incomeTotal) === 0) {
     throw new Error(`${FIELD}.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.`);
   }
@@ -933,6 +944,9 @@ function buildCaseModels(inputs, year, options) {
 
     const totalOutgoings = taxTotal + pensionsGross + statedTotal;
     const leftOver = inputs.incomeTotal - totalOutgoings;
+    Object.entries({ taxTotal, pensionsGross, statedTotal, totalOutgoings, leftOver }).forEach(([key, value]) => {
+      requireFiniteAmount(value, `${FIELD}.scenarios (${scenario.id}).${key}`);
+    });
 
     return {
       scenario,
@@ -1266,6 +1280,14 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
     // Left over as SHOWN is shown income minus the shown lines, never rounded
     // alone, so the picture always adds up.
     model.shownLeftOver = model.shownIncome - model.shownOutgoings;
+    Object.entries({
+      shownIncome: model.shownIncome,
+      shownOutgoings: model.shownOutgoings,
+      shownLeftOver: model.shownLeftOver,
+      chartSpan: model.shownIncome + Math.max(0, -model.shownLeftOver)
+    }).forEach(([key, value]) => {
+      requireFiniteAmount(value, `${FIELD}.scenarios (${model.scenario.id}).${key}`);
+    });
   });
 
   const today = models.find((model) => model.isBase);
