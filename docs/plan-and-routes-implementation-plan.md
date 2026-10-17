@@ -1,6 +1,6 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 16 October 2026 after #72 merged. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; the plan-pack brief (B0) is next.
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 17 October 2026; the central illness-scenario assumption was approved that day. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; the plan-pack brief (B0) is next.
 
 ## 1. Where things stand
 
@@ -8,8 +8,8 @@ Written 13 October 2026, with the four decisions in section 4 settled that eveni
 |---|---|---|
 | Future cost fund | `main` (#55 and #57) | Engine, screen, wiring, central cash rate and DIRT built and tested. Prompt-pack entry merged. |
 | Household cash flow | Engine, screen and wiring on `main`; short-state changes in #71 | #71 includes bounded charts, the negative-tax fix and phone layout checked with #72. Fresh review and CI precede its merge. Today's pension contributions remain a separate follow-up. |
-| Goals and resources | Engine on `main` (#58, #67, #70); timeline fields in #75; screen in draft #76 | Engine and earnings-cap fixes built. #75 adds year offsets and calendar-year ledger labels. #76 implements Proposal A, but app wiring and conditional relief footnotes remain to be finished. |
-| Protection gap | `main` (#61, #65); zero-payment extension in #77 | Engine, screen, wiring and prompt-pack entry built. #77 allows a confirmed €0 State payment and records sourced Irish payment references. Entitlement is not inferred from a maximum rate. |
+| Goals and resources | Engine and timeline fields on `main` (#58, #67, #70, #75); screen in draft #76, now targeting `main` | Engine and earnings-cap fixes built. #75 adds year offsets and calendar-year ledger labels. #76 implements Proposal A, but app wiring and conditional relief footnotes remain to be finished. |
+| Protection gap | `main` (#61, #65); zero-payment extension in #77 | Engine, screen, wiring and prompt-pack entry built. #77 allows a confirmed €0 State payment and records sourced Irish payment references. The approved central assumption for hypothetical illness scenarios is specified below; its adapter and tax support remain to be built. |
 | Property decisions | Rental on `main` (#64, #66); home trade down on `main` (#72) | Both modules built and wired. Shared phone grids also include #73. Property chapters remain outside the first version of the plan. |
 | On `main` | | Mortgage, loan, pension, net retirement, college cost, cash reserve and balance sheet engines. The Irish tax engine, now with CGT on property. Household profile v1 with its adapters, module registry and orchestrator. Case packs and the presenter. |
 
@@ -95,11 +95,24 @@ Missing, and needed before a plan can run from the profile alone:
 | When the mortgage should be cleared | The mortgage goal needs an age. | A goal target date, which the profile already holds; nothing asks for it yet |
 | How far each goal could move | Routes may only move a goal within what the client said is possible (a later retirement, a lower target, a longer mortgage). | A question per goal, kept in the plan pack |
 | Other dated costs | Care for a parent or school fees need a start, a number of years and a yearly cost. | Goal target date and amount exist; the number of years does not |
-| State payments if an income stops | Illness, invalidity and survivor's payments. | Central assumptions with their sources, not questions |
+| State payment in a hypothetical illness scenario | Standard personal Illness Benefit rate for an employed person assumed to qualify. | A central, sourced, dated planning assumption; never a question asking the client to predict an entitlement. See the contract below. |
+| Survivor's payment after a death | A separate scenario with different eligibility and tax treatment. | Keep the existing stated-input contract until its own assumption is designed; the illness default does not select a survivor's payment. |
 | Whether the mortgage would be cleared on a death | The protection chapter's need after a death depends on it. | A question |
 | Property (later) | Rent, running costs, purchase date and price, how it was acquired, whether it was ever a home. | Questions, when property joins the plan |
 
 In the hand-authored version the author writes these straight into the plan pack's household, so B0 and B1 can start now. The profile fields arrive with the adapters (B2), and the consumer questions before the website version.
+
+### Approved illness-scenario assumption
+
+The form collects current household facts. It must not ask what disability payment someone would receive in a hypothetical future illness. For the standard scenario, assume an employed person becomes unable to work, their employer sick pay has ended, and they qualify for the standard personal rate of **Illness Benefit**. This is an illustrative assumption, not an award or a finding of eligibility. Use one personal rate, without dependent increases. The employee assumption must not silently be applied to self-employment or retirement; use the employment facts already collected to identify its scope, without building a benefits questionnaire.
+
+Keep the rate in the central planning assumptions, with the scheme, weekly amount, source, checked date, effective dates, approval status and version. The [Department's scheme page](https://www.gov.ie/en/service/ddf6e3-illness-benefit/) gives a 2026 maximum personal rate of €254 weekly, or €13,208 for a 52-week illustration. [Budget 2027](https://prelive.oireachtas.ie/en/debates/debate/dail/2026-10-06/3/) announces a €10 weekly increase: €264, or €13,728 over 52 weeks, is the derived future reference. Keep it separate from the rate currently payable; verify the scheme's commencement before activation. Do not add the separate cost-of-disability lump sum to recurring illness income.
+
+Each Budget update reviews the official scheme rates, dates and conditions, adds a versioned record and checks dates immediately before and after commencement. Use the applicable approved record for a new calculation. Retain the source and assumption version in saved plan results so an update cannot silently rewrite an earlier illustration. Do not guess future increases or scrape live rates during a client calculation.
+
+The scenario must say **"Assumes the standard personal rate of Illness Benefit"**. It represents a full year at that rate, not an exact first claim year or a promise of permanent payment. Illness Benefit is taxable, with no USC or PRSI, and new claims are time-limited under the [operational guidelines](https://www.gov.ie/en/department-of-social-protection/publications/operational-guidelines-illness-benefit/). The B2 brief must define the duration and savings-runway treatment; it cannot extrapolate the payment indefinitely.
+
+Implementation belongs to the protection adapter and shared tax engine. Add the correct illness-payment tax treatment and recalculate household tax after the salary stops before supplying spendable amounts to the gap engine. Do not treat the gross statutory rate as tax-free take-home. The existing Stage 1 engine accepts stated cash amounts and has no illness income type: until this adapter is built and tested, its manual payload contract remains in force. The B2 change updates the module's provenance, footnote, assumptions table and prompt-pack wording together, removing the requirement to confirm every hypothetical payment as a client fact. A stated amount, including an explicit zero after #77, remains distinct from a central assumption.
 
 ## 7. The order of work
 
@@ -111,11 +124,11 @@ Two tracks run side by side. Track A builds the module screens, one Claude Code 
 | A1 | Future cost fund screen and wiring complete on `main`; its updated wiring list remains the pattern | Complete | Future cost fund module |
 | A2 | Cash flow engine, screen and wiring complete; merge #71, then add today's pension contributions in its own change | Clean final review and CI for #71; contribution input contract | Cash flow module |
 | A3 | Protection gap complete; confirmed zero-payment extension in #77 | Clean review and CI for #77 | Protection module |
-| A4 | Goals engine complete; merge #75, retarget #76 to `main`, finish app wiring and conditional relief footnotes, then review the screen | #75 for timeline fields; screen wiring checks | Goals module |
+| A4 | Goals engine and #75 complete; #76 targets `main`; finish app wiring and conditional relief footnotes, then review the screen | Screen wiring checks | Goals module |
 | P | Prompt pack entries for each module, from its contract summary (section 8) | Each module merged | Claude |
 | B0 | Plan pack v1: format, validator, compiler for the modules on `main`, and `check:plan-pack` | | Plan chat |
 | B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | B0 and the A4 engine. Left over is stated until A2 lands. | Plan chat |
-| B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6 | Each module's engine | Plan chat |
+| B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6; central Illness Benefit assumption, shared-engine tax treatment and duration contract | Each module's engine; versioned assumptions and tax support for illness scenarios | Plan chat |
 | D2 | The plan view: the current position and the routes side by side | B1's output shape | Claude Design |
 | B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats | D2, B1, B2 | Plan chat |
 | B4 | The plan playbook (how an author writes a plan pack) and two golden plan packs | B1 | Gerry and Claude |
