@@ -27,7 +27,7 @@ import {
  * not just the sample.
  */
 
-const WIDTHS = Object.freeze([390, 500, 760, 1100, 1739, 1740, 1776, 1920]);
+const WIDTHS = Object.freeze([252, 280, 320, 390, 500, 760, 1100, 1739, 1740, 1776, 1920]);
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);

@@ -1,6 +1,6 @@
 # Goals and resources: can the money do everything you want, and what has to give?
 
-Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are from a run on merged `main` (13 October 2026, after PR #55), with pension money counted after income tax relief and goals taken in the planning method's order. The engine `js/goals_and_resources_math.js` is built and tested and runs in about 0.55 s. The screen and the wiring are not started.
+Status: design chosen (option C, "have and need"). Priced through the engines for an **illustrative household, not real figures**. The pricing script is built and its figures below are from a run on merged `main` (13 October 2026, after PR #55), with pension money counted after income tax relief and goals taken in the planning method's order. The engine `js/goals_and_resources_math.js` is built and tested and runs in about 0.55 s. The screen and app wiring are built, with case selection, presenter/video support and conditional ledger footnotes.
 
 ## Changes decided 13 October 2026, evening
 
@@ -47,21 +47,21 @@ It imports `js/future_cost_fund_math.js` (on `main` since PR #55) and the tax en
 - **A helper in the retirement module.** `computePersonalContributionCosts(rawInputs)` in `js/pension_math.js` is additive: what the household's own personal contributions cost each year after income tax relief, from the tax engine. It reuses the module's own item-building (`householdTaxItemsAtYear`, extracted from `buildContributionNetCosts`, so the two describe the same household) and its relief limit. Nothing the retirement module shows has changed. Its two tests are in `js/tests_pension_math.js`.
 - **The search reads three fields** of `computePensionProjection(...).debug`: `requiredPot`, `projectedPotCurrent` and `requiredPotDepletionTolerance`, the ones the retirement module's own readiness reads. A test and a runtime guard fail with a clear message if any is ever missing or not a number.
 - **The search** (changed 15 October, PRs #67 and #70). The ceiling is the room across the whole schedule: each working year's relievable euro amount (the age band's share of salary up to the €115,000 earnings cap, from the pension engine's own functions) as a share of that year's projected salary, less what is paid in, the largest over the years and then over the people. Past it nothing changes, below it something does. The pot is a straight line in the contribution only while no year's limit binds, so the search runs the ceiling first (if that does not close the gap the limit is reached) and closes in with an Illinois step; the figures are exact to the euro. At the limit with the target out of reach, the four notes beside money invested outside a pension are carried on `pension.disclosures`.
-- **Tests.** `js/tests_goals_and_resources_math.js` (12 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
+- **Tests.** `js/tests_goals_and_resources_math.js` (22 cases) and `scripts/check-goals-and-resources.mjs`, which proves the engine against a reference calculator that takes nothing from it: a plain annuity for the mortgage, a year-by-year rebuild for college, the retirement module run back at the engine's answer, the tax engine's difference for relief, and the yearly money handed out by hand. `npm run check:goals-and-resources`. About 0.6 s on a laptop. The check prints the time on every run and fails only above 3 seconds, so a slower CI machine does not trip it.
 - **The projection is cached by payload** (`projectGoalsAndResources(rawInputs)`, six entries, keyed by both central versions and the payload; any call with options bypasses it). A projection is about half a second and the screen, the paste pipeline and the presenter all ask for the same one. The cached object is shared: read it, do not change it. Tested in `js/tests_goals_and_resources_math.js`.
-- Not built: `state.js`/`render.js`/`app.js`/presenter/video wiring, and listing the check in the CI workflows. See "The screen" below.
+- App wiring is complete in `state.js`, `module_pipeline.js`, `render.js` and `app.js`, with presenter and video integration. The check runs in consumer CI. Seven wiring cases verify derived figures, import rejection, module switching, presenter cases, selected video figures and relief notes.
 
 ### The screen
 
-Built on `module/goals-and-resources-screen`. Its own files only; every shared file is held until the property pull requests are merged (this module is last in the wiring queue).
+Built on `module/goals-and-resources-screen`, retargeted to `main` after #75 merged. Shared app wiring is included. Inputs alone determine outputs, case ledgers and charts; pasted figures never override them. Selected cases persist in editable sessions and remain in memory only in read-only sessions.
 
 | File | What it is |
 |---|---|
 | `js/goals_and_resources_view.js` | Pure. The words, the geometry at every width, where each mark sits, the forbidden-text scan. Nothing in it needs a DOM. |
 | `js/goals_and_resources_module.js` | Draws what the view says. The 520 ms clock, `presenterSelectScenario`, `garState()`, `destroyGoalsAndResources()`. Follows `js/future_cost_fund_module.js`; the clock is copied, not shared. |
-| `styles/goals_and_resources.css` | The `.gar-` rules, as a block of their own for now. **At wiring time they move into `styles/base.css` like the other modules' and this file is deleted** (decided 14 October). The preview then links `base.css` alone. |
+| `styles/base.css` | Shared `.gar-` rules. The standalone stylesheet has been removed and the preview loads `base.css` alone. |
 | `dev/goals-and-resources-preview.html` | The module alone, with `?preset=` (illustrative, one-child, four-children, mortgage-ends, spare, no-cash, no-later, stretched, stretched-rich), `?case=` and `?width=`. |
-| `js/tests_goals_and_resources_view.js`, `js/tests_goals_and_resources_module.js` | 17 and 20 cases. Run by `npm run check:goals-and-resources` with the engine suite. |
+| `js/tests_goals_and_resources_view.js`, `js/tests_goals_and_resources_module.js` | 20 and 20 cases. Run by `npm run check:goals-and-resources` with the engine suite. |
 
 What was decided building it:
 
@@ -125,7 +125,7 @@ The two measures disagree. Case 2 needs the least this year; case 3 pays out €
 
 The later option, priced beside every case: needed this year is €10,797, €4,081, €5,471 and €5,137 for cases 1 to 4, and paid out over the life is €666,495, €666,173, €646,608 and €651,181. At 65 on €46,000 retirement needs nothing extra, so cases 2, 3 and 4 are no longer short (€1,919, €529 and €863 to spare); case 1 is still short by €4,797.
 
-## The contract (engine and screen built; wiring held)
+## The contract (engine, screen and app wiring built)
 
 `generated.goalsAndResourcesInputs`. Engine in `js/goals_and_resources_math.js`. `scripts/price-goal-cases.mjs` is a thin caller of it, so there is one implementation.
 
@@ -231,3 +231,10 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 - Stated amounts ("what if I put in €5,000?"), which need states that are not designed.
 - Investing the cash. Cash earns the central instant-access rate after DIRT.
 - Any consumer routing, voice, planner facts, manifest or playbook entry. Do not edit `docs/prompt-pack/`.
+
+
+### Ledger relief notes and app verification
+
+The relief-limit disclosures are rendered from the central tax catalogue immediately below each affected case’s calendar-year ledger. They appear only when the pension search reaches the relief limit with a target still unmet; ordinary cases have no extra footnote. The video follows the selected case’s screen figures and ledger.
+
+Real-app Chrome checks cover all four cases at 320, 390 and 1440px, saved-case reopening, read-only selection without session writes, and footnotes below capped-case ledgers only. The dedicated check covers engine, view, module and wiring; video scene, video brief and build checks also run before review.

@@ -45,6 +45,7 @@ jobs:
           npm run check:protection-gap
           npm run check:rental-keep-or-sell
           npm run check:home-trade-down
+          npm run check:goals-and-resources
           npm run check:module-media
           npm run check:video-summary
           npm run check:video-scene

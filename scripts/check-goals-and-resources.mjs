@@ -25,6 +25,7 @@ import {
 } from '../js/tests_goals_and_resources_math.js';
 import { runGoalsAndResourcesModuleTests } from '../js/tests_goals_and_resources_module.js';
 import { runGoalsAndResourcesViewTests } from '../js/tests_goals_and_resources_view.js';
+import { runGoalsAndResourcesWiringTests } from '../js/tests_goals_and_resources_wiring.js';
 import { PENSION_EARNINGS_CAP, computePensionProjection, normalizePensionInputs } from '../js/pension_math.js';
 import { computeTaxYear } from '../js/planning/tax/engine.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
@@ -355,6 +356,9 @@ const moduleSummary = await runGoalsAndResourcesModuleTests();
 if (moduleSummary.failed > 0) {
   failures += moduleSummary.failed;
 }
+
+const wiringSummary = runGoalsAndResourcesWiringTests();
+failures += wiringSummary.failed;
 
 if (failures > 0) {
   console.error(`[GoalsAndResourcesAudit] ${failures} check(s) failed.`);

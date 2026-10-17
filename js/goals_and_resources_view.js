@@ -24,6 +24,18 @@
  * the engine's sake; none of them reaches a string here.
  */
 
+import { renderTaxDisclosures } from './planning/tax/disclosures.js';
+import { resolveTaxRules } from './planning/tax/resolve.js';
+
+/** Catalogue-owned relief notes for this case's ledger, only at the limit. */
+export function goalsAndResourcesReliefNotes(projection, caseId) {
+  const entry = projection?.debug?.cases?.find((candidate) => candidate.id === caseId);
+  if (!entry?.pension?.reachedCap || !(entry.pension.gapLeftOver > 0)) return [];
+  return renderTaxDisclosures(entry.pension.disclosures, {
+    rules: resolveTaxRules(projection.debug.taxRulesYear)
+  });
+}
+
 /** From this container width the two pictures sit side by side with the goals beside the yearly one. */
 export const WIDE_MIN_WIDTH = 1740;
 
@@ -327,12 +339,20 @@ export function layoutGar(model, { width }) {
   const mode = width >= WIDE_MIN_WIDTH ? 'wide' : (width >= PAIR_MIN_WIDTH ? 'pair' : 'single');
   const wide = mode === 'wide';
   const set = wide ? GEOMETRY.wide : GEOMETRY.compact;
+  const plotWidth = mode === 'single' ? Math.min(242, Math.max(1, width - 32)) : 242;
+  const needW = Math.min(112, plotWidth * 0.46);
+  const needLeft = plotWidth - needW;
+  const haveW = Math.min(84, needLeft - 16);
+  const year = wide ? set.year : { ...set.year, haveW, needLeft, needW,
+    waterW: plotWidth, ceilW: plotWidth, noteW: needLeft - 8,
+    labelLeft: 0, labelW: plotWidth };
+  const now = wide ? set.now : { ...set.now, haveW, useLeft: needLeft, useW: needW, ceilW: plotWidth };
   return {
     mode,
     wide,
     width,
-    year: set.year,
-    now: set.now,
+    year,
+    now,
     kYear: set.year.plot / model.axis.yearMax,
     kNow: set.now.plot / model.axis.cash
   };

@@ -1380,7 +1380,7 @@ export function projectGoalsAndResources(rawInputs, options = {}) {
 
 /** `[{ id, title, description }]`, for the presenter and the case buttons. */
 export function getGoalsAndResourcesCases(rawInputs, options = {}) {
-  return computeGoalsAndResourcesProjection(rawInputs, options).debug.cases.map((entry) => ({
+  return projectGoalsAndResources(rawInputs, options).debug.cases.map((entry) => ({
     id: entry.id,
     title: entry.title,
     description: entry.words.amountLine
@@ -1388,5 +1388,5 @@ export function getGoalsAndResourcesCases(rawInputs, options = {}) {
 }
 
 export function getDefaultGoalsAndResourcesScenarioId(rawInputs, options = {}) {
-  return computeGoalsAndResourcesProjection(rawInputs, options).debug.baseScenarioId;
+  return projectGoalsAndResources(rawInputs, options).debug.baseScenarioId;
 }

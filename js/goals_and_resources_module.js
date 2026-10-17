@@ -487,7 +487,7 @@ export function buildGoalsAndResourcesModule({
     }
 
     const short = el('div', 'gar-short');
-    put(short, { left: layout.wide ? yx.labelLeft : yx.needLeft, width: yx.labelW });
+    put(short, { left: yx.labelLeft, width: yx.labelW });
     const shortLine = el('div', 'gar-short-line');
     const shortSquare = square('gar-sq');
     const shortWord = el('span', 'gar-short-word');
@@ -725,7 +725,8 @@ export function buildGoalsAndResourcesModule({
       if (width <= 0) return;
       // Only a change of arrangement needs the screen built again; inside one
       // arrangement the pictures are the same size and the goals simply flex.
-      if (layoutGar(model, { width }).mode !== measuredMode) relayout();
+      const next = layoutGar(model, { width });
+      if (next.mode !== measuredMode || next.now.ceilW !== layout.now.ceilW) relayout();
     });
     observer.observe(root);
   }
