@@ -81,7 +81,7 @@ export const SECTIONS = Object.freeze([
         path: 'question',
         label: 'What do you want to understand?',
         short: 'Question',
-        hint: 'For example: should we overpay the mortgage or pay more into our pensions?',
+        hint: 'For example: how would overpaying the mortgage compare with increasing pension contributions?',
         type: 'longtext',
         maxLength: MAX_QUESTION_LENGTH,
         rows: 4,
@@ -98,7 +98,7 @@ export const SECTIONS = Object.freeze([
         private: true
       },
       { path: 'goodOutcome', label: 'What would a good outcome look like?', short: 'Hoping to achieve', hint: 'For example: work less from 60 and feel confident we have enough.', type: 'longtext', maxLength: 1000, rows: 2, private: true },
-      { path: 'worries', label: 'What worries you most?', short: 'Main worries', hint: 'Optional. Tell Gerry what is on your mind.', type: 'longtext', maxLength: 1000, rows: 2, private: true }
+      { path: 'worries', label: 'What worries you most?', short: 'Main worries', hint: 'Optional. Describe what is on your mind.', type: 'longtext', maxLength: 1000, rows: 2, private: true }
     ]
   },
   {

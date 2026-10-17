@@ -14,7 +14,7 @@ import {
 import { describeConversationState, processTurn } from './conversation.js';
 import { toPublicGoalAssessment } from '../../../js/planning/goal_plan.js';
 import { ConsumerError, notFound, unavailable } from './errors.js';
-import { requestAdviserHandoff, toPublicHandoff } from './handoff.js';
+import { requestAdviserHandoff, toPublicHandoff, toPublicHandoffWithOffer } from './handoff.js';
 import { publishConsumerAnalysis } from './publish.js';
 import { confirmAndRunRealtimeAnalysisPlan } from './realtime_analysis.js';
 import { confirmPlanSelection } from './planning_turn.js';
@@ -1213,7 +1213,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
         profile,
         turns,
         analysis,
-        handoff: handoffRow ? toPublicHandoff(handoffRow) : null,
+        handoff: await toPublicHandoffWithOffer(env, handoffRow),
         bookingUrl: handoffRow && ['linked', 'delivered'].includes(handoffRow.status) ? config.bookingUrl : null,
         consentRefreshRequired,
         processingPaused: !config.journeyEnabled,

@@ -1,22 +1,23 @@
 /**
- * THE APPLICATION PAGE.
+ * THE SAVED DEMO REQUEST AND INVITED REVIEW FORM.
  *
  * One page, one submit. The form is rendered from js/case_application/schema.js
  * so the questions, the live write-up and the Worker's validation all read the
- * same description. Nothing is required except the question, a name, an email
- * and the two consents; every figure can be skipped or marked "Not sure".
+ * same description. Name, email and demo acknowledgements are required;
+ * goals and financial figures can be skipped or marked "Not sure".
  *
  * Answers are saved in this browser as the person types, so they can go and
- * find a statement and come back. Nothing is sent until they press Send.
+ * find a statement and come back. Explicit submission saves to the demo API.
+ * Approved confirmation records a snapshot; it never starts an analysis.
  */
 
 import {
-  SECTIONS,
+  SECTIONS as CASE_SECTIONS,
   TOPICS,
   TOPIC_GATED_SECTION_IDS,
   applicationToSections,
-  countAnswers,
-  countSectionAnswers,
+  countAnswers as countCaseAnswers,
+  countSectionAnswers as countCaseSectionAnswers,
   createContext,
   deletePath,
   formatMoney,
@@ -28,6 +29,7 @@ import {
   isSectionNone,
   isSectionOffered,
   isSectionVisible,
+  listVisibleFields,
   includeAnsweredSections,
   normalizeApplication,
   parsePrefill,
@@ -39,20 +41,22 @@ import {
   setPath,
   topicLabels
 } from './case_application/index.js';
-import { createSuccessTakeover } from './success_takeover.js';
 import { stillUsefulQuestions } from './case_application/agent.js';
-import { createApplicationVoice } from './application_voice.js';
+import { DEMO_POLICY, DEMO_ACKNOWLEDGEMENTS, DEMO_SAVED, DEMO_CONFIRMED, demoAcknowledgements } from './workspace/demo_contract.js';
+import { demoApi, setDemoCsrf } from './demo_api.js';
 
-const WORKER_BASE_URL = (() => {
-  const host = window.location.hostname;
-  if (host === '127.0.0.1' || host === 'localhost') {
-    return 'http://127.0.0.1:8787';
-  }
-  const override = typeof window.__WORKER_BASE_URL === 'string' ? window.__WORKER_BASE_URL.trim() : '';
-  return override ? override.replace(/\/+$/, '') : '';
-})();
-
-const STORAGE_KEY = 'planeir.apply.draft.v1';
+// A new draft namespace prevents old publication permissions or pending case
+// submissions from being restored as workspace acknowledgements.
+const SECTIONS = CASE_SECTIONS.map((section) => ({
+  ...section,
+  fields: (section.fields || []).filter((field) => field.path !== 'videoName')
+}));
+function workspaceCounts(app, ctx, section) {
+  const counts = section ? countCaseSectionAnswers(section, app, ctx) : countCaseAnswers(app, ctx);
+  const removed = listVisibleFields(app, ctx).filter((item) => item.path === 'videoName' && (!section || item.section.id === section.id)).length;
+  return { answered: counts.answered, total: counts.total - removed };
+}
+const STORAGE_KEY = 'planeir.workspace.draft.v1';
 const SAVE_DELAY_MS = 400;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -108,13 +112,15 @@ const ui = {
   name: document.getElementById('applyName'),
   email: document.getElementById('applyEmail'),
   website: document.getElementById('applyWebsite'),
-  consentVideo: document.getElementById('applyConsentVideo'),
-  consentEducation: document.getElementById('applyConsentEducation'),
+  adultConfirmed: document.getElementById('applyAdultConfirmed'),
+  educationAcknowledged: document.getElementById('applyEducationAcknowledged'),
+  aiProcessingAcknowledged: document.getElementById('applyAiAcknowledged'),
+  privacyNoticeAcknowledged: document.getElementById('applyPrivacyAcknowledged'),
+  termsAccepted: document.getElementById('applyTermsAccepted'),
   status: document.getElementById('applyStatus'),
   submit: document.getElementById('applySubmit'),
   clear: document.getElementById('applyClear'),
   savedNote: document.getElementById('applySavedNote'),
-  done: document.getElementById('applyDone'),
   assistantNote: document.getElementById('applyAssistantNote')
 };
 
@@ -124,11 +130,16 @@ const state = {
   // The person still reads, completes and sends the page themselves.
   via: '',
   submitting: false,
-  receipt: null,
   submissionId: '',
-  sentPayload: null,
   saveTimer: 0
 };
+let savedRequest = null;
+let intakeEnabled = false;
+let invitationValid = false;
+let remoteLoaded = false;
+let accessToken = '';
+let invitationToken = '';
+const privatePage = window.location.pathname.startsWith('/demo/');
 
 function emptyDraft() {
   return { topics: [], added: [], unsure: [], none: [] };
@@ -187,7 +198,9 @@ function setDraftValue(path, value) {
 }
 
 function prepared() {
-  return normalizeApplication(state.draft);
+  const information = normalizeApplication(state.draft);
+  delete information.videoName;
+  return information;
 }
 
 function context() {
@@ -234,10 +247,13 @@ function saveDraft() {
       via: state.via,
       contact: { fullName: ui.name?.value || '', email: ui.email?.value || '' },
       submissionId: state.submissionId,
-      sentPayload: state.sentPayload,
+      requestId: savedRequest?.id || null,
+      serverRevision: savedRequest?.revision || null,
       savedAt: new Date().toISOString()
     }));
+    ui.savedNote.textContent = 'Edits are saved on this device as you type. Use the button above to save them to Planéir.';
   } catch (_error) {
+    ui.savedNote.textContent = 'This browser cannot save your draft. Keep this page open while you work.';
     // Private windows and full storage both land here. The form still works;
     // it just cannot be resumed later.
   }
@@ -491,9 +507,12 @@ function textField(field, path, { required = false } = {}) {
 }
 
 function buildField(field, path) {
+  if (path === 'anythingElse') field = { ...field, label: 'Anything else you want to add?' };
+  if (path === 'mortgage.lender') field = { ...field, hint: 'Optional. The lender name is not needed for the comparison.' };
+  if (path === 'household.age') field = { ...field, min: 18, hint: 'Age at your last birthday. The workspace is for adults aged 18 or older.' };
   if (field.type === 'choice') return choiceField(field, path);
   if (field.type === 'month') return monthField(field, path);
-  if (field.type === 'text' || field.type === 'longtext') return textField(field, path, { required: path === 'question' });
+  if (field.type === 'text' || field.type === 'longtext') return textField(field, path);
   if (isNumericField(field)) return numberField(field, path);
   return null;
 }
@@ -644,11 +663,11 @@ function renderCounts() {
   SECTIONS.forEach((section) => {
     const node = document.getElementById(`section-${section.id}-count`);
     if (!node) return;
-    const { answered, total } = countSectionAnswers(section, app, ctx);
+    const { answered, total } = workspaceCounts(app, ctx, section);
     node.textContent = total > 0 ? `${answered} of ${total} filled` : '';
     node.classList.toggle('is-complete', total > 0 && answered === total);
   });
-  const { answered, total } = countAnswers(app, ctx);
+  const { answered, total } = workspaceCounts(app, ctx);
   ui.previewCount.textContent = `${answered} of ${total} answered`;
 }
 
@@ -658,7 +677,7 @@ function renderProgress() {
   ui.progress.replaceChildren(...SECTIONS
     .filter((section) => isSectionVisible(section, app, ctx))
     .map((section) => {
-      const { answered, total } = countSectionAnswers(section, app, ctx);
+      const { answered, total } = workspaceCounts(app, ctx, section);
       return el('li', { class: total > 0 && answered === total ? 'is-complete' : '' }, [
         el('a', { href: `#section-${section.id}` }, [
           el('span', { text: section.title }),
@@ -673,7 +692,7 @@ function renderPreview() {
   const topics = topicLabels(app);
   const blocks = [];
   if (topics.length > 0) {
-    blocks.push(el('p', { class: 'apply-preview-topics' }, [el('strong', { text: 'Help wanted with: ' }), topics.join(', ')]));
+    blocks.push(el('p', { class: 'apply-preview-topics' }, [el('strong', { text: 'Topics: ' }), topics.join(', ')]));
   }
   applicationToSections(app).forEach((section) => {
     const list = el('ul', { class: 'apply-preview-lines' }, section.lines.map((line) => {
@@ -750,170 +769,152 @@ function markInvalid(node, invalid) {
   node.closest('.consent-check')?.classList.toggle('is-invalid', invalid);
 }
 
+const acknowledgementFields = DEMO_ACKNOWLEDGEMENTS;
+
 function validate() {
   const errors = [];
-  const voiceError = voice.validate();
-  if (voiceError) errors.push({ node: document.querySelector('[data-voice="consent"]'), message: voiceError });
-  const question = String(getPath(state.draft, 'question') || '').trim();
-  const questionInput = document.getElementById(fieldId('question'));
-  markInvalid(questionInput, !question);
-  if (!question) errors.push({ node: questionInput, message: 'Add your question so Gerry knows what you want to understand.' });
-
   const name = ui.name.value.trim();
   markInvalid(ui.name, !name);
   if (!name) errors.push({ node: ui.name, message: 'Add your name. A first name is fine.' });
-
-  const email = ui.email.value.trim();
-  const emailOk = EMAIL_PATTERN.test(email);
+  const emailOk = EMAIL_PATTERN.test(ui.email.value.trim());
   markInvalid(ui.email, !emailOk);
-  if (!emailOk) errors.push({ node: ui.email, message: 'Enter a valid email address so Gerry can reply.' });
-
-  [ui.consentVideo, ui.consentEducation].forEach((box) => {
-    markInvalid(box, !box.checked);
-    if (!box.checked) errors.push({ node: box, message: 'Tick both boxes to send your application.' });
-  });
+  if (!emailOk) errors.push({ node: ui.email, message: 'Enter a valid email address for return access.' });
+  const age = getPath(state.draft, 'household.age');
+  if (age !== undefined && age < 18) errors.push({ node: document.getElementById(fieldId('household.age')), message: 'The workspace is for adults aged 18 or older.' });
+  for (const field of acknowledgementFields) {
+    markInvalid(ui[field], !ui[field].checked);
+    if (!ui[field].checked) errors.push({ node: ui[field], message: 'Read and confirm each statement before saving your information.' });
+  }
   return errors;
 }
 
-function friendlyError(error) {
-  const message = typeof error?.message === 'string' ? error.message.trim() : '';
-  if (!message || error instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(message)) {
-    return 'Your application could not be sent right now. Your answers are still saved on this device. Please try again in a moment.';
-  }
-  return message;
+// Demo storage has its own acknowledgements and transport. Historical
+// publication permissions are never accepted as demo permission.
+function prepareWorkspaceDraft() {
+  const errors = validate();
+  if (errors.length) throw new Error(errors[0].message);
+  return {
+    format: 'planeir.demo-request.v1',
+    submissionId: state.submissionId,
+    contact: { fullName: ui.name.value.trim(), email: ui.email.value.trim() },
+    acknowledgements: demoAcknowledgements(Object.fromEntries(acknowledgementFields.map((field) => [field, ui[field].checked]))),
+    information: pruneToVisible(prepared())
+  };
 }
 
 async function onSubmit(event) {
   event.preventDefault();
   if (state.submitting) return;
-  setStatus('', '');
-
-  const voiceError = voice.validate();
-  const errors = state.receipt || state.sentPayload ? (voiceError ? [{ message: voiceError }] : []) : validate();
-  if (errors.length > 0) {
-    setStatus('error', errors[0].message);
-    errors[0].node?.focus();
-    return;
-  }
-
-  if (!WORKER_BASE_URL) {
-    setStatus('error', 'Applications are not available on this copy of the site.');
-    return;
-  }
-
-  const payload = state.sentPayload || {
-    fullName: ui.name.value.trim(),
-    email: ui.email.value.trim(),
-    consentVideo: ui.consentVideo.checked,
-    consentEducation: ui.consentEducation.checked,
-    website: ui.website.value,
-    submissionId: state.submissionId,
-    ...(voice.hasRecording ? { voiceNote: voice.consent() } : {}),
-    application: pruneToVisible(prepared()),
-    ...(state.via ? { via: state.via } : {})
-  };
-
+  if (!remoteLoaded || (!savedRequest && !intakeEnabled)) { setStatus('error', 'Demo requests are currently unavailable. Your draft stays on this device.'); return; }
+  if (savedRequest?.accessStatus === 'revoked') { setStatus('error', 'Demo access has been revoked. You can still delete your saved information.'); return; }
+  const errors = validate();
+  if (errors.length) { setStatus('error', errors[0].message); errors[0].node?.focus(); return; }
   state.submitting = true;
-  ui.submit.disabled = true;
-  ui.submit.textContent = 'Sending...';
-  ui.form.setAttribute('aria-busy', 'true');
-  voice.setBusy(true);
-
+  syncDemoChrome();
   try {
-    if (!state.receipt) {
-      // Save the immutable sent payload locally so a lost response can be retried
-      // with the same submission ID. The audio itself stays in memory.
-      state.sentPayload = payload;
-      freezeWrittenAnswers();
-      saveDraft();
-      const response = await fetch(`${WORKER_BASE_URL}/api/applications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, voiceNote: voice.consent() || undefined })
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
-        // A definite rejection can be corrected. Keep ambiguous failures locked
-        // to the same answers so a lost success response cannot create a second case.
-        if ([400, 403, 413, 422, 429].includes(response.status)) {
-          state.sentPayload = null;
-          freezeWrittenAnswers(false);
-          saveDraft();
-        }
-        throw new Error(data?.error || 'Your application could not be sent right now. Please try again shortly.');
-      }
-      state.receipt = data;
-      // Freeze sent answers while a failed audio upload is retried or removed.
-      freezeWrittenAnswers();
-      clearSavedDraft();
-      window.clearTimeout(state.saveTimer);
-    }
-    if (voice.hasRecording) await voice.upload(state.receipt.voiceAccess?.token);
-    voice.complete();
-    await successTakeover.play({
-      titleText: 'Thanks, your application is in.',
-      bodyText: 'Gerry reads every application.',
-      restoreFocus: false
-    });
-    ui.form.reset();
-    state.draft = emptyDraft();
+    const payload = prepareWorkspaceDraft();
+    let saved;
+    if (savedRequest) saved = await demoApi(`/api/demo/requests/${savedRequest.id}`, { method: 'PATCH', body: { ...payload, revision: savedRequest.revision } });
+    else saved = await demoApi('/api/demo/requests', { method: 'POST', body: { ...payload, website: ui.website.value } });
+    if (!saved.id) throw new Error('Your request could not be saved. Please try again.');
+    if (saved.csrfToken) setDemoCsrf(saved.csrfToken);
+    savedRequest = { ...savedRequest, id: saved.id, revision: saved.revision, accessStatus: saved.accessStatus };
+    ui.email.readOnly = true;
+    document.getElementById('demoDelete').hidden = false;
+    saveDraft();
+    if (savedRequest.accessStatus === 'approved') {
+      const confirmed = await demoApi(`/api/demo/requests/${savedRequest.id}/confirm`, { method: 'POST', body: { revision: savedRequest.revision } });
+      savedRequest.confirmedRevision = confirmed.revision;
+      setStatus('success', DEMO_CONFIRMED);
+    } else setStatus('success', saved.revision === 1 ? DEMO_SAVED : 'Your changes are saved. We’ll email you when demo access is available.');
+  } catch (error) { setStatus('error', error.message); }
+  finally { state.submitting = false; syncDemoChrome(); ui.status.focus(); }
+}
+
+function syncDemoChrome() {
+  const approved = savedRequest?.accessStatus === 'approved' || (!savedRequest && invitationValid);
+  const revoked = savedRequest?.accessStatus === 'revoked';
+  ui.submit.textContent = state.submitting ? 'Saving…' : approved ? 'Generate my analysis' : savedRequest ? 'Save changes' : 'Request demo access';
+  ui.submit.disabled = state.submitting || !remoteLoaded || revoked || (!savedRequest && !intakeEnabled);
+  ui.form.inert = state.submitting;
+  const notice = document.getElementById('workspaceLaunchNotice');
+  notice.querySelector('h2').textContent = revoked ? 'Demo access revoked' : approved ? 'Your demo access is available' : savedRequest ? 'Your demo request is saved' : 'Currently available for demos only';
+  notice.querySelector('p').textContent = revoked ? 'You can delete your saved information below. Contact hello@planeir.ie for help with access.' : approved ? 'Review your information, then choose Generate my analysis to confirm it. Analysis generation is not connected yet.' : savedRequest ? 'You can update your figures while waiting for approval. Changes are saved when you choose Save changes.' : intakeEnabled ? 'Fill in what you can. Estimates are fine. Skip anything you don’t know. We’ll save your information when you request demo access.' : 'Demo requests are currently unavailable. Your draft stays on this device.';
+}
+
+async function loadRemoteForm() {
+  const session = await demoApi('/api/demo/session');
+  setDemoCsrf(session.csrfToken);
+  invitationValid = session.invitationValid === true;
+  if (session.request) {
+    const local = loadDraft();
+    const keepLocalEdits = local?.requestId === session.request.id && local?.serverRevision === session.request.revision;
+    savedRequest = session.request;
+    state.draft = { ...emptyDraft(), ...(keepLocalEdits ? local.draft : session.request.information) };
+    ui.name.value = keepLocalEdits ? local.contact.fullName : session.request.contact.fullName;
+    ui.email.value = session.request.contact.email;
+    ui.email.readOnly = true;
+    acknowledgementFields.forEach(key => { ui[key].checked = session.request.acknowledgements?.version === DEMO_POLICY.version && session.request.acknowledgements?.[key] === true; });
+    document.getElementById('demoDelete').hidden = false;
     state.via = '';
-    ui.layout.hidden = true;
-    ui.done.hidden = false;
-    window.scrollTo({ top: 0 });
-    ui.done.focus({ preventScroll: true });
-  } catch (error) {
-    const voiceMessage = error instanceof TypeError ? 'The voice upload connection failed.' : error.message;
-    setStatus('error', state.receipt ? `Your written application is saved. ${voiceMessage} Retry the voice note, or remove it and finish without a recording.` : friendlyError(error));
-  } finally {
-    state.submitting = false;
-    ui.submit.disabled = false;
-    ui.submit.textContent = state.receipt ? (voice.hasRecording ? 'Retry voice note' : 'Finish without a voice note') : 'Send my application';
-    voice.setBusy(false);
-    ui.form.removeAttribute('aria-busy');
+    render();
+    if (savedRequest.confirmedRevision === savedRequest.revision) setStatus('success', DEMO_CONFIRMED);
   }
+  ui.layout.hidden = privatePage && !savedRequest && !invitationValid;
+  document.getElementById('demoAccessGate').hidden = !accessToken && !invitationToken;
+  remoteLoaded = true;
+  syncDemoChrome();
 }
 
-const frozenWrittenControls = new Map();
-function freezeWrittenAnswers(frozen = true) {
-  if (!frozen) {
-    for (const [node, wasDisabled] of frozenWrittenControls) node.disabled = wasDisabled;
-    frozenWrittenControls.clear();
-    return;
-  }
-  for (const node of ui.form.querySelectorAll('input, textarea, select, button')) {
-    if (!node.closest('#applyVoiceNote') && node !== ui.submit) {
-      if (!frozenWrittenControls.has(node)) frozenWrittenControls.set(node, node.disabled);
-      node.disabled = true;
-    }
-  }
+async function connectDemo() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  accessToken = params.get('access') || '';
+  invitationToken = params.get('invite') || '';
+  if (accessToken || invitationToken) window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  const gate = document.getElementById('demoAccessGate');
+  const gateButton = document.getElementById('demoContinue');
+  gateButton.disabled = true;
+  gate.hidden = !accessToken && !invitationToken;
+  gateButton.textContent = invitationToken ? 'Use demo invitation' : 'Continue to my saved form';
+  gateButton.addEventListener('click', async () => {
+    gateButton.disabled = true;
+    try {
+      await demoApi(invitationToken ? '/api/demo/invitations/redeem' : '/api/demo/access/redeem', { method: 'POST', body: { token: invitationToken || accessToken } });
+      invitationToken = ''; accessToken = ''; gate.hidden = true;
+      await loadRemoteForm();
+      setStatus('', '');
+    } catch (error) { document.getElementById('demoAccessStatus').textContent = error.message; }
+    finally { gateButton.disabled = false; }
+  });
+  document.getElementById('demoRecovery').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector('button'); button.disabled = true;
+    try {
+      const result = await demoApi('/api/demo/return-links', { method: 'POST', body: { email: document.getElementById('demoRecoveryEmail').value } });
+      document.getElementById('demoRecoveryStatus').textContent = result.message;
+    } catch (error) { document.getElementById('demoRecoveryStatus').textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  document.getElementById('demoDelete').addEventListener('click', async () => {
+    if (!savedRequest || !window.confirm('Delete your saved information from Planéir? This cannot be undone.')) return;
+    try {
+      await demoApi(`/api/demo/requests/${savedRequest.id}`, { method: 'DELETE' });
+      window.clearTimeout(state.saveTimer);
+      clearSavedDraft(); window.location.assign('../apply/?deleted=1');
+    } catch (error) { setStatus('error', error.message); }
+  });
+  try {
+    const config = await demoApi('/api/demo/config'); intakeEnabled = config.enabled === true;
+    await loadRemoteForm();
+  } catch {
+    ui.layout.hidden = privatePage;
+    syncDemoChrome();
+  } finally { gateButton.disabled = false; }
 }
-
-const successTakeover = createSuccessTakeover({
-  overlay: document.getElementById('leadSuccessOverlay'),
-  origin: document.querySelector('.site-brand-logo-wrap'),
-  target: document.getElementById('leadSuccessTarget'),
-  title: document.querySelector('#leadSuccessCopy .lead-success-title'),
-  body: document.querySelector('#leadSuccessCopy .lead-success-body'),
-  motionQuery: window.matchMedia('(prefers-reduced-motion: reduce)'),
-  holdMs: 3200,
-  lockTargets: [
-    document.querySelector('.site-header'),
-    document.querySelector('main'),
-    document.querySelector('.site-footer')
-  ].filter(Boolean)
-});
-
-const voice = createApplicationVoice(document.getElementById('applyVoiceNote'), {
-  baseUrl: WORKER_BASE_URL,
-  onChange: () => {
-    if (state.receipt && !state.submitting) ui.submit.textContent = voice.hasRecording ? 'Retry voice note' : 'Finish without a voice note';
-  }
-});
 
 /* ---------- start ---------- */
 
-function start() {
+async function start() {
   if (!ui.form) return;
 
   const saved = loadDraft();
@@ -926,23 +927,17 @@ function start() {
     });
     ui.name.value = typeof saved.contact?.fullName === 'string' ? saved.contact.fullName : '';
     ui.email.value = typeof saved.contact?.email === 'string' ? saved.contact.email : '';
-    if (saved.sentPayload?.submissionId === state.submissionId && saved.sentPayload?.application && saved.sentPayload?.consentVideo === true && saved.sentPayload?.consentEducation === true) {
-      state.sentPayload = saved.sentPayload;
-      state.draft = { ...emptyDraft(), ...saved.sentPayload.application };
-      ui.name.value = saved.sentPayload.fullName;
-      ui.email.value = saved.sentPayload.email;
-      ui.consentVideo.checked = true; ui.consentEducation.checked = true;
-    }
+
   }
 
   // A link an assistant wrote carries the answers after "#". They replace any
   // earlier draft on this device: following the link is the newer intent.
   // The fragment is then removed, so the figures do not sit in the address bar
   // or in the browser history.
-  const prefill = parsePrefill(window.location.hash);
+  const hasAccessToken = /(?:^#|&)(?:access|invite)=/.test(window.location.hash);
+  const prefill = hasAccessToken ? null : parsePrefill(window.location.hash);
   if (prefill) {
     state.submissionId = '';
-    state.sentPayload = null;
     state.draft = { ...emptyDraft(), ...includeAnsweredSections(normalizeApplication(prefill)) };
     state.via = 'assistant-link';
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
@@ -960,12 +955,18 @@ function start() {
     markInvalid(input, false);
     scheduleSave();
   }));
-  [ui.consentVideo, ui.consentEducation].forEach((box) => box.addEventListener('change', () => markInvalid(box, false)));
+  acknowledgementFields.forEach((field) => ui[field].addEventListener('change', () => markInvalid(ui[field], false)));
   ui.clear.addEventListener('click', async () => {
     if (!window.confirm('Clear all your answers from this device?')) return;
+    try {
+      await demoApi('/api/demo/session', { method: 'DELETE' });
+    } catch (error) {
+      if (savedRequest || invitationValid) { setStatus('error', 'Your private session could not be cleared. Please try again.'); return; }
+    }
+    window.clearTimeout(state.saveTimer);
     clearSavedDraft();
-    await voice.clear();
-    state.sentPayload = null;
+    savedRequest = null; invitationValid = false; setDemoCsrf(''); ui.email.readOnly = false;
+    document.getElementById('demoDelete').hidden = true;
     state.submissionId = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     state.draft = emptyDraft();
     state.via = '';
@@ -973,14 +974,13 @@ function start() {
     ui.form.reset();
     setStatus('', '');
     render();
+    syncDemoChrome();
+    ui.layout.hidden = privatePage;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 
   render();
-  if (state.sentPayload) {
-    freezeWrittenAnswers();
-    setStatus('', 'Finishing your previously sent application. Press Send again to confirm it was received. If you had a recording, choose your saved copy and give permission for it again.');
-  }
+  await connectDemo();
 }
 
 start();

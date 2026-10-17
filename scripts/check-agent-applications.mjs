@@ -117,6 +117,7 @@ const { default: worker } = await import('../worker/src/index.js');
 
 function makeEnv(database, overrides = {}) {
   return {
+    CASE_APPLICATIONS_ENABLED: 'true',
     LEADS_DB: database,
     APPLICATION_DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64url'),
     RESEND_API_KEY: 're_test',

@@ -1,3 +1,4 @@
+import { EDUCATION_CALL, isPrivateEducationCall, educationCallScheduleIntroduction } from './workspace/education_call.js';
 import {
   buildPublishedCapabilityToken,
   decryptPublishedSessionV2ForAdvisor,
@@ -390,6 +391,7 @@ function timeInputValueFromIso(value) {
 }
 
 function inferDurationMinutes(lead) {
+  if (isPrivateEducationCall(lead)) return EDUCATION_CALL.durationMinutes;
   const start = new Date(lead?.scheduledStartAt || '');
   const end = new Date(lead?.scheduledEndAt || '');
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -397,7 +399,7 @@ function inferDurationMinutes(lead) {
   }
 
   const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
-  return minutes === 30 ? minutes : DEFAULT_DURATION_MINUTES;
+  return [30, 40].includes(minutes) ? minutes : DEFAULT_DURATION_MINUTES;
 }
 
 function getLinkHashParam(link, key) {
@@ -511,7 +513,7 @@ function getSelectedScheduleValues(options = {}) {
   const { requireSchedule = false } = options;
   const date = String(ui.clientScheduleDate?.value || '').trim();
   const time = String(ui.clientScheduleTime?.value || '').trim();
-  const durationMinutes = Number(ui.clientScheduleDuration?.value || DEFAULT_DURATION_MINUTES);
+  const durationMinutes = isPrivateEducationCall(getSelectedLead()) ? EDUCATION_CALL.durationMinutes : Number(ui.clientScheduleDuration?.value || DEFAULT_DURATION_MINUTES);
 
   if (requireSchedule && (!date || !time)) {
     throw new Error('Choose a date and start time first.');
@@ -549,7 +551,7 @@ function buildDefaultScheduleMessage(lead = getSelectedLead()) {
     '',
     'Thanks again for your Planeir request.',
     '',
-    'I can offer the following time for the free education call:',
+    educationCallScheduleIntroduction(lead),
     '',
     formatScheduleRange(draftLead),
     '',
@@ -802,6 +804,7 @@ function renderLeadWorkflow() {
   }
   if (ui.clientScheduleDuration) {
     ui.clientScheduleDuration.value = String(inferDurationMinutes(lead));
+    ui.clientScheduleDuration.disabled = isPrivateEducationCall(lead);
   }
   if (ui.clientScheduleTimezone) {
     ui.clientScheduleTimezone.value = lead?.scheduledTimezone || DEFAULT_TIMEZONE;

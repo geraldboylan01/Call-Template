@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" /><meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.planeir.ie http://127.0.0.1:8787 http://localhost:8787; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <title>Demo requests | Planéir</title>
+  <link rel="icon" href="../favicon.svg" /><link rel="stylesheet" href="../styles/landing.css" /><link rel="stylesheet" href="../styles/apply.css" /><link rel="stylesheet" href="../styles/workspace.css" />
+</head>
+<body><div class="landing-shell">
+  <header class="site-header demo-admin-header"><a class="site-brand" href="../"><span class="site-brand-logo-wrap"><img class="site-brand-logo" src="../assets/brand/planeir-lockup-light.svg" alt="Planéir home" width="1330" height="384" /></span></a><nav class="site-header-actions" aria-label="Admin"><a href="./">Workspace</a><a href="./clients.html">Client pipeline</a><button id="demoAdminLogout" type="button" class="button button-secondary" hidden>Sign out</button></nav></header>
+  <main class="apply-main">
+    <section class="apply-intro"><p class="section-eyebrow">Admin</p><h1>Demo requests</h1><p>Review saved requests, grant access and create invitations. These actions never generate an analysis.</p></section>
+    <p id="demoAdminStatus" role="status" tabindex="-1"></p>
+    <form id="demoAdminLogin" class="apply-card"><h2>Admin sign-in</h2><label class="field"><span>Password</span><input id="demoAdminPassword" type="password" autocomplete="current-password" required /></label><button class="button button-primary" type="submit">Sign in</button></form>
+    <div id="demoAdminContent" hidden>
+      <div class="demo-admin-actions"><button id="demoAdminRefresh" class="button button-secondary" type="button">Refresh requests</button><label class="field"><span>Find a request</span><input id="demoAdminSearch" type="search" placeholder="Name or email" /></label></div>
+      <div class="demo-admin-grid"><section class="apply-card" aria-label="Saved requests"><div id="demoAdminList" class="demo-admin-list"></div><button id="demoAdminMore" class="button button-secondary" type="button" hidden>Load more</button></section><section id="demoAdminDetail" class="apply-card demo-admin-detail" aria-label="Selected request"><p>Select a request to review it.</p></section></div>
+      <section class="apply-card demo-recovery" aria-labelledby="demoInvitationsTitle">
+        <h2 id="demoInvitationsTitle">Reusable demo invitations</h2><p>Each participant gets their own saved information. Revoking a link stops new participants; existing access is managed separately.</p>
+        <form id="demoInvitationForm"><label class="field"><span>Label</span><input name="label" maxlength="120" value="Demo invitation" required /></label><label class="field"><span>Expires in days</span><input name="days" type="number" min="1" max="90" value="7" required /></label><label class="field"><span>Participant limit</span><input name="maxUses" type="number" min="1" max="10000" value="25" required /></label><button class="button button-primary" type="submit">Create invitation</button></form>
+        <div id="demoCreatedInvitation" hidden><label class="field"><span>Copy this invitation now. The complete link is only shown when created.</span><input id="demoInvitationUrl" class="demo-admin-link" readonly /></label><button id="demoInvitationCopy" class="button button-secondary" type="button">Copy invitation</button></div>
+        <div id="demoInvitationList" class="demo-admin-list"></div>
+      </section>
+    </div>
+  </main>
+</div><script type="module" src="../js/demo_admin.js"></script></body></html>
