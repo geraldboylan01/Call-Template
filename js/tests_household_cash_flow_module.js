@@ -544,6 +544,22 @@ export async function runHouseholdCashFlowModuleTests() {
     }
   }));
 
+  cases.push(runCase('A short-to-tight transition fades the zero mark by distance from zero', () => {
+    const env = installDom();
+    try {
+      [1728, 390].forEach((widthHint) => {
+        const root = mount({ rawInputs: HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, widthHint });
+        button(root, 'clear-car').click();
+        env.sched.advance(100);
+        const marker = findAll(root, widthHint === 390 ? 'hcf-bar-end-mark' : 'hcf-end-mark')[0];
+        assert(marker, 'zero marker exists');
+        assertEqual(marker.style.opacity, '0', 'no zero marker while still visibly short');
+        env.sched.advance(CLICK_MS + 200);
+        assertEqual(marker.style.opacity, '1', 'zero marker at the settled tight case');
+      });
+    } finally { env.restore(); }
+  }));
+
   cases.push(runCase('The sentence above the bar keeps the stylesheet\'s room, and the staircase leaves its sentence alone', () => {
     const env = installDom();
     try {

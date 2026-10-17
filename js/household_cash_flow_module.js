@@ -490,7 +490,7 @@ export function buildHouseholdCashFlowModule({
     refs.lastLabel.style.top = px(refs.outlineInfo.lastLabel.topFor(leftNow));
     // Nothing left stands as a line on the floor, not as a bar.
     const target = valuesOf(selectedId);
-    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - leftNow / 900, 0, 1)) : '0';
+    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - Math.abs(leftNow) / 900, 0, 1)) : '0';
   }
 
   /* ------------------------------------------------------------------ bar */
@@ -644,7 +644,7 @@ export function buildHouseholdCashFlowModule({
     });
     const target = valuesOf(selectedId);
     const leftNow = values[values.length - 1];
-    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - leftNow / 900, 0, 1)) : '0';
+    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - Math.abs(leftNow) / 900, 0, 1)) : '0';
 
     const specs = barRowSpecs(model, selectedId, values).map((spec) => ({
       ...spec,
@@ -702,15 +702,20 @@ export function buildHouseholdCashFlowModule({
       return;
     }
     if (!root.isConnected || typeof sentence.getBoundingClientRect !== 'function') return;
-    const current = sentence.textContent;
-    sentence.style.minHeight = '0px';
+    // Probe outside the live region so layout never announces unselected cases.
+    const sentenceProbe = el('p', 'hcf-sentence');
+    sentenceProbe.setAttribute('aria-hidden', 'true');
+    Object.assign(sentenceProbe.style, {
+      position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
+      width: px(sentence.getBoundingClientRect().width), minHeight: '0px'
+    });
+    root.append(sentenceProbe);
     let tallest = 0;
     cases.forEach((entry) => {
-      sentence.textContent = entry.sentence;
-      tallest = Math.max(tallest, sentence.getBoundingClientRect().height);
+      sentenceProbe.textContent = entry.sentence;
+      tallest = Math.max(tallest, sentenceProbe.getBoundingClientRect().height);
     });
-    sentence.textContent = current;
-    sentence.style.minHeight = '';
+    sentenceProbe.remove();
     // Never less than the stylesheet's four lines.
     const four = parseFloat(getComputedStyle(sentence).lineHeight) * 4;
     sentence.style.minHeight = px(Math.max(Number.isFinite(four) ? four : 0, Math.ceil(tallest)));
