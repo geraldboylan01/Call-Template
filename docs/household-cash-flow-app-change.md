@@ -583,7 +583,7 @@ Before finishing, run `npm run build`, `npm run check:household-cash-flow`, the 
 
 Decided 13 October 2026, evening. A separate change, after the screen has landed and before the plan work, because the plan's illustrative household (Niamh and Dara) pays 5% and 4% today and this module cannot show it yet.
 
-- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so the Pensions column exists in today's case and tax and take-home follow it (D7).
+- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so tax and take-home follow it (D7). The chart reserves a Pensions column only if at least one case rounds above €0.
 - An `extraPension` change adds to it. The sentence templates stay: "Paying €10,000 more into your pensions" is still the extra.
 - **Decided by Gerry:** `statedTakeHome` is the amount reaching the bank **after** today's personal pension deduction. The base tax level is gross income minus today's gross contribution minus stated bank pay; a case adds the tax engine's difference to that level.
 - Give the field name, the validation strings and the new fixture in the plan, and wait for the go-ahead, as for the main change.
@@ -664,7 +664,7 @@ The phone bar measures each case’s rendered label rows after fonts load, reser
 
 ### Contribution input and bank-pay contract
 
-`people[].personalPensionContribution` is the annual gross amount the person pays today, excluding employer contributions. It defaults to 0 for existing sessions. Every tax run includes it; an `extraPension` adds to it, and the age/earnings limit applies to their sum. The Pensions row exists even when only today's case is present. A contribution must not also be entered in outgoings.
+`people[].personalPensionContribution` is the annual gross amount the person pays today, excluding employer contributions. It defaults to 0 for existing sessions. Every tax run includes it; an `extraPension` adds to it, and the age/earnings limit applies to their sum. The Pensions row exists whenever at least one case's contribution rounds above €0, including a module containing today alone. Exact smaller contributions remain in the calculation, without a zero-only chart column. A contribution must not also be entered in outgoings.
 
 With €75,000 gross income, a €5,000 current contribution and €50,000 stated bank pay, base tax is €20,000. The chart deducts €20,000 tax and €5,000 pension, leaving the stated €50,000 before spending. If an extra €10,000 saves €4,000 tax in an illustrative injected tax fixture, the bank amount becomes €44,000. The sentence says €10,000 more, never €15,000 more. Actual tax differences always come from the site's tax calculator.
 
