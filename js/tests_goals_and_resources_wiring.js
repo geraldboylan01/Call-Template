@@ -56,6 +56,31 @@ export function runGoalsAndResourcesWiringTests() {
     const imported = normalizeGenerated({ homeTradeDownInputs: HOME_TRADE_DOWN_SAMPLE, goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
     assert(imported.homeTradeDownInputs && imported.goalsAndResourcesInputs === null, 'import priority keeps only the home calculator');
   });
+  check('A balance sheet replaces goals, removes old ledgers and survives reopening', () => {
+    const module = paste(createBlankModule(), { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
+    paste(module, { pbsInputs: { currentAge: 45, annualExpenditure: 50000 }, outputsBucketed: {
+      sections: [{ key: 'summary', title: 'Summary', columns: ['Item', 'Amount (€)'], rows: [['Net worth', 100000]] }]
+    } });
+    assert(module.generated.goalsAndResourcesInputs === null, 'PBS clears goals');
+    assert(module.generated.tables.length === 0 && module.generated.charts.length === 0, 'old goal ledgers and charts removed');
+    assert(module.generated.outputsBucketed.sections[0].rows[0][1] === 100000, 'supplied PBS figures retained');
+    const reopened = normalizeGenerated(clone(module.generated));
+    assert(reopened.pbsInputs && reopened.goalsAndResourcesInputs === null, 'reopening preserves PBS');
+    paste(module, { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
+    assert(module.generated.pbsInputs === null && module.generated.outputsBucketed === null, 'goals replaces PBS');
+  });
+  check('A balance sheet with no optional PBS facts also replaces the goals calculator', () => {
+    const module = paste(createBlankModule(), { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
+    paste(module, { outputsBucketed: { sections: [{ key: 'summary', title: 'Summary', columns: ['Item', 'Amount (€)'], rows: [['Net worth', 100000]] }] } });
+    assert(module.generated.goalsAndResourcesInputs === null && module.generated.tables.length === 0, 'bucketed balance sheet clears goals and stale ledgers');
+    assert(normalizeGenerated(clone(module.generated)).outputsBucketed, 'balance sheet survives reopening');
+  });
+  check('A goals payload cannot carry a second native calculator', () => {
+    let refused = false;
+    try { normalizePayload({ generated: { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE, homeTradeDownInputs: HOME_TRADE_DOWN_SAMPLE } }); }
+    catch (error) { refused = /one module type/i.test(error.message); }
+    assert(refused, 'ambiguous calculators refused before paste');
+  });
   check('Import recomputes valid figures and drops malformed inputs with stale figures', () => {
     const imported = normalizeGenerated({ goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE, tables: [{ title: 'FAKE', rows: [] }] });
     assert(imported.goalsAndResourcesInputs && !JSON.stringify(imported.tables).includes('FAKE'), 'valid import recomputed');

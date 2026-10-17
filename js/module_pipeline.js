@@ -2250,6 +2250,16 @@ export function normalizePayload(payload) {
       generatedPatch.report = validateReportPayload(payload.generated.report);
     }
 
+    if (generatedPatch.goalsAndResourcesInputs) {
+      const otherKinds = Object.keys(generatedPatch).filter((key) => (
+        key !== 'goalsAndResourcesInputs' && generatedPatch[key]
+        && (key.endsWith('Inputs') || ['liquidityPlan', 'education', 'report', 'videoSummary'].includes(key))
+      ));
+      if (otherKinds.length > 0) {
+        throw new Error(`Use one module type per payload: generated.goalsAndResourcesInputs cannot be combined with ${otherKinds.join(', ')}.`);
+      }
+    }
+
     normalized.generated = generatedPatch;
   }
 
@@ -2299,6 +2309,19 @@ function clearVideoSummaryForGeneratedModule(module) {
 
 function mergeGeneratedPatch(module, generatedPatch) {
   ensureGenerated(module);
+
+  if (module.generated.goalsAndResourcesInputs && !generatedPatch.goalsAndResourcesInputs
+    && (generatedPatch.pbsInputs || generatedPatch.outputsBucketed)) {
+    module.generated.goalsAndResourcesInputs = null;
+    // PBS can omit its optional facts. Clear the old calculator's content
+    // before applying the incoming balance-sheet content in either form.
+    module.generated.summaryHtml = '';
+    module.generated.assumptions = { columns: [], rows: [] };
+    module.generated.outputs = { columns: [], rows: [] };
+    module.generated.tables = [];
+    module.generated.charts = [];
+    module.generated.outputsBucketed = null;
+  }
 
   if ('summaryHtml' in generatedPatch) {
     module.generated.summaryHtml = generatedPatch.summaryHtml;
@@ -2670,6 +2693,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
   }
 
   if ('pbsInputs' in generatedPatch && !module.generated.liquidityPlan) {
+
     module.generated.pbsInputs = generatedPatch.pbsInputs;
   }
 
