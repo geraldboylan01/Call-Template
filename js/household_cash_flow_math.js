@@ -154,16 +154,16 @@ function roundToTen(amount) {
  * "you" (D5).
  */
 export const HOUSEHOLD_CASH_FLOW_BANNED_PHRASES = Object.freeze([
-  /we recommend/i,
-  /you should/i,
-  /best option/i,
+  /we\s+recommend/i,
+  /you\s+should/i,
+  /best\s+option/i,
   /\bbest\b/i,
   /\bideal\b/i,
   /\boptimal\b/i,
   /p\.a\./i,
-  /\bthe household\b/i,
-  /\bthe couple\b/i,
-  /\bthe client\b/i,
+  /\bthe\s+household\b/i,
+  /\bthe\s+couple\b/i,
+  /\bthe\s+client\b/i,
   /\bclients?\b/i,
   /\bthey\b/i,
   /\btheir\b/i
@@ -171,14 +171,14 @@ export const HOUSEHOLD_CASH_FLOW_BANNED_PHRASES = Object.freeze([
 
 export const HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES = Object.freeze([
   /\bAIB\b/i,
-  /\bBank of Ireland\b/i,
+  /\bBank\s+of\s+Ireland\b/i,
   /\bBOI\b/i,
   /\bRevolut\b/i,
   /\bZurich\b/i,
-  /\bIrish Life\b/i,
+  /\bIrish\s+Life\b/i,
   /\bAviva\b/i,
   /\bDavy\b/i,
-  /\bStandard Life\b/i
+  /\bStandard\s+Life\b/i
 ]);
 
 /** Refuse text this screen may not show, naming where it came from. */

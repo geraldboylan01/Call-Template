@@ -55,7 +55,7 @@ const BAR_MAX_SPAN = 900;
 /** The pitch of the design frame (1728 of content, nine columns). */
 const REFERENCE_PITCH = 156;
 
-const BAR = Object.freeze({
+export const BAR = Object.freeze({
   maxWidth: 560,
   width: 64,
   height: 700,
@@ -313,7 +313,8 @@ export function layoutStairs(projection, { width } = {}) {
   const plotHeight = Math.min(preferredPlotHeight, income * ((STAIRS_MAX_SPAN - STAIRS_BAND_PAD) / (income + model.deepest)));
   const perEuro = plotHeight / income;
   const amountGap = Math.round(fonts.amount + 14);
-  const top = amountGap + 4;
+  // Keep the outline key in its own band above every amount and Today label.
+  const top = amountGap + Math.ceil(fonts.key * 1.2) + 12;
   const floor = top + plotHeight;
   // Room below the floor for the deepest case, and a little more, so the names
   // clear it. Nothing when no case is short.
@@ -394,7 +395,7 @@ export function layoutStairs(projection, { width } = {}) {
     namesHeight,
     key: {
       left: plotWidth - keyWidth,
-      top: top + 2,
+      top: 0,
       width: keyWidth,
       height: Math.max(keySize.swatchHeight, fonts.key * 1.2),
       ...keySize
@@ -700,7 +701,7 @@ export function barGeometry(layout, values) {
 export function placeBarRows(layout, specs) {
   const rows = specs.map((spec) => ({
     ...spec,
-    height: layout.compact
+    height: spec.measuredHeight > 0 ? spec.measuredHeight : layout.compact
       ? 20 * estimateLines(spec.label, 15, layout.labelWidth)
         + 20 * Math.max(1, Math.ceil(estimateTextWidth(spec.amount, 17, 700) / layout.labelWidth))
         + (spec.hasDelta ? 18 * estimateLines(spec.delta, 14, layout.labelWidth, 500) : 0)
@@ -713,7 +714,7 @@ export function placeBarRows(layout, specs) {
   }
   const last = rows.length - 1;
   if (last >= 0) {
-    const floor = layout.barTop + layout.barHeight + (layout.reserve || 0) + 8 - rows[last].height / 2;
+    const floor = (layout.rowFloor || (layout.barTop + layout.barHeight + (layout.reserve || 0) + 8)) - rows[last].height / 2;
     if (rows[last].c > floor) {
       rows[last].c = floor;
       for (let index = last - 1; index >= 0; index -= 1) {

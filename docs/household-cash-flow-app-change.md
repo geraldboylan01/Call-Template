@@ -654,3 +654,8 @@ The staircase's plotted span is at most 600px and the bar's at most 900px, inclu
 ## When you finish
 
 End with a contract summary for the prompt pack: field names, the model and the two change kinds, where tax comes from and what a stated take-home does, the allocation convention for couples, the `summary` shape and its invariants, the rounding rule, every validation string, the derived copy templates (in the second person) and the width switch, plus the Dev Panel examples. Keep to the repo's commit style: short plain-English commits describing what the client sees change.
+
+
+### Final layout checks (17 October 2026)
+
+The phone bar measures each case’s rendered label rows after fonts load, reserves that room for every case and reuses those heights during animation. Labels wrap without changing their text. The staircase keeps its outline key in a separate top band. Real-app Chrome checks cover 252, 280, 320 and 390px modules, including 24 consecutive wide letters and all four cases at a 320px viewport. The ordinary €20,000 income/€20,000 outgoing case also checks that clearing the outgoing leaves the Today label clear of the key.

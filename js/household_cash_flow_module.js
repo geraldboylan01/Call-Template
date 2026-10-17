@@ -37,7 +37,8 @@ import {
   placeBarRows,
   readCashFlowModel,
   stairsGeometry,
-  stairsOutlines
+  stairsOutlines,
+  BAR
 } from './household_cash_flow_view.js';
 
 /* ------------------------------------------------------------------ motion */
@@ -566,6 +567,8 @@ export function buildHouseholdCashFlowModule({
     refs = { ...found, headLabel, headAmount, endMark };
   }
 
+  let barRowHeights = new Map();
+
   function renderBarCopy() {
     setText(refs.headLabel, copy.incomeLabel);
     setText(refs.headAmount, copy.incomeLine);
@@ -578,19 +581,48 @@ export function buildHouseholdCashFlowModule({
       if (isLast) markShort(segment, shown);
     });
 
+    renderBarRowCopy(copy);
+  }
+
+  function renderBarRowCopy(caseCopy) {
     refs.rows.forEach((parts, id) => {
-      const line = lines.find((entry) => entry.id === id);
+      const line = caseCopy.lines.find((entry) => entry.id === id);
       if (line) {
         setText(parts.name, line.label);
         setText(parts.amount, line.amount);
         setText(parts.delta, line.delta);
         parts.delta.hidden = !line.hasDelta;
       } else {
-        setText(parts.name, copy.lastName);
-        setText(parts.amount, copy.figure);
+        setText(parts.name, caseCopy.lastName);
+        setText(parts.amount, caseCopy.figure);
         parts.delta.hidden = true;
       }
     });
+  }
+
+  function reserveBarRowRoom() {
+    barRowHeights = new Map();
+    if (drawing !== 'bar' || !root.isConnected) return;
+    let tallest = 0;
+    cases.forEach((entry) => {
+      renderBarRowCopy(buildCashFlowCopy(projection, entry.id));
+      const heights = new Map();
+      const specs = barRowSpecs(model, entry.id, valuesOf(entry.id));
+      specs.forEach((spec) => {
+        const row = refs.rows.get(spec.id).row;
+        row.hidden = false;
+        const height = typeof row.getBoundingClientRect === 'function' ? row.getBoundingClientRect().height : 0;
+        if (height > 0) heights.set(spec.id, Math.ceil(height));
+      });
+      tallest = Math.max(tallest, specs.reduce((sum, spec) => sum + (heights.get(spec.id) || 0), 0)
+        + Math.max(0, specs.length - 1) * BAR.rowGap);
+      barRowHeights.set(entry.id, heights);
+    });
+    renderBarRowCopy(copy);
+    // Extra room belongs to the labels; the euro scale and the bars stay fixed.
+    layout.rowFloor = layout.barTop + Math.max(layout.barHeight + layout.reserve + 8, tallest);
+    layout.height = Math.max(layout.height, layout.rowFloor + 20);
+    chartHost.style.height = px(layout.height);
   }
 
   function paintBar(values) {
@@ -616,7 +648,8 @@ export function buildHouseholdCashFlowModule({
 
     const specs = barRowSpecs(model, selectedId, values).map((spec) => ({
       ...spec,
-      centre: geometry.segments[spec.segment].centre
+      centre: geometry.segments[spec.segment].centre,
+      measuredHeight: barRowHeights.get(selectedId)?.get(spec.id)
     }));
     const placed = placeBarRows(layout, specs);
     const placedIds = new Set(placed.map((row) => row.id));
@@ -702,6 +735,7 @@ export function buildHouseholdCashFlowModule({
     else buildBar();
     renderCopy();
     reserveSentenceRoom();
+    reserveBarRowRoom();
     // Resizing is not a transition: settle on the selected case at once.
     paint(valuesOf(selectedId));
   }
@@ -752,6 +786,11 @@ export function buildHouseholdCashFlowModule({
       }
     });
     observer.observe(root);
+  }
+
+  // Web fonts can change wrapping without changing the module's width.
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    document.fonts.ready.then(() => { if (root.isConnected) relayout(); });
   }
 
   root.presenterSelectScenario = async (id) => {

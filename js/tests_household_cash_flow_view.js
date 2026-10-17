@@ -166,6 +166,29 @@ export function runHouseholdCashFlowViewTests() {
     assertEqual(copy.unit, 'a year', 'the unit');
   }));
 
+  cases.push(runCase('A normal short year becoming left over keeps Today clear of the outline key', () => {
+    const projection = computeHouseholdCashFlowProjection({
+      householdTaxStatus: 'single', people: [{ id: 'a', age: 40 }],
+      income: [{ personId: 'a', type: 'employment', amount: 20000 }],
+      outgoings: [{ id: 'rent', label: 'Rent', amount: 20000 }],
+      scenarios: [{ id: 'today' }, { id: 'clear', changes: [{ type: 'clearOutgoing', outgoingId: 'rent', paidFrom: 'savings' }] }]
+    }, CALCULATION);
+    STAIRS_WIDTHS.forEach((width) => {
+      const problems = checkStairsLayout(layoutStairs(projection, { width }), readCashFlowModel(projection));
+      assert(problems.length === 0, `${width}: ${problems.join('; ')}`);
+    });
+  }));
+
+  cases.push(runCase('Measured wrapped row heights reserve the actual space at phone widths', () => {
+    const layout = layoutBar(project(SHAPES[0]), { width: 196 });
+    const rows = placeBarRows(layout, [
+      { id: 'long', label: 'W'.repeat(24), amount: '€30,000', centre: 200, measuredHeight: 100 },
+      { id: 'next', label: 'Living costs', amount: '€48,000', centre: 215, measuredHeight: 60 }
+    ]);
+    assertEqual(rows[0].height, 100, 'actual four-line name plus amount');
+    assert(rows[1].top >= rows[0].top + 104, 'next row clears all rendered lines');
+  }));
+
   cases.push(runCase('The case buttons, answer, sentence and footnote are the engine\'s own', () => {
     const projection = project(SHAPES[1]);
     const detail = projection.debug.cases;

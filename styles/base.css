@@ -11303,6 +11303,9 @@ body.overview-has-selection .toast-host {
 }
 
 .hcf-row-name {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 15px;
   font-weight: 600;
@@ -11318,6 +11321,7 @@ body.overview-has-selection .toast-host {
 }
 
 .hcf-row-amount {
+  flex-shrink: 0;
   font-size: 17px;
   font-weight: 700;
   line-height: 20px;
