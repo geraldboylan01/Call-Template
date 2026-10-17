@@ -73,7 +73,7 @@ for (const scenario of scenarios) {
   }
 
   for (const [index, entry] of run.transcript.entries()) {
-    const who = entry.role === 'client' ? 'CLIENT ' : 'PLANÉIR';
+    const who = entry.role === 'client' ? 'CLIENT ' : 'PLANEIR';
     console.info(`  ${who} ${entry.text}`);
     if (entry.role === 'assistant' && index < run.transcript.length - 1) console.info('');
   }

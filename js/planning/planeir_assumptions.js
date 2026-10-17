@@ -1,12 +1,12 @@
 /**
- * Centrally controlled Planéir planning assumptions.
+ * Centrally controlled Planeir planning assumptions.
  *
  * These were previously inline constants scattered across adapters, each
  * carrying a "review before consumer activation" note. Consumers now see
  * projections built on them, so they are defined once, versioned, and given the
  * plain-language basis that has to be said out loud alongside any figure.
  *
- * Current policy: Planéir controls these centrally. Consumers cannot edit them
+ * Current policy: Planeir controls these centrally. Consumers cannot edit them
  * and advisers cannot override them. `resolvePlanningAssumptions` takes an
  * overrides argument it deliberately ignores today — that is the seam for
  * controlled adviser configuration later, so enabling it will not mean
@@ -95,21 +95,21 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
       clientStatus: 'not-retired',
       minimumBufferMonths: 3,
       targetBufferMonths: 6,
-      basis: 'For a working household, Planéir uses three months of spending as the minimum cash-reserve floor and six months as the target.'
+      basis: 'For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target.'
     }),
     retired: Object.freeze({
       clientStatus: 'retired',
       minimumBufferMonths: 12,
       targetBufferMonths: 24,
-      basis: 'For a retired household, Planéir uses twelve months of spending as the minimum cash-reserve floor and twenty-four months as the target.'
+      basis: 'For a retired household, Planeir uses twelve months of spending as the minimum cash-reserve floor and twenty-four months as the target.'
     }),
-    disclosure: 'These are Planéir planning guides for resilience, not a personal recommendation or a guarantee that a particular reserve will meet every emergency.'
+    disclosure: 'These are Planeir planning guides for resilience, not a personal recommendation or a guarantee that a particular reserve will meet every emergency.'
   }),
 
   /**
    * How tax rules are carried into years that have no rules yet. The rules
    * themselves are law and live in the tax catalogue
-   * (`js/planning/tax/rules_ie.js`); this is Planéir's policy for the years
+   * (`js/planning/tax/rules_ie.js`); this is Planeir's policy for the years
    * ahead, and `resolveTaxRules` is its only implementation.
    */
   taxProjection: Object.freeze({
@@ -204,7 +204,7 @@ export function assumptionRecord(key) {
  * camelCase identifier into something a client hears.
  */
 const ASSUMPTION_LABELS = Object.freeze({
-  // Centrally approved Planéir assumptions (assumptionRecord above).
+  // Centrally approved Planeir assumptions (assumptionRecord above).
   investmentGrowthRate: 'Long-run investment growth rate',
   inflationRate: 'General inflation rate',
   educationInflationRate: 'Education cost inflation rate',

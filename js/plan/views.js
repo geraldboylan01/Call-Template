@@ -212,8 +212,8 @@ function createConsentRefreshBanner(currentState) {
       'p',
       '',
       needsNewInvite
-        ? 'Your saved information and any matching results remain read-only, and the live Planéir meeting is paused. You may delete this session, but a new valid invitation link is required to start another. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
-        : 'Your saved information and any matching results remain read-only, and the live Planéir meeting is paused. Start again under the current disclosure or delete this session. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
+        ? 'Your saved information and any matching results remain read-only, and the live Planeir meeting is paused. You may delete this session, but a new valid invitation link is required to start another. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
+        : 'Your saved information and any matching results remain read-only, and the live Planeir meeting is paused. Start again under the current disclosure or delete this session. AI withdrawal and adviser-handoff withdrawal remain available under Privacy controls.'
     )
   );
   const remove = element(
@@ -276,7 +276,7 @@ function createModeCard(currentState) {
     'p',
     '',
     usesAi
-      ? 'AI helps identify relevant scenarios and organise your information around your objectives. You confirm the information you provide; Planéir’s engines run the calculations.'
+      ? 'AI helps identify relevant scenarios and organise your information around your objectives. You confirm the information you provide; Planeir’s engines run the calculations.'
       : 'Your answers follow fixed questions and readiness rules. Tested code performs every calculation.'
   );
   append(card, pill, title, copy);
@@ -399,7 +399,7 @@ function createConversationView(currentState) {
       row.append(avatar);
     }
     const bubble = element('div', 'message-bubble', turn.text);
-    bubble.setAttribute('aria-label', `${turn.role === 'user' ? 'You' : 'Planéir'}: ${turn.text}`);
+    bubble.setAttribute('aria-label', `${turn.role === 'user' ? 'You' : 'Planeir'}: ${turn.text}`);
     row.append(bubble);
     thread.append(row);
   });
@@ -455,7 +455,7 @@ function createConversationView(currentState) {
       assist,
       element('strong', '', 'Use your Codex or ChatGPT subscription (manual)'),
       element('p', '', 'Write a draft above, then copy a bounded prompt. Nothing is sent automatically: review what is copied, paste it into your own Codex or ChatGPT task, and paste the rewritten answer back here.'),
-      element('p', 'micro-copy', 'Planéir access credentials are removed from the copied text. Your personal OpenAI workspace has its own privacy and retention settings.')
+      element('p', 'micro-copy', 'Planeir access credentials are removed from the copied text. Your personal OpenAI workspace has its own privacy and retention settings.')
     );
     const actions = element('div', 'subscription-assist-actions');
     const copy = element('button', 'secondary-button', 'Copy prompt for Codex');
@@ -886,7 +886,7 @@ function createRecommendationsView(currentState) {
       currentState,
       'Selected for your goals',
       'Review and confirm your analysis plan',
-      'Planéir selects one to three relevant analyses from the goals you described. Readiness checks decide which can run automatically, and your final button confirms the displayed profile revision and derived plan together.'
+      'Planeir selects one to three relevant analyses from the goals you described. Readiness checks decide which can run automatically, and your final button confirms the displayed profile revision and derived plan together.'
     )
   );
 
@@ -1451,13 +1451,13 @@ function createMeetingTranscriptSection(currentState) {
     panel,
     element('p', 'section-kicker', 'Meeting record'),
     element('h2', '', 'Your voice meeting transcript'),
-    element('p', '', 'Only finalized Planéir and consumer turns are retained. Partial recognition and raw audio are not stored.')
+    element('p', '', 'Only finalized Planeir and consumer turns are retained. Partial recognition and raw audio are not stored.')
   );
   if (turns.length > 0) {
     const list = element('ol', 'meeting-transcript-list');
     turns.forEach((turn) => {
       const row = element('li', `meeting-transcript-turn is-${turn.role === 'assistant' ? 'assistant' : 'user'}`);
-      const label = element('span', 'meeting-transcript-speaker', turn.role === 'assistant' ? 'Planéir voice · AI' : 'You');
+      const label = element('span', 'meeting-transcript-speaker', turn.role === 'assistant' ? 'Planeir voice · AI' : 'You');
       const copy = element('p', '', String(turn.transcript || turn.text || ''));
       append(row, label, copy);
       if (turn.sensitiveDetailsRemoved === true) {
@@ -1845,12 +1845,12 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
     copy,
     element('p', 'section-kicker', 'A private, guided financial education journey'),
     element('h1', '', 'See the shape of your next financial step.'),
-    element('p', 'onboarding-intro', 'Start with the question on your mind. Planéir will organise the relevant facts, let you review every detail, and run only tested educational calculations that fit your goal.')
+    element('p', 'onboarding-intro', 'Start with the question on your mind. Planeir will organise the relevant facts, let you review every detail, and run only tested educational calculations that fit your goal.')
   );
   const trust = element('div', 'trust-grid');
   [
     ['01', 'You stay in control', 'Nothing is treated as confirmed until you review it. You can correct or delete the session.'],
-    ['02', 'Clear about AI', 'AI helps identify relevant scenarios and organise your information when you opt in. Planéir’s engines perform the calculations.'],
+    ['02', 'Clear about AI', 'AI helps identify relevant scenarios and organise your information when you opt in. Planeir’s engines perform the calculations.'],
     ['03', 'No hidden handoff', 'Nothing is sent to Gerry unless you separately choose and consent after seeing your results.']
   ].forEach(([index, title, description]) => {
     const item = element('article', 'trust-item');
@@ -1936,7 +1936,7 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
 }
 
 /**
- * The one moment the client chooses how to talk to Planéir.
+ * The one moment the client chooses how to talk to Planeir.
  *
  * Two doors, no default and no "recommended" badge: speaking and typing are
  * different preferences, not different tiers, and nudging someone towards a
@@ -1946,7 +1946,7 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
 export function renderLaneChoice(root, { onSpeak, onType } = {}) {
   root.replaceChildren();
   const card = element('section', 'unavailable-card lane-choice-card');
-  card.append(element('h1', 'lane-choice-title', 'How would you like to talk to Planéir?'));
+  card.append(element('h1', 'lane-choice-title', 'How would you like to talk to Planeir?'));
   card.append(element('p', 'lane-choice-lead',
     'Either way it is the same conversation, and the same plan at the end.'));
 
@@ -1988,7 +1988,7 @@ export function renderUnavailable(root, {
   const card = element('section', 'unavailable-card');
   append(
     card,
-    element('p', 'section-kicker', 'Planéir'),
+    element('p', 'section-kicker', 'Planeir'),
     element('h1', '', typedMeetingFailure ? 'Planning session unavailable' : liveMeetingFailure ? 'Live call unavailable' : 'Failed to load'),
     element(
       'p',
@@ -2043,9 +2043,9 @@ export function renderMeetingBackdrop(root) {
   const card = element('section', 'unavailable-card meeting-backdrop-card');
   append(
     card,
-    element('p', 'section-kicker', 'Planéir'),
+    element('p', 'section-kicker', 'Planeir'),
     element('h1', '', 'Your private planning meeting'),
-    element('p', '', 'Your live meeting is open. If you closed it, reopen it with the Talk to Planéir button.')
+    element('p', '', 'Your live meeting is open. If you closed it, reopen it with the Talk to Planeir button.')
   );
   root.append(card);
   root.setAttribute('aria-busy', 'false');

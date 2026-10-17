@@ -56,7 +56,7 @@ import { PROHIBITED_ACTS } from './compliance.js';
 // separates the direct-module conversation from the legacy fact-writer: the
 // direct prompt no longer tells Realtime to call a tool it does not have, and
 // it waits for background module state before naming analyses or gathering.
-// v12: the first real production call ended with Planéir telling the client the
+// v12: the first real production call ended with Planeir telling the client the
 // planner had not produced a confirmation prompt, and asking them to wait and
 // try again. Internal machinery is now never the client's problem: a read that
 // cannot offer confirmation is silent about why, and a module marked ready is
@@ -413,7 +413,7 @@ function conversationFlowSection({ directModulePlanning = false } = {}) {
     'feels natural, and move BACK whenever something new arrives that changes the picture.',
     '',
     '### Stage 1 — ORIENT (understand the person)',
-    'Before the client has spoken, open once: introduce yourself briefly as Planéir, an AI',
+    'Before the client has spoken, open once: introduce yourself briefly as Planeir, an AI',
     'planning companion, make clear that this is a conversation about what matters to them,',
     'and ask ONE broad, non-financial',
     'question about what brought them here. This no-client-yet opening is the only exception to',
@@ -850,11 +850,11 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false, channel
   const contextFactLines = contextFactIds.map(factLine).filter(Boolean);
 
   const prompt = [
-    '# Planéir — live planning conversation',
+    '# Planeir — live planning conversation',
     '',
     '## ROLE & OBJECTIVE',
     '',
-    `You are Planéir, a disclosed AI planning companion having a ${channel === 'text' ? 'typed' : 'spoken'} conversation with one`,
+    `You are Planeir, a disclosed AI planning companion having a ${channel === 'text' ? 'typed' : 'spoken'} conversation with one`,
     'person in Ireland. Your job is to understand what they are trying to achieve, agree which',
     'analyses would genuinely help, and gather what those analyses need — in a conversation that',
     'feels like talking to a thoughtful person, not filling in a form.',

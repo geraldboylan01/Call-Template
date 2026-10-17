@@ -98,7 +98,7 @@ async function accessMail(env, id, payload, status, kind = 'return') {
   const token = secret(), expires = new Date(Date.now() + DAY).toISOString();
   const url = `https://planeir.ie/demo/#access=${token}`;
   const approved = status === 'approved';
-  const subject = approved ? 'Your Planéir demo access is ready' : 'Your Planéir demo request is saved';
+  const subject = approved ? 'Your Planeir demo access is ready' : 'Your Planeir demo request is saved';
   const text = [ `Hi ${payload.contact.fullName},`, approved ? 'Your demo access is available. Review your saved information and confirm it when you are ready.' : DEMO_SAVED,
     `Open your private form: ${url}`, 'This private link expires in 24 hours. You can request a fresh link at https://planeir.ie/demo/.',
     'Analysis generation is not connected yet. No analysis has started.', 'Your saved information remains until you delete it. You can delete it from your private form.',
@@ -254,7 +254,7 @@ export async function handleDemoRequest(request, env, dependencies) {
           .bind(id, submissionHash, payloadHash, await emailHash(env, payload.contact.email), await encrypt(env, payload, `request/${id}`), status, current?.invitation_id || null, timestamp, timestamp),
         session.statement, ...await accessMail(env, id, payload, status)];
         const recipients = dependencies.emailConfig().notificationRecipients;
-        if (recipients?.length) statements.push(await makeMail(env, id, 'notification', { to: recipients, subject: 'New Planéir demo request', text: `A demo request has been saved. Review it in your private admin area: https://planeir.ie/app/demos.html?request=${id}` }));
+        if (recipients?.length) statements.push(await makeMail(env, id, 'notification', { to: recipients, subject: 'New Planeir demo request', text: `A demo request has been saved. Review it in your private admin area: https://planeir.ie/app/demos.html?request=${id}` }));
         try { await env.LEADS_DB.batch(statements); }
         catch (error) {
           row = await env.LEADS_DB.prepare('SELECT * FROM demo_requests WHERE submission_hash=?').bind(submissionHash).first();

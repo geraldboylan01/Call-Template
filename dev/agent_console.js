@@ -73,7 +73,7 @@ function renderTranscript() {
     wrapper.className = `turn ${turn.role}`;
     const who = document.createElement('div');
     who.className = 'who';
-    who.textContent = turn.role === 'client' ? 'Client' : 'Planéir';
+    who.textContent = turn.role === 'client' ? 'Client' : 'Planeir';
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     // textContent, never innerHTML: transcript text is untrusted content.

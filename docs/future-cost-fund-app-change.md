@@ -53,7 +53,7 @@ Use it two ways at once. It is shared at 1920×1080 on a call while the adviser 
 
 ## Assumptions: settled
 
-Everything the module needs is a **central** Planéir assumption, so every module and every adviser reads the same number. Nothing is typed into the payload.
+Everything the module needs is a **central** Planeir assumption, so every module and every adviser reads the same number. Nothing is typed into the payload.
 
 | Assumption | Value | Where it lives |
 |---|---|---|
@@ -150,7 +150,7 @@ Add `generated.futureCostFundInputs`. Engine in `js/future_cost_fund_math.js`, r
 | `baseScenarioId` | string, optional | Must match a case id when present. Default is the first case. |
 | `scenarios` | array, required | 1 to `MAX_MODULE_SCENARIO_CASES` (4) cases, from `js/scenario_cap.js`. |
 
-There are no rate fields. A payload that carries `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` or `dirtRate` is rejected: `generated.futureCostFundInputs.priceGrowthRate is not accepted. Rates are set centrally in the Planéir assumptions.`
+There are no rate fields. A payload that carries `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` or `dirtRate` is rejected: `generated.futureCostFundInputs.priceGrowthRate is not accepted. Rates are set centrally in the Planeir assumptions.`
 
 Each case:
 

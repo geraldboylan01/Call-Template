@@ -11,7 +11,7 @@ Planeir now ships as two connected experiences:
 
 ## Demo requests and private access
 
-Planéir now centres on helping people understand different routes to their
+Planeir now centres on helping people understand different routes to their
 financial goals and is currently available for demos only. `/apply/` saves demo
 requests, `/demo/` restores private information and accepts reusable invitations,
 and `/app/demos.html` provides approval, access-email and invitation management.

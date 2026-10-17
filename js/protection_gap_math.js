@@ -122,7 +122,7 @@ function refuseForbiddenWording(text, path) {
 const ID_PATTERN = /^[a-z0-9_-]+$/;
 
 const FOOTNOTE = 'Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. '
-  + 'State payments are as given and depend on each person’s PRSI record. '
+  + 'State payments are as given and depend on eligibility. '
   + 'When one income stops, the other person’s tax can change, so your take-home may differ from what is shown.';
 
 function isPlainObject(value) {
@@ -253,8 +253,8 @@ function normalizeEvent(rawEvent, { path, rawTitle, id, people, neededToday }) {
   }
 
   if (rawEvent.type === 'cannotWork') {
-    if (!isWholeEuros(rawEvent.statePayment) || rawEvent.statePayment <= 0) {
-      throw new Error(`${where}: statePayment must be a whole number of euros greater than 0.`);
+    if (!isWholeEuros(rawEvent.statePayment)) {
+      throw new Error(`${where}: statePayment must be a whole number of euros, 0 or more.`);
     }
     return { event: { type: 'cannotWork', personId: person.id, statePayment: rawEvent.statePayment }, person, title };
   }
@@ -438,7 +438,10 @@ function buildSentence({ event, people, earnersCounted, needed, neededChanged })
 
   const name = people.find((person) => person.id === event.personId).label;
   if (event.type === 'cannotWork') {
-    return `${name}’s take-home stops and a State payment starts. You still need ${need}.`;
+    const lead = event.statePayment > 0
+      ? `${name}’s take-home stops and a State payment starts.`
+      : `${name}’s take-home stops.`;
+    return `${lead} You still need ${need}.`;
   }
 
   const lead = event.survivorsPension > 0

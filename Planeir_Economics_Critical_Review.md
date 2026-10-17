@@ -1,4 +1,4 @@
-# Planéir Fact-Find Economics — Critical Review
+# Planeir Fact-Find Economics — Critical Review
 
 *A deliberately sceptical read of `Planeir_Fact_Find_Economics_Model.xlsx` against what the Call-Template repo is actually building. Prepared for Gerry, July 2026. Brief: don't oversell — stress the numbers, the product, and the market.*
 
@@ -10,7 +10,7 @@ The **problem** the model points at is real and well-evidenced. Advisers genuine
 
 The **economics as modelled are not yet a business case.** On the model's own figures, at €200/seat/month the tool only *breaks even* on hard labour cost (1.03x), and it does that only in the base case — across most of the plausible input range it is underwater. The headline that makes it look attractive (3.8x) rests entirely on "capacity value," a soft number that assumes freed hours are re-sold at full charge-out rate. For most practices that assumption does not hold.
 
-And the **competitive and product context is the harder problem than the spreadsheet.** The exact job this model monetises — cutting fact-find and suitability admin — is the single most crowded corner of adviser AI right now (Aveni, AdvisoryAI, Saturn), and those players are UK/VC-funded, CRM-integrated, and *already claiming ~90% time reduction* versus the model's 50%. Meanwhile the live Planéir product is a free one-to-one consumer education service run by one QFA — a different business from the multi-adviser B2B SaaS the spreadsheet prices.
+And the **competitive and product context is the harder problem than the spreadsheet.** The exact job this model monetises — cutting fact-find and suitability admin — is the single most crowded corner of adviser AI right now (Aveni, AdvisoryAI, Saturn), and those players are UK/VC-funded, CRM-integrated, and *already claiming ~90% time reduction* versus the model's 50%. Meanwhile the live Planeir product is a free one-to-one consumer education service run by one QFA — a different business from the multi-adviser B2B SaaS the spreadsheet prices.
 
 None of this means "don't build it." It means the value story in this model is aimed at the weakest, most contested part of the pitch. The defensible edge — visual client-facing education and Irish-tax specificity — isn't in the spreadsheet at all.
 
@@ -24,7 +24,7 @@ None of this means "don't build it." It means the value story in this model is a
 | Internal economic cost per cycle | €206 |
 | "Commercial capacity value" per cycle | €762 |
 | Cycles / adviser / year | 24 |
-| Time reduction from Planéir | 50% |
+| Time reduction from Planeir | 50% |
 | Price | €200 / seat / month (€2,400/yr) |
 | **Annual internal saving / adviser** | **€2,472 → 1.03x ROI** |
 | **Annual "capacity released" / adviser** | **€9,150 → 3.81x ROI** |
@@ -51,7 +51,7 @@ Worth saying plainly, because it matters for investor credibility:
 
 ### 1. The honest ROI is breakeven, and the price captures ~97% of the value it creates
 
-The hard-cost saving is €2,472/yr; the subscription is €2,400. **Planéir is charging the customer 97% of the hard money it saves them.** Software is normally priced at 10–30% of the value it delivers. At 97% capture there is almost no hard-dollar surplus left for the buyer, which means the entire purchase decision has to be carried by the *soft* benefits. That's a fragile place to price from.
+The hard-cost saving is €2,472/yr; the subscription is €2,400. **Planeir is charging the customer 97% of the hard money it saves them.** Software is normally priced at 10–30% of the value it delivers. At 97% capture there is almost no hard-dollar surplus left for the buyer, which means the entire purchase decision has to be carried by the *soft* benefits. That's a fragile place to price from.
 
 ### 2. The attractive multiple (3.8x) depends on an assumption most firms can't meet
 
@@ -71,7 +71,7 @@ Everything below the bold cell is a customer *losing money* on hard cost. The ba
 
 ### 4. A single-purpose tool is priced at the top of the market
 
-Benchmarks for adviser software: FE CashCalc ~£75/mo (cashflow), Plannr ~£140/mo (full CRM+workflow), a full stack "comfortably three figures per seat/month" *across several tools.* At ~£170, €200/seat prices a *point solution* like a whole platform. Advisers already pay Intelliflo/CashCalc/etc., so Planéir is additive spend that must either displace an incumbent or justify a premium — while claiming a smaller time saving than the AI tools below.
+Benchmarks for adviser software: FE CashCalc ~£75/mo (cashflow), Plannr ~£140/mo (full CRM+workflow), a full stack "comfortably three figures per seat/month" *across several tools.* At ~£170, €200/seat prices a *point solution* like a whole platform. Advisers already pay Intelliflo/CashCalc/etc., so Planeir is additive spend that must either displace an incumbent or justify a premium — while claiming a smaller time saving than the AI tools below.
 
 ---
 
@@ -84,7 +84,7 @@ Those are two different companies:
 - *Free B2C education* needs an audience and an eventual monetisation path (lead-gen into advice? paid tier?). None is in the model.
 - *B2B adviser SaaS* needs a sales motion, CRM integrations, compliance/data-processing sign-off, multi-tenant security, and support — none of which a free consumer call service builds muscle for.
 
-The repo shows heavy investment in the consumer journey, video capture and a Codex hand-off — impressive, but pointed at the B2C education experience, not at the B2B fact-find SaaS the economics model sells. Before trusting the model, decide which company Planéir is. The spreadsheet is quietly assuming a pivot that the product hasn't made.
+The repo shows heavy investment in the consumer journey, video capture and a Codex hand-off — impressive, but pointed at the B2C education experience, not at the B2B fact-find SaaS the economics model sells. Before trusting the model, decide which company Planeir is. The spreadsheet is quietly assuming a pivot that the product hasn't made.
 
 ---
 
@@ -108,7 +108,7 @@ The model has no competition line, and that's its biggest blind spot. "Reduce fa
 
 Two hard implications:
 
-1. **They claim more value than Planéir's model assumes.** These tools advertise ~90% admin reduction; the model banks on 50%. Planéir is pricing at the *premium* end while promising *less* time saved than incumbents — on the exact axis they compete on.
+1. **They claim more value than Planeir's model assumes.** These tools advertise ~90% admin reduction; the model banks on 50%. Planeir is pricing at the *premium* end while promising *less* time saved than incumbents — on the exact axis they compete on.
 2. **They're already integrated where the data lives.** Their moat is CRM integration (Intelliflo, Xplan). A standalone Irish fact-find tool starts behind on the one thing that makes these tools sticky.
 
 Competing head-on on "admin reduction" means fighting better-funded, better-integrated players with a weaker headline number. That's the losing ground.
@@ -122,7 +122,7 @@ The model buries its own best argument. The cost story is thin; the **revenue st
 - Internal cost per *converted* client: €687. Capacity value per converted client: €2,542. A converted advice client is worth vastly more than the €206 of admin a fact-find costs.
 - So even a **small conversion lift outweighs the entire admin saving.** Moving conversion from 30% to 33% on 24 fact-finds is ~0.72 extra clients/year. At a conservative €1,500–3,000 of first-year value per client, that's **€1,080–2,160/year — rivalling the whole subscription, from conversion alone** — on top of any time saved.
 
-That's the honest pitch: *Planéir isn't primarily a cost-cutter, it's a conversion and client-experience tool* — the visual "see your options, not just the maths" layer and Irish-tax-specific calculators are things Aveni/AdvisoryAI don't do. That's the differentiated ground.
+That's the honest pitch: *Planeir isn't primarily a cost-cutter, it's a conversion and client-experience tool* — the visual "see your options, not just the maths" layer and Irish-tax-specific calculators are things Aveni/AdvisoryAI don't do. That's the differentiated ground.
 
 **The catch, stated plainly so this stays honest:** conversion lift is the *least evidenced* number in the whole model (flagged "Low–Medium," no Irish data). The reframe increases the upside *and* the burden of proof. It's a hypothesis to test in a pilot, not a claim to put on a slide yet.
 

@@ -238,7 +238,7 @@ Playbooks should only emit the subset they are responsible for.
   - `baseScenarioId`: optional, must match a case id
   - `scenarios`: 1 to 4 cases
 - Each case supports `id` (required, unique), `title`, `description`, `lumpShare` (0 to 1, default 0) and `savingStartsInYears` (whole number, default 0, less than `startsInYears` unless `lumpShare` is 1). Any other case key is rejected.
-- Rates are central, never in the payload. `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` and `dirtRate` are each rejected with `generated.futureCostFundInputs.<field> is not accepted. Rates are set centrally in the Planéir assumptions.`
+- Rates are central, never in the payload. `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` and `dirtRate` are each rejected with `generated.futureCostFundInputs.<field> is not accepted. Rates are set centrally in the Planeir assumptions.`
 - The runtime takes education costs at 4% a year and general costs at 2%, holds the fund in cash at 0.2% before DIRT with DIRT at 33% from the Irish tax catalogue, puts every flow at the start of a year, and solves each case's lump sum and yearly amount so the fund closes at zero in the last cost year.
 - The runtime calculates `generated.assumptions`, `generated.outputs`, `generated.tables` and `generated.charts`, and draws its own screen; the playbook should not hand-build those fields.
 - Not modelled: money already set aside, a stated saving amount, investing the fund, grants, and more than one cost per module.

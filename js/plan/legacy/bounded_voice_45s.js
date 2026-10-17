@@ -773,7 +773,7 @@ export class ConsumerVoiceController {
       );
       this.onToast(
         sensitiveDetailsRemoved
-          ? 'Transcript added. Planéir removed a sensitive identifier; review the wording and figures carefully.'
+          ? 'Transcript added. Planeir removed a sensitive identifier; review the wording and figures carefully.'
           : 'Transcript added for review. Check names and figures carefully before continuing.',
         { timeout: 7000 }
       );
@@ -858,7 +858,7 @@ export class ConsumerVoiceController {
     if (!audioContext) return;
     const controller = new AbortController();
     this.networkController = controller;
-    this.setPhase('loading_speech', 'Preparing an AI-generated reading of the current Planéir question…');
+    this.setPhase('loading_speech', 'Preparing an AI-generated reading of the current Planeir question…');
     try {
       const response = await speakNextQuestion(context.sessionId, {
         idempotencyKey: newIdempotencyKey('voice-tts'),

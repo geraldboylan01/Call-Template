@@ -159,12 +159,12 @@ function fakeLane({ continueAfterTools }) {
   rig.provider.sent.push(opening);
 
   const result = await rig.simulator.opening({
-    act: async () => ({ speech: 'Hello, I’m Planéir. What brought you here today?' })
+    act: async () => ({ speech: 'Hello, I’m Planeir. What brought you here today?' })
   });
   const created = rig.inbound.find((event) => event.type === 'response.created');
   assert.deepEqual(created.response.metadata, opening.response.metadata,
     'the provider response must echo the Worker opening metadata verbatim');
-  assert.equal(result.speech, 'Hello, I’m Planéir. What brought you here today?');
+  assert.equal(result.speech, 'Hello, I’m Planeir. What brought you here today?');
   pass('a Worker-created opening is represented as its own metadata-bound response');
 }
 

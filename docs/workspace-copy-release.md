@@ -62,7 +62,7 @@ terms and assistant guide also contain no call fee, duration or paid-call langua
 Pricing appears on a
 current completed analysis and the ensuing private request form. The invitation
 is “Talk through your results with Gerry.” It offers discussion with the person
-who built Planéir. Incomplete, stale and review-only outcomes show no invitation.
+who built Planeir. Incomplete, stale and review-only outcomes show no invitation.
 
 The existing Zoom account configuration is reused. New requests carry a distinct
 service offer and never grant recording permission or become “free calls”. The

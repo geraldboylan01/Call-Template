@@ -76,7 +76,7 @@ export async function checkPresenterControls() {
     assert.equal((await page.evaluate(() => window.planeirPresenter.validateLive())).status, 'passed');
     await page.keyboard.press('c');
     const popupEvent = page.waitForEvent('popup'); await page.getByRole('button', { name: 'Open recording controls', exact: true }).click();
-    const desk = await popupEvent; await desk.waitForFunction(() => document.getElementById('connection').textContent.includes('Planéir connected'));
+    const desk = await popupEvent; await desk.waitForFunction(() => document.getElementById('connection').textContent.includes('Planeir connected'));
     assert.equal(await page.locator('.presenter-hud').isVisible(), false);
     await desk.locator('#password').fill('test-only'); await desk.locator('#connect').click();
     await desk.waitForFunction(() => document.getElementById('record-state').textContent.startsWith('STOPPED'));

@@ -13,4 +13,4 @@ createServer(async (req, res) => {
   if ((await stat(file)).isDirectory()) file = path.join(file, 'index.html');
   const body = await readFile(file); res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(body);
  } catch { res.writeHead(404); res.end('Not found'); }
-}).listen(port, '127.0.0.1', () => console.log(`Planéir preview: http://127.0.0.1:${port}`));
+}).listen(port, '127.0.0.1', () => console.log(`Planeir preview: http://127.0.0.1:${port}`));

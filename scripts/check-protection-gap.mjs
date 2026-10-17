@@ -152,7 +152,7 @@ function randomPayload(random, number) {
     } else {
       scenarios.push({
         id: `case-${number}-${i + 1}`,
-        event: { type: 'cannotWork', personId: person.id, statePayment: step(1, 40) }
+        event: { type: 'cannotWork', personId: person.id, statePayment: step(0, 40) }
       });
     }
   }

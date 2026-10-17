@@ -1,4 +1,4 @@
-# Planéir: the route forward from the direct-module experiments
+# Planeir: the route forward from the direct-module experiments
 
 11 September 2026. Production source reviewed: `30eab9eb9c0737726c9a392ef1805f347aa3b10f`. **No production code, financial assumption values, verifier requirements or deployment settings changed. Nothing was deployed.** The earlier Option 2 audit is paused; this report answers the higher-level architecture question.
 

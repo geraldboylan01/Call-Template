@@ -302,13 +302,13 @@ export function runGoalsAndResourcesTests() {
     ['priceGrowthRate', 'savingsGrowthRate', 'inflationRate', 'dirtRate', 'growthRate', 'wageGrowthRate', 'educationRate'].forEach((key) => {
       assertThrows(
         normalise({ [key]: 0.03 }),
-        `${FIELD}.${key} is not accepted. Rates are set centrally in the Planéir assumptions.`,
+        `${FIELD}.${key} is not accepted. Rates are set centrally in the Planeir assumptions.`,
         key
       );
     });
     assertThrows(
       normalise({ pensions: [{ ...base.pensions[0], growthRate: 0.06 }] }),
-      `${FIELD}.pensions[0].growthRate is not accepted. Rates are set centrally in the Planéir assumptions.`,
+      `${FIELD}.pensions[0].growthRate is not accepted. Rates are set centrally in the Planeir assumptions.`,
       'a rate on a person'
     );
     assertThrows(normalise({ spareCash: -1 }), `${FIELD}.spareCash must be a number, 0 or more.`, 'negative cash');

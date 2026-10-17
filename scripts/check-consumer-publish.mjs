@@ -4,7 +4,7 @@
  * Every published session used to be created by an authenticated adviser --
  * `handleCreatePublishedSession` opens with `requireAdvisorSession`, and that
  * gate was the whole security model. Letting a consumer session publish widens
- * who can put a page in front of a client under Planéir's name, so the checks
+ * who can put a page in front of a client under Planeir's name, so the checks
  * below are mostly about what a caller CANNOT do.
  *
  * The load-bearing one: the request decides nothing about the content. It
