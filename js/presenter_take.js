@@ -47,7 +47,7 @@ export function buildTakeFiles(take) {
     '1. Import the iPhone original and OBS MP4 into DaVinci Resolve. Create a multicam clip using Sound to synchronise them; verify the clap and speech at the start and end.',
     '2. Use the OBS external-microphone track continuously. Switch video only; mute the iPhone reference audio.',
     '3. Locate the FIRST frame of the SYNC slate in the screen source. Its source-file position + the elapsed times below locates each event in that file. After trimming, use the new timeline offset. CSV is a readable cue log, not an automatic Resolve import.',
-    '4. Start on the presenter. Show Planéir when the evidence helps. Hold a useful view; a cue is not a mandatory camera cut. Return to the presenter for interpretation and reassurance.',
+    '4. Start on the presenter. Show Planeir when the evidence helps. Hold a useful view; a cue is not a mandatory camera cut. Return to the presenter for interpretation and reassurance.',
     '5. Arrived means the visual has settled. Requested marks the start of its transition. Choose either by watching the footage. Repeated visits, failed moves, controls, visibility changes and retakes require review.',
     '6. Remove the countdown, sync slates, setup panels and mistakes. Check the entire edit and export H.264/AAC MP4 at the project frame rate.', '',
     '## Actual visual arrivals', '', '| Elapsed from SYNC | Beat | Direction | Suggested picture | Why |', '| --- | --- | --- | --- | --- |',

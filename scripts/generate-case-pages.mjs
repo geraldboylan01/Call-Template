@@ -359,7 +359,7 @@ function renderCasePage(entry) {
             </section>` : ''}
             <section class="page-card" aria-labelledby="caseApplyTitle">
               <h2 id="caseApplyTitle">Explore your own figures.</h2>
-              <p>The workspace form is a local preview. Creation is not open yet, and nothing is sent to Planéir.</p>
+              <p>The workspace form is a local preview. Creation is not open yet, and nothing is sent to Planeir.</p>
               <div class="page-actions">
                 <a class="button button-primary" href="${applyHref}">Create my workspace</a>
               </div>

@@ -7,8 +7,8 @@ export function mountPresenterRecording(host, { api, panel, recorderUI, run }) {
   const log = createPresenterTake();
   let generation = 0, countdown = false, storageError = '', controlled = false;
   host.innerHTML = `<h3>Record for editing · iPhone + OBS</h3>
-    <p>Record yourself on your iPhone. In OBS, record this clean Planéir view and your external Mac microphone. Both recordings run continuously.</p>
-    <p>Recommended: use <strong>Open recording controls</strong> above. Its separate window starts/stops OBS, shows confirmed recording status and runs the cue log. Start the iPhone yourself. OBS must capture only this Planéir window.</p>
+    <p>Record yourself on your iPhone. In OBS, record this clean Planeir view and your external Mac microphone. Both recordings run continuously.</p>
+    <p>Recommended: use <strong>Open recording controls</strong> above. Its separate window starts/stops OBS, shows confirmed recording status and runs the cue log. Start the iPhone yourself. OBS must capture only this Planeir window.</p>
     <details><summary>Fallback: start OBS manually</summary><p>Start preview, choose your final window size, then Validate live. Start both recorders and clap once. Start the take below: a countdown and SYNC slate mark the timing reference, then all controls disappear.</p>
     <p>RIGHT / LEFT: visual beat · M: mark a retake · C: controls · S: finish take log. OBS and iPhone must be stopped separately.</p>
     <label><input type="checkbox" class="presenter-capture-confirm"> OBS and iPhone are recording; the external mic meter is moving in OBS.</label>
@@ -20,7 +20,7 @@ export function mountPresenterRecording(host, { api, panel, recorderUI, run }) {
   const slate = document.createElement('div'); slate.className = 'presenter-sync-slate'; slate.hidden = true; document.body.append(slate);
   const refresh = () => {
     const take = log.snapshot();
-    status.textContent = `${take ? `${take.id} · ${take.status}${take.exported ? ' · package downloaded' : ''}` : 'No take yet. Planéir logs cues; it does not start or verify OBS or the iPhone.'}${storageError}`;
+    status.textContent = `${take ? `${take.id} · ${take.status}${take.exported ? ' · package downloaded' : ''}` : 'No take yet. Planeir logs cues; it does not start or verify OBS or the iPhone.'}${storageError}`;
     start.disabled = log.active; download.disabled = !take || log.active; finishButton.disabled = !log.active;
   };
   const persist = () => {

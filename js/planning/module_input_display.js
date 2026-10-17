@@ -254,7 +254,7 @@ export const MODULE_INPUT_DISPLAY = Object.freeze({
 });
 
 /**
- * Client-facing wording for the approved values Planéir supplies itself.
+ * Client-facing wording for the approved values Planeir supplies itself.
  *
  * These are the paths in HIDDEN_PATHS that a client should still be TOLD
  * about, because they change the answer: a projection built on 5% growth is a

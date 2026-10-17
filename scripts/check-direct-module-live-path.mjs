@@ -119,7 +119,7 @@ function collegeExtractionFor(throughTurnId, previousSnapshot, evidenceTurnId) {
         ? JSON.stringify(carried || COLLEGE_INPUT)
         : '',
       steeringSummary: moduleId === 'college_funding'
-        ? 'One child, a newborn, with college timing on the approved Planéir assumptions.'
+        ? 'One child, a newborn, with college timing on the approved Planeir assumptions.'
         : '',
       missing: [],
       ambiguities: [],
@@ -694,7 +694,7 @@ try {
   // input the snapshot had shown it, that input was the engine's derived
   // expansion, and provenance refused every pass from then on. Nothing
   // advanced, so `readyForOffer` -- which requires an empty outstanding queue --
-  // could never be true, and Planéir told the client the planner had not given
+  // could never be true, and Planeir told the client the planner had not given
   // it a confirmation prompt. Here the same conversation must reach a
   // confirmation instead.
   collegeReplay = true;

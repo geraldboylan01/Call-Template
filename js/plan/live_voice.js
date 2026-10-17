@@ -384,7 +384,7 @@ export class LiveVoiceController {
     const line = document.createElement('li');
     line.className = `realtime-history-item is-${item.role}`;
     const speaker = document.createElement('span');
-    speaker.textContent = item.role === 'user' ? 'You' : 'Planéir voice · AI';
+    speaker.textContent = item.role === 'user' ? 'You' : 'Planeir voice · AI';
     const copy = document.createElement('p');
     copy.textContent = item.text;
     line.append(speaker, copy);
@@ -424,7 +424,7 @@ export class LiveVoiceController {
 
   transcriptForCopy() {
     return this.transcriptHistory
-      .map((item) => `${item.role === 'user' ? 'You' : 'Planéir (AI)'}: ${item.text}`)
+      .map((item) => `${item.role === 'user' ? 'You' : 'Planeir (AI)'}: ${item.text}`)
       .join('\n\n');
   }
 
@@ -497,7 +497,7 @@ export class LiveVoiceController {
     this.transcriptElement?.replaceChildren?.();
     if (this.transcriptCard) this.transcriptCard.hidden = true;
     this.setCaption('user', 'Your words will appear here while you speak.');
-    this.setCaption('assistant', 'Planéir will say hello in a moment.');
+    this.setCaption('assistant', 'Planeir will say hello in a moment.');
     this.setPhase('connecting', 'Connecting your private meeting…');
 
     const controller = new AbortController();
@@ -585,7 +585,7 @@ export class LiveVoiceController {
       // The Worker can request the opening response as soon as its sideband is
       // connected. If those provider events have already advanced the UI to
       // thinking or playback, finishing SDP setup must not rewind the orb to
-      // listening in the middle of Planéir's greeting.
+      // listening in the middle of Planeir's greeting.
       if (this.phase === 'connecting') {
         this.setPhase('listening', 'I’m listening — take your time.');
       }
@@ -685,7 +685,7 @@ export class LiveVoiceController {
       this.remotePlaybackReady = true;
       this.deliveries.acknowledgeAll();
     }).catch(() => {
-      this.onToast('Tap anywhere to let Planéir speak.', { tone: 'info' });
+      this.onToast('Tap anywhere to let Planeir speak.', { tone: 'info' });
     });
   }
 
@@ -813,11 +813,11 @@ export class LiveVoiceController {
       if (event.name === 'confirm_and_run') this.watchExecution();
       // A function call ends this provider response. The Worker will deliver
       // its result and explicitly request the continuation response; until
-      // then the client is still waiting for Planéir, not listening for a
+      // then the client is still waiting for Planeir, not listening for a
       // new turn.
       this.responseNeedsContinuation = true;
       if (!this.assistantPlaybackActive && !['user_speaking', 'interrupted'].includes(this.phase)) {
-        this.setPhase('thinking', 'Planéir is noting that down…');
+        this.setPhase('thinking', 'Planeir is noting that down…');
       }
       return;
     }
@@ -826,7 +826,7 @@ export class LiveVoiceController {
       const delivery = this.deliveries.for(this.playbackResponseId);
       if (delivery) delivery.started = true;
       this.assistantPlaybackActive = true;
-      this.setPhase('assistant_speaking', 'Planéir is speaking.');
+      this.setPhase('assistant_speaking', 'Planeir is speaking.');
       return;
     }
     if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {

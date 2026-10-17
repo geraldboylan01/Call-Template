@@ -19,7 +19,7 @@ rather than from intent.
 
 The two remediation items raised on 2026-07-25 were both assumption-approval
 decisions rather than engineering defects, and both were resolved by the
-centrally approved Planéir assumptions in
+centrally approved Planeir assumptions in
 [planeir_assumptions.js](../js/planning/planeir_assumptions.js). The original
 findings are kept below because they record why each module was gated.
 
@@ -51,7 +51,7 @@ scope in v1. The adapter says so in a warning that reaches the client.
 ## Pension Projection — APPROVED 2026-07-26 (was: remediation required)
 
 **Resolved.** Growth of 5% and inflation of 2% are now centrally approved,
-versioned Planéir assumptions, stated as planning assumptions with the
+versioned Planeir assumptions, stated as planning assumptions with the
 medium-risk diversified-portfolio basis and an explicit "not a guaranteed
 return" disclosure. Neither consumers nor advisers can override them.
 

@@ -18,7 +18,7 @@ function head(title, description, up, canonical, extra = '') {
   <meta name="color-scheme" content="dark" />
   <meta name="description" content="${escape(description)}" />
   <link rel="canonical" href="https://planeir.ie${canonical}" />
-  <meta property="og:site_name" content="Planéir" />
+  <meta property="og:site_name" content="Planeir" />
   <meta property="og:title" content="${escape(title)}" />
   <meta property="og:description" content="${escape(description)}" />
   <meta property="og:url" content="https://planeir.ie${canonical}" />
@@ -43,20 +43,20 @@ ${extra ? `  ${extra}\n` : ""}</head>
 }
 function header(up, admin = false) {
   return `<header class="site-header">
-    <a class="site-brand" href="${up}" aria-label="Planéir home"><span class="site-brand-logo-wrap"><img class="site-brand-logo" src="${up}assets/brand/planeir-lockup-light.svg" alt="Planéir" width="1330" height="384" /></span></a>
+    <a class="site-brand" href="${up}" aria-label="Planeir home"><span class="site-brand-logo-wrap"><img class="site-brand-logo" src="${up}assets/brand/planeir-lockup-light.svg" alt="Planeir" width="1330" height="384" /></span></a>
     <nav class="site-header-actions" aria-label="Site">${admin ? `<a class="site-nav-admin-login" href="${up}app/?login=1&return=home" data-advisor-login-link>Admin login</a><a class="site-nav-app advisor-app-link is-hidden" href="${up}app/" data-advisor-app-link hidden>Open app</a>` : ''}<a class="button button-primary button-sm" href="${up}apply/">${copy.create}</a></nav>
   </header>`;
 }
 function footer(up) {
-  return `<footer class="site-footer"><p class="site-footer-note">Planéir provides financial education, not regulated advice. <a href="${up}privacy/">Privacy</a> · <a href="${up}terms/">Terms</a> · <a href="mailto:hello@planeir.ie">hello@planeir.ie</a></p></footer></div></body></html>`;
+  return `<footer class="site-footer"><p class="site-footer-note">Planeir provides financial education, not regulated advice. <a href="${up}privacy/">Privacy</a> · <a href="${up}terms/">Terms</a> · <a href="mailto:hello@planeir.ie">hello@planeir.ie</a></p></footer></div></body></html>`;
 }
 const faq = WORKSPACE_FAQS.map(([question, answer]) => `<details class="faq-item"><summary>${escape(question)}</summary><p>${escape(answer)}</p></details>`).join('\n');
 const structured = { '@context': 'https://schema.org', '@graph': [
-  { '@type': 'WebSite', name: 'Planéir', alternateName: 'Planeir', url: 'https://planeir.ie/', inLanguage: 'en-IE', description: copy.description },
+  { '@type': 'WebSite', name: 'Planeir', alternateName: 'Planeir', url: 'https://planeir.ie/', inLanguage: 'en-IE', description: copy.description },
   { '@type': 'Person', name: 'Gerry Boylan', hasCredential: { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Qualified Financial Adviser (QFA)', recognizedBy: { '@type': 'Organization', name: 'IOB' } } },
   { '@type': 'FAQPage', mainEntity: WORKSPACE_FAQS.map(([name, text]) => ({ '@type': 'Question', name, acceptedAnswer: { '@type': 'Answer', text } })) }
 ] };
-const home = `${head('Planéir | Private financial education', copy.description, './', '/', `<script type="application/ld+json">${scriptJson(structured)}</script>`)}
+const home = `${head('Planeir | Private financial education', copy.description, './', '/', `<script type="application/ld+json">${scriptJson(structured)}</script>`)}
 ${header('./', true)}
 <main>
   <section class="hero-section">
@@ -78,19 +78,19 @@ ${header('./', true)}
             <div class="preview-controls"><span>Actual modules · Fictional figures</span><div><button type="button" data-preview-play>Play preview</button>
                 <button type="button" data-preview-enlarge>Enlarge</button></div></div>
             <figcaption data-preview-caption aria-live="polite">Compare how extra repayments change the finish date and interest cost.</figcaption>
-            <dialog class="preview-dialog" aria-labelledby="previewDialogTitle"><div class="preview-dialog-header"><h2 id="previewDialogTitle">Planéir example · Fictional figures</h2><button type="button" data-preview-close>Close</button></div><video controls muted playsinline preload="none" aria-label="Enlarged module example"><source type="video/mp4" /><source type="video/webm" /></video><p data-preview-context></p><div class="preview-dialog-footer"><a class="button button-primary" href="./apply/">${copy.create}</a></div></dialog>
+            <dialog class="preview-dialog" aria-labelledby="previewDialogTitle"><div class="preview-dialog-header"><h2 id="previewDialogTitle">Planeir example · Fictional figures</h2><button type="button" data-preview-close>Close</button></div><video controls muted playsinline preload="none" aria-label="Enlarged module example"><source type="video/mp4" /><source type="video/webm" /></video><p data-preview-context></p><div class="preview-dialog-footer"><a class="button button-primary" href="./apply/">${copy.create}</a></div></dialog>
           </figure>
   </section>
-  <section class="trust-row-section" aria-label="About Planéir"><div class="trust-row"><span>Designed by Gerry Boylan, QFA</span><span class="trust-row-divider" aria-hidden="true"></span><span>Built for Ireland</span><span class="trust-row-divider" aria-hidden="true"></span><span>Financial education</span></div></section>
-  <section id="how-it-works" class="content-section how-section" aria-labelledby="howTitle"><div class="section-heading"><p class="section-eyebrow">How Planéir works</p><h2 id="howTitle">From your figures to a clearer picture.</h2></div><div class="how-grid">
-    <article class="how-card"><h3>1. Share your goals and figures</h3><p>Tell Planéir what you want to understand. Fill in what you can. Estimates are fine. Skip anything you don’t know.</p></article>
+  <section class="trust-row-section" aria-label="About Planeir"><div class="trust-row"><span>Designed by Gerry Boylan, QFA</span><span class="trust-row-divider" aria-hidden="true"></span><span>Built for Ireland</span><span class="trust-row-divider" aria-hidden="true"></span><span>Financial education</span></div></section>
+  <section id="how-it-works" class="content-section how-section" aria-labelledby="howTitle"><div class="section-heading"><p class="section-eyebrow">How Planeir works</p><h2 id="howTitle">From your figures to a clearer picture.</h2></div><div class="how-grid">
+    <article class="how-card"><h3>1. Share your goals and figures</h3><p>Tell Planeir what you want to understand. Fill in what you can. Estimates are fine. Skip anything you don’t know.</p></article>
     <article class="how-card"><h3>2. Request demo access</h3><p>Your information is saved. We’ll email you when access is available, and you can update your figures while you wait.</p></article>
     <article class="how-card"><h3>3. Review and confirm</h3><p>Open your private link and review your saved information. Analysis generation will be connected separately; confirming your figures does not start an analysis yet.</p></article>
   </div></section>
-  <section class="content-section how-section" aria-labelledby="founderTitle"><div class="section-heading"><p class="section-eyebrow">Why I built Planéir</p><h2 id="founderTitle">Financial understanding should not be a privilege.</h2></div><p class="workspace-founder">${copy.founder}</p><p class="workspace-founder">${copy.founderContext}</p></section>
+  <section class="content-section how-section" aria-labelledby="founderTitle"><div class="section-heading"><p class="section-eyebrow">Why I built Planeir</p><h2 id="founderTitle">Financial understanding should not be a privilege.</h2></div><p class="workspace-founder">${copy.founder}</p><p class="workspace-founder">${copy.founderContext}</p></section>
 
   <section class="content-section faq-section" aria-labelledby="faqTitle"><div class="section-heading"><p class="section-eyebrow">Questions</p><h2 id="faqTitle">What to expect.</h2></div><div class="faq-list">${faq}</div></section>
-  <section id="request-demo" class="content-section"><div id="advisorGateNotice" class="advisor-gate-notice is-hidden" tabindex="-1" hidden><h2>The admin workspace is private.</h2><p>To try Planéir, request demo access. Existing participants should use their private return link.</p></div><div class="how-card"><h2>Request access to the Planéir demo.</h2><p>Share your goals and figures so your information is ready when you are invited.</p><a class="button button-primary" href="./apply/">${copy.create}</a></div></section>
+  <section id="request-demo" class="content-section"><div id="advisorGateNotice" class="advisor-gate-notice is-hidden" tabindex="-1" hidden><h2>The admin workspace is private.</h2><p>To try Planeir, request demo access. Existing participants should use their private return link.</p></div><div class="how-card"><h2>Request access to the Planeir demo.</h2><p>Share your goals and figures so your information is ready when you are invited.</p><a class="button button-primary" href="./apply/">${copy.create}</a></div></section>
 </main>
 <script>window.__WORKER_BASE_URL = "https://api.planeir.ie";</script><script type="module" src="./js/landing.js"></script><script type="module" src="./js/workspace/previews.js"></script>
 ${footer('./')}`;
@@ -98,8 +98,8 @@ ${footer('./')}`;
 // The body is shared by both public notice URLs. Archived notices apply only
 // to the old case-video service and the separately invited consumer beta.
 const privacyBody = `<p class="section-eyebrow">Privacy notice · ${WORKSPACE_POLICY.privacyNoticeId}</p><h1 class="page-title">How we handle your information</h1>
-<p class="page-lede">Planéir is operated by Gerry Boylan in Ireland. Contact <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>.</p>
-<div class="workspace-notice"><h2>Demo requests and saved information</h2><p>Currently available for demos only. Requesting access sends your information to Planéir for storage and demo access management. Analysis generation is not connected yet; this form sends no information to an AI provider. Unfinished edits are saved in your browser until you submit them.</p></div>
+<p class="page-lede">Planeir is operated by Gerry Boylan in Ireland. Contact <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>.</p>
+<div class="workspace-notice"><h2>Demo requests and saved information</h2><p>Currently available for demos only. Requesting access sends your information to Planeir for storage and demo access management. Analysis generation is not connected yet; this form sends no information to an AI provider. Unfinished edits are saved in your browser until you submit them.</p></div>
 <div class="page-content">
 <section class="page-card"><h2>What the workspace collects</h2><p>Your name and email for private return access, the goals, household details and figures you enter, your demo access status, confirmed information, and records of the terms and notices you acknowledge. Estimates and unknown figures are identified.</p><p>Do not enter PPS numbers, passwords, PINs, full account or card numbers, an exact address, identity documents or unnecessary information about someone else.</p></section>
 <section class="page-card"><h2>Why we use it</h2><p>We use your information to save your demo request, manage approval or an invitation, provide private return access, and handle corrections, confirmation or deletion. The lawful basis for this service is performance of our agreement with you under the Terms of Use.</p><p>Limited security and operational records support our legitimate interests in preventing misuse, controlling service costs and maintaining reliability. Optional calls are a separate service you request. The workspace does not publish your answers, sell your financial information or send it to an adviser.</p></section>
@@ -111,10 +111,10 @@ const privacyBody = `<p class="section-eyebrow">Privacy notice · ${WORKSPACE_PO
 <section class="page-card" id="previous-services"><h2>Existing applications and invited sessions</h2><p>Earlier case-video applications remain covered by the <a href="/privacy/legacy-applications.html">original application notice</a>. The separately invited consumer beta remains covered by its <a href="/plan/privacy-legacy.html">original consumer notice</a>, including its seven-day session expiry and optional voice processing. Those permissions are not permission to create a new workspace.</p></section>
 </div>`;
 function privacy(up) {
-  return `${head('Privacy notice | Planéir', 'How Planéir handles saved demo requests, private access and earlier services.', up, '/privacy/')}${header(up)}<main class="page-main"><section class="page-intro">${privacyBody}</section></main>${footer(up)}`;
+  return `${head('Privacy notice | Planeir', 'How Planeir handles saved demo requests, private access and earlier services.', up, '/privacy/')}${header(up)}<main class="page-main"><section class="page-intro">${privacyBody}</section></main>${footer(up)}`;
 }
-const terms = `${head('Terms of Use | Planéir', 'Terms for your private financial education workspace.', '../', '/terms/')}${header('../')}<main class="page-main"><section class="page-intro"><p class="section-eyebrow">Terms of Use · ${WORKSPACE_POLICY.termsId}</p><h1 class="page-title">Using Planéir</h1><p class="page-lede">These terms cover demo requests, private return access and confirming your information. Planéir is currently available for demos only; analysis generation is not connected to this flow.</p></section><div class="page-content">
-<section class="page-card"><h2>Who provides the service</h2><p>Planéir is built and run by Gerry Boylan, a sole trader based in Dublin, Ireland. Contact <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>. These terms describe the private workspace; they do not replace the terms of an earlier invited session.</p></section>
+const terms = `${head('Terms of Use | Planeir', 'Terms for your private financial education workspace.', '../', '/terms/')}${header('../')}<main class="page-main"><section class="page-intro"><p class="section-eyebrow">Terms of Use · ${WORKSPACE_POLICY.termsId}</p><h1 class="page-title">Using Planeir</h1><p class="page-lede">These terms cover demo requests, private return access and confirming your information. Planeir is currently available for demos only; analysis generation is not connected to this flow.</p></section><div class="page-content">
+<section class="page-card"><h2>Who provides the service</h2><p>Planeir is built and run by Gerry Boylan, a sole trader based in Dublin, Ireland. Contact <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>. These terms describe the private workspace; they do not replace the terms of an earlier invited session.</p></section>
 <section class="page-card"><h2>Financial education</h2><p>${copy.educationNotice}</p><p>The service is for adults aged 18 or over using their own household information. Share another person’s information only where you are entitled to do so and it is needed.</p></section>
 <section class="page-card"><h2>Information and assumptions</h2><p>You can enter estimates and leave unknown figures blank. Review and correct your saved information before confirming it. Generate my analysis currently saves that confirmation only; it does not create an analysis. Any later modelled outcomes depend on the information and assumptions used and are not guarantees.</p></section>
 <section class="page-card"><h2>Your saved demo information</h2><p>Your information remains until you delete it. Requesting access does not guarantee an invitation or a launch date. You can update or delete your saved information using your private return link. The <a href="../privacy/">privacy notice</a> explains processing, access and deletion.</p></section>
@@ -123,7 +123,7 @@ const terms = `${head('Terms of Use | Planéir', 'Terms for your private financi
 <section class="page-card"><h2>Changes and contact</h2><p>We explain material changes to the service or these terms before asking you to accept them. Irish law applies, subject to your mandatory consumer rights. Contact <a href="mailto:hello@planeir.ie">hello@planeir.ie</a> about questions or complaints.</p></section>
 </div></main>${footer('../')}`;
 
-const demoForm = (await readFile(resolve(root, 'apply/index.html'), 'utf8')).replaceAll('https://planeir.ie/apply/', 'https://planeir.ie/demo/').replace('<meta name="robots" content="index, follow" />', '<meta name="robots" content="noindex, nofollow" />').replace('<title>Request demo access | Planéir</title>', '<title>Your private demo | Planéir</title>');
+const demoForm = (await readFile(resolve(root, 'apply/index.html'), 'utf8')).replaceAll('https://planeir.ie/apply/', 'https://planeir.ie/demo/').replace('<meta name="robots" content="index, follow" />', '<meta name="robots" content="noindex, nofollow" />').replace('<title>Request demo access | Planeir</title>', '<title>Your private demo | Planeir</title>');
 const outputs = new Map([['demo/index.html', demoForm], ['index.html', home], ['privacy/index.html', privacy('../')], ['plan/privacy.html', privacy('../')], ['terms/index.html', terms]]);
 let stale = false;
 for (const [file, content] of outputs) {

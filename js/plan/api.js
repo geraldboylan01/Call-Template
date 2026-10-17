@@ -55,7 +55,7 @@ function extractErrorMessage(payload, status) {
     return 'There have been too many requests. Please wait a moment and try again.';
   }
   if (status >= 500) {
-    return 'Planéir could not complete that request just now. Your existing journey is safe.';
+    return 'Planeir could not complete that request just now. Your existing journey is safe.';
   }
   return `The request could not be completed (${status || 'network error'}).`;
 }
@@ -85,7 +85,7 @@ async function request(path, {
   responseType = 'json'
 } = {}) {
   if (!API_BASE_URL) {
-    throw new ConsumerApiError('The Planéir planning service is not configured.', {
+    throw new ConsumerApiError('The Planeir planning service is not configured.', {
       code: 'missing_api_base'
     });
   }
@@ -252,7 +252,7 @@ async function request(path, {
         code: 'request_timeout'
       });
     }
-    throw new ConsumerApiError('Planéir could not reach the planning service. Check your connection and try again.', {
+    throw new ConsumerApiError('Planeir could not reach the planning service. Check your connection and try again.', {
       code: 'network_error',
       details: error
     });
@@ -524,7 +524,7 @@ function typedMeetingPath(sessionId, leaseId = '') {
  * Open a typed planning meeting.
  *
  * No SDP, no microphone, no ephemeral provider credential -- a typed meeting
- * is created and activated in one request, and Planéir's opening message comes
+ * is created and activated in one request, and Planeir's opening message comes
  * back with it so the screen is never empty.
  */
 export function createTypedMeeting(sessionId, { requestId, activationId, controlCapability } = {}) {

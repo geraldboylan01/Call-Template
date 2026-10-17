@@ -1,4 +1,4 @@
-# Planéir Realtime Voice Operations
+# Planeir Realtime Voice Operations
 
 This runbook covers the adviser-invite-only Realtime voice canary layered on the
 existing `/plan/` journey. It does not replace the typed journey, the bounded
@@ -10,7 +10,7 @@ or any deterministic calculation engine.
 - The browser carries microphone and speaker audio over WebRTC. It never
   receives an OpenAI API key or provider call identifier.
 - The Worker creates the OpenAI call from the browser SDP offer and returns only
-  the SDP answer plus an opaque Planéir lease identifier.
+  the SDP answer plus an opaque Planeir lease identifier.
 - One `ConsumerRealtimeSession` Durable Object owns each active lease. It keeps
   the authenticated provider sideband, event ordering, idempotent tool calls,
   interruption, alarms, the session allowance, and shutdown.
@@ -22,7 +22,7 @@ or any deterministic calculation engine.
   profile revisions, confirmations, plan nonces, module readiness, deterministic
   results, usage, and retention.
 - Sideband loss is terminal. The Durable Object cancels the current response,
-  closes the provider call, and marks the Planéir lease failed. It does not let
+  closes the provider call, and marks the Planeir lease failed. It does not let
   a browser-only agent continue.
 
 ## Release controls
@@ -160,7 +160,7 @@ additional property cannot overwrite it.
 The first server-authorized response is a short, tool-free Marin welcome. The
 browser keeps its outbound microphone track disabled until the WebRTC output
 audio buffer stops (with `response.done` as a compatibility fallback), so
-Planéir can introduce himself, explain the review-and-confirm contract and put
+Planeir can introduce himself, explain the review-and-confirm contract and put
 the client at ease before intake begins. The silent Responses planner is not
 called until the first finalized client transcript.
 
@@ -462,7 +462,7 @@ A ChatGPT subscription cannot fund an embedded OpenAI API WebRTC session;
 ChatGPT subscriptions and API billing are separate. Keep the existing
 copy/open-ChatGPT or Codex-assisted path for someone who wants to use their own
 subscription manually. That fallback is not connected to the realtime tools
-and cannot silently write Planéir facts or run modules.
+and cannot silently write Planeir facts or run modules.
 
 ## Agent-test transport (A8)
 

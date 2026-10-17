@@ -239,7 +239,7 @@ async function main() {
   assert.equal(smokeOriginUrl.origin, smokeOrigin, 'SMOKE_ORIGIN must be an origin without a path.');
   assert.ok(
     ['planeir.ie', 'www.planeir.ie'].includes(smokeOriginUrl.hostname),
-    'SMOKE_ORIGIN must be a Planéir production origin.'
+    'SMOKE_ORIGIN must be a Planeir production origin.'
   );
   assert.ok(password, 'ADVISOR_SMOKE_PASSWORD is required for the authenticated bridge smoke.');
   const realtimeStandingPreserved = String(
@@ -380,7 +380,7 @@ async function main() {
         });
         assert.equal(proof.conversationVersion, 'live',
           'Production must never certify the archived controlled conversation lane.');
-        assert.equal(proof.launcherVisible, true, 'The production Talk to Planéir launcher was not proven.');
+        assert.equal(proof.launcherVisible, true, 'The production Talk to Planeir launcher was not proven.');
         assert.equal(proof.companionStartWired, true, 'The production Start voice control was not proven.');
         assert.equal(proof.webRtcConnected, true, 'The production WebRTC connection was not proven.');
         assert.equal(proof.sidebandConnected, true, 'The production sideband connection was not proven.');

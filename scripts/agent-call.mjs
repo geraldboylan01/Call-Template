@@ -1,4 +1,4 @@
-// Drive a Planéir call ONE TURN AT A TIME, from a shell.
+// Drive a Planeir call ONE TURN AT A TIME, from a shell.
 //
 // This is the tool for when YOU are the client. An agent in Claude Code (or a
 // person at a terminal) plays someone ringing in, says one thing, reads the
@@ -77,7 +77,7 @@ const langfuseHost = String(process.env.LANGFUSE_HOST || '').trim() || 'https://
 
 function usage(message = '') {
   if (message) console.error(`${message}\n`);
-  console.error(`Drive a Planéir call one turn at a time.
+  console.error(`Drive a Planeir call one turn at a time.
 
   start [--caller=<file>] [--id=<name>]   begin a call, print the opening question
   say "<what you said>" [--call=<id>]     one turn; prints the reply and what it captured
@@ -448,7 +448,7 @@ if (command === 'say') {
   writeTurns(pointer, turns);
 
   if (offline) console.info('\n[offline: deterministic fallback, not the real conversation]');
-  console.info(`\nPLANÉIR: ${result.consumer.assistantMessage}`);
+  console.info(`\nPLANEIR: ${result.consumer.assistantMessage}`);
 
   const captured = turns.at(-1).acceptedFactIds;
   const rejected = turns.at(-1).rejectedFactIds;
@@ -485,7 +485,7 @@ if (command === 'state') {
 if (command === 'transcript') {
   const pointer = readPointer();
   for (const entry of readTranscript(pointer)) {
-    console.info(`${entry.role === 'client' ? 'YOU     ' : 'PLANÉIR '} ${entry.text}`);
+    console.info(`${entry.role === 'client' ? 'YOU     ' : 'PLANEIR '} ${entry.text}`);
   }
 }
 

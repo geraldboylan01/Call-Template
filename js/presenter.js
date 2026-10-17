@@ -285,7 +285,7 @@ export function installPresenter(host) {
   button('Return to scripted view', async () => { await api.resume(); panel.close(); }, active);
   button('Open recording controls', () => recordingConsole.open(), active);
   const consoleHelp = document.createElement('p'); consoleHelp.className = 'presenter-console-help';
-  consoleHelp.textContent = 'First run “Start Presenter Controls.command” in your local Planéir repo (or node scripts/serve-presenter-controls.mjs). Keep its Terminal open, then open the separate controls window. Capture only the Planéir window in OBS.';
+  consoleHelp.textContent = 'First run “Start Presenter Controls.command” in your local Planeir repo (or node scripts/serve-presenter-controls.mjs). Keep its Terminal open, then open the separate controls window. Capture only the Planeir window in OBS.';
   actions.after(consoleHelp);
   button('Fullscreen', () => document.documentElement.requestFullscreen());
   button('Download presenter script', () => { const b = api.recordingBundle(); if (!b.compiled) throw new Error('Load a presentation package first.'); saveFile('script-presenter.md', annotateScript(b.script, b.compiled), 'text/markdown'); }, loaded);

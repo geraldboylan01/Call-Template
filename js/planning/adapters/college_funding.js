@@ -36,7 +36,7 @@ export function getCollegeFundingReadiness(profile) {
       requiredMissing.push(missing(`/dependants/${index}/currentAge`, 'Add the current age for college timing.', moduleIds));
     }
   });
-  // Cost scenarios are centrally approved Planéir assumptions, so the client is
+  // Cost scenarios are centrally approved Planeir assumptions, so the client is
   // never asked to supply a cost basis they have no way of knowing.
   const assumptionsUsed = [
     assumptionRecord('collegeCosts'),
@@ -75,7 +75,7 @@ export function buildCollegeFundingInput(profile) {
 /**
  * The module's own input contract.
  *
- * College costs are per CHILD, and every figure here is a Planéir assumption
+ * College costs are per CHILD, and every figure here is a Planeir assumption
  * rather than something the client supplied, so the two things that can go
  * wrong are both about who is being funded: a household with no dependants
  * must not receive a projection, and one child must not be counted twice.

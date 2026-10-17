@@ -475,9 +475,9 @@ export const MODULE_MANIFEST = Object.freeze([
       "offerQuestion": "Would that be useful?"
     },
     "conversationGuidance": [
-      "Planéir’s cash-reserve guide for a working household is 3–6 months of spending: 3 months is the minimum floor and 6 months is the target.",
+      "Planeir’s cash-reserve guide for a working household is 3–6 months of spending: 3 months is the minimum floor and 6 months is the target.",
       "For a retired household, the guide is 12–24 months of spending (one to two years): 12 months is the minimum floor and 24 months is the target.",
-      "Do not substitute a one-to-three-month emergency-fund range for either cohort. These are Planéir planning guides for resilience, not a personal recommendation or a guarantee that a particular reserve will meet every emergency. Policy planeir-liquidity-reserve-1.0.0."
+      "Do not substitute a one-to-three-month emergency-fund range for either cohort. These are Planeir planning guides for resilience, not a personal recommendation or a guarantee that a particular reserve will meet every emergency. Policy planeir-liquidity-reserve-1.0.0."
     ],
     "purpose": "Compares the cash a household actually holds against a deterministic minimum and target emergency reserve, and names any surplus so it can be given a job.",
     "whenToUse": "The client talks about an emergency fund, a cash buffer, how much to keep in the bank, feeling exposed if their income stopped, or having a lot of money sitting in a current account doing nothing. Also use it alongside a home purchase, so the deposit stays separate from the reserve they should not spend.",

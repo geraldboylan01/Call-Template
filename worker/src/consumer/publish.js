@@ -16,7 +16,7 @@
  * engine already ran.
  *
  * If the request body could carry content, this route would be an open way to
- * put arbitrary markup in front of a client under Planéir's name. It cannot,
+ * put arbitrary markup in front of a client under Planeir's name. It cannot,
  * because nothing in the request is read except the session it came from.
  *
  * The storage and email side is injected rather than imported, matching how the
@@ -54,7 +54,7 @@ export async function publishConsumerAnalysis({
   analysis,
   storePublishedSession,
   notifyAdviser = null,
-  clientName = 'Your Planéir analysis'
+  clientName = 'Your Planeir analysis'
 }) {
   if (typeof storePublishedSession !== 'function') {
     throw new ConsumerError(500, 'publish_unconfigured', 'Publishing is not configured.');
@@ -123,7 +123,7 @@ export async function publishConsumerAnalysis({
   if (typeof notifyAdviser === 'function') {
     // The adviser address comes from configuration, never from the request.
     // A client-supplied recipient would turn this into a way to send mail from
-    // Planéir to anyone.
+    // Planeir to anyone.
     await notifyAdviser({
       publishedId,
       adviserUrl: links.adviserUrl,
@@ -176,9 +176,9 @@ export function buildPublishedLinks({ config, publishedId, encrypted }) {
 export function buildAdviserNotification({ adviserUrl, moduleCount, createdAt }) {
   const plural = moduleCount === 1 ? 'analysis' : 'analyses';
   return {
-    subject: `A Planéir call finished with ${moduleCount} ${plural} ready`,
+    subject: `A Planeir call finished with ${moduleCount} ${plural} ready`,
     text: [
-      `A client completed a Planéir call on ${new Date(createdAt).toUTCString()}.`,
+      `A client completed a Planeir call on ${new Date(createdAt).toUTCString()}.`,
       `${moduleCount} ${plural} ran and are ready to review.`,
       '',
       'Open the adviser view:',

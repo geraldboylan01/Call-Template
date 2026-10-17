@@ -35,7 +35,7 @@ export function resolveLiquidityReservePolicy(value = 'not-retired') {
 export function liquidityConversationGuidance() {
   const { working, retired, policyVersion, disclosure } = LIQUIDITY_RESERVE_POLICY;
   return Object.freeze([
-    `Planéir’s cash-reserve guide for a working household is ${working.minimumBufferMonths}–${working.targetBufferMonths} months of spending: ${working.minimumBufferMonths} months is the minimum floor and ${working.targetBufferMonths} months is the target.`,
+    `Planeir’s cash-reserve guide for a working household is ${working.minimumBufferMonths}–${working.targetBufferMonths} months of spending: ${working.minimumBufferMonths} months is the minimum floor and ${working.targetBufferMonths} months is the target.`,
     `For a retired household, the guide is ${retired.minimumBufferMonths}–${retired.targetBufferMonths} months of spending (one to two years): ${retired.minimumBufferMonths} months is the minimum floor and ${retired.targetBufferMonths} months is the target.`,
     `Do not substitute a one-to-three-month emergency-fund range for either cohort. ${disclosure} Policy ${policyVersion}.`
   ]);
@@ -43,7 +43,7 @@ export function liquidityConversationGuidance() {
 
 /**
  * Pure reserve calculation shared by the Liquidity renderer and planning
- * adapter. Cohort defaults come from the centrally approved Planéir policy.
+ * adapter. Cohort defaults come from the centrally approved Planeir policy.
  */
 export function computeLiquidityReserve({
   currentCash = null,

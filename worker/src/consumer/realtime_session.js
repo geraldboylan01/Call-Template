@@ -118,7 +118,7 @@ const TOOL_VERSION = '1';
 const SIDE_BAND_URL = 'https://api.openai.com/v1/realtime';
 export const REALTIME_V2_WELCOME_INSTRUCTIONS = [
   'Open with a warm, unhurried welcome in three or four short sentences.',
-  'Introduce yourself as Planéir, an AI planning companion.',
+  'Introduce yourself as Planeir, an AI planning companion.',
   'Explain that this will be a relaxed conversation about what matters to the client, and that useful details will appear on screen as reviewable drafts.',
   'Reassure the client that they can ask questions at any time and that no analysis runs until they review and confirm the visible information.',
   'Finish with one open invitation to describe what they would like help understanding today.',
@@ -2669,7 +2669,7 @@ export class ConsumerRealtimeSession {
       });
       this.lastResumedSpeechText = candidate.text;
     } catch (_error) {
-      // Best effort — the consumer can always ask Planéir to repeat.
+      // Best effort — the consumer can always ask Planeir to repeat.
     }
   }
 
@@ -2733,7 +2733,7 @@ export class ConsumerRealtimeSession {
         ? next
         : returning
           ? `Welcome back — let’s pick up where we left off. ${next}`
-          : 'Hi, I’m Planéir, your AI planning companion. '
+          : 'Hi, I’m Planeir, your AI planning companion. '
             + 'Here’s how our chat works: you talk, I listen and note the key facts — '
             + 'everything appears on screen, and nothing is saved without your say-so. '
             + 'Once I understand your situation, I’ll line up the analyses that fit you best. '

@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Planéir demo request form",
+    "title": "Planeir demo request form",
     "version": "demo-v1",
     "description": "No assistant submission operations are advertised. Prepare a form-prefill link only with the user’s agreement; the person reviews and submits their own demo request."
   },
@@ -11,8 +11,8 @@
       "WorkspaceInformation": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://planeir.ie/agents/application.schema.json",
-        "title": "Planéir workspace information",
-        "description": "Fields for the Planéir demo request form. This schema does not grant permission or provide an assistant submission endpoint.",
+        "title": "Planeir workspace information",
+        "description": "Fields for the Planeir demo request form. This schema does not grant permission or provide an assistant submission endpoint.",
         "type": "object",
         "additionalProperties": false,
         "required": [],

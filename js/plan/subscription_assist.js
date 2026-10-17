@@ -8,8 +8,8 @@ function clean(value, maximum = 4_000) {
 
 function redactPlanAccessCredentials(value) {
   return value
-    .replace(/\bci1\.[A-Za-z0-9_-]{20,2000}\.[A-Za-z0-9_-]{40,80}\b/g, '[private Planéir invite removed]')
-    .replace(/\bcs_[A-Za-z0-9_-]{20,80}\.[A-Za-z0-9_-]{40,80}\b/g, '[private Planéir session credential removed]');
+    .replace(/\bci1\.[A-Za-z0-9_-]{20,2000}\.[A-Za-z0-9_-]{40,80}\b/g, '[private Planeir invite removed]')
+    .replace(/\bcs_[A-Za-z0-9_-]{20,80}\.[A-Za-z0-9_-]{40,80}\b/g, '[private Planeir session credential removed]');
 }
 
 export function isSubscriptionAssistCohort(value) {
@@ -24,15 +24,15 @@ export function buildSubscriptionAssistPrompt({ question, draft }) {
   }
 
   return [
-    'Planéir adviser-beta answer-shaping task',
+    'Planeir adviser-beta answer-shaping task',
     '',
-    'Rewrite my draft as a concise first-person answer to the Planéir question below.',
+    'Rewrite my draft as a concise first-person answer to the Planeir question below.',
     'Use only facts already present in my draft. Do not infer, calculate, advise, recommend, or add figures.',
     'Preserve uncertainty explicitly (for example, "about", "I think", or "I do not know").',
     'Do not ask for or repeat PPS numbers, passwords, full account numbers, or identity-document details.',
     'Return only the rewritten answer in plain text, with no heading, JSON, or commentary.',
     '',
-    `Planéir question: ${activeQuestion || 'What financial goal or concern would you like to explore?'}`,
+    `Planeir question: ${activeQuestion || 'What financial goal or concern would you like to explore?'}`,
     `My draft: ${draftAnswer}`
   ].join('\n');
 }

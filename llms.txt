@@ -1,4 +1,4 @@
-# Planéir
+# Planeir
 
 > See the different routes to your financial goals. Use your goals and figures to explore different choices, compare the trade-offs and get a clearer picture of the way forward. Currently available for demos only.
 

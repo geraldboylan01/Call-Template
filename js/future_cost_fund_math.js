@@ -180,7 +180,7 @@ export function normalizeFutureCostFundInputs(raw) {
 
   REFUSED_RATE_FIELDS.forEach((key) => {
     if (has(raw, key)) {
-      throw new Error(`${FIELD}.${key} is not accepted. Rates are set centrally in the Planéir assumptions.`);
+      throw new Error(`${FIELD}.${key} is not accepted. Rates are set centrally in the Planeir assumptions.`);
     }
   });
 

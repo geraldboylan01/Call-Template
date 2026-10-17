@@ -11,16 +11,16 @@ const appAlive = () => linked && !window.opener.closed && Date.now() - lastAppMe
 const obsKnown = () => obs.connected && obsState && Date.now() - lastOBSMessage < 4000;
 const send = message => { if (linked) window.opener.postMessage({ channel: 'planeir-presenter', session, ...message }, parentOrigin); };
 function command(name) {
-  if (!appAlive()) return Promise.reject(new Error('The Planéir window is disconnected. Keep it open; reopen controls there if needed.'));
+  if (!appAlive()) return Promise.reject(new Error('The Planeir window is disconnected. Keep it open; reopen controls there if needed.'));
   return new Promise((resolve, reject) => {
-    const id = String(++seq), timer = setTimeout(() => { pending.delete(id); reject(new Error('Planéir did not confirm the operation. Check its window before continuing.')); }, name === 'validate' ? 240000 : 30000);
+    const id = String(++seq), timer = setTimeout(() => { pending.delete(id); reject(new Error('Planeir did not confirm the operation. Check its window before continuing.')); }, name === 'validate' ? 240000 : 30000);
     pending.set(id, { resolve, reject, timer }); send({ type: 'command', command: name, id });
   });
 }
 function showError(error) { $('error').textContent = error?.message || String(error); }
 function render() {
   const alive = appAlive(), known = obsKnown(), active = known && obsState.outputActive;
-  $('connection').textContent = alive ? 'Planéir connected · controls stay outside the video' : 'Open these controls from Planéir → Presenter Mode → Open recording controls. Keep both windows open.';
+  $('connection').textContent = alive ? 'Planeir connected · controls stay outside the video' : 'Open these controls from Planeir → Presenter Mode → Open recording controls. Keep both windows open.';
   $('record-state').textContent = !known ? 'OBS status unknown' : active ? obsState.outputPaused ? 'PAUSED IN OBS' : 'RECORDING · confirmed by OBS' : 'STOPPED · confirmed by OBS';
   $('record-state').dataset.state = !known ? 'unknown' : active ? obsState.outputPaused ? 'paused' : 'recording' : 'stopped';
   $('timer').textContent = known ? (obsState.outputTimecode || '00:00:00.000').split('.')[0] : '— — : — —';

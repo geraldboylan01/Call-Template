@@ -317,7 +317,7 @@ export function runFutureCostFundTests() {
     ['priceGrowthRate', 'savingsGrowthRate', 'inflationRate', 'dirtRate'].forEach((field) => {
       assertThrows(
         normalise({ [field]: 0.03 }),
-        `generated.futureCostFundInputs.${field} is not accepted. Rates are set centrally in the Planéir assumptions.`,
+        `generated.futureCostFundInputs.${field} is not accepted. Rates are set centrally in the Planeir assumptions.`,
         `a ${field} in the payload`
       );
     });

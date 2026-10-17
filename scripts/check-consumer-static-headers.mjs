@@ -77,7 +77,7 @@ export function validatePlanSecurityHeaders(headers, { workerOrigin } = {}) {
   }
   assert.ok(
     permissions.includes('microphone=(self)'),
-    'Permissions-Policy must allow microphone capture only from the Planéir /plan origin.'
+    'Permissions-Policy must allow microphone capture only from the Planeir /plan origin.'
   );
   assert.ok(!permissions.includes('microphone=()'), 'Permissions-Policy must not disable the reviewed /plan microphone flow.');
   return true;

@@ -1,4 +1,4 @@
-// Centrally approved Planéir assumptions.
+// Centrally approved Planeir assumptions.
 //
 // Pension and college figures reach consumers, so the assumptions behind them
 // are defined once, versioned, and stated in plain language wherever a number is

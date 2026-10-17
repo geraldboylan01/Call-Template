@@ -18,7 +18,7 @@ Part A is the build for this change. Part B is design only: read it so nothing i
 
 ## 1. Why
 
-Planéir is working towards a cashflow modelling module that projects a household's income, spending, assets and tax year by year, far into the future. Nearly every figure in it depends on Irish tax, and the app has none today. The retirement module (`js/pension_math.js`, playbook `11_retirement_playbook.md`) works only in gross figures: it cannot show net income, what a retirement lump sum is worth after tax, what breaching the Standard Fund Threshold (SFT) costs, or what a pension contribution really costs after relief.
+Planeir is working towards a cashflow modelling module that projects a household's income, spending, assets and tax year by year, far into the future. Nearly every figure in it depends on Irish tax, and the app has none today. The retirement module (`js/pension_math.js`, playbook `11_retirement_playbook.md`) works only in gross figures: it cannot show net income, what a retirement lump sum is worth after tax, what breaching the Standard Fund Threshold (SFT) costs, or what a pension contribution really costs after relief.
 
 Build the tax engine once, as a standalone deterministic library with a dated rules catalogue. Prove it on the retirement module, and shape it so the cashflow module can use it unchanged.
 
@@ -34,7 +34,7 @@ These are settled. If one blocks you, stop and say so instead of working around 
 6. **Education framing.** Figures are estimates. Nothing says "you will pay" or recommends an action.
 7. **Reliefs are asserted, never inferred.** Where a relief depends on facts the engine cannot check (principal private residence, Retirement Relief, Business or Agricultural Relief, the dwelling house exemption), the input carries an explicit claim that the conditions are met, and the output discloses that this was assumed. The engine never decides eligibility from other facts.
 8. **One place for tax.** The retirement module, the future cashflow module, Reports and scripts all call this engine. No module calculates tax itself.
-9. **Lean cautious and state only what is known.** Where a future figure cannot be known, hold the last known value instead of forecasting it, provided that errs against the client, and say plainly that the real figure will differ. Where an assumption is unavoidable, use the cautious end of a documented, reputable range, record its source and disclose it. Planéir would rather tell someone they may fall short than tell them they are fine when they are not.
+9. **Lean cautious and state only what is known.** Where a future figure cannot be known, hold the last known value instead of forecasting it, provided that errs against the client, and say plainly that the real figure will differ. Where an assumption is unavoidable, use the cautious end of a documented, reputable range, record its source and disclose it. Planeir would rather tell someone they may fall short than tell them they are fine when they are not.
 
 ## 3. Architecture
 
@@ -254,11 +254,11 @@ Disclosure style references only: PwC (https://www.pwc.ie/issues/budget/income-t
 
 Years before 2026 throw.
 
-Add one Planéir assumption to `js/planning/planeir_assumptions.js` and bump `PLANEIR_ASSUMPTIONS_VERSION` to `planeir-assumptions-1.2.0`:
+Add one Planeir assumption to `js/planning/planeir_assumptions.js` and bump `PLANEIR_ASSUMPTIONS_VERSION` to `planeir-assumptions-1.2.0`:
 
 - `taxProjection`: policy `freeze_budget_parameters_apply_fixed_law_hold_unknowns`, with a plain-language `basis` and `disclosure` covering the three steps above. Expose it through `assumptionRecord('taxProjection')` so the module's assumptions table shows it.
 
-Rules are law and live in the tax catalogue. Planéir's policy for the years ahead lives in the assumptions file.
+Rules are law and live in the tax catalogue. Planeir's policy for the years ahead lives in the assumptions file.
 
 ## 6. Build details
 

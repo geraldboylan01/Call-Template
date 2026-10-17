@@ -262,7 +262,7 @@ export function getPensionProjectionReadiness(profile) {
   if (retirementTarget(profile) === null) {
     requiredMissing.push(missing('/assumptions/values/retirement/targetIncomeToday', 'Add target annual retirement income or current annual spending.', moduleIds));
   }
-  // Centrally approved Planéir assumptions. Named and versioned so every
+  // Centrally approved Planeir assumptions. Named and versioned so every
   // projected figure can state the basis it rests on.
   const assumptionsUsed = [
     assumptionRecord('investmentGrowth'),

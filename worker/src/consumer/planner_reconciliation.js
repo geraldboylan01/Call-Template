@@ -171,7 +171,7 @@ const RECONCILIATION_SCHEMA = Object.freeze({
 });
 
 /** Exported so a test can assert the prompt binds to the contracts it is sent. */
-export const RECONCILIATION_SYSTEM_PROMPT = `You are Planéir's background planning-note reconciler.
+export const RECONCILIATION_SYSTEM_PROMPT = `You are Planeir's background planning-note reconciler.
 
 The realtime voice model has already written provisional notes. Compare those notes with the finalized transcript and the current deterministic needs. Return only the closed ReconciliationPlanV1 operations in the schema.
 

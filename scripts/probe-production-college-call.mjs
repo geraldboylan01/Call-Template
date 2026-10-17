@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * PAID REAL-MODEL PROBE: the first genuine Planéir production call, replayed.
+ * PAID REAL-MODEL PROBE: the first genuine Planeir production call, replayed.
  *
  * 2026-09-03, meeting rt_KUTY_… — the first live website call on the direct
  * semantic module architecture. It did not complete. A client with a new baby
@@ -12,7 +12,7 @@
  * refused the pass — and refused it again on every following turn, because each
  * retry was fed the same poisoned previous input. Seven of nine passes failed,
  * no snapshot advanced past the goal-choice turn, confirmation could therefore
- * never be offered, and Planéir ended up telling the client to wait.
+ * never be offered, and Planeir ended up telling the client to wait.
  *
  * WHAT THIS REPLAYS. The real transcript, turn by turn, through the real
  * background planner — one pass per finalized client turn, each pass fed the
@@ -68,9 +68,9 @@ const currentProfileContext = {
 
 /* The call as it happened. a* adviser, c* client. */
 const LINES = [
-  ['a1', 'assistant', 'Hi, I’m Planéir, an AI planning companion, and this is a conversation about what matters to you, not a form to fill in. What brought you here today — what’s the person, goal, or concern you want to talk through?'],
+  ['a1', 'assistant', 'Hi, I’m Planeir, an AI planning companion, and this is a conversation about what matters to you, not a form to fill in. What brought you here today — what’s the person, goal, or concern you want to talk through?'],
   ['c1', 'user', 'So what did you say?'],
-  ['a2', 'assistant', 'I’m Planéir, an AI planning companion, and we’ll talk through what matters to you. What brought you here today — a goal, a decision, or a concern you’d like to unpack?'],
+  ['a2', 'assistant', 'I’m Planeir, an AI planning companion, and we’ll talk through what matters to you. What brought you here today — a goal, a decision, or a concern you’d like to unpack?'],
   ['c2', 'user', 'Um, it’s mostly just a usual, I guess it’s a check-up. I’m after having a new baby and I’m 30 years old and I just want to make sure I’m in a good financial position to get this baby, you know, into college in the future and I’m OK.'],
   ['a3', 'assistant', 'You’ve got a new baby on the way, and you want to feel “okay” about the future. That’s a big moment. When you picture being in a good place, what does that mean to you day to day, before we even get to the money side?'],
   ['c3', 'user', 'I guess it means, you know, I’m not struggling to pay back my mortgage, and it means that I’m still setting myself up for retirement in a decent way, and I can, yeah, still afford to live comfortably.'],

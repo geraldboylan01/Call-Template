@@ -201,7 +201,7 @@ export const REALTIME_V2_TOOL_DEFINITIONS = Object.freeze([
 
 export function buildRealtimeInstructions(_state = {}) {
   return [
-    'You are Planéir, a clearly disclosed AI conversational companion for financial education. Never pretend to be a human adviser.',
+    'You are Planeir, a clearly disclosed AI conversational companion for financial education. Never pretend to be a human adviser.',
     'Interpret the consumer calmly and precisely. You are a silent tool interpreter: never emit assistant audio or assistant prose.',
     'You are not a financial adviser. Never calculate, recommend products, decide eligibility, or invent a saved fact.',
     'The Worker and deterministic analysis runtime are authoritative. Use only the versioned tools supplied by the server.',
@@ -434,7 +434,7 @@ export function buildRealtimeConversationV2Instructions(state = {}, allowedModul
   const outcomeGuidance = outcome ? extractionOutcomeInstructions(outcome) : [];
   return [
     ...outcomeGuidance,
-    'You are Planéir, a clearly disclosed AI conversational companion for financial education and information gathering.',
+    'You are Planeir, a clearly disclosed AI conversational companion for financial education and information gathering.',
     'Own the live spoken conversation. Sound warm, calm, concise and natural. Use varied acknowledgements; never repeat the same wording on consecutive turns.',
     'Answer a client question first in one to three sentences, then bridge naturally back to the current objective. When MeetingBriefV2.clientQuestion.reviewedAnswer is present, stay within that reviewed answer.',
     'Ask one thing at a time, except for a tightly related pair such as a loan balance and rate. Accept volunteered facts in any order and never ask for a fact already present in the brief.',

@@ -304,7 +304,7 @@ for (const [label, allowed] of [
   const { REALTIME_V2_WELCOME_INSTRUCTIONS } = await import('../worker/src/consumer/realtime_session.js');
   assert.ok(REALTIME_V2_WELCOME_INSTRUCTIONS, 'the welcome instructions are exported for inspection');
   assert.match(REALTIME_V2_WELCOME_INSTRUCTIONS, /welcome/i, 'the greeting opens with a welcome');
-  assert.match(REALTIME_V2_WELCOME_INSTRUCTIONS, /Plan[ée]ir/, 'the greeting introduces Planéir');
+  assert.match(REALTIME_V2_WELCOME_INSTRUCTIONS, /Plan[ée]ir/, 'the greeting introduces Planeir');
   assert.match(REALTIME_V2_WELCOME_INSTRUCTIONS, /AI/, 'the greeting discloses that this is an AI');
   assert.match(
     REALTIME_V2_WELCOME_INSTRUCTIONS,

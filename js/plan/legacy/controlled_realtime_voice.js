@@ -396,7 +396,7 @@ function collectProfileFacts(value, profile, path = '', output = [], depth = 0) 
   if (typeof value === 'object') {
     Object.entries(value).forEach(([key, item]) => {
       // Collection identifiers are implementation details, not information a
-      // consumer meaningfully told Planéir. Keep them out of the visible
+      // consumer meaningfully told Planeir. Keep them out of the visible
       // understanding panel while retaining the associated labelled values.
       if (!PROFILE_KEYS_TO_SKIP.has(key) && !/Id$/.test(key)) {
         collectProfileFacts(item, profile, `${path}/${key}`, output, depth + 1);
@@ -411,7 +411,7 @@ function collectProfileFacts(value, profile, path = '', output = [], depth = 0) 
     .sort(([left], [right]) => right.length - left.length)[0];
   const metadata = asObject(metadataEntry?.[1]);
   // A pristine canonical profile contains identifiers, defaults and policy
-  // settings that Planéir did not learn from the consumer. Only show values
+  // settings that Planeir did not learn from the consumer. Only show values
   // carrying explicit provenance; live tool facts use the server `facts`
   // collection above and therefore do not rely on this fallback.
   if (!metadata) return output;
@@ -1275,7 +1275,7 @@ export class RealtimeVoiceController {
         user_speaking: 'You’re speaking',
         thinking: 'Thinking',
         responding: 'Preparing to respond…',
-        assistant_speaking: 'Planéir is speaking',
+        assistant_speaking: 'Planeir is speaking',
         interrupted: 'Listening',
         reconnecting: 'Reconnecting…',
         muted: 'Paused',
@@ -1301,8 +1301,8 @@ export class RealtimeVoiceController {
     if (status) status.textContent = this.statusText || 'Press the button when you’re ready to begin.';
     if (launcher) {
       launcher.setAttribute('aria-label', this.active
-        ? `Talk to Planéir, ${this.muted ? 'microphone muted' : 'voice active'}`
-        : 'Talk to Planéir, private AI planning companion');
+        ? `Talk to Planeir, ${this.muted ? 'microphone muted' : 'voice active'}`
+        : 'Talk to Planeir, private AI planning companion');
     }
     if (launcherStatus) {
       const launcherLabels = {
@@ -1310,8 +1310,8 @@ export class RealtimeVoiceController {
         listening: 'In a meeting · listening',
         user_speaking: 'In a meeting · hearing you',
         thinking: 'In a meeting · thinking',
-        responding: 'Planéir is preparing to respond',
-        assistant_speaking: 'Planéir is speaking',
+        responding: 'Planeir is preparing to respond',
+        assistant_speaking: 'Planeir is speaking',
         interrupted: 'In a meeting · listening',
         reconnecting: 'Reconnecting…',
         muted: 'Meeting paused',
@@ -1382,7 +1382,7 @@ export class RealtimeVoiceController {
     this.completionNavigationInFlight = false;
     this.renderTranscriptHistory();
     this.setCaption('user', 'Your words will appear here while you speak.');
-    this.setCaption('assistant', 'Planéir will welcome you in a moment.');
+    this.setCaption('assistant', 'Planeir will welcome you in a moment.');
     this.setPhase('connecting', 'Connecting your private meeting…');
     const controller = new AbortController();
     this.startController = controller;
@@ -1454,7 +1454,7 @@ export class RealtimeVoiceController {
       this.setPhase(
         this.welcomePending ? 'thinking' : 'listening',
         this.welcomePending
-          ? 'Planéir is about to welcome you. Your microphone will switch on afterwards.'
+          ? 'Planeir is about to welcome you. Your microphone will switch on afterwards.'
           : 'I’m listening — take your time.'
       );
       this.scheduleLeasePoll(1_500);
@@ -1548,7 +1548,7 @@ export class RealtimeVoiceController {
           this.setPhase(
             this.welcomePending ? 'thinking' : (this.muted ? 'muted' : 'listening'),
             this.welcomePending
-              ? 'Planéir is about to welcome you. Your microphone will switch on afterwards.'
+              ? 'Planeir is about to welcome you. Your microphone will switch on afterwards.'
               : this.muted
                 ? 'Reconnected. Your microphone is still paused.'
                 : 'I’m listening — take your time.'
@@ -1695,7 +1695,7 @@ export class RealtimeVoiceController {
           writeMicrophonePreference(null);
         }
         if (requested && fallback.deviceId !== requested) {
-          this.onToast(`That microphone is no longer available. Planéir will use ${microphoneLabel(fallback)}.`, {
+          this.onToast(`That microphone is no longer available. Planeir will use ${microphoneLabel(fallback)}.`, {
             error: true,
             timeout: 5000
           });
@@ -1753,7 +1753,7 @@ export class RealtimeVoiceController {
         writeMicrophonePreference(null);
       }
       if (requested && preferredAfterPermission.deviceId !== requested) {
-        this.onToast(`That microphone is no longer available. Planéir will use ${microphoneLabel(preferredAfterPermission)}.`, {
+        this.onToast(`That microphone is no longer available. Planeir will use ${microphoneLabel(preferredAfterPermission)}.`, {
           error: true,
           timeout: 5000
         });
@@ -1838,12 +1838,12 @@ export class RealtimeVoiceController {
         ? 'Checking available microphones…'
         : this.active
           ? this.welcomePending
-            ? `Starts after Planéir’s welcome: ${displayLabel}`
+            ? `Starts after Planeir’s welcome: ${displayLabel}`
             : `${this.muted ? 'Muted' : 'Using'}: ${displayLabel}`
           : selectedLabel
             ? `Ready to use: ${selectedLabel}`
             : this.microphoneDevices.length > 0
-              ? 'Planéir will prefer this laptop’s built-in microphone. Choose another source if needed.'
+              ? 'Planeir will prefer this laptop’s built-in microphone. Choose another source if needed.'
               : 'Microphone names appear after browser permission is granted.';
     }
   }
@@ -1948,7 +1948,7 @@ export class RealtimeVoiceController {
         this.setPhase(
           this.welcomePending ? 'thinking' : 'listening',
           this.welcomePending
-            ? 'Planéir is about to welcome you. Your microphone will switch on afterwards.'
+            ? 'Planeir is about to welcome you. Your microphone will switch on afterwards.'
             : 'I’m listening — take your time.'
         );
       }
@@ -1982,7 +1982,7 @@ export class RealtimeVoiceController {
           this.responseInProgress = false;
           this.activeResponseId = '';
           if (this.interruptTimer !== null) window.clearTimeout(this.interruptTimer);
-          this.setPhase('interrupted', 'Planéir stopped speaking. Listening to you now…');
+          this.setPhase('interrupted', 'Planeir stopped speaking. Listening to you now…');
           this.interruptTimer = window.setTimeout(() => {
             this.interruptTimer = null;
             if (this.active && this.phase === 'interrupted') {
@@ -1997,7 +1997,7 @@ export class RealtimeVoiceController {
       case 'speech_stopped':
         if (this.interruptTimer !== null) window.clearTimeout(this.interruptTimer);
         this.interruptTimer = null;
-        this.setPhase('thinking', 'Planéir is thinking…');
+        this.setPhase('thinking', 'Planeir is thinking…');
         return;
       case 'user_delta':
         this.appendCaptionDelta('user', event.itemId, event.text);
@@ -2019,7 +2019,7 @@ export class RealtimeVoiceController {
           this.scheduleLeasePoll(0);
           return;
         }
-        this.setPhase('thinking', 'Planéir is thinking…');
+        this.setPhase('thinking', 'Planeir is thinking…');
         this.scheduleLeasePoll(0);
         return;
       case 'response_started':
@@ -2027,8 +2027,8 @@ export class RealtimeVoiceController {
         this.responseInProgress = true;
         this.awaitingWorkerSpeech = this.conversationVersion !== 'v2';
         this.assistantDeltas.clear();
-        this.setCaption('assistant', 'Planéir is thinking…');
-        this.setPhase('thinking', 'Planéir is thinking…');
+        this.setCaption('assistant', 'Planeir is thinking…');
+        this.setPhase('thinking', 'Planeir is thinking…');
         return;
       case 'assistant_delta':
         if (this.conversationVersion !== 'v2') {
@@ -2038,8 +2038,8 @@ export class RealtimeVoiceController {
         if (!this.ownsRealtimeResponseEvent(event)) return;
         this.appendCaptionDelta('assistant', event.itemId, event.text);
         this.setPhase('assistant_speaking', this.welcomePending
-          ? 'Planéir is welcoming you. Your microphone will switch on when he finishes.'
-          : 'Planéir is speaking… You can interrupt naturally.');
+          ? 'Planeir is welcoming you. Your microphone will switch on when he finishes.'
+          : 'Planeir is speaking… You can interrupt naturally.');
         return;
       case 'assistant_audio':
         if (this.conversationVersion !== 'v2') {
@@ -2049,13 +2049,13 @@ export class RealtimeVoiceController {
         if (!this.ownsRealtimeResponseEvent(event)) return;
         this.awaitingWorkerSpeech = false;
         this.setPhase('assistant_speaking', this.welcomePending
-          ? 'Planéir is welcoming you. Your microphone will switch on when he finishes.'
-          : 'Planéir is speaking… You can interrupt naturally.');
+          ? 'Planeir is welcoming you. Your microphone will switch on when he finishes.'
+          : 'Planeir is speaking… You can interrupt naturally.');
         return;
       case 'assistant_playback_started':
         if (this.conversationVersion === 'v2' && this.welcomePending) {
           this.welcomePlaybackStarted = true;
-          this.setPhase('assistant_speaking', 'Planéir is welcoming you. Your microphone will switch on when he finishes.');
+          this.setPhase('assistant_speaking', 'Planeir is welcoming you. Your microphone will switch on when he finishes.');
         }
         return;
       case 'assistant_playback_stopped':
@@ -2089,7 +2089,7 @@ export class RealtimeVoiceController {
         return;
       case 'tool_running':
         this.awaitingWorkerSpeech = true;
-        this.setPhase('thinking', 'Planéir is noting that down…');
+        this.setPhase('thinking', 'Planeir is noting that down…');
         return;
       case 'planning_update':
         {
@@ -2134,7 +2134,7 @@ export class RealtimeVoiceController {
           if (!this.welcomePlaybackStarted) this.setWelcomePending(false);
         }
         if (this.welcomePending) {
-          this.setPhase('assistant_speaking', 'Planéir is welcoming you. Your microphone will switch on when he finishes.');
+          this.setPhase('assistant_speaking', 'Planeir is welcoming you. Your microphone will switch on when he finishes.');
         } else if (!this.currentControlledSpeech
           && !this.awaitingWorkerSpeech
           && !['user_speaking', 'interrupted'].includes(this.phase)) {
@@ -2143,7 +2143,7 @@ export class RealtimeVoiceController {
             : 'I’m listening — take your time.');
         } else if (!this.currentControlledSpeech
           && !['user_speaking', 'interrupted'].includes(this.phase)) {
-          this.setPhase('thinking', 'Planéir is preparing a response…');
+          this.setPhase('thinking', 'Planeir is preparing a response…');
         }
         this.scheduleLeasePoll(0);
         return;
@@ -2160,7 +2160,7 @@ export class RealtimeVoiceController {
     this.stopControlledSpeech();
     this.end({ reason: 'unauthorized_output', announce: false }).finally(() => {
       this.setPhase('error', 'Live voice closed because an unapproved provider response was blocked.', {
-        error: 'Only Worker-approved Planéir speech can be played.'
+        error: 'Only Worker-approved Planeir speech can be played.'
       });
     });
   }
@@ -2201,7 +2201,7 @@ export class RealtimeVoiceController {
     const leaseId = this.leaseId;
     this.controlledSpeechController = controller;
     this.currentControlledSpeech = { speechId, text, loading: true };
-    this.setPhase('responding', 'Planéir is preparing to respond…');
+    this.setPhase('responding', 'Planeir is preparing to respond…');
     try {
       const result = await speakRealtimeAuthorized(
         this.sessionId,
@@ -2252,7 +2252,7 @@ export class RealtimeVoiceController {
           leaseId,
           speechId
         })) return;
-        this.setPhase('assistant_speaking', 'Planéir is speaking — feel free to interrupt at any time.');
+        this.setPhase('assistant_speaking', 'Planeir is speaking — feel free to interrupt at any time.');
         audio.dataset.controlledSpeechId = speechId;
         audio.dataset.controlledSpeechPlayed = 'true';
         const resume = this.element('realtimeVoiceResumeAudioButton');
@@ -2534,7 +2534,7 @@ export class RealtimeVoiceController {
       const row = doc.createElement('li');
       row.className = `realtime-history-item is-${item.role}`;
       const label = doc.createElement('span');
-      label.textContent = item.role === 'user' ? 'You' : 'Planéir voice · AI';
+      label.textContent = item.role === 'user' ? 'You' : 'Planeir voice · AI';
       const text = doc.createElement('p');
       text.textContent = item.text;
       row.append(label, text);
@@ -2552,7 +2552,7 @@ export class RealtimeVoiceController {
     const row = doc.createElement('li');
     row.className = `realtime-history-item is-${item.role}`;
     const label = doc.createElement('span');
-    label.textContent = item.role === 'user' ? 'You' : 'Planéir voice · AI';
+    label.textContent = item.role === 'user' ? 'You' : 'Planeir voice · AI';
     const text = doc.createElement('p');
     text.textContent = item.text;
     row.append(label, text);
@@ -2576,7 +2576,7 @@ export class RealtimeVoiceController {
       type: 'fact'
     });
     this.renderContextList(this.element('realtimeVoiceModulesList'), modules.slice(0, 3), {
-      empty: 'Relevant Planéir analyses will appear here.',
+      empty: 'Relevant Planeir analyses will appear here.',
       type: 'module'
     });
     const narrative = this.element('realtimeVoiceNarrative');
@@ -2720,7 +2720,7 @@ export class RealtimeVoiceController {
       event_id: newIdempotencyKey('turn')
     });
     if (sent && ['user_speaking', 'interrupted', 'listening'].includes(this.phase)) {
-      this.setPhase('thinking', 'Planéir is thinking…');
+      this.setPhase('thinking', 'Planeir is thinking…');
     }
     return sent;
   }
@@ -2749,7 +2749,7 @@ export class RealtimeVoiceController {
         await audio.play();
         this.element('realtimeVoiceResumeAudioButton')?.setAttribute('hidden', '');
       } catch (_error) {
-        this.setPhase('audio_blocked', 'Tap “Play response” to hear Planéir.');
+        this.setPhase('audio_blocked', 'Tap “Play response” to hear Planeir.');
       }
       return;
     }
@@ -2776,8 +2776,8 @@ export class RealtimeVoiceController {
       const resume = this.element('realtimeVoiceResumeAudioButton');
       if (resume) resume.hidden = true;
       this.setPhase('assistant_speaking', this.muted
-        ? 'Approved Planéir audio is playing. The microphone remains muted.'
-        : 'Approved Planéir audio is playing. Start talking to interrupt.');
+        ? 'Approved Planeir audio is playing. The microphone remains muted.'
+        : 'Approved Planeir audio is playing. Start talking to interrupt.');
     } catch (_error) {
       if (!this.ownsControlledSpeechPlayback({
         audio,
@@ -2835,7 +2835,7 @@ export class RealtimeVoiceController {
 
   async copyTranscript() {
     const transcript = this.transcriptHistory
-      .map((item) => `${item.role === 'user' ? 'You' : 'Planéir (AI)'}: ${item.text}`)
+      .map((item) => `${item.role === 'user' ? 'You' : 'Planeir (AI)'}: ${item.text}`)
       .join('\n\n');
     if (!transcript) return;
     try {
@@ -2972,7 +2972,7 @@ export class RealtimeVoiceController {
       expired: 'Your meeting time ended. Everything you shared is saved — you can continue by typing or start voice again if it is available.',
       hidden: 'The meeting ended because this tab was hidden. The microphone is off.',
       pagehide: 'The meeting ended. The microphone is off.',
-      review: 'The meeting ended. Review and confirm what Planéir understood.',
+      review: 'The meeting ended. Review and confirm what Planeir understood.',
       typed_fallback: 'The meeting ended. Continue in the typed answer box.',
       completed: 'Your analyses are ready.',
       user: 'The meeting ended. The microphone is off.'
@@ -3125,7 +3125,7 @@ export class RealtimeVoiceController {
     this.muted = true;
     this.localStream?.getAudioTracks?.().forEach((track) => { track.enabled = false; });
     this.microphonePermissionStream?.getAudioTracks?.().forEach((track) => { track.enabled = false; });
-    this.setPhase('assistant_speaking', 'Planéir is finishing the meeting and taking you to your analyses…');
+    this.setPhase('assistant_speaking', 'Planeir is finishing the meeting and taking you to your analyses…');
     if (this.completionTimer !== null) window.clearTimeout(this.completionTimer);
     this.completionTimer = window.setTimeout(() => {
       this.completionTimer = null;

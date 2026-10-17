@@ -453,11 +453,11 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
       return list && list.querySelector('li.realtime-history-item.is-assistant');
     }, null, { timeout: PROBE_TIMEOUT_MS }).catch(() => {});
     const greeting = (await readLines('assistant'))[0] || '';
-    record('planéir', greeting || '(no greeting captured)');
+    record('planeir', greeting || '(no greeting captured)');
 
     // Diagnostic-first: never throw mid-conversation. Record everything —
     // what the model transcribed of my speech (proves audio reached the
-    // provider), what Planéir said back, and the server's turn ledger — then
+    // provider), what Planeir said back, and the server's turn ledger — then
     // assert at the very end so one run reveals the whole picture.
     const failures = [];
     const assistantReplies = [];
@@ -504,7 +504,7 @@ export async function runRealtimeConversationProbe({ workerBaseUrl, smokeOrigin,
       if (heardUser.length) record('you (model heard)', heardUser.join(' '));
       const reply = newAssistant.join(' ').trim();
       if (reply) assistantReplies.push(reply);
-      record('planéir', reply || '(no reply — dead air)');
+      record('planeir', reply || '(no reply — dead air)');
 
       if (turn.expectReply && newAssistant.length === 0) {
         failures.push(`Turn "${turn.label}" received no spoken reply (dead air).`);
