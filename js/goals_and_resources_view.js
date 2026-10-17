@@ -346,7 +346,8 @@ export function layoutGar(model, { width }) {
   const needLeft = plotWidth - needW;
   const haveW = Math.min(84, needLeft - 16);
   const year = wide ? set.year : { ...set.year, haveW, needLeft, needW,
-    waterW: plotWidth, ceilW: plotWidth, noteW: needLeft - 8,
+    waterW: plotWidth, ceilW: plotWidth, noteW: needLeft - 8, noteH: 51,
+    box: Math.max(set.year.box, set.year.plot + set.year.noteGap + 51 + 12 + set.year.labelH + 1),
     labelLeft: 0, labelW: plotWidth };
   const now = wide ? set.now : { ...set.now, haveW, useLeft: needLeft, useW: needW, ceilW: plotWidth };
   return {
@@ -391,7 +392,8 @@ export function placeYear(layout, entry) {
     const wanted = entry.year.kind === 'short' ? Math.max(water, middle - 36) : middle - (layout.year.labelH / 2);
     shortTop = Math.min(lowest, Math.max(0, wanted));
   } else {
-    shortTop = Math.max(bottom, water) + 12;
+    const noteBottom = entry.year.freed > 0.5 ? water + 1 + layout.year.noteGap + layout.year.noteH : water;
+    shortTop = Math.max(bottom, noteBottom) + 12;
   }
 
   return {
@@ -579,6 +581,7 @@ export function checkGarGeometry(layout, model) {
     if (year.shortTop < -tolerance) problems.push(`${id}: the short label leaves the top`);
     if (year.shortTop + yx.labelH > yx.box + tolerance) problems.push(`${id}: the short label leaves the bottom`);
     if (!layout.wide && year.shortTop < year.bottom + 8) problems.push(`${id}: the short label touches the need column`);
+    if (!layout.wide && entry.year.freed > 0.5 && year.shortTop < year.noteTop + yx.noteH + 8) problems.push(`${id}: the yearly answer overlaps the freed note`);
 
     const stacked = now.collegeH + now.mortgageH + now.leftH;
     const expected = (entry.now.college + entry.now.mortgage + entry.now.left) * layout.kNow;

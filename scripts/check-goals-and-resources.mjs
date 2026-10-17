@@ -365,4 +365,4 @@ if (failures > 0) {
   process.exit(1);
 }
 
-console.info('[GoalsAndResourcesAudit] the engine matches the independent reference and the engine, view and module suites pass.');
+console.info('[GoalsAndResourcesAudit] the engine matches the independent reference and the engine, view, module and wiring suites pass.');
