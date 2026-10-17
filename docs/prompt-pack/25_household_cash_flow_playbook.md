@@ -50,6 +50,10 @@ Ask for current personal contributions when they are material to stated payslip 
 A short case is valid. The screen says `Short` with a positive size; the ledger keeps the signed shortfall. Do not force left over to zero or copy rental video's wording into this module.
 
 ## Client-facing words
-Write short expense labels in the second person without recommending, ranking or naming providers. Do not copy account/provider names into labels. Final label authoring belongs to AI; do not build deterministic prose rewrites. The app refuses banned wording and wraps labels without changing their text.
+The same wording restrictions apply to every supplied text field: `people[].label`, `outgoings[].label`, and case `title` and `description`. Use first names for people, and speak to the client as `you` or `your` in the other text. Never use `they`, `their`, `the household`, `the couple`, `the client` or `clients`. Never recommend or rank (`we recommend`, `you should`, `best`, `ideal`, `optimal`) or abbreviate yearly amounts as `p.a.`. Write amounts with separators, such as `€1,000` rather than `€1000`.
+
+Do not name providers in any of those fields, including AIB, Bank of Ireland/BOI, PTSB/Permanent TSB, Revolut, Zurich, Irish Life, Aviva, Davy or Standard Life. Do not copy account/provider names into labels or case descriptions. Prefer the app's derived case titles. If a supplied name or sentence cannot meet the validator, explain the conflict in NOTES and ask for suitable display wording rather than fabricate a person's identity.
+
+Final expense-label authoring belongs to AI; do not build deterministic prose rewrites. The app refuses banned wording and wraps labels without changing their text.
 
 This playbook describes the adviser Dev Panel workflow. It does not register a consumer planner adapter or claim that the future plan-pack ledger is implemented.
