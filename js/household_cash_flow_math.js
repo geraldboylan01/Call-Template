@@ -173,6 +173,8 @@ export const HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES = Object.freeze([
   /\bAIB\b/i,
   /\bBank\s+of\s+Ireland\b/i,
   /\bBOI\b/i,
+  /\bPTSB\b/i,
+  /\bPermanent\s+TSB\b/i,
   /\bRevolut\b/i,
   /\bZurich\b/i,
   /\bIrish\s+Life\b/i,
