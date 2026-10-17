@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:cases && npm run generate:agent-docs && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
+    "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:workspace-copy && npm run generate:cases && npm run generate:agent-docs && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist",
     "generate:agent-docs": "node ./scripts/generate-agent-docs.mjs",
     "check:agent-docs": "node ./scripts/generate-agent-docs.mjs --check",
     "check:agent-applications": "node ./scripts/check-agent-applications.mjs",
@@ -108,6 +108,7 @@
     "check:household-cash-flow": "node ./scripts/check-household-cash-flow.mjs",
     "check:protection-gap": "node ./scripts/check-protection-gap.mjs",
     "check:rental-keep-or-sell": "node ./scripts/check-rental-keep-or-sell.mjs",
+    "check:home-trade-down": "node ./scripts/check-home-trade-down.mjs",
     "check:goals-and-resources": "node ./scripts/check-goals-and-resources.mjs",
     "check:module-input-contracts": "node ./scripts/check-module-input-contracts.mjs && node ./scripts/check-module-input-display.mjs && node ./scripts/check-direct-module-planning.mjs && node ./scripts/check-direct-module-live-path.mjs",
     "check:direct-module-planning": "node ./scripts/check-direct-module-planning.mjs",
@@ -143,7 +144,14 @@
     "evals:first20": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-first20-semantic-evals.mjs",
     "evals:ai-led-simplified": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-ai-led-simplified.mjs",
     "evals:ai-led-simplified-seeded": "node --env-file-if-exists=.env --env-file-if-exists=.env.local ./scripts/run-ai-led-simplified-seeded.mjs",
-    "evals:ai-led-simplified-report": "node ./scripts/summarize-ai-led-simplified.mjs"
+    "evals:ai-led-simplified-report": "node ./scripts/summarize-ai-led-simplified.mjs",
+    "generate:workspace-copy": "node ./scripts/generate-workspace-pages.mjs",
+    "check:workspace-copy": "node ./scripts/generate-workspace-pages.mjs --check && node ./scripts/check-workspace-copy.mjs",
+    "check:workspace-browser": "node ./scripts/check-workspace-browser.mjs",
+    "check:education-call": "node ./scripts/check-education-call.mjs",
+    "check:product-previews": "node ./scripts/check-product-previews.mjs",
+    "check:demo": "node ./scripts/check-demo-flow.mjs",
+    "check:demo-browser": "node ./scripts/check-demo-browser.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2"

@@ -37,6 +37,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: "https://api.planeir.ie"
+      DEMO_REQUESTS_ENABLED: ${{ vars.DEMO_REQUESTS_ENABLED || 'false' }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
       RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
@@ -153,10 +154,10 @@ jobs:
       CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: "5000000"
       CONSUMER_BETA_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: "30000000"
       CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"
-      CONSUMER_BETA_HANDOFF_POLICY_URL: "https://planeir.ie/plan/privacy.html#handoff"
+      CONSUMER_BETA_HANDOFF_POLICY_URL: "https://planeir.ie/plan/privacy-legacy.html#handoff"
       CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"
       CONSUMER_BETA_HANDOFF_RETENTION_DAYS: "30"
-      CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy.html"
+      CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy-legacy.html"
       CONSUMER_BETA_SESSION_TTL_DAYS: "7"
     steps:
       - name: Checkout
@@ -333,6 +334,7 @@ jobs:
           npm run check:household-cash-flow
           npm run check:protection-gap
           npm run check:rental-keep-or-sell
+          npm run check:home-trade-down
           npm run check:module-media
           npm run check:video-summary
           npm run check:video-scene
@@ -732,6 +734,9 @@ jobs:
             return input.replace(expression, name + ' = ' + JSON.stringify(value));
           };
           let generatedSource = source;
+          const demoEnabled = envValue('DEMO_REQUESTS_ENABLED') || 'false';
+          if (!['true', 'false'].includes(demoEnabled)) throw new Error('DEMO_REQUESTS_ENABLED must be true or false.');
+          generatedSource = replaceTomlString(generatedSource, 'DEMO_REQUESTS_ENABLED', demoEnabled);
           if (betaEnabled) {
             if (!databaseId) {
               throw new Error('CONSUMER_DB_ID is required for the protected beta.');
@@ -759,7 +764,7 @@ jobs:
             if (
               parsedPrivacyUrl.protocol !== 'https:'
               || !['planeir.ie', 'www.planeir.ie'].includes(parsedPrivacyUrl.hostname)
-              || parsedPrivacyUrl.pathname !== '/plan/privacy.html'
+              || parsedPrivacyUrl.pathname !== '/plan/privacy-legacy.html'
               || parsedPrivacyUrl.username
               || parsedPrivacyUrl.password
               || parsedPrivacyUrl.search
@@ -992,6 +997,27 @@ jobs:
       - name: Verify protected-beta static security headers
         if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
         run: node ./scripts/check-consumer-static-headers.mjs
+
+      - name: Check demo access flow
+        run: npm run check:demo
+
+      - name: Ensure demo encryption key is provisioned
+        working-directory: ./worker
+        env:
+          DEMO_DATA_ENCRYPTION_KEY: ${{ secrets.DEMO_DATA_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          if ! printf '%s' "$inventory" | node --input-type=module -e '
+            let input=""; for await (const chunk of process.stdin) input+=chunk;
+            process.exit(JSON.parse(input).some(secret=>secret.name==="DEMO_DATA_ENCRYPTION_KEY") ? 0 : 1);
+          '; then
+            if [[ -z "$DEMO_DATA_ENCRYPTION_KEY" ]]; then
+              echo "Provision DEMO_DATA_ENCRYPTION_KEY in the production environment before publishing demo access." >&2
+              exit 1
+            fi
+            printf '%s' "$DEMO_DATA_ENCRYPTION_KEY" | wrangler secret put DEMO_DATA_ENCRYPTION_KEY --config wrangler.production.generated.toml
+          fi
 
       - name: Apply remote adviser D1 migrations
         working-directory: ./worker

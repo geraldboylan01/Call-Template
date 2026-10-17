@@ -31,7 +31,7 @@ export function createTestRuntime(overrides = {}) {
     try { const result = statements.map(statement => statement.execute()); sql.exec('COMMIT'); return result; }
     catch (error) { sql.exec('ROLLBACK'); throw error; }
   } };
-  const env = { LEADS_DB: db, APPLICATION_AUDIO_BUCKET: bucket, APPLICATION_AUDIO_ENABLED: 'true',
+  const env = { CASE_APPLICATIONS_ENABLED: 'true', LEADS_DB: db, APPLICATION_AUDIO_BUCKET: bucket, APPLICATION_AUDIO_ENABLED: 'true',
     APPLICATION_DATA_ENCRYPTION_KEY: randomBytes(32).toString('base64url'), APPLICATION_AUDIO_QUOTA_BYTES: '1000000000',
     ADVISOR_PASSWORD: 'test-only-password', ADVISOR_SESSION_SECRET: randomBytes(32).toString('base64url'),
     RESEND_API_KEY: 're_test', LEAD_EMAIL_FROM: 'test@example.com', LEAD_NOTIFICATION_TO: 'advisor@example.com',
