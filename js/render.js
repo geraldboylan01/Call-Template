@@ -37,6 +37,9 @@ import { buildHouseholdCashFlowModule } from './household_cash_flow_module.js';
 import { buildProtectionGapModule } from './protection_gap_module.js';
 import { buildRentalKeepOrSellModule } from './rental_keep_or_sell_module.js';
 import { buildHomeTradeDownModule } from './home_trade_down_module.js';
+import { buildGoalsAndResourcesModule } from './goals_and_resources_module.js';
+import { projectGoalsAndResources } from './goals_and_resources_math.js';
+import { goalsAndResourcesReliefNotes } from './goals_and_resources_view.js';
 import {
   PBS_ASSET_SECTION_KEYS,
   resolveLiquidityReserveForPlan,
@@ -2189,6 +2192,13 @@ function inferOverviewModuleKind(module) {
     };
   }
 
+  if (isGoalsAndResourcesModule(module)) {
+    return {
+      label: 'Goals and Resources',
+      token: 'goals-and-resources'
+    };
+  }
+
   if (isCollegeFundingModule(module)) {
     return {
       label: 'College Funding',
@@ -2376,6 +2386,14 @@ function buildOverviewMetaItems(module, signalCounts) {
   if (moduleKind.token === 'rental-keep-or-sell') {
     // The two cases are fixed: keep, and sell.
     items.push(pluralizeOverview(2, 'case'));
+    return uniqueOverviewItems(items, 3, 22);
+  }
+
+  if (moduleKind.token === 'goals-and-resources') {
+    try {
+      const projection = projectGoalsAndResources(module.generated.goalsAndResourcesInputs);
+      items.push(pluralizeOverview(projection.debug.cases.length, 'case'));
+    } catch (_error) { /* Invalid imported inputs are cleared by the state layer. */ }
     return uniqueOverviewItems(items, 3, 22);
   }
 
@@ -2739,6 +2757,10 @@ function isHomeTradeDownModule(module) {
   return Boolean(module?.generated?.homeTradeDownInputs);
 }
 
+function isGoalsAndResourcesModule(module) {
+  return Boolean(module?.generated?.goalsAndResourcesInputs);
+}
+
 function isHousePurchaseModule(module) {
   return Boolean(module?.generated?.housePurchaseInputs);
 }
@@ -2874,6 +2896,13 @@ function getPlaybookDisplayContext(module) {
     return {
       key: 'homeTradeDown',
       heading: 'Home Trade Down'
+    };
+  }
+
+  if (isGoalsAndResourcesModule(module)) {
+    return {
+      key: 'goalsAndResources',
+      heading: 'Goals and Resources'
     };
   }
 
@@ -3363,6 +3392,7 @@ function blocksGeneratedTableEditing(module) {
     || isProtectionGapModule(module)
     || isRentalKeepOrSellModule(module)
     || isHomeTradeDownModule(module)
+    || isGoalsAndResourcesModule(module)
     || isHousePurchaseModule(module)
     || isMortgageModule(module)
   );
@@ -8175,6 +8205,31 @@ function buildHomeTradeDownShell(module) {
       onSelectCase: (caseId) => {
         if (typeof window.__setHomeTradeDownScenario === 'function') {
           window.__setHomeTradeDownScenario(module.id, caseId);
+        }
+      }
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+function buildGoalsAndResourcesShell(module) {
+  const inputs = module?.generated?.goalsAndResourcesInputs;
+  if (!inputs) {
+    return null;
+  }
+
+  const remembered = typeof window.__getGoalsAndResourcesScenarioForModule === 'function'
+    ? window.__getGoalsAndResourcesScenarioForModule(module.id)
+    : '';
+
+  try {
+    return buildGoalsAndResourcesModule({
+      rawInputs: inputs,
+      selectedCaseId: remembered || null,
+      onSelectCase: (caseId) => {
+        if (typeof window.__setGoalsAndResourcesScenario === 'function') {
+          window.__setGoalsAndResourcesScenario(module.id, caseId);
         }
       }
     });
@@ -13405,6 +13460,13 @@ function buildGeneratedSection(module, {
     }
   }
 
+  if (isGoalsAndResourcesModule(displayModule)) {
+    const goalsAndResourcesShell = buildGoalsAndResourcesShell(module);
+    if (goalsAndResourcesShell) {
+      grid.appendChild(goalsAndResourcesShell);
+    }
+  }
+
   // NO CHARTS CARD FOR A REPAYMENT MODULE.
   //
   // It draws its own balance curve and its own year-by-year interest columns,
@@ -13448,7 +13510,7 @@ function buildGeneratedSection(module, {
       const title = typeof table?.title === 'string' && table.title.trim()
         ? table.title
         : `Table ${tableIndex + 1}`;
-      grid.appendChild(buildTableCard(title, table, {
+      const tableCard = buildTableCard(title, table, {
         dataGeneratedCard: `table:${tableIndex}`,
         module,
         editBasePath: blocksGeneratedTableEditing(displayModule)
@@ -13459,7 +13521,25 @@ function buildGeneratedSection(module, {
           : ['generated', 'tables', tableIndex, 'title'],
         readOnly,
         onEditGeneratedText
-      }));
+      });
+      if (isGoalsAndResourcesModule(displayModule)) {
+        const projection = projectGoalsAndResources(generated.goalsAndResourcesInputs);
+        const entry = projection.debug.cases[tableIndex];
+        const notes = goalsAndResourcesReliefNotes(projection, entry?.id);
+        if (notes.length > 0) {
+          const footnote = document.createElement('aside');
+          footnote.className = 'gar-relief-footnote';
+          footnote.dataset.goalsReliefForCase = entry.id;
+          footnote.setAttribute('aria-label', 'Pension relief limit');
+          notes.forEach((note) => {
+            const line = document.createElement('p');
+            line.textContent = `${note.label}: ${note.text}`;
+            footnote.appendChild(line);
+          });
+          tableCard.appendChild(footnote);
+        }
+      }
+      grid.appendChild(tableCard);
     });
   }
   // NO CHARTS CARD FOR A FUTURE COST FUND either: the module draws the fund
@@ -13476,7 +13556,7 @@ function buildGeneratedSection(module, {
   if (!isPensionModule(displayModule) && !isNetRetirementModule(displayModule) && !isMortgageModule(displayModule)
     && !isFutureCostFundModule(displayModule) && !isHouseholdCashFlowModule(displayModule)
     && !isProtectionGapModule(displayModule) && !isRentalKeepOrSellModule(displayModule)
-    && !isHomeTradeDownModule(displayModule)) {
+    && !isHomeTradeDownModule(displayModule) && !isGoalsAndResourcesModule(displayModule)) {
     const chartsForDisplay = isPbsBucketedModule
       ? getPbsChartsForDisplay(displayModule, generated)
       : generated.charts;
@@ -13664,7 +13744,7 @@ export function patchFocusedGeneratedCards({
   // only after the first case click, which is the worst way to find it.
   if (patchCharts && !isMortgageModule(displayModule) && !isFutureCostFundModule(displayModule)
     && !isHouseholdCashFlowModule(displayModule) && !isProtectionGapModule(displayModule)
-    && !isRentalKeepOrSellModule(displayModule) && !isHomeTradeDownModule(displayModule)) {
+    && !isRentalKeepOrSellModule(displayModule) && !isHomeTradeDownModule(displayModule) && !isGoalsAndResourcesModule(displayModule)) {
     const chartsForDisplay = isPersonalBalanceSheetModule(displayModule)
       ? getPbsChartsForDisplay(displayModule, displayModule.generated || {})
       : (Array.isArray(displayModule.generated?.charts) ? displayModule.generated.charts : []);
