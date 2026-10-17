@@ -604,3 +604,8 @@ Pass: `summaryHtml` plus `homeTradeDownInputs`, four cases, annual rate 0.04, no
 `Use the protection gap playbook. Niamh takes home 57000 and Dara 45000 a year. Need 96000, savings 60000. Show today and Niamh unable to work with no State payment.`
 
 Pass: `statePayment: 0`, no token figure and no sentence claiming a payment starts. Missing payment is not treated as zero.
+
+### Missing home facts and unsupported case boundaries
+- Missing new-loan term or rate: NOTES only and one confirmation question; no placeholder JSON.
+- A requested repayment whose solved home budget exceeds the current home's value: NOTES only; ask for a lower repayment or revised terms. Never cap it silently.
+- Cash flow with three cleared debts and an extra pension in one case: four changes are refused. Keep each case to three; split the comparisons or ask for priorities. Outgoing ids use underscores, such as `car_loan`, and never reserved ids.
