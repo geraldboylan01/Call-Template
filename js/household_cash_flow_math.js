@@ -112,6 +112,14 @@ function isFiniteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+/** Finite inputs can still overflow when added or rounded. Refuse the result. */
+function requireFiniteAmount(value, where) {
+  if (!isFiniteNumber(value)) {
+    throw new Error(`${where}: the total is too large to calculate. Use smaller yearly amounts.`);
+  }
+  return value;
+}
+
 /** Present and not null: a normalised payload writes null for "not given". */
 function has(raw, key) {
   return Object.prototype.hasOwnProperty.call(raw, key)
@@ -133,6 +141,59 @@ function roundToHundred(amount) {
 
 function roundToTen(amount) {
   return (Math.round(amount / 10) * 10) || 0;
+}
+
+/**
+ * WORDING THE SCREEN MAY NOT SHOW.
+ *
+ * Text a payload supplies (a person's label, an outgoing's label, a case's title
+ * and description) reaches the screen, the video and the presenter as it is, so
+ * it is held to the module's wording on the way in and not only in a test. It
+ * is education, never advice: nothing recommended or ranked, no product or
+ * provider, and no third person, because every word speaks to the household as
+ * "you" (D5).
+ */
+export const HOUSEHOLD_CASH_FLOW_BANNED_PHRASES = Object.freeze([
+  /we\s+recommend/i,
+  /you\s+should/i,
+  /best\s+option/i,
+  /\bbest\b/i,
+  /\bideal\b/i,
+  /\boptimal\b/i,
+  /p\.a\./i,
+  /\bthe\s+household\b/i,
+  /\bthe\s+couple\b/i,
+  /\bthe\s+client\b/i,
+  /\bclients?\b/i,
+  /\bthey\b/i,
+  /\btheir\b/i
+]);
+
+export const HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES = Object.freeze([
+  /\bAIB\b/i,
+  /\bBank\s+of\s+Ireland\b/i,
+  /\bBOI\b/i,
+  /\bPTSB\b/i,
+  /\bPermanent\s+TSB\b/i,
+  /\bRevolut\b/i,
+  /\bZurich\b/i,
+  /\bIrish\s+Life\b/i,
+  /\bAviva\b/i,
+  /\bDavy\b/i,
+  /\bStandard\s+Life\b/i
+]);
+
+/** Refuse text this screen may not show, naming where it came from. */
+function refuseForbiddenWording(text, where) {
+  const banned = [...HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, ...HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES]
+    .some((pattern) => pattern.test(text));
+  if (banned || /€\d{4,}/.test(text)) {
+    throw new Error(
+      `${where} ("${text}"): this screen speaks to you in plain words. It never recommends or ranks, never names `
+      + 'a product or a provider, never says "the household", "the couple", "the client", "they" or "their", '
+      + 'and writes amounts with a thousands separator.'
+    );
+  }
 }
 
 /** "Car loan" -> "car loan", but "HSE loan" keeps its capitals. */
@@ -200,6 +261,7 @@ function normalizePeople(raw) {
       if (label.length < 1 || label.length > MAX_PERSON_LABEL) {
         throw new Error(`${where} (${id}): label must be 1 to ${MAX_PERSON_LABEL} characters.`);
       }
+      refuseForbiddenWording(label, `${where} (${id}).label`);
     }
     if (raw.people.length > 1 && !label) {
       throw new Error(`${where} needs a label when there are two people.`);
@@ -300,6 +362,7 @@ function normalizeOutgoings(raw) {
     if (label.length < 1 || label.length > MAX_OUTGOING_LABEL) {
       throw new Error(`${where} (${id}): label must be 1 to ${MAX_OUTGOING_LABEL} characters.`);
     }
+    refuseForbiddenWording(label, `${where} (${id}).label`);
     if (!isFiniteNumber(rawLine.amount) || rawLine.amount < 0) {
       throw new Error(`${where} (${label}): amount must be 0 or more.`);
     }
@@ -406,6 +469,7 @@ function normalizeScenarios(raw, people, outgoings) {
       if (title.length < 1 || title.length > MAX_CASE_TITLE) {
         throw new Error(`${where} (${id}): title must be 1 to ${MAX_CASE_TITLE} characters.`);
       }
+      refuseForbiddenWording(title, `${where} (${id}).title`);
     }
     if (!title) {
       title = derivedCaseTitle(changes, outgoingsById);
@@ -436,6 +500,9 @@ function normalizeScenarios(raw, people, outgoings) {
     });
 
     const description = typeof rawCase.description === 'string' ? rawCase.description.trim() : '';
+    if (description) {
+      refuseForbiddenWording(description, `${where} (${id}).description`);
+    }
     return { id, title, description, changes };
   });
 }
@@ -535,6 +602,7 @@ export function normalizeHouseholdCashFlowInputs(raw) {
 
   const income = normalizeIncome(raw, people);
   const outgoings = normalizeOutgoings(raw);
+  requireFiniteAmount(outgoings.reduce((sum, line) => sum + line.amount, 0), `${FIELD}.outgoings`);
 
   let calculationYear = null;
   if (has(raw, 'calculationYear')) {
@@ -546,6 +614,11 @@ export function normalizeHouseholdCashFlowInputs(raw) {
   }
 
   const { gross, earnings } = grossByPerson(people, income);
+  const incomeTotal = requireFiniteAmount(Object.values(gross).reduce((sum, value) => sum + value, 0), `${FIELD}.income`);
+  requireFiniteAmount(roundToHundred(incomeTotal), `${FIELD}.income`);
+  if (roundToHundred(incomeTotal) === 0) {
+    throw new Error(`${FIELD}.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.`);
+  }
   people.forEach((person, index) => {
     if (person.statedTakeHome === null) {
       return;
@@ -601,7 +674,7 @@ export function normalizeHouseholdCashFlowInputs(raw) {
     todayContributions,
     grossByPerson: gross,
     earningsByPerson: earnings,
-    incomeTotal: Object.values(gross).reduce((sum, value) => sum + value, 0)
+    incomeTotal
   };
 }
 
@@ -806,19 +879,26 @@ function buildCaseModels(inputs, year, options) {
           inputs.grossByPerson
         );
       const stated = person.statedTakeHome !== null;
-      const tax = stated
+      const taxBeforeFloor = stated
         ? (gross - person.statedTakeHome) + (estimatedTax - personEstimatedInBase[person.id])
         : estimatedTax;
+      // RELIEF CAN NEVER BE MORE THAN THE TAX PAID. A stated take-home close to
+      // gross pay leaves almost no tax for a contribution's relief to come off,
+      // and the engine's change is an estimate that knows nothing of the payslip.
+      // So a person's tax is never below nothing, and what was held back is kept
+      // so the screen's maker is told.
+      const tax = Math.max(0, taxBeforeFloor);
       return {
         personId: person.id,
         label: person.label,
         gross,
         tax,
+        heldAtZero: tax !== taxBeforeFloor ? taxBeforeFloor : null,
         takeHome: gross - tax,
         taxSource: stated ? 'stated' : 'estimated',
         basis: inputs.taxStatus === 'married_or_civil_partners' && inputs.people.length === 2 ? 'allocated' : 'own',
-        estimatedTax,
-        estimatedTakeHome: gross - estimatedTax,
+        estimatedTax: Math.max(0, estimatedTax),
+        estimatedTakeHome: gross - Math.max(0, estimatedTax),
         usc: injected ? null : caseEstimate.people[person.id].usc,
         prsi: injected ? null : caseEstimate.people[person.id].prsi
       };
@@ -827,12 +907,33 @@ function buildCaseModels(inputs, year, options) {
     const taxTotal = people.reduce((sum, person) => sum + person.tax, 0);
     const pensionsGross = Object.values(contributions).reduce((sum, amount) => sum + amount, 0);
 
-    // What the contribution saves: the same case with no contributions at all.
-    // An estimate always, because a payslip cannot know it.
+    // What the contribution saves: each person's tax in this case with no
+    // contributions, less their tax with them. An estimate of the change, always,
+    // because a payslip cannot know it, and never more than the tax that was
+    // there to relieve, which is why it is measured person by person.
     let taxRelief = 0;
     if (pensionsGross > 0) {
       const without = estimate(`${scenario.id}:without-contributions`, noContributions);
-      taxRelief = Math.max(0, without.total - caseEstimate.total);
+      people.forEach((person) => {
+        const withoutEstimated = injected
+          ? without.people[person.personId].injectedTax
+          : estimatedPersonTax(
+            person.personId,
+            without,
+            baseEstimate,
+            noContributions,
+            baseContributions,
+            inputs.grossByPerson
+          );
+        const statedHere = inputs.people.find((entry) => entry.id === person.personId).statedTakeHome;
+        const withoutTax = Math.max(
+          0,
+          statedHere !== null
+            ? (person.gross - statedHere) + (withoutEstimated - personEstimatedInBase[person.personId])
+            : withoutEstimated
+        );
+        taxRelief += Math.max(0, withoutTax - person.tax);
+      });
     }
 
     const statedLines = inputs.outgoings.map((line) => {
@@ -845,6 +946,9 @@ function buildCaseModels(inputs, year, options) {
 
     const totalOutgoings = taxTotal + pensionsGross + statedTotal;
     const leftOver = inputs.incomeTotal - totalOutgoings;
+    Object.entries({ taxTotal, pensionsGross, statedTotal, totalOutgoings, leftOver }).forEach(([key, value]) => {
+      requireFiniteAmount(value, `${FIELD}.scenarios (${scenario.id}).${key}`);
+    });
 
     return {
       scenario,
@@ -865,24 +969,57 @@ function buildCaseModels(inputs, year, options) {
   return { models, baseEstimate, hasPensionColumn, outgoingsById, injected };
 }
 
+/**
+ * The status follows the amount SHOWN: above €0 is left over, exactly €0 is
+ * tight and below €0 is short. A case that is short by €40 unrounded and shows
+ * €0 is tight, which is what the picture says.
+ */
 function statusFor(shownLeftOver) {
-  return shownLeftOver > 0 ? 'left_over' : 'tight';
+  if (shownLeftOver > 0) {
+    return 'left_over';
+  }
+  return shownLeftOver === 0 ? 'tight' : 'short';
 }
 
+/**
+ * The month, to the nearest €10.
+ *
+ * `amount` is SIGNED: negative when the year is short, so a reader that adds or
+ * compares months is right without reading the status. `text` is the words the
+ * screen puts beside the word "Short", so it has no sign: "About €230 a month".
+ * The size is rounded first and given its sign afterwards, because Math.round
+ * sends -2.5 to -2 and 2.5 to 3, and a short year must round as a left over
+ * year of the same size does.
+ */
 function monthlyFor(shownLeftOver) {
   const exactMonthly = shownLeftOver / 12;
-  const amount = roundToTen(exactMonthly);
-  const exact = Math.abs(exactMonthly - amount) < 0.005;
+  const size = roundToTen(Math.abs(exactMonthly));
+  const amount = (exactMonthly < 0 ? -size : size) || 0;
+  const exact = Math.abs(Math.abs(exactMonthly) - size) < 0.005;
   return {
     amount,
     exact,
-    text: `${exact ? '' : 'About '}${euroText(amount)} a month`
+    text: `${exact ? '' : 'About '}${euroText(size)} a month`
   };
 }
 
 function effectClause(todayLeft, left) {
   if (left === todayLeft) {
-    return `you have the same ${euroText(left)} left over as today`;
+    return left < 0
+      ? `you are short by the same ${euroText(left)} as today`
+      : `you have the same ${euroText(left)} left over as today`;
+  }
+  // Short, and it was not short by this much today.
+  if (left < 0) {
+    return todayLeft < 0
+      ? `you are short by ${euroText(left)} instead of ${euroText(todayLeft)}`
+      : `you are short by ${euroText(left)}`;
+  }
+  // Short today, and not now.
+  if (todayLeft < 0) {
+    return left === 0
+      ? `you have nothing left over instead of being short by ${euroText(todayLeft)}`
+      : `you have ${euroText(left)} left over instead of being short by ${euroText(todayLeft)}`;
   }
   if (left === 0) {
     return 'you have nothing left over';
@@ -899,6 +1036,10 @@ function effectClause(todayLeft, left) {
 function buildSentence({ model, today, outgoingsById }) {
   const shownLeft = model.shownLeftOver;
   if (model.isBase) {
+    if (shownLeft < 0) {
+      return `Today, ${euroText(model.shownOutgoings)} goes out against your ${euroText(model.shownIncome)}, `
+        + `and you are short by ${euroText(shownLeft)}.`;
+    }
     const left = shownLeft === 0 ? 'you have nothing left over' : `you have ${euroText(shownLeft)} left over`;
     return `Today, ${euroText(model.shownOutgoings)} of your ${euroText(model.shownIncome)} goes out and ${left}.`;
   }
@@ -1037,6 +1178,17 @@ function buildAssumptionsTable(inputs, year, models, lines, disclosureRows) {
   return { columns: ['Assumption', 'Input Used'], rows };
 }
 
+/**
+ * The tables are a ledger: income less every line is left over, and a short
+ * year is a negative left over, so the month carries its sign here. The screen
+ * says "Short" and drops the sign, because the word carries it.
+ */
+function signedMonthText(monthly) {
+  return monthly.amount < 0
+    ? `${monthly.exact ? '' : 'About '}−${euroText(monthly.amount)} a month`
+    : monthly.text;
+}
+
 function buildOutputsTable(models) {
   return {
     columns: ['Case', 'Tax (€)', 'Pensions (€)', 'Other outgoings (€)', 'Left over (€)', 'A month'],
@@ -1046,7 +1198,7 @@ function buildOutputsTable(models) {
       model.shownPensions,
       model.shownStated,
       model.shownLeftOver,
-      model.monthly.text
+      signedMonthText(model.monthly)
     ])
   };
 }
@@ -1064,17 +1216,20 @@ function buildTables(models) {
 }
 
 function buildCharts(baseModel, drawnLines) {
+  // Every bar here is an amount of a year, so a short year is the word "Short"
+  // and the size of it, as it is on the screen.
+  const short = baseModel.shownLeftOver < 0;
   return [{
     title: 'Where a year of your income goes',
     subtitle: `For “${baseModel.scenario.title}”.`,
     type: 'bar',
-    labels: ['Your income before tax', ...drawnLines.map((line) => line.label), 'Left over'],
+    labels: ['Your income before tax', ...drawnLines.map((line) => line.label), short ? 'Short' : 'Left over'],
     datasets: [{
       label: 'A year',
       data: [
         baseModel.shownIncome,
         ...drawnLines.map((line) => baseModel.shownLines.find((entry) => entry.id === line.id).shownAmount),
-        baseModel.shownLeftOver
+        Math.abs(baseModel.shownLeftOver)
       ]
     }],
     display: {
@@ -1127,16 +1282,20 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
     // Left over as SHOWN is shown income minus the shown lines, never rounded
     // alone, so the picture always adds up.
     model.shownLeftOver = model.shownIncome - model.shownOutgoings;
+    Object.entries({
+      shownIncome: model.shownIncome,
+      shownOutgoings: model.shownOutgoings,
+      shownLeftOver: model.shownLeftOver,
+      chartSpan: model.shownIncome + Math.max(0, -model.shownLeftOver)
+    }).forEach(([key, value]) => {
+      requireFiniteAmount(value, `${FIELD}.scenarios (${model.scenario.id}).${key}`);
+    });
   });
 
   const today = models.find((model) => model.isBase);
-  models.forEach((model, index) => {
-    if (model.leftOver < -0.005) {
-      throw new Error(
-        `${FIELD}.scenarios[${index}] (${model.scenario.title}): leaves ${euroText(-model.leftOver)} less than `
-        + 'nothing each year, which this screen does not draw yet.'
-      );
-    }
+  models.forEach((model) => {
+    // A case that leaves less than nothing is drawn, not refused: it is a
+    // household's ordinary year, and a plan has to be able to read it.
     model.todayShownLeftOver = today.shownLeftOver;
     model.shownLines.forEach((line) => {
       const todayLine = today.shownLines.find((entry) => entry.id === line.id);
@@ -1166,6 +1325,19 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
         + `differs from the estimate (${euroText(estimated)}) by more than ${Math.round(STATED_TAKE_HOME_WARNING_SHARE * 100)}%.`
       );
     }
+  });
+
+  // Where a person's tax was held at nothing, say so: the figure on screen is
+  // the household's, and a payslip close to gross pay is what caused it.
+  models.forEach((model, index) => {
+    model.people.forEach((person) => {
+      if (person.heldAtZero !== null) {
+        warnings.push(
+          `${FIELD}.scenarios[${index}] (${model.scenario.title}): tax for ${person.label || person.personId} `
+          + `would have been −${euroText(person.heldAtZero)} and is held at €0, because relief cannot be more than the tax paid.`
+        );
+      }
+    });
   });
 
   const drawnLines = [

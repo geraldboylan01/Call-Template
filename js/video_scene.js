@@ -298,32 +298,38 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       const cases = projection.debug.cases;
       const known = cases.find((entry) => entry.id === requestedId);
       const selected = known || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
-      const index = cases.findIndex((entry) => entry.id === selected.id);
-      const row = projection.summary.cases[index];
-      const shown = (amount) => Math.round(amount / 100) * 100;
+      // EVERY FIGURE IS A SHOWN ONE, the one on the screen, so the story adds up
+      // as the screen does. The lines are tax, pensions, then the stated lines,
+      // and the stated ones are summed as shown: rounding their total instead
+      // would differ from the lines by a few hundred.
+      const [taxLine, pensionsLine, ...statedLines] = selected.lines;
+      const otherShown = statedLines.reduce((sum, line) => sum + line.shownAmount, 0);
       // The figures that add up come first: what comes in, what goes out and
       // what is left, because a story shows only the first few. Anything that is
       // nothing in this case is left out.
+      // A short year says "Short" and its size, as the screen does, so the story
+      // never reads "left over" of a negative figure.
+      const isShort = selected.shownLeftOver < 0;
       const figures = [
-        ['Your income before tax (€)', shown(row.income.total)],
+        ['Your income before tax (€)', selected.shownIncome],
         ['Goes out (€)', selected.shownIncome - selected.shownLeftOver],
-        ['Left over (€)', selected.shownLeftOver],
-        ['Tax (€)', shown(row.outgoings.tax)],
-        ['Pensions (€)', shown(row.outgoings.pensionContributions)],
-        ['Other outgoings (€)', shown(row.outgoings.statedTotal)]
+        isShort ? ['Short (€)', -selected.shownLeftOver] : ['Left over (€)', selected.shownLeftOver],
+        ['Tax (€)', taxLine.shownAmount],
+        ['Pensions (€)', pensionsLine.shownAmount],
+        ['Other outgoings (€)', otherShown]
       ].filter(([, value]) => value !== 0);
       const drawn = projection.debug.drawnLines;
       const chart = {
         title: 'Where a year of your income goes',
         subtitle: `For “${selected.title}”.`,
         type: 'bar',
-        labels: ['Your income before tax', ...drawn.map((line) => line.label), 'Left over'],
+        labels: ['Your income before tax', ...drawn.map((line) => line.label), isShort ? 'Short' : 'Left over'],
         datasets: [{
           label: 'A year',
           data: [
             selected.shownIncome,
             ...drawn.map((line) => selected.lines.find((entry) => entry.id === line.id).shownAmount),
-            selected.shownLeftOver
+            Math.abs(selected.shownLeftOver)
           ]
         }],
         display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: 'A year' }

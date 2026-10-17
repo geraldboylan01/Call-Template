@@ -37,7 +37,8 @@ import {
   placeBarRows,
   readCashFlowModel,
   stairsGeometry,
-  stairsOutlines
+  stairsOutlines,
+  BAR
 } from './household_cash_flow_view.js';
 
 /* ------------------------------------------------------------------ motion */
@@ -172,6 +173,15 @@ function px(value) {
   return `${Number(value).toFixed(1)}px`;
 }
 
+/**
+ * The last mark is green while what is left is above nothing and red once it is
+ * below, decided by the figure being DRAWN and not the case being chosen, so a
+ * click that crosses the floor changes colour where the mark crosses it.
+ */
+function markShort(node, values) {
+  node.classList.toggle('is-short', Boolean(values) && values[values.length - 1] < 0);
+}
+
 /* ---------------------------------------------------------------- the module */
 
 /**
@@ -300,6 +310,7 @@ export function buildHouseholdCashFlowModule({
     root.replaceChildren(...parts);
     root.classList.toggle('is-stairs', drawing === 'stairs');
     root.classList.toggle('is-bar', drawing === 'bar');
+    root.classList.toggle('is-compact', drawing === 'bar' && layout.compact);
   }
 
   /* ----------------------------------------------------------- staircase */
@@ -312,11 +323,21 @@ export function buildHouseholdCashFlowModule({
       bars: [], connectors: [], outlines: [], amounts: [], names: [], deltas: []
     };
 
-    const floor = el('div', 'hcf-floor');
+    // With a case that runs below it, the floor is the line the picture reads
+    // against, so it is drawn a little stronger and named "€0".
+    const floor = el('div', layout.band > 0 ? 'hcf-floor has-band' : 'hcf-floor');
     floor.style.top = px(layout.floor);
     floor.style.left = '0px';
     floor.style.width = px(layout.plotWidth);
     chartHost.append(floor);
+    if (layout.zero.visible) {
+      const zero = el('div', 'hcf-zero', '€0');
+      zero.style.left = px(layout.zero.left);
+      zero.style.top = px(layout.zero.top);
+      zero.style.width = px(layout.zero.width);
+      zero.style.fontSize = px(layout.fonts.zero);
+      chartHost.append(zero);
+    }
 
     for (let index = 0; index < layout.columns - 1; index += 1) {
       const connector = el('div', 'hcf-connector');
@@ -447,6 +468,8 @@ export function buildHouseholdCashFlowModule({
       const isLast = index === refs.bars.length - 1;
       const changed = !isIncome && !isLast && lines[index - 1].hasDelta;
       bar.className = `hcf-bar ${isIncome ? 'is-income' : (isLast ? 'is-left' : 'is-cost')}${changed ? ' is-changed' : ''}`;
+      // What was on screen stays on screen until the clock moves it.
+      if (isLast) markShort(bar, shown);
     });
   }
 
@@ -463,10 +486,11 @@ export function buildHouseholdCashFlowModule({
       refs.amounts[index].style.top = px(amount.top);
     });
     const leftNow = values[values.length - 1];
+    markShort(refs.bars[refs.bars.length - 1], values);
     refs.lastLabel.style.top = px(refs.outlineInfo.lastLabel.topFor(leftNow));
     // Nothing left stands as a line on the floor, not as a bar.
     const target = valuesOf(selectedId);
-    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - leftNow / 900, 0, 1)) : '0';
+    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - Math.abs(leftNow) / 900, 0, 1)) : '0';
   }
 
   /* ------------------------------------------------------------------ bar */
@@ -485,6 +509,7 @@ export function buildHouseholdCashFlowModule({
     const headAmount = el('span', 'hcf-bar-head-amount');
     barHead.append(headLabel, headAmount);
     const rule = el('div', 'hcf-bar-rule');
+    rule.style.top = px(layout.headerRule);
     rule.style.left = px(left);
     rule.style.width = px(layout.contentWidth);
     chartHost.append(barHead, rule);
@@ -493,7 +518,7 @@ export function buildHouseholdCashFlowModule({
     track.style.left = px(left);
     track.style.top = px(layout.barTop);
     track.style.width = px(layout.barWidth);
-    track.style.height = px(layout.barHeight);
+    track.style.height = px(layout.barHeight + layout.reserve);
     for (let index = 0; index < model.drawnLines.length + 1; index += 1) {
       const segment = el('div', 'hcf-segment');
       segment.style.width = px(layout.barWidth);
@@ -511,6 +536,15 @@ export function buildHouseholdCashFlowModule({
     endMark.style.top = px(layout.barHeight - 4);
     track.append(endMark);
     chartHost.append(track);
+
+    // Where income ends, once some case runs past it.
+    if (layout.reserve > 0) {
+      const incomeEnd = el('div', 'hcf-bar-income-end');
+      incomeEnd.style.left = px(left - 6);
+      incomeEnd.style.top = px(layout.incomeEnd);
+      incomeEnd.style.width = px(layout.barWidth + 12);
+      chartHost.append(incomeEnd);
+    }
 
     const ids = [...model.drawnLines.map((line) => line.id), 'left'];
     ids.forEach((id) => {
@@ -533,6 +567,8 @@ export function buildHouseholdCashFlowModule({
     refs = { ...found, headLabel, headAmount, endMark };
   }
 
+  let barRowHeights = new Map();
+
   function renderBarCopy() {
     setText(refs.headLabel, copy.incomeLabel);
     setText(refs.headAmount, copy.incomeLine);
@@ -542,21 +578,51 @@ export function buildHouseholdCashFlowModule({
       const isLast = index === refs.segments.length - 1;
       const changed = !isLast && lines[index].hasDelta;
       segment.className = `hcf-segment ${isLast ? 'is-left' : 'is-cost'}${changed ? ' is-changed' : ''}`;
+      if (isLast) markShort(segment, shown);
     });
 
+    renderBarRowCopy(copy);
+  }
+
+  function renderBarRowCopy(caseCopy) {
     refs.rows.forEach((parts, id) => {
-      const line = lines.find((entry) => entry.id === id);
+      const line = caseCopy.lines.find((entry) => entry.id === id);
       if (line) {
         setText(parts.name, line.label);
         setText(parts.amount, line.amount);
         setText(parts.delta, line.delta);
         parts.delta.hidden = !line.hasDelta;
       } else {
-        setText(parts.name, copy.lastName);
-        setText(parts.amount, copy.figure);
+        setText(parts.name, caseCopy.lastName);
+        setText(parts.amount, caseCopy.figure);
         parts.delta.hidden = true;
       }
     });
+  }
+
+  function reserveBarRowRoom() {
+    barRowHeights = new Map();
+    if (drawing !== 'bar' || !root.isConnected) return;
+    let tallest = 0;
+    cases.forEach((entry) => {
+      renderBarRowCopy(buildCashFlowCopy(projection, entry.id));
+      const heights = new Map();
+      const specs = barRowSpecs(model, entry.id, valuesOf(entry.id));
+      specs.forEach((spec) => {
+        const row = refs.rows.get(spec.id).row;
+        row.hidden = false;
+        const height = typeof row.getBoundingClientRect === 'function' ? row.getBoundingClientRect().height : 0;
+        if (height > 0) heights.set(spec.id, Math.ceil(height));
+      });
+      tallest = Math.max(tallest, specs.reduce((sum, spec) => sum + (heights.get(spec.id) || 0), 0)
+        + Math.max(0, specs.length - 1) * BAR.rowGap);
+      barRowHeights.set(entry.id, heights);
+    });
+    renderBarRowCopy(copy);
+    // Extra room belongs to the labels; the euro scale and the bars stay fixed.
+    layout.rowFloor = layout.barTop + Math.max(layout.barHeight + layout.reserve + 8, tallest);
+    layout.height = Math.max(layout.height, layout.rowFloor + 20);
+    chartHost.style.height = px(layout.height);
   }
 
   function paintBar(values) {
@@ -566,6 +632,7 @@ export function buildHouseholdCashFlowModule({
       node.style.top = px(segment.top);
       node.style.height = px(segment.height);
     });
+    markShort(refs.segments[refs.segments.length - 1], values);
 
     // A line cleared against today is a zero-height step: a tick marks where it was.
     const base = model.cases.find((entry) => entry.id === model.baseId);
@@ -577,11 +644,12 @@ export function buildHouseholdCashFlowModule({
     });
     const target = valuesOf(selectedId);
     const leftNow = values[values.length - 1];
-    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - leftNow / 900, 0, 1)) : '0';
+    refs.endMark.style.opacity = target[target.length - 1] === 0 ? String(clamp(1 - Math.abs(leftNow) / 900, 0, 1)) : '0';
 
     const specs = barRowSpecs(model, selectedId, values).map((spec) => ({
       ...spec,
-      centre: geometry.segments[spec.segment].centre
+      centre: geometry.segments[spec.segment].centre,
+      measuredHeight: barRowHeights.get(selectedId)?.get(spec.id)
     }));
     const placed = placeBarRows(layout, specs);
     const placedIds = new Set(placed.map((row) => row.id));
@@ -621,6 +689,38 @@ export function buildHouseholdCashFlowModule({
     else renderBarCopy();
   }
 
+  /**
+   * Above the bar, the sentence keeps the room of the LONGEST case's, so a click
+   * never moves the drawing under it. The sentences are the engine's, and the
+   * short ones run to five lines on a phone, so the design's four is not enough.
+   * Measured where the browser can measure it, which is once the module is on
+   * the page; until then the stylesheet's four lines stand.
+   */
+  function reserveSentenceRoom() {
+    if (drawing !== 'bar') {
+      sentence.style.minHeight = '';
+      return;
+    }
+    if (!root.isConnected || typeof sentence.getBoundingClientRect !== 'function') return;
+    // Probe outside the live region so layout never announces unselected cases.
+    const sentenceProbe = el('p', 'hcf-sentence');
+    sentenceProbe.setAttribute('aria-hidden', 'true');
+    Object.assign(sentenceProbe.style, {
+      position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
+      width: px(sentence.getBoundingClientRect().width), minHeight: '0px'
+    });
+    root.append(sentenceProbe);
+    let tallest = 0;
+    cases.forEach((entry) => {
+      sentenceProbe.textContent = entry.sentence;
+      tallest = Math.max(tallest, sentenceProbe.getBoundingClientRect().height);
+    });
+    sentenceProbe.remove();
+    // Never less than the stylesheet's four lines.
+    const four = parseFloat(getComputedStyle(sentence).lineHeight) * 4;
+    sentence.style.minHeight = px(Math.max(Number.isFinite(four) ? four : 0, Math.ceil(tallest)));
+  }
+
   function paint(values) {
     shown = values;
     if (drawing === 'stairs') paintStairs(values);
@@ -639,6 +739,8 @@ export function buildHouseholdCashFlowModule({
     if (drawing === 'stairs') buildStairs();
     else buildBar();
     renderCopy();
+    reserveSentenceRoom();
+    reserveBarRowRoom();
     // Resizing is not a transition: settle on the selected case at once.
     paint(valuesOf(selectedId));
   }
@@ -689,6 +791,11 @@ export function buildHouseholdCashFlowModule({
       }
     });
     observer.observe(root);
+  }
+
+  // Web fonts can change wrapping without changing the module's width.
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    document.fonts.ready.then(() => { if (root.isConnected) relayout(); });
   }
 
   root.presenterSelectScenario = async (id) => {
