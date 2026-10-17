@@ -4,7 +4,7 @@ Checked 16 October 2026. This is a source-backed reference for discussing the an
 
 ## Current personal rates and the latest Budget
 
-| Scheme | Current 2026 weekly personal maximum | 52-week reference | January 2027 announced reference | 52-week reference |
+| Scheme | Current 2026 weekly personal maximum | 52-week reference | 2027 announced reference | 52-week reference |
 |---|---:|---:|---:|---:|
 | Illness Benefit | €254 | €13,208 | €264 | €13,728 |
 | Disability Allowance | €254 | €13,208 | €264 | €13,728 |
@@ -12,7 +12,7 @@ Checked 16 October 2026. This is a source-backed reference for discussing the an
 
 The 2026 rates are published by the Department of Social Protection in its [Budget 2026 rates table](https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/), [Illness Benefit scheme page](https://www.gov.ie/en/service/ddf6e3-illness-benefit/), [Disability Allowance scheme page](https://www.gov.ie/en/department-of-social-protection/services/disability-allowance/) and [Invalidity Pension scheme page](https://www.gov.ie/en/department-of-social-protection/services/invalidity-pension/).
 
-The latest Budget is Budget 2027, announced on 6 October 2026. The [Budget Statement](https://prelive.oireachtas.ie/ga/debates/debate/dail/2026-10-06/3/) announces a €10 weekly increase, including disability scheme recipients. The [Minister for Social Protection's statement on 7 October](https://prelive.oireachtas.ie/en/debates/debate/seanad/2026-10-07/3/) identifies January 2027 as the start of the weekly increase. The 2027 scheme amounts above are derived by adding that announced €10 to the published 2026 maxima; they are labelled announced references, not rates already payable in October 2026. Verify the final scheme-specific rate table and commencement before using them for a 2027 client case.
+The latest Budget is Budget 2027, announced on 6 October 2026. The [Budget Statement](https://prelive.oireachtas.ie/en/debates/debate/dail/2026-10-06/3/) announces a €10 weekly increase, including disability scheme recipients. The 2027 scheme amounts above are derived by adding that announced €10 to the published 2026 maxima; they are labelled announced references, not rates already payable in October 2026. Verify the final scheme-specific rate table and commencement before using them for a 2027 client case. The earlier 7 October link led to Commencement Matters, not the Budget statement, and has been removed.
 
 The Budget Statement also announces a €500 cost-of-disability payment for recipients of long-term disability payments. Keep this separate from recurring weekly income; do not turn it into a permanent annual addition to `statePayment`.
 
@@ -31,5 +31,7 @@ Other schemes and supplementary supports may apply. These three are alternative 
 The protection-gap module accepts a stated yearly `statePayment`, in whole euros, including 0. A confirmed no-payment case is valid. Unknown entitlement is still missing information, not 0.
 
 The existing authoring rule remains: show a suggested scheme/rate, source, calculation and assumptions in the author's notes, then obtain Gerry's confirmation before it enters a client payload. Keep gross statutory references distinct from spendable income: the protection-gap engine does not calculate tax or entitlement. Do not silently combine a taxable gross maximum with net take-home figures and describe the result as an after-tax projection. A net payment assumption or the existing tax limitation must be made explicit.
+
+On 17 October, Gerry approved a central Illness Benefit assumption for hypothetical employee illness scenarios, with no question asking a client to predict an entitlement. The implementation plan in #56 records that future adapter contract, its versioned Budget updates, and the required shared tax-engine and duration work. This PR only enables an explicit zero in the existing stated-input engine; it does not activate the central assumption or rewrite the current manual authoring contract.
 
 No automatic default, eligibility calculation, first-year claim calculation or new means test is introduced by allowing 0. The dated references are available for the separate prompt-pack documentation update after the code lands.
