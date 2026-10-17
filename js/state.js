@@ -2228,6 +2228,7 @@ export function normalizeGenerated(generated) {
     normalized.householdCashFlowInputs = null;
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;

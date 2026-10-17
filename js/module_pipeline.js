@@ -2515,6 +2515,7 @@ function mergeGeneratedPatch(module, generatedPatch) {
       module.generated.householdCashFlowInputs = null;
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
+      module.generated.goalsAndResourcesInputs = null;
       module.generated.housePurchaseInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;

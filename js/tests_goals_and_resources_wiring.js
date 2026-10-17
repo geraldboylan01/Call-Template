@@ -3,6 +3,7 @@ import { normalizeGenerated, drainSessionImportWarnings } from './state.js';
 import { buildPresentationCatalogue } from './presenter_catalogue.js';
 import { buildVideoSceneManifest } from './video_scene.js';
 import { GOALS_AND_RESOURCES_SAMPLE } from './tests_goals_and_resources_math.js';
+import { HOME_TRADE_DOWN_SAMPLE } from './tests_home_trade_down_math.js';
 import { projectGoalsAndResources } from './goals_and_resources_math.js';
 import { buildGarModel, goalsAndResourcesReliefNotes } from './goals_and_resources_view.js';
 
@@ -45,6 +46,15 @@ export function runGoalsAndResourcesWiringTests() {
     assert(module.generated.goalsAndResourcesInputs === null, 'report clears goals');
     paste(module, { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
     assert(module.generated.report === null && module.generated.homeTradeDownInputs === null, 'goals clears other kinds');
+  });
+  check('Home trade down and goals replace one another on paste and remain exclusive on import', () => {
+    const module = paste(createBlankModule(), { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
+    paste(module, { homeTradeDownInputs: HOME_TRADE_DOWN_SAMPLE });
+    assert(module.generated.homeTradeDownInputs && module.generated.goalsAndResourcesInputs === null, 'home replaces goals');
+    paste(module, { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
+    assert(module.generated.goalsAndResourcesInputs && module.generated.homeTradeDownInputs === null, 'goals replaces home');
+    const imported = normalizeGenerated({ homeTradeDownInputs: HOME_TRADE_DOWN_SAMPLE, goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
+    assert(imported.homeTradeDownInputs && imported.goalsAndResourcesInputs === null, 'import priority keeps only the home calculator');
   });
   check('Import recomputes valid figures and drops malformed inputs with stale figures', () => {
     const imported = normalizeGenerated({ goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE, tables: [{ title: 'FAKE', rows: [] }] });
