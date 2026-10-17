@@ -79,8 +79,8 @@ All money is in whole euros. A figure with cents is refused.
 ## The Cases
 Each case is `{ id, title?, description?, event? }`. A case with no `event` is today. A case changes one thing:
 
-- **Cannot work:** `"event": { "type": "cannotWork", "personId": "niamh", "statePayment": 13000 }`. That person's take-home stops and a State payment starts. `statePayment` is per year, in whole euros, greater than 0.
-  - If Gerry says the person would get no State payment at all, this screen cannot show that case yet: 0 is refused. Leave the case out, say so in NOTES, and never put in a token figure to make it fit. Do not suggest a payment he has ruled out.
+- **Cannot work:** `"event": { "type": "cannotWork", "personId": "niamh", "statePayment": 13000 }`. That person's take-home stops. `statePayment` is required, per year, in whole euros, 0 or more. A positive amount starts a State payment; explicit 0 models no State payment.
+  - If Gerry says no State payment, use explicit 0 and do not suggest a payment he has ruled out. Missing is different from zero: never infer zero because a figure was omitted.
 - **Dies:** `"event": { "type": "dies", "personId": "niamh", "survivorsPension": 13500 }`. Needs two people. That person's take-home stops and a survivor's pension starts, per year, 0 or more.
   - `neededAfter` is optional: what the household would need after the death, lower than `needed`. A higher need is refused.
   - `neededBecause` is optional and needs `neededAfter`: `mortgageCleared`, `livingCostsLower`, or both. The app names the reason in its sentence.
@@ -97,7 +97,7 @@ The screen tells the client that take-home pay and State payments are as given, 
 
 When one is missing, do not return the JSON yet:
 - **Take-home pay.** If Gerry gives gross pay, work out a take-home with the Irish tax overlay and show the working.
-- **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on the person's PRSI record.
+- **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on eligibility, including the person's PRSI record where applicable. The future automated illness scenario will use the centrally versioned Illness Benefit assumption described in `docs/irish-illness-disability-payment-reference.md`; the current manual screen still uses confirmed figures and does not recalculate the partner's tax. Do not add a client form question predicting future disability benefits.
 - **What is needed, or savings.** Ask for them; suggest nothing unless Gerry has given something to work from, such as monthly spending.
 - Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return both sections once he answers, using the figures he confirms.
 - **What is needed after a death.** Only when Gerry says what would change, such as the mortgage being cleared or living costs falling. Otherwise leave `neededAfter` out and the need stays the same. This one never needs a question.

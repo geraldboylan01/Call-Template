@@ -33,6 +33,8 @@ This folder contains the zero-token prompt pack for the ChatGPT project workflow
 - `22_protection_playbook.md`
 - `23_protection_gap_playbook.md`
 - `24_rental_keep_or_sell_playbook.md`
+- `25_household_cash_flow_playbook.md`
+- `26_home_trade_down_playbook.md`
 - `irish_tax_ai_cheat_sheet_v1.1.md`
   - the tax logic source file to upload alongside the master prompt
 - `90_examples_and_regression_prompts.md`
@@ -68,6 +70,8 @@ The assembled master prompt should include these files in this order:
 15. `22_protection_playbook.md`
 16. `23_protection_gap_playbook.md`
 17. `24_rental_keep_or_sell_playbook.md`
+18. `25_household_cash_flow_playbook.md`
+19. `26_home_trade_down_playbook.md`
 
 `02_schema_capability_matrix.md`, `03_irish_tax_overlay.md`, and `90_examples_and_regression_prompts.md` are maintenance/reference files. The live project should still use `MASTER_PROJECT_PROMPT.md`, plus the uploaded `irish_tax_ai_cheat_sheet_v1.1.md` file.
 
@@ -79,7 +83,7 @@ The assembled master prompt should include these files in this order:
 5. Keep the old prompt bundle available for at least one week after cutover.
 
 ## Success Criteria
-- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the liquidity playbook`, `use the college funding playbook`, `use the house purchase playbook`, `use the future cost fund playbook`, `use the protection gap playbook`, `use the rental keep or sell playbook`, and similar short commands.
+- Gerry can still say `use the PBS playbook`, `run the retirement playbook`, `use the liquidity playbook`, `use the college funding playbook`, `use the house purchase playbook`, `use the future cost fund playbook`, `use the protection gap playbook`, `use the rental keep or sell playbook`, `use the cash flow playbook`, `use the home trade down playbook`, and similar short commands.
 - JSON pastes into the current app without schema rejection.
 - House purchase, mortgage, loan, retirement, net retirement cash-flow, college funding, future cost fund, protection gap and rental keep or sell modules stay JS-backed.
 - Protection Gap payloads contain only `generated.protectionGapInputs`: the app writes the summary, and nothing in the payload mentions cover, a premium or a product.

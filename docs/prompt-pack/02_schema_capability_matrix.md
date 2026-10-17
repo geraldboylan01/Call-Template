@@ -31,6 +31,8 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `futureCostFundInputs`
 - `protectionGapInputs`
 - `rentalKeepOrSellInputs`
+- `householdCashFlowInputs`
+- `homeTradeDownInputs`
 - `housePurchaseInputs`
 - `mortgageInputs`
 - `loanInputs`
@@ -547,3 +549,7 @@ Playbooks should only emit the subset they are responsible for.
 - Interest-only mortgages are not supported.
 - `generated.outputsBucketed` supports only 2-column sections.
 - The runtime supports both `tone` and some older aliases internally for callouts, but new playbooks should emit `tone`.
+
+
+## Household Cash Flow and Home Trade Down
+Use the exact input contracts and examples in `25_household_cash_flow_playbook.md` and `26_home_trade_down_playbook.md`. Cash flow derives its summary and every figure. Home trade down accepts `summaryHtml` plus its inputs, with repayments defining cases and no supplied output amounts. Both accept at most four cases. These adviser playbooks do not add consumer-planner registry entries.
