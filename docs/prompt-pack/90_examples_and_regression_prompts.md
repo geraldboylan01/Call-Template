@@ -588,3 +588,24 @@ Checks:
 - serious illness still framed as support buffer
 - no fake premium pricing if premium is missing
 - final priority callout is practical
+
+
+### Cash flow: annual costs and case changes
+`Use the cash flow playbook. Niamh and Dara, both 45, married and jointly assessed, earn 75000 each. Mortgage 2500 a month, car 500, living costs 4000. Compare today, clearing the car from savings, paying 10000 extra into pensions and both.`
+
+Pass: only `householdCashFlowInputs`, annualised costs, four cases, no stated tax/relief/result amounts, app-derived summary. Use `people[].personalPensionContribution` for confirmed current deductions; never conceal them in spending. Stated take-home means bank pay after that deduction.
+
+### Home trade down: repayment defines the house budget
+`Use the home trade down playbook. Home 650000, mortgage 280000, repayments 30000 a year. Selling costs 15000, buying costs 12000. New loan 15 years at 4%. Compare staying, paying 18000, 12000 and no mortgage.`
+
+Pass: `summaryHtml` plus `homeTradeDownInputs`, four cases, annual rate 0.04, no supplied home budgets. Missing loan terms prompt a question rather than a guessed market rate.
+
+### Protection gap: explicit no-payment case
+`Use the protection gap playbook. Niamh takes home 57000 and Dara 45000 a year. Need 96000, savings 60000. Show today and Niamh unable to work with no State payment.`
+
+Pass: `statePayment: 0`, no token figure and no sentence claiming a payment starts. Missing payment is not treated as zero.
+
+### Missing home facts and unsupported case boundaries
+- Missing new-loan term or rate: NOTES only and one confirmation question; no placeholder JSON.
+- A requested repayment whose solved home budget exceeds the current home's value: NOTES only; ask for a lower repayment or revised terms. Never cap it silently.
+- Cash flow with three cleared debts and an extra pension in one case: four changes are refused. Keep each case to three; split the comparisons or ask for priorities. Outgoing ids use underscores, such as `car_loan`, and never reserved ids.

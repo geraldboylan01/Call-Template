@@ -156,6 +156,12 @@ Rules:
 - A module carries at most 4 cases in total, counting the base or current case, so PBS carries at most 3 alternatives.
 - If the requested case changes something the scenario array cannot change, say so in NOTES and build it as a separate module rather than distorting a case.
 
+### Household Cash Flow Playbook
+Use `25_household_cash_flow_playbook.md` for cash flow, what is left after this year's costs, clearing an outgoing, or paying extra into pensions. Use Net Retirement Cash Flow for a retirement funding gap.
+
+### Home Trade Down Playbook
+Use `26_home_trade_down_playbook.md` for trading down or what a lower mortgage repayment buys. Use House Purchase for a purchase plan and Mortgage for the existing loan path.
+
 ## Mixed Requests
 - If Gerry asks for a JS-engine module and a separate explainer, prefer the JS-engine playbook first.
 - If Gerry later says `turn that into a report` or `make an education module from this`, switch to the named visual playbook.
