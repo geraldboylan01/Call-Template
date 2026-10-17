@@ -1,4 +1,4 @@
-# Planéir Consumer Journey Operations
+# Planeir Consumer Journey Operations
 
 This runbook covers the separately feature-flagged consumer planning journey at
 `/plan/` and `/api/consumer/*`. It does not change the adviser workspace,
@@ -32,7 +32,7 @@ contracts remain unchanged.
   or write trusted state directly.
 - In the bounded adviser-test voice flow, OpenAI processes a bounded microphone recording
   into a reviewable transcript and may synthesize only the exact deterministic
-  Planéir question. Voice is a transport layer: it does not enable model-driven
+  Planeir question. Voice is a transport layer: it does not enable model-driven
   intake, select modules, calculate results, or advance journey state.
 - The journey is educational, for adults aged 18 or over, and is not advice,
   approval, eligibility confirmation, or a product recommendation.
@@ -542,7 +542,7 @@ deterministic engines and dated rules are complete.
 | `PATCH` | `/api/consumer/sessions/:id/consent` | Withdraw optional AI processing for the session |
 | `PATCH` | `/api/consumer/sessions/:id/voice/consent` | Grant or withdraw the versioned optional voice-processing consent |
 | `POST` | `/api/consumer/sessions/:id/voice/transcriptions` | Transcribe one bounded microphone recording into reviewable text |
-| `POST` | `/api/consumer/sessions/:id/voice/speech` | Synthesize only the exact current deterministic Planéir question |
+| `POST` | `/api/consumer/sessions/:id/voice/speech` | Synthesize only the exact current deterministic Planeir question |
 | `POST` | `/api/consumer/sessions/:id/handoffs` | Create a separately consented minimal adviser handoff |
 | `DELETE` | `/api/consumer/sessions/:id` | Delete consumer session data |
 
@@ -672,7 +672,7 @@ Strict-Transport-Security: max-age=31556952
 Configure these at the Cloudflare zone/edge (or move `/plan/*` to a host that
 supports response headers) without changing headers for existing adviser pages
 or any non-`/plan` route. `microphone=(self)` permits capture only in the
-same-origin Planéir planning pages; camera and geolocation remain denied. Verify
+same-origin Planeir planning pages; camera and geolocation remain denied. Verify
 both `/plan/` and `/plan/privacy.html` with `curl -sSI`. Keep
 `CONSUMER_JOURNEY_ENABLED=false` if any header is absent or if production HTML
 contains a localhost connection source.

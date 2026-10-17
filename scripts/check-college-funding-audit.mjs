@@ -4,7 +4,7 @@
  * PHASE 5 MODULE #8 — COLLEGE FUNDING, PROVED ARITHMETICALLY.
  *
  * The last runnable module, and the most self-contained: every figure in it is
- * a Planéir assumption rather than something the client supplied, so the risks
+ * a Planeir assumption rather than something the client supplied, so the risks
  * are not in the numbers but in WHICH numbers and WHOSE.
  *
  * Two things distinguish it from every other module audited:

@@ -233,7 +233,7 @@ function buildPensionProjectionModule({ result }) {
  * did not produce is simply left out rather than described vaguely.
  */
 function pensionProjectionSummary({ readiness, potAtIncomeStart, requiredPot, targetToday, surplus }) {
-  const opening = 'This projection carries your pensions forward on Planéir\u2019s standard assumptions '
+  const opening = 'This projection carries your pensions forward on Planeir\u2019s standard assumptions '
     + 'and compares what they are expected to be worth against what the retirement income you asked '
     + 'for would require.';
   const position = potAtIncomeStart && requiredPot

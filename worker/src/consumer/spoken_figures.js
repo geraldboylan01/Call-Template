@@ -2,7 +2,7 @@
  * Every figure the system uses must appear in what the client actually said.
  *
  * Deterministic, free, and the only guard that catches an invented number. It
- * was written for the spoken reflection -- the line Planéir says back while the
+ * was written for the spoken reflection -- the line Planeir says back while the
  * planner reads a turn -- where a hallucinated figure would confirm a value the
  * client never gave. It now also guards extraction done from a partial
  * transcript, where the risk is the reverse but just as bad: a streaming

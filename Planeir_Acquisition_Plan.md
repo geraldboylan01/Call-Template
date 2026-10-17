@@ -1,4 +1,4 @@
-# Planéir — Two-Engine Acquisition & Growth Plan
+# Planeir — Two-Engine Acquisition & Growth Plan
 
 *Turning the lead model into a build-able plan. Prepared for Gerry, July 2026. Numbers are live in `Planeir_Model1_vs_Model2.xlsx` (tabs: Engine 1 — White-Label, Blended Plan).*
 
@@ -6,7 +6,7 @@
 
 ## The thesis in one paragraph
 
-Build one product — an Irish-tax-aware AI planning chat with visual explainers — and distribute it two ways. **Engine 1 (white-label API for advisers)** is the easy, recurring, no-CAC revenue that funds the company: advisers embed your branded chat on their own site and pay a subscription because it turns their traffic into qualified, pre-filled leads. **Engine 2 (consumer education funnel)** is where the scale and enterprise value live: a Planéir-branded destination that acquires consumers cheaply off the auto-enrolment wave, educates them, and — when they *choose* — hands them to advisers as consented, high-intent referrals, plus affiliate revenue. Engine 1 pays the bills and seeds demand; Engine 2 is the venture outcome. They share one codebase, one tax engine, and one compounding dataset.
+Build one product — an Irish-tax-aware AI planning chat with visual explainers — and distribute it two ways. **Engine 1 (white-label API for advisers)** is the easy, recurring, no-CAC revenue that funds the company: advisers embed your branded chat on their own site and pay a subscription because it turns their traffic into qualified, pre-filled leads. **Engine 2 (consumer education funnel)** is where the scale and enterprise value live: a Planeir-branded destination that acquires consumers cheaply off the auto-enrolment wave, educates them, and — when they *choose* — hands them to advisers as consented, high-intent referrals, plus affiliate revenue. Engine 1 pays the bills and seeds demand; Engine 2 is the venture outcome. They share one codebase, one tax engine, and one compounding dataset.
 
 Both halves are precedented: **Planswell** runs Engine 1 today (free planning tool, completed-plan leads, ~$450+/mo, one adviser per lead); **SmartAsset** ran Engine 2 to unicorn scale. Nobody does either localised to Irish tax, timed to auto-enrolment, with your visual/trust edge.
 
@@ -26,7 +26,7 @@ Both engines run on the same asset you've largely built: the AI planning chat, t
 
 **Pricing.** €300/firm/month + €500 setup (in the model). That's mid-way between adviser software (£75–200) and Planswell ($450) — defensible because ~40 leads/year at £65+ each dwarfs a €3,600 annual subscription. Keep leads exclusive (one adviser per lead); shared leads are what advisers complain about elsewhere.
 
-**Who and how.** Target the ~1,250 Brokers Ireland member firms. Start with 5–10 design partners you can reach directly through your existing network and the Planéir relationships you already have — the warm-start you don't have on the consumer side. Then a Brokers Ireland channel/partnership and case studies (leads generated, cost per acquired client vs. Unbiased).
+**Who and how.** Target the ~1,250 Brokers Ireland member firms. Start with 5–10 design partners you can reach directly through your existing network and the Planeir relationships you already have — the warm-start you don't have on the consumer side. Then a Brokers Ireland channel/partnership and case studies (leads generated, cost per acquired client vs. Unbiased).
 
 **Revenue (model).** €36k → €216k → €720k across Years 1–3. Modest in absolute terms, but it's contracted, recurring, sold to a known audience, and needs zero consumer marketing spend. Its job is to fund the build and de-risk the P&L — not to be the scale story.
 
@@ -43,7 +43,7 @@ Both engines run on the same asset you've largely built: the AI planning chat, t
 **Channels, ranked cheapest-first:**
 
 1. **Organic SEO on the auto-enrolment wave.** ~800,000 people were auto-enrolled from January 2026 and are now Googling "what is My Future Fund," "should I opt out," "how much pension do I need." Own those queries with genuinely useful content and a free explainer tool. This is the single biggest, cheapest, most time-sensitive channel — move now while the wave is fresh.
-2. **B2B2C distribution (near-zero CAC).** Employers now have a *legal duty* to help employees understand auto-enrolment but no tool to do it. Package Planéir as the white-labelled "understand your pension" resource that employers, payroll/HR platforms, and benefits consultants hand to staff. The opt-out window (months 7–8) is a built-in high-intent moment. Borrowing an employer's audience is far cheaper than buying consumers one by one.
+2. **B2B2C distribution (near-zero CAC).** Employers now have a *legal duty* to help employees understand auto-enrolment but no tool to do it. Package Planeir as the white-labelled "understand your pension" resource that employers, payroll/HR platforms, and benefits consultants hand to staff. The opt-out window (months 7–8) is a built-in high-intent moment. Borrowing an employer's audience is far cheaper than buying consumers one by one.
 3. **Owned video & social.** Short-form visual explainers are your demonstrated strength and the QFA credibility is the trust unlock. Low cost, compounding, and it feeds the personal brand.
 4. **PR / earned media.** Journalists want plain-English auto-enrolment explainers; you're the ideal source. Free reach.
 5. **Referral / share-your-plan virality.** Built into the product.

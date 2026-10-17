@@ -244,7 +244,7 @@ for (const [moduleId, tamperedInput] of policyTamperCases) {
     generalAmbiguities: [],
     confirmationPrompt: CONFIRMATION_PROMPT
   }, {
-    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planéir policy.' }],
+    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planeir policy.' }],
     throughTurnId: 'turn-policy', previousRevision: 0,
     policyEnvelope: POLICY,
     currentProfileContext: PROFILE,
@@ -272,7 +272,7 @@ pass('AI-authored inputs cannot override pension, liquidity, college, or house-p
     steeringSummary: '', missing: [], ambiguities: [], assumptions: [],
     evidence: id === 'liquidity_analysis'
       ? Object.keys(withoutVersion).map((key) => ({
-        path: `/${key}`, source: 'conversation', turnId: 'turn-policy', quote: 'Use the standard Planéir policy.', profilePath: ''
+        path: `/${key}`, source: 'conversation', turnId: 'turn-policy', quote: 'Use the standard Planeir policy.', profilePath: ''
       }))
       : []
   }));
@@ -284,7 +284,7 @@ pass('AI-authored inputs cannot override pension, liquidity, college, or house-p
     generalAmbiguities: [],
     confirmationPrompt: CONFIRMATION_PROMPT
   }, {
-    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planéir policy.' }],
+    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planeir policy.' }],
     throughTurnId: 'turn-policy', previousRevision: 0,
     policyEnvelope: POLICY, currentProfileContext: PROFILE,
     allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
@@ -821,14 +821,14 @@ pass('college selection without child facts stays incomplete and preserves the n
 // old", chose college funding, and the meeting then died. The planner marked
 // college_funding ready -- correctly: this module's only client-owned input is
 // each child's age, because every cost, the education inflation rate, the start
-// age and the course length are centrally approved Planéir assumptions. The
+// age and the course length are centrally approved Planeir assumptions. The
 // snapshot stored the input the ENGINE derives from that (childrenCount,
 // fundingYears, firstCollegeYear, …) and handed it straight back to the planner
 // next turn as "preserve this". No quote can ever support an engine-derived
 // field, so provenance refused the pass -- and refused it again on every
 // following turn, because each retry was fed the same poisoned previous input.
 // Seven consecutive passes failed, no snapshot advanced, no confirmation could
-// ever be offered, and Planéir ended up telling the client to wait.
+// ever be offered, and Planeir ended up telling the client to wait.
 //
 // The rule this pins: the planner is shown only input a planner could author.
 {
@@ -851,7 +851,7 @@ pass('college selection without child facts stays incomplete and preserves the n
     outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
     status: id === 'college_funding' ? 'ready' : 'not_relevant',
     inputJson: id === 'college_funding' ? JSON.stringify(input) : '',
-    steeringSummary: id === 'college_funding' ? 'One child, a newborn, with college timing on the approved Planéir assumptions.' : '',
+    steeringSummary: id === 'college_funding' ? 'One child, a newborn, with college timing on the approved Planeir assumptions.' : '',
     missing: [],
     ambiguities: [],
     assumptions: id === 'college_funding' ? [
@@ -1140,7 +1140,7 @@ try {
   /* ------------- the planner is told what each module can actually do ------ */
 
   // WHY THIS IS PINNED. The whole architecture rests on the AI making semantic
-  // judgments about a SPECIFIC Planéir calculation -- what it needs, what it
+  // judgments about a SPECIFIC Planeir calculation -- what it needs, what it
   // assumes, what it cannot do -- rather than about financial planning in
   // general. That only holds while the Master Prompt Pack actually reaches the
   // model. Nothing else in this suite would notice if the playbook wiring were
@@ -1219,7 +1219,7 @@ try {
             inputJson: JSON.stringify(invented),
             assumptions: [
               ...item.assumptions,
-              // The planner claiming Planéir models something it does not.
+              // The planner claiming Planeir models something it does not.
               { path: '/interestOnlyPeriodYears', valueJson: '5', source: 'planning_policy' }
             ]
           }

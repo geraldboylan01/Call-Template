@@ -73,7 +73,7 @@ export function buildGradingSheet({ runId, calls }) {
       '',
       '<!-- transcript -->',
       ...(call.transcript || []).map((entry) => (
-        `> **${entry.role === 'client' ? 'CLIENT' : 'PLANÉIR'}:** ${entry.text}`
+        `> **${entry.role === 'client' ? 'CLIENT' : 'PLANEIR'}:** ${entry.text}`
       )),
       '',
       ...((call.execution?.results || []).length

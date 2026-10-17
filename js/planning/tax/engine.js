@@ -574,7 +574,7 @@ function recurringGrossIncome(income) {
  * @param {object} args
  * @param {object} [args.state] Carried state from the previous year (3.3).
  * @param {object} args.input One year's people, items and events (3.2).
- * @param {object} [args.assumptions] Planéir assumptions in force; only the version is read.
+ * @param {object} [args.assumptions] Planeir assumptions in force; only the version is read.
  * @returns {{ result: object, nextState: object }}
  */
 export function computeTaxYear({ state = null, input, assumptions = null } = {}) {

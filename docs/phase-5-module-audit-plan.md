@@ -16,7 +16,7 @@ it still resolve.
 
 ## What Phase 5 established
 
-Every deterministic module Planéir can run has now been audited against
+Every deterministic module Planeir can run has now been audited against
 arithmetic written separately from the engine under test. Across eight modules:
 
 - **Twelve defects were found and fixed** — nine by the audits themselves, three
@@ -302,7 +302,7 @@ Two decisions belonged to the owner and were taken by the owner, not here.
   household") and why the buffer is larger in retirement at all: earned income
   has stopped. A stated household retirement status still outranks the
   per-person reading.
-- **Where more than one mortgage could validly be analysed, Planéir asks which
+- **Where more than one mortgage could validly be analysed, Planeir asks which
   one rather than selecting silently.** Selection uses stable entity identity,
   not array position; reversing the order of the liabilities changes nothing.
   `selectLiabilityOfType` returns the candidates and whether the choice is

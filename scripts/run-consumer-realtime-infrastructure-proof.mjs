@@ -13,7 +13,7 @@ import { LIVE_TOOLSET_VERSION } from '../worker/src/consumer/live/live_tools.js'
  * Chromium's built-in fake source emits a repeating tone, which is loud enough
  * to trip server-side VAD. A greeting observed under that flag alone may be
  * the model ANSWERING the beep, so it proves the opposite of what this proof
- * claims — that Planéir opens the conversation on its own.
+ * claims — that Planeir opens the conversation on its own.
  *
  * Writing real silence and pointing `--use-file-for-fake-audio-capture` at it
  * is what makes the autonomous-opening claim mean anything.
@@ -150,7 +150,7 @@ export function resolveMeetingEntry(entry, { typedLaneEnabled } = {}) {
   return {
     ready: false,
     action: 'none',
-    reason: 'Neither the auto-opened meeting shell nor the Talk to Planéir launcher became available.'
+    reason: 'Neither the auto-opened meeting shell nor the Talk to Planeir launcher became available.'
   };
 }
 

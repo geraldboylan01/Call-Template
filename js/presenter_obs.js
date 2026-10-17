@@ -1,5 +1,5 @@
 // OBS WebSocket v5. Runs only in the local controls window. Credentials never
-// enter the Planéir window, a URL, storage, or the local HTTP server.
+// enter the Planeir window, a URL, storage, or the local HTTP server.
 export async function obsAuthentication(password, { salt, challenge }) {
   const digest = async text => btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))));
   return digest((await digest(password + salt)) + challenge);

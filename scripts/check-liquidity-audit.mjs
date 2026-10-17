@@ -4,7 +4,7 @@
  * PHASE 5 MODULE #3 — THE LIQUIDITY RESERVE, PROVED ARITHMETICALLY.
  *
  * This module tells a household how many months its cash would cover and how
- * far it is from Planéir's reserve target. It is the prerequisite House
+ * far it is from Planeir's reserve target. It is the prerequisite House
  * Purchase declares, so its correctness is load-bearing for a module already
  * signed off.
  *
@@ -133,7 +133,7 @@ const cash = (assetId, ownerIds, amount, label = 'Savings') => ({
     PLANEIR_ASSUMPTIONS.liquidity.policyVersion,
     'the run is stamped with the policy version it applied'
   );
-  pass('the 3/6 and 12/24 guides come from the versioned Planéir policy, applied once');
+  pass('the 3/6 and 12/24 guides come from the versioned Planeir policy, applied once');
 }
 
 /* -------------------------------------------------------- hand-checkable */

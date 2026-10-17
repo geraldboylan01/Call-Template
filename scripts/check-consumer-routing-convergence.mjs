@@ -1,6 +1,6 @@
 // Proves the two routing paths cannot diverge.
 //
-// Planéir routes modules twice: buildGoalModulePlan decides what the
+// Planeir routes modules twice: buildGoalModulePlan decides what the
 // conversation tells the client it will analyse, and recommendModules is the
 // execution-time default inside runConsumerAnalysis when no explicit module ids
 // are passed. Before P2 these were two hand-maintained tables that already

@@ -9,7 +9,7 @@ export const EDUCATION_CALL = Object.freeze({
   durationMinutes: 40,
   platform: 'Zoom',
   heading: 'Talk through your results with Gerry.',
-  description: 'Discuss your figures, assumptions and modelled outcomes with Gerry Boylan, the person who built Planéir.',
+  description: 'Discuss your figures, assumptions and modelled outcomes with Gerry Boylan, the person who built Planeir.',
   action: 'Request a call with Gerry'
 });
 

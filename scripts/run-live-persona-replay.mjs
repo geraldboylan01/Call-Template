@@ -1210,7 +1210,7 @@ async function main() {
     }
 
     for (const turn of outcome.transcript) {
-      const who = turn.role === 'client' ? 'CLIENT ' : 'PLANÉIR';
+      const who = turn.role === 'client' ? 'CLIENT ' : 'PLANEIR';
       console.log(`  ${who} │ ${turn.text.replace(/\n/g, ' ')}`);
     }
 

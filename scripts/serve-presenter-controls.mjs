@@ -22,11 +22,11 @@ export function createControlsServer() {
         'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src ws://127.0.0.1:*; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
       });
       res.end(await readFile(new URL(file[0], import.meta.url)));
-    } catch { res.writeHead(500); res.end('Controls assets are missing. Update your local Planéir repository.'); }
+    } catch { res.writeHead(500); res.end('Controls assets are missing. Update your local Planeir repository.'); }
   });
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   createControlsServer().on('error', error => {
-    console.error(error.code === 'EADDRINUSE' ? 'Port 8790 is already in use. If Planéir controls are already running, keep that Terminal open.' : error.message); process.exitCode = 1;
-  }).listen(8790, '127.0.0.1', () => console.log(`Planéir controls ready at ${origin}. Keep this Terminal open. In Planéir Presenter Mode, click “Open recording controls”.`));
+    console.error(error.code === 'EADDRINUSE' ? 'Port 8790 is already in use. If Planeir controls are already running, keep that Terminal open.' : error.message); process.exitCode = 1;
+  }).listen(8790, '127.0.0.1', () => console.log(`Planeir controls ready at ${origin}. Keep this Terminal open. In Planeir Presenter Mode, click “Open recording controls”.`));
 }

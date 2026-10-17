@@ -77,7 +77,7 @@ Optional on each case:
 - Order them as Gerry gives them. Otherwise lump sum first, then the rest from least to most delay.
 
 ## Rates Are Central
-- Do not emit any rate. `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` and `dirtRate` are each rejected with `generated.futureCostFundInputs.<field> is not accepted. Rates are set centrally in the Planéir assumptions.`
+- Do not emit any rate. `priceGrowthRate`, `savingsGrowthRate`, `inflationRate` and `dirtRate` are each rejected with `generated.futureCostFundInputs.<field> is not accepted. Rates are set centrally in the Planeir assumptions.`
 - Education costs rise 4% a year and general prices 2%. The fund earns the central instant-access cash rate, 0.2% before DIRT, with DIRT at 33% taken each year.
 - If Gerry dictates a different rate, keep the central rates, build the module, and say in NOTES that the rate he gave is not used.
 

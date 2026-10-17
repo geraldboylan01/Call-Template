@@ -94,7 +94,7 @@ export function runFutureCostFundWiringTests() {
     };
     refuse(
       { priceGrowthRate: 0.1 },
-      'generated.futureCostFundInputs.priceGrowthRate is not accepted. Rates are set centrally in the Planéir assumptions.'
+      'generated.futureCostFundInputs.priceGrowthRate is not accepted. Rates are set centrally in the Planeir assumptions.'
     );
     refuse(
       { scenarios: [...SAMPLE.scenarios, { id: 'e', lumpShare: 0.25 }] },

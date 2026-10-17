@@ -20,9 +20,9 @@
 proposal for a protected text/agent transport over the *existing* consumer
 planning engine.
 
-**Scope.** A protected area of the Planéir site, and a matching machine
+**Scope.** A protected area of the Planeir site, and a matching machine
 interface, where a human tester or an external AI model can hold a **text**
-conversation with the Planéir consumer planning assistant and receive the same
+conversation with the Planeir consumer planning assistant and receive the same
 planning journey, module decisions and outputs as a live realtime voice call —
 with no audio, no speech and no second routing implementation.
 
@@ -907,7 +907,7 @@ Three columns, with the left/right split being the point of the whole page.
 │ (consumer projection)     │ (diagnostic projection)              │
 ├───────────────────────────┼──────────────────────────────────────┤
 │ Transcript                │ Goals — active / deferred / primary  │
-│  client / Planéir         │ Facts — id, value, certainty, status │
+│  client / Planeir         │ Facts — id, value, certainty, status │
 │                           │ Pending question — factId + reason   │
 │ [ message input ]         │ Analyses — slot, moduleId, source,   │
 │ [ send ] [ reset ]        │           availability, intakeStatus │
@@ -973,7 +973,7 @@ flowchart LR
       SC[scenario identity + goals + facts + style]
       SC -.->|never sees| EXP[expected outcomes]
     end
-    subgraph Sut["2. Planéir under test"]
+    subgraph Sut["2. Planeir under test"]
       PT[planner + shared core + renderer]
     end
     subgraph Judge["3. Evaluator"]
@@ -1001,7 +1001,7 @@ Contamination rules:
 ### 11.3 Simulated-client prompt shape
 
 Given: scenario identity, goals, circumstances, facts it knows, communication
-style, behaviours, latest Planéir reply. Instructed to answer as a person, not
+style, behaviours, latest Planeir reply. Instructed to answer as a person, not
 to volunteer the whole scenario at once, not to name goal codes or module names,
 and not to reveal it is simulated. Bounded output length. Never given the
 expected result.

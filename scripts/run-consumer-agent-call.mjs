@@ -174,7 +174,7 @@ for (const callerPath of callerPaths) {
   lastConfig = run.config;
 
   for (const entry of run.transcript) {
-    console.info(`  ${entry.role === 'client' ? 'CLIENT ' : 'PLANÉIR'} ${entry.text}`);
+    console.info(`  ${entry.role === 'client' ? 'CLIENT ' : 'PLANEIR'} ${entry.text}`);
   }
 
   const observedTurns = run.turnRecords || run.turns;

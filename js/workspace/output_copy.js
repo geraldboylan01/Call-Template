@@ -5,10 +5,10 @@ import { WORKSPACE_COPY } from './copy.js';
 export function workspaceReceiptText(workspaceUrl) {
   const url = new URL(workspaceUrl);
   if (url.origin !== 'https://planeir.ie' || url.username || url.password) {
-    throw new Error('A private Planéir return link is required.');
+    throw new Error('A private Planeir return link is required.');
   }
   return [
-    'Your Planéir workspace is ready.',
+    'Your Planeir workspace is ready.',
     `Return to your private workspace: ${url.href}`,
     'It remains saved until you delete it.',
     WORKSPACE_COPY.automaticNotice,

@@ -630,7 +630,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
           { factId: 'pension_current_value', why: 'the balance we project forward' },
           { factId: 'gross_household_income', why: 'sizes the contribution' }
         ],
-        mayAssume: [{ label: 'Investment growth rate', why: 'a standard Planéir assumption' }]
+        mayAssume: [{ label: 'Investment growth rate', why: 'a standard Planeir assumption' }]
       },
       {
         description: 'check your emergency reserve',
@@ -854,7 +854,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ), 'A direct request phrased as "which financial action" must be checked.');
   ok(!clientRequestsRecommendation(
     'My main concern is knowing which option gives me the better balance between retirement and debt.'
-  ), 'A client describing their concern must not be mistaken for a request that Planéir choose.');
+  ), 'A client describing their concern must not be mistaken for a request that Planeir choose.');
   ok(!declineIsSubstantive("I can't advise you."),
     `A bare "I can't" must not count as an affirmative "I can" alternative.`);
   ok(!declineIsSubstantive("I can't compare those options for you."),
@@ -2481,7 +2481,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
 
   // TYPE MODE'S WHOLE PROMISE, ASSERTED ON THE SOURCE.
   //
-  // "When I choose Type, Planéir chats with me" means the client is never
+  // "When I choose Type, Planeir chats with me" means the client is never
   // asked for a microphone, never has audio played at them, and never waits on
   // a peer connection. Today's typing box fails all three, because it lives
   // inside the call. These assertions are what stop the typed lane quietly

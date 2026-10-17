@@ -1964,7 +1964,7 @@ async function createZoomMeeting(env, lead, schedule) {
       start_time: schedule.scheduledStartAt,
       duration: getLeadScheduleDurationMinutes(schedule),
       timezone: schedule.scheduledTimezone || DEFAULT_LEAD_SCHEDULE_TIMEZONE,
-      agenda: `${isPrivateEducationCall(lead) ? 'Private' : 'Free'} Planéir education call with ${lead.fullName || 'client'}. Educational only, not financial advice.`,
+      agenda: `${isPrivateEducationCall(lead) ? 'Private' : 'Free'} Planeir education call with ${lead.fullName || 'client'}. Educational only, not financial advice.`,
       settings: {
         join_before_host: false,
         waiting_room: true,

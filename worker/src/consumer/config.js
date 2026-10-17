@@ -716,7 +716,7 @@ export function publicConsumerConfig(config) {
       availability: { available: config.liveVoiceEnabled, status: config.liveVoiceEnabled ? 'available' : 'unavailable' },
       aiGeneratedDisclosure: config.liveVoiceEnabled
         ? (config.modulePlannerMode === 'apply'
-            ? 'Realtime AI speaks with you directly while a background AI reads the conversation and prepares the structured inputs for the relevant Planéir analyses. Those inputs are independently checked and read back for your confirmation before deterministic calculations run.'
+            ? 'Realtime AI speaks with you directly while a background AI reads the conversation and prepares the structured inputs for the relevant Planeir analyses. Those inputs are independently checked and read back for your confirmation before deterministic calculations run.'
             : 'Realtime AI speaks with you directly and records what you say as reviewable draft facts as the conversation goes. A background planner may review those draft notes after each turn. Deterministic code controls the analyses, saved profile and calculations.')
         : null
     },

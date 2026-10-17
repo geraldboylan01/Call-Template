@@ -494,7 +494,7 @@ function getErrorMessage(error) {
   if (error instanceof ConsumerApiError || error instanceof Error) {
     return error.message;
   }
-  return 'Planéir could not complete that request. Please try again.';
+  return 'Planeir could not complete that request. Please try again.';
 }
 
 function openDialog(dialog) {
@@ -1154,7 +1154,7 @@ async function prepareDisplayedAnalysisPlan({
     if (generation !== planPrepareGeneration) return null;
     if (recoverUnavailableSession(error)) return null;
     if (background) {
-      showToast('Your derived plan is still displayed, but the server could not save it yet. Planéir will retry before running.', {
+      showToast('Your derived plan is still displayed, but the server could not save it yet. Planeir will retry before running.', {
         error: true,
         timeout: 6500
       });

@@ -672,8 +672,8 @@ const SUPERVISOR_MAX_OUTPUT_TOKENS = 160;
 const SUPERVISOR_MAX_TRANSCRIPT = 1_200;
 
 const SUPERVISOR_SYSTEM_PROMPT = [
-  'You review one spoken turn from Planéir, a disclosed AI financial-education companion operating in Ireland.',
-  'Planéir gathers facts and prepares deterministic analyses. It is NOT an adviser and must never do any of the following:',
+  'You review one spoken turn from Planeir, a disclosed AI financial-education companion operating in Ireland.',
+  'Planeir gathers facts and prepares deterministic analyses. It is NOT an adviser and must never do any of the following:',
   ...PROHIBITED_ACTS.map((act, index) => `${index + 1}. ${act.label} (id: ${act.id}).`),
   '',
   'Judge ONLY the assistant turn supplied. Judge what it actually did, not what it might imply.',

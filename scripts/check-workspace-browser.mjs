@@ -75,7 +75,7 @@ try {
     await page.goto(`${base}/dev/education-call-preview.html`);
     await page.waitForSelector('.education-call-cta').catch(error => { throw new Error(`${error.message} Browser errors: ${errors.join('; ')}`); });
     assert.match(await page.locator('.education-call-cta').innerText(), /Talk through your results with Gerry\./);
-    assert.match(await page.locator('.education-call-cta').innerText(), /person who built Planéir/);
+    assert.match(await page.locator('.education-call-cta').innerText(), /person who built Planeir/);
     assert.match(await page.locator('.education-call-cta').innerText(), /€100.*40 minutes on Zoom/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} call invitation overflow`);
     const gates = await page.evaluate(async () => {

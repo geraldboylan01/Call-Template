@@ -1005,14 +1005,14 @@ assert.ok(
   'The persistent realtime shell must live after and outside the rerendered appRoot.'
 );
 assert.match(planIndexSource, /id="realtimeVoiceCompanion"/);
-assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*Talk to Planéir/);
+assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*Talk to Planeir/);
 assert.match(planIndexSource, /id="realtimeVoiceLauncher"[\s\S]*aria-controls="realtimeVoiceShell"/);
 assert.match(planIndexSource, /id="realtimeVoiceShell"[\s\S]*role="dialog"[\s\S]*aria-modal="true"/);
 assert.match(planIndexSource, /id="realtimeVoiceCollapseButton"/);
 assert.doesNotMatch(planIndexSource, /id="realtimeVoiceTurnButton"/);
 assert.match(planIndexSource, /id="realtimeVoiceOrbCanvas"[\s\S]*aria-hidden="true"/);
 assert.match(planIndexSource, /id="realtimeVoiceOrbLabel"[\s\S]*role="status"[\s\S]*aria-live="polite"/);
-assert.match(planIndexSource, /id="realtimeVoiceStartButton"[\s\S]*Start your Planéir meeting/);
+assert.match(planIndexSource, /id="realtimeVoiceStartButton"[\s\S]*Start your Planeir meeting/);
 assert.match(planIndexSource, /id="realtimeVoiceEndButton"[\s\S]*id="realtimeVoiceTranscriptToggle"/);
 assert.doesNotMatch(planIndexSource, /realtimeVoiceMuteButton|realtimeVoiceFocusComposerButton|realtimeVoiceReviewButton|realtimeVoiceBoundedFallbackButton/);
 assert.equal(
@@ -1125,7 +1125,7 @@ assert.match(
   await handlers.get('copy:click')();
   assert.equal(
     copiedTranscript,
-    'You: My goal is to retire at 60.\n\nPlanéir (AI): Let’s work through that together.',
+    'You: My goal is to retire at 60.\n\nPlaneir (AI): Let’s work through that together.',
     'Copy transcript must put every visible turn and speaker label on the clipboard.'
   );
 
@@ -1223,7 +1223,7 @@ assert.doesNotMatch(realtimeSource, /sendEvent\(\{\s*type:\s*'response\.cancel'/
 assert.match(realtimeSource, /input_audio_buffer\.speech_started/);
 assert.match(realtimeSource, /MAX_TRANSCRIPT_ITEMS/);
 assert.match(realtimeSource, /classList\.toggle\('is-budget-low', budgetLow\)/);
-assert.match(realtimeSource, /setPhase\('interrupted', 'Planéir stopped speaking\./);
+assert.match(realtimeSource, /setPhase\('interrupted', 'Planeir stopped speaking\./);
 assert.match(planCssSource, /\.realtime-voice-shell\.is-budget-low \.realtime-budget-card/);
 assert.match(planCssSource, /\.realtime-voice-launcher\s*\{/);
 assert.match(planCssSource, /body\.realtime-companion-open/);
@@ -1489,7 +1489,7 @@ const pristineProfileContext = extractRealtimePlanningContext({}, {
 assert.equal(
   pristineProfileContext.facts.length,
   0,
-  'System identifiers and default policy/calculation values must not appear as facts Planéir understood.'
+  'System identifiers and default policy/calculation values must not appear as facts Planeir understood.'
 );
 const userSuppliedProfileContext = extractRealtimePlanningContext({}, {
   profile: {

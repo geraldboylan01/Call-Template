@@ -246,7 +246,7 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     ])
   }),
   disclosures: Object.freeze([
-    'Plan\u00e9ir provides educational financial-planning illustrations only. It does not provide mortgage approval, regulated financial advice, tax advice or legal advice.',
+    'Planeir provides educational financial-planning illustrations only. It does not provide mortgage approval, regulated financial advice, tax advice or legal advice.',
     'Mortgage lending is subject to each lender\u2019s underwriting, affordability assessment, lending criteria and approval.',
     'Government-scheme rules, price ceilings, participating lenders, tax rules and interest rates can change. Confirm current eligibility with the relevant official body before acting.',
     'Savings and mortgage rates shown are assumptions unless explicitly marked as live data.'

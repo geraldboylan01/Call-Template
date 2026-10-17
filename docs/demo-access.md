@@ -1,6 +1,6 @@
 # Demo requests and invitations
 
-The homepage introduces Planéir's goal-led financial education service. The
+The homepage introduces Planeir's goal-led financial education service. The
 demo flow saves information and confirmation only. It never calls AI, runs an
 analysis, publishes results, creates a meeting or takes payment.
 

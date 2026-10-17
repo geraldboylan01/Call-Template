@@ -2133,7 +2133,7 @@ const speechControl = await newControlCapability();
 let speechLease = await createRealtimeLease(env, speechSessionRow, config, speechReservation.entry, speechControl.hash);
 await markRealtimeProviderCostInFlight(env, speechReservation.entry.id, speechSessionId, config);
 speechLease = await activateRealtimeLease(env, speechSessionId, speechLease.id, 'call_controlled_speech_test');
-const greetingText = 'Hello, I’m Planéir. What would you most like help planning?';
+const greetingText = 'Hello, I’m Planeir. What would you most like help planning?';
 const greetingAuthorization = await issueRealtimeSpeechAuthorization({
   env,
   sessionId: speechSessionId,
@@ -3573,7 +3573,7 @@ const welcomeCreate = welcomeSocket.sent.find((event) => (
 ));
 assert.ok(welcomeCreate, 'Starting v2 must authorize an immediate spoken welcome.');
 assert.equal(welcomeCreate.response.tool_choice, 'none');
-assert.match(welcomeCreate.response.instructions, /Introduce yourself as Planéir/);
+assert.match(welcomeCreate.response.instructions, /Introduce yourself as Planeir/);
 assert.match(welcomeCreate.response.instructions, /relaxed conversation/);
 assert.match(welcomeCreate.response.instructions, /no analysis runs until they review and confirm/);
 
@@ -4847,7 +4847,7 @@ assert.doesNotMatch(
   /OpenAI-Beta['"]?\s*:\s*['"]realtime=v1/,
   'The GA Realtime sideband must not send the removed beta header.'
 );
-assert.match(realtimeSessionSource, /Introduce yourself as Planéir, an AI planning companion/);
+assert.match(realtimeSessionSource, /Introduce yourself as Planeir, an AI planning companion/);
 assert.match(realtimeSessionSource, /no analysis runs until they review and confirm/);
 assert.match(
   realtimeSessionSource,

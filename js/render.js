@@ -11269,7 +11269,7 @@ function renderHousePurchaseWizardStep(stepIndex, draft, updateDraft) {
     addCurrency('Ringfenced for other goals', ['amountRingfencedForOtherGoals'], draft.amountRingfencedForOtherGoals);
     grid.appendChild(makeHousePurchaseField({
       label: 'Emergency reserve', value: draft.emergencyReserveMode || 'suggested',
-      options: [['suggested', 'Use Planéir suggested reserve'], ['custom', 'Set a custom reserve']],
+      options: [['suggested', 'Use Planeir suggested reserve'], ['custom', 'Set a custom reserve']],
       help: 'The suggested reserve uses household essentials and retains the existing Liquidity safety floor.',
       onChange: (next) => updateDraft(['emergencyReserveMode'], next, { requestRender: true })
     }));
@@ -12691,7 +12691,7 @@ function buildHousePurchaseAssumptionsCard(projection) {
   const disclosures = document.createElement('div');
   disclosures.className = 'house-purchase-disclosures';
   [
-    'Planéir provides educational financial-planning illustrations only. It does not provide mortgage approval, regulated financial advice, tax advice or legal advice.',
+    'Planeir provides educational financial-planning illustrations only. It does not provide mortgage approval, regulated financial advice, tax advice or legal advice.',
     'Mortgage lending is subject to each lender’s underwriting, affordability assessment, lending criteria and approval.',
     'Government-scheme rules, price ceilings, participating lenders, tax rules and interest rates can change. Confirm current eligibility with the relevant official body before acting.',
     'Savings and mortgage rates shown are assumptions unless explicitly marked as live data.'

@@ -83,8 +83,8 @@ function assertStringMetadata(metadata) {
 const prompt = buildLiveCataloguePrompt();
 assert.match(prompt, /Before the client has spoken, open once:/,
   'ORIENT must have an explicit empty-conversation branch');
-assert.match(prompt, /Planéir, an AI\s+planning companion/,
-  'the opening branch must disclose that Planéir is AI');
+assert.match(prompt, /Planeir, an AI\s+planning companion/,
+  'the opening branch must disclose that Planeir is AI');
 assert.match(prompt, /only exception to[\s\S]{0,80}reflecting something the client said/,
   'the opening must not pretend a client detail exists');
 
@@ -267,7 +267,7 @@ assert.match(prompt, /only exception to[\s\S]{0,80}reflecting something the clie
 // looking, to the ledger, exactly like a settled one. In a long meeting the
 // ledger is already at its bound, and evicting there loses both the causal
 // turn the tool call needs for evidence and the continuation that lets
-// Planéir speak again.
+// Planeir speak again.
 {
   const { session, sent } = await testSession();
   const jobs = [];

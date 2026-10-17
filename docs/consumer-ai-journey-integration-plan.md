@@ -1,4 +1,4 @@
-# Planéir Consumer AI Journey Integration Plan
+# Planeir Consumer AI Journey Integration Plan
 
 Status: production-hardened implementation complete through the feature-flagged text,
 deterministic-analysis, optional AI-intake, and Gerry-handoff private-beta seams.
@@ -969,4 +969,4 @@ remaining decisions are external activation controls or later-scope choices:
 
 Proceed incrementally with a limited shared-core refactor, not a rewrite. The first implementation milestone should be regression protection plus a DOM-free registry/adapters around the existing deterministic engines. The first usable consumer milestone should be a feature-flagged, rules-only `/plan/` journey using House Purchase and Liquidity, with review and confirmation before any calculation. AI should be layered on only after that path works end to end.
 
-This sequence gives Planéir one calculation source, two presentation/orchestration layers, isolated permissions and data, and a kill switch that leaves the production adviser portal fully operational.
+This sequence gives Planeir one calculation source, two presentation/orchestration layers, isolated permissions and data, and a kill switch that leaves the production adviser portal fully operational.
