@@ -30,6 +30,15 @@ export function runGoalsAndResourcesWiringTests() {
     assert(JSON.stringify(module.generated.outputs) === JSON.stringify(expected.outputsTable), 'refresh derives them again');
     assert(module.generated.tables[0].rows[0][0] === String(expected.debug.calculationYear), 'ledger uses calendar years');
   });
+  check('Child names never enter rendered ledger headings or the video ledger', () => {
+    const raw = clone(GOALS_AND_RESOURCES_SAMPLE);
+    raw.children[0].title = 'Aoife'; raw.children[1].title = 'Cian';
+    const module = paste(createBlankModule(), { goalsAndResourcesInputs: raw });
+    assert(!/Aoife|Cian/i.test(JSON.stringify(module.generated.tables)), 'all case ledgers use ordinals');
+    assert(module.generated.tables.every((table) => table.columns.includes('College, first child (€)')), 'first child label');
+    const manifest = buildVideoSceneManifest({ module, session: {} });
+    assert(!/Aoife|Cian/i.test(JSON.stringify(manifest.story)), 'video ledger uses ordinals');
+  });
   check('Switching between report and goals clears the previous native input and figures', () => {
     const module = paste(createBlankModule(), { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE });
     paste(module, { report: { title: 'Report', blocks: [] } });

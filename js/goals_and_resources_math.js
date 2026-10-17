@@ -1172,13 +1172,18 @@ function buildOutputsTable(cases, hasLater) {
   };
 }
 
+/** Client-facing child labels use order, never a supplied name. */
+export function goalsAndResourcesChildLabel(index) {
+  return `${['First', 'Second', 'Third', 'Fourth'][index]} child`;
+}
+
 function buildTables(inputs, cases, year) {
   return cases.map((entry) => ({
     title: `${entry.words.title}: what you need each year`,
     columns: [
       'Year',
       'Mortgage change (€)',
-      ...inputs.children.map((child) => `College, ${child.title.toLowerCase()} (€)`),
+      ...inputs.children.map((_child, index) => `College, ${goalsAndResourcesChildLabel(index).toLowerCase()} (€)`),
       'Retirement, after relief (€)',
       'Total (€)',
       'Against what you have (€)'

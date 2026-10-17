@@ -24,6 +24,8 @@
  * the engine's sake; none of them reaches a string here.
  */
 
+import { goalsAndResourcesChildLabel } from './goals_and_resources_math.js';
+
 import { renderTaxDisclosures } from './planning/tax/disclosures.js';
 import { resolveTaxRules } from './planning/tax/resolve.js';
 
@@ -140,7 +142,7 @@ function repaymentVerb(monthly, today) {
   return a > b ? 'rises to' : 'falls to';
 }
 
-const CHILD_ORDINALS = Object.freeze(['First', 'Second', 'Third', 'Fourth']);
+
 
 /** Proposal A: keep the state word and put dated coverage in the detail. */
 function goalTimeline(goal, year) {
@@ -191,7 +193,7 @@ function buildGoal(goal, entry, debug, children) {
     // A child is "first", "second" and so on, by position, whatever the payload
     // calls them: the screen never carries a name.
     const position = Math.max(0, children.findIndex((candidate) => candidate.id === goal.goal));
-    const ordinal = `${CHILD_ORDINALS[position] || `Child ${position + 1}`} child`;
+    const ordinal = goalsAndResourcesChildLabel(position);
     return {
       ...common,
       name: `College, ${ordinal.toLowerCase()}`,
