@@ -31,6 +31,9 @@ jobs:
       - name: Install project dependencies
         run: npm ci
 
+      - name: Check demo access and confirmation boundaries
+        run: npm run check:demo
+
       - name: Check consumer boundaries and planning contracts
         run: npm run check:consumer
 
@@ -41,6 +44,7 @@ jobs:
           npm run check:household-cash-flow
           npm run check:protection-gap
           npm run check:rental-keep-or-sell
+          npm run check:home-trade-down
           npm run check:module-media
           npm run check:video-summary
           npm run check:video-scene

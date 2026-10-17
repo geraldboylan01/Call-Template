@@ -110,7 +110,8 @@ assert.match(indexSource, /pathname\.startsWith\('\/api\/consumer\/'\)/);
 assert.match(indexSource, /await import\('\.\/consumer\/router\.js'\)/);
 assert.match(indexSource, /createConsumerPipelineHandoff/);
 assert.match(indexSource, /source[^\n]*'consumer-plan'/);
-assert.match(indexSource, /'reviewing', 0, 1, 0, 'consumer-plan'/);
+assert.match(indexSource, /'reviewing', 0, 1, 0, \?/);
+assert.match(indexSource, /privateCall \? EDUCATION_CALL\.leadSource : 'consumer-plan'/);
 assert.match(indexSource, /PRAGMA table_info\(leads\)/);
 assert.match(indexSource, /educationOnlyConsent:\s*true/);
 assert.match(indexSource, /cleanupExpiredConsumerSessions/);
@@ -373,7 +374,7 @@ const activationEnv = {
   CONSUMER_CONSENT_MANIFEST_ID: 'consumer-adviser-test-manifest-v1',
   CONSUMER_ANALYSIS_NOTICE_ID: 'analysis-adviser-test-v1',
   CONSUMER_AI_NOTICE_ID: 'ai-adviser-test-v1',
-  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
+  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy-legacy.html',
   CONSUMER_SESSION_TTL_DAYS: '7',
   // What replaceTomlString writes when a protected dispatch sets
   // activate_realtime_adviser_canary=true with the paid proof.
@@ -427,7 +428,7 @@ assert.match(deployWorkflowSource, /CONSUMER_BETA_CONSENT_POLICY_VERSION: "consu
 assert.match(deployWorkflowSource, /CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_ANALYSIS_NOTICE_ID: "privacy-ack-adviser-test-v2"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"/);
-assert.match(deployWorkflowSource, /CONSUMER_BETA_PRIVACY_NOTICE_URL: "https:\/\/planeir\.ie\/plan\/privacy\.html"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_PRIVACY_NOTICE_URL: "https:\/\/planeir\.ie\/plan\/privacy-legacy\.html"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_SESSION_TTL_DAYS: "7"/);
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_COHORT', 'adviser_test'\)/);
 assert.match(deployWorkflowSource, /replaceTomlString\(generatedSource, 'CONSUMER_INVITE_MAX_TTL_HOURS', '24'\)/);
@@ -439,7 +440,7 @@ assert.doesNotMatch(deployWorkflowSource, /RUN_PAID_VOICE_PROVIDER_SMOKE|run_pai
 assert.match(deployWorkflowSource, /CONSUMER_HANDOFF_ENABLED: 'false'/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "5000"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"/);
-assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_URL: "https:\/\/planeir\.ie\/plan\/privacy\.html#handoff"/);
+assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_POLICY_URL: "https:\/\/planeir\.ie\/plan\/privacy-legacy\.html#handoff"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"/);
 assert.match(deployWorkflowSource, /CONSUMER_BETA_HANDOFF_RETENTION_DAYS: "30"/);
 assert.match(deployWorkflowSource, /bootstrap config must keep the realtime handoff disabled/);
@@ -694,7 +695,7 @@ const betaDeploymentPolicy = {
   voiceName: 'nova',
   voicePricingVersion: 'openai-audio-eur-safety-2026-07-13-v2',
   voiceSessionBudgetMicroEur: 2_000_000,
-  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html',
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy-legacy.html',
   sessionTtlDays: 7
 };
 const betaDeploymentBootstrap = {
@@ -834,7 +835,7 @@ const consent = {
   policyVersion: 'consumer-v1',
   analysisNoticeId: 'analysis-v1',
   aiNoticeId: 'ai-v1',
-  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy-legacy.html'
 };
 const consentManifest = {
   manifestId: consent.manifestId,
@@ -866,13 +867,13 @@ const publicConfig = publicConsumerConfig({
   voiceMaxDurationSeconds: 45,
   voiceSessionBudgetMicroEur: 0,
   handoffPolicyVersion: 'handoff-v1',
-  handoffPolicyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
+  handoffPolicyUrl: 'https://planeir.ie/plan/privacy-legacy.html#handoff',
   handoffRetentionPolicyId: 'handoff-retention-v1',
   handoffRetentionDays: 30,
   bookingUrl: 'https://example.com/private-booking'
 });
 assert.equal(publicConfig.bookingUrl, undefined, 'bootstrap must not disclose the booking URL before a linked handoff');
-assert.equal(publicConfig.handoff.policyUrl, 'https://planeir.ie/plan/privacy.html#handoff');
+assert.equal(publicConfig.handoff.policyUrl, 'https://planeir.ie/plan/privacy-legacy.html#handoff');
 assert.deepEqual(validateCreateSessionBody({ consent }, consentManifest), consent);
 for (const invalid of [
   { ...consent, privacyNoticeAcknowledged: false },
@@ -893,7 +894,7 @@ assert.throws(() => validateConsentBody({ aiProcessing: true }));
 const voiceConsentExpectation = {
   noticeId: 'voice-adviser-test-v1',
   policyVersion: 'consumer-adviser-test-v1',
-  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy-legacy.html'
 };
 assert.deepEqual(validateVoiceConsentBody({
   granted: true,
@@ -911,12 +912,12 @@ assert.deepEqual(validateVoiceConsentBody({
   granted: false,
   noticeId: 'original-notice',
   policyVersion: 'original-policy',
-  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy-legacy.html'
 }, voiceConsentExpectation), {
   granted: false,
   noticeId: 'original-notice',
   policyVersion: 'original-policy',
-  privacyNoticeUrl: 'https://planeir.ie/plan/privacy.html'
+  privacyNoticeUrl: 'https://planeir.ie/plan/privacy-legacy.html'
 });
 assert.deepEqual(validateVoiceSpeechBody({ idempotencyKey: 'voice-speech-1234' }), {
   idempotencyKey: 'voice-speech-1234'
@@ -1151,11 +1152,11 @@ assert.throws(() => validateHandoffBody({
   requestedHelp: 'My card is 4242 4242 4242 4242',
   consent: true,
   policyVersion: 'handoff-v1',
-  policyUrl: 'https://planeir.ie/plan/privacy.html#handoff',
+  policyUrl: 'https://planeir.ie/plan/privacy-legacy.html#handoff',
   expectedRevision: 3
 }, {
   version: 'handoff-v1',
-  url: 'https://planeir.ie/plan/privacy.html#handoff'
+  url: 'https://planeir.ie/plan/privacy-legacy.html#handoff'
 }), (error) => error.code === 'handoff_sensitive_data_prohibited');
 
 const inviteKeyBytes = crypto.getRandomValues(new Uint8Array(32));
@@ -1196,7 +1197,7 @@ const previewEnv = {
   CONSUMER_CONSENT_MANIFEST_ID: 'consumer-preview-manifest-v1',
   CONSUMER_ANALYSIS_NOTICE_ID: 'analysis-preview-v1',
   CONSUMER_AI_NOTICE_ID: 'ai-preview-v1',
-  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy.html',
+  CONSUMER_PRIVACY_NOTICE_URL: 'https://planeir.ie/plan/privacy-legacy.html',
   CONSUMER_SESSION_TTL_DAYS: '7',
   CONSUMER_INVITE_MAX_TTL_HOURS: '24',
   CONSUMER_ALLOWED_MODULE_IDS: 'college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet',

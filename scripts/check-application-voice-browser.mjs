@@ -16,7 +16,7 @@ const server = createServer(async (request, response) => {
   try {
     let pathname = new URL(request.url, 'http://localhost').pathname;
     if (pathname.endsWith('/')) pathname += 'index.html';
-    if (!/^\/(apply|js|styles|assets|app)\//.test(pathname) && !/^\/(favicon[^/]*|apple-touch-icon\.png)$/.test(pathname)) { response.writeHead(404).end(); return; }
+    if (!/^\/(apply|js|styles|assets|app|dev)\//.test(pathname) && !/^\/(favicon[^/]*|apple-touch-icon\.png)$/.test(pathname)) { response.writeHead(404).end(); return; }
     const path = resolve(root, `.${pathname}`);
     if (!path.startsWith(`${root}/`)) { response.writeHead(403).end(); return; }
     const bytes = await readFile(path); response.writeHead(200, { 'Content-Type': mime[extname(path)] || 'application/octet-stream' }).end(bytes);
@@ -41,7 +41,7 @@ await context.route('http://127.0.0.1:8787/**', async route => {
 });
 context.on('page', page => page.on('pageerror', error => errors.push(error.message)));
 async function form(email) {
-  const page = await context.newPage(); await page.goto(`${base}/apply/`);
+  const page = await context.newPage(); await page.goto(`${base}/dev/legacy-application.html`);
   await page.locator('#applyVoiceNote').waitFor({ state: 'visible' });
   await page.fill('#f-question', 'Can I retire earlier?'); await page.fill('#applyName', 'Test Person'); await page.fill('#applyEmail', email);
   await page.check('#applyConsentVideo'); await page.check('#applyConsentEducation');

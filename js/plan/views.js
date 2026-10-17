@@ -1,3 +1,5 @@
+import { EDUCATION_CALL } from '../workspace/education_call.js';
+import { WORKSPACE_COPY } from '../workspace/copy.js';
 import { describePlanningCompletion, getDisplayableResultItems as getResultItems } from './completion.js';
 import { getAiConsent, getConsumerInvite } from './store.js';
 import { isSubscriptionAssistCohort } from './subscription_assist.js';
@@ -269,12 +271,12 @@ function createModeCard(currentState) {
   const usesAi = aiActive && !aiUnavailable;
   const card = element('aside', 'journey-aside-card');
   const pill = element('span', `status-pill${usesAi ? '' : ' is-rules'}`, usesAi ? 'AI-assisted intake' : 'Rules-only intake');
-  const title = element('strong', '', usesAi ? 'AI organises your words' : 'A structured guided journey');
+  const title = element('strong', '', usesAi ? 'AI helps shape your analysis' : 'A structured guided journey');
   const copy = element(
     'p',
     '',
     usesAi
-      ? 'AI can extract draft details and ask clearer questions. You confirm every value; tested code, not AI, calculates results.'
+      ? 'AI helps identify relevant scenarios and organise your information around your objectives. You confirm the information you provide; Planéir’s engines run the calculations.'
       : 'Your answers follow fixed questions and readiness rules. Tested code performs every calculation.'
   );
   append(card, pill, title, copy);
@@ -1297,7 +1299,7 @@ function createUncertaintyPanel(currentState, resultItems) {
     return null;
   }
   const panel = element('section', 'uncertainty-panel');
-  append(panel, element('h2', '', 'Uncertainty and information gaps'));
+  append(panel, element('h2', '', 'Notes and missing information'));
   const list = element('ul', 'plain-list');
   unique.forEach((message) => list.append(element('li', '', message)));
   panel.append(list);
@@ -1488,9 +1490,29 @@ function createMeetingTranscriptSection(currentState) {
   return panel;
 }
 
-// Exported so a finished agent-driven call can be rendered EXACTLY as the
-// client sees it, rather than summarised second-hand by whoever is reviewing
-// the call. See scripts/render-client-results.mjs.
+// Offer the call only beside current generated results.
+export function createEducationCallCTA(currentState) {
+  const completion = describePlanningCompletion(currentState);
+  if (!completion.ready || completion.kind !== 'analysis') return null;
+  const card = element('section', 'result-card is-wide education-call-cta');
+  card.dataset.callOfferVersion = EDUCATION_CALL.version;
+  append(card,
+    element('h2', '', EDUCATION_CALL.heading),
+    element('p', '', EDUCATION_CALL.description),
+    element('p', 'education-call-price', `${EDUCATION_CALL.priceLabel} · ${EDUCATION_CALL.durationMinutes} minutes on Zoom`),
+    element('p', 'form-note', 'A private education session. Unrecorded by default. Your analysis remains free to use.')
+  );
+  const request = element('button', 'primary-button', EDUCATION_CALL.action);
+  request.type = 'button';
+  request.dataset.action = 'navigate';
+  request.dataset.view = 'handoff';
+  request.disabled = currentState.bootstrap?.handoffEnabled !== true || currentState.busy === true;
+  card.append(request);
+  if (currentState.bootstrap?.handoffEnabled !== true) card.append(element('p', 'form-note', 'Call requests are not available in this version yet.'));
+  return card;
+}
+
+// Also used by scripts/render-client-results.mjs to review actual result copy.
 export function createResultsView(currentState) {
   const completion = describePlanningCompletion(currentState);
   const gatedOnly = completion.ready && completion.kind === 'adviser_review';
@@ -1504,21 +1526,21 @@ export function createResultsView(currentState) {
     createWorkspaceHeading(
       currentState,
       gatedOnly ? 'Confirmed analysis plan' : 'Calculated from your confirmed information',
-      gatedOnly ? 'Your plan is ready for adviser review' : 'Your educational analysis',
+      gatedOnly ? 'Your plan is ready for adviser review' : 'Your financial picture',
       gatedOnly
         ? 'These analyses are not released for automated calculation. Nothing has been calculated or shared with Gerry.'
-        : 'These results are illustrations, not approvals or recommendations. Check the assumptions and uncertainties before relying on any figure.'
+        : `These results are generated automatically and are not routinely reviewed by Gerry. They are illustrations, not approvals or recommendations. ${WORKSPACE_COPY.assumptionsNotice}`
     )
   );
 
   const toolbar = element('div', 'results-toolbar');
   const text = element('span', '', gatedOnly
     ? 'Your goal-led analysis selection is saved. You decide whether to send the reviewed package to Gerry.'
-    : 'AI does not calculate or change these numbers. Versioned deterministic engines produce the outputs shown below.');
-  const next = element('button', 'primary-button', currentState.bootstrap?.handoffEnabled ? 'Discuss this with Gerry' : 'Review my information');
+    : WORKSPACE_COPY.aiNotice);
+  const next = element('button', 'primary-button', 'Review my information');
   next.type = 'button';
   next.dataset.action = 'navigate';
-  next.dataset.view = currentState.bootstrap?.handoffEnabled ? 'handoff' : 'review';
+  next.dataset.view = 'review';
   append(toolbar, text, next);
   section.append(toolbar);
 
@@ -1554,7 +1576,7 @@ export function createResultsView(currentState) {
   resultItems.forEach((item) => stack.append(createResultCard(item)));
   append(stack, createAssumptionsSection(currentState.analysis, resultItems), createUncertaintyPanel(currentState, resultItems));
   section.append(stack);
-  append(section, createMeetingTranscriptSection(currentState));
+  append(section, createEducationCallCTA(currentState), createMeetingTranscriptSection(currentState));
   return section;
 }
 
@@ -1593,11 +1615,12 @@ function createHandoffPending(currentState) {
 
 function createHandoffSuccess(currentState) {
   const panel = element('section', 'success-panel');
+  const privateCall = currentState.handoff?.callOfferVersion === EDUCATION_CALL.version;
   append(
     panel,
     element('p', 'section-kicker', 'Shared with your permission'),
-    element('h2', '', 'Your request has been sent to Gerry'),
-    element('p', '', 'Gerry can now follow up using the contact details and requested-help note you chose to share. Your free results remain available here.')
+    element('h2', '', privateCall ? 'Your call request has been sent to Gerry' : 'Your request has been sent to Gerry'),
+    element('p', '', privateCall ? 'Gerry can propose a time and email you a Zoom invitation to accept or decline. This request does not take a payment. Your analysis remains available here.' : 'Gerry can now follow up using the contact details and requested-help note you chose to share. Your free results remain available here.')
   );
   const actions = element('div', 'success-actions');
   const results = element('button', 'secondary-button', 'Return to my results');
@@ -1607,7 +1630,7 @@ function createHandoffSuccess(currentState) {
   actions.append(results);
 
   const bookingUrl = isSafeBookingUrl(currentState.bootstrap?.bookingUrl);
-  if (bookingUrl) {
+  if (bookingUrl && !privateCall) {
     const booking = element('a', 'primary-button booking-link', 'Optionally choose a time');
     booking.href = bookingUrl;
     booking.target = '_blank';
@@ -1621,13 +1644,19 @@ function createHandoffSuccess(currentState) {
 
 function createHandoffView(currentState) {
   const section = element('section');
+  const completion = describePlanningCompletion(currentState);
+  if (!completion.ready) {
+    section.append(element('p', 'empty-state-inline', 'Generate your analysis before requesting a call.'));
+    return section;
+  }
+  const privateCall = completion.kind === 'analysis';
   append(
     section,
     createWorkspaceHeading(
       currentState,
       'Optional human help',
-      'Ask Gerry to help you explore the next step',
-      'Your free analysis is complete. Sharing it is optional and needs a separate, explicit consent.'
+      privateCall ? EDUCATION_CALL.heading : 'Ask Gerry to help you explore the next step',
+      privateCall ? `${EDUCATION_CALL.description} ${EDUCATION_CALL.priceLabel} for ${EDUCATION_CALL.durationMinutes} minutes on Zoom.` : 'Your free analysis is complete. Sharing it is optional and needs a separate, explicit consent.'
     )
   );
 
@@ -1635,7 +1664,7 @@ function createHandoffView(currentState) {
     const unavailable = element('section', 'empty-state');
     append(
       unavailable,
-      element('h2', '', 'Human handoff is not active for this beta'),
+      element('h2', '', 'Call requests are not available in this version yet'),
       element('p', '', 'Your results remain available. Nothing has been shared with Gerry.')
     );
     const back = element('button', 'secondary-button', 'Return to results');
@@ -1677,27 +1706,31 @@ function createHandoffView(currentState) {
   append(
     shareCard,
     element('h3', '', 'What Gerry will receive'),
-    element('p', '', 'Only the contact details and requested-help note you enter below, plus a minimal consent receipt. Your profile and calculation results are not automatically copied into the adviser pipeline.')
+    element('p', '', privateCall
+      ? 'Gerry receives your contact details and the note you write below. Your profile and results are not copied with the request. You can share your analysis on screen during the call.'
+      : 'Only the contact details and requested-help note you enter below, plus a minimal consent receipt. Your profile and calculation results are not automatically copied into the adviser pipeline.')
   );
   const shareList = element('ul', 'share-list');
   [
     'Your full name and email address',
     'Your phone number, only if you choose to enter one',
     'The help you request below',
-    'A consent receipt and a non-financial analysis/revision reference'
+    privateCall ? 'A record of this request and your agreement' : 'A consent receipt and a non-financial analysis/revision reference'
   ].forEach((item) => shareList.append(element('li', '', item)));
   shareCard.append(shareList);
-  shareCard.append(element('p', '', 'This does not opt you into marketing, recommend a product, or make Gerry’s follow-up a condition of your free results.'));
-  shareCard.append(element('p', '', 'This beta uses no adviser marketplace, bidding, sponsored ranking, or automatic matching. The chosen recipient is Gerry Boylan.'));
+  shareCard.append(element('p', '', privateCall
+    ? 'Requesting a call is optional. You can keep using your analysis without one.'
+    : 'This does not opt you into marketing, recommend a product, or make Gerry’s follow-up a condition of your free results.'));
+  if (!privateCall) shareCard.append(element('p', '', 'This beta uses no adviser marketplace, bidding, sponsored ranking, or automatic matching. The chosen recipient is Gerry Boylan.'));
   const handoffPolicyUrl = isSafeBookingUrl(currentState.bootstrap?.handoffPolicyUrl);
   if (handoffPolicyUrl) {
     const policyCopy = element('p');
-    policyCopy.append('The encrypted bridge package and the separate adviser lead have different retention boundaries. Read the ');
-    const policyLink = element('a', '', 'handoff data and retention policy');
+    policyCopy.append(privateCall ? 'See how your call request is handled in the ' : 'The encrypted bridge package and the separate adviser lead have different retention boundaries. Read the ');
+    const policyLink = element('a', '', privateCall ? 'privacy notice' : 'handoff data and retention policy');
     policyLink.href = handoffPolicyUrl;
     policyLink.target = '_blank';
     policyLink.rel = 'noopener noreferrer';
-    policyCopy.append(policyLink, ' before sharing.');
+    policyCopy.append(policyLink, privateCall ? '.' : ' before sharing.');
     shareCard.append(policyCopy);
   }
 
@@ -1706,6 +1739,7 @@ function createHandoffView(currentState) {
   const form = element('form');
   form.id = 'handoffForm';
   form.dataset.action = 'create-handoff';
+  if (privateCall) form.dataset.callOfferVersion = EDUCATION_CALL.version;
   const formGrid = element('div', 'form-grid');
 
   const fields = [
@@ -1728,7 +1762,7 @@ function createHandoffView(currentState) {
   });
 
   const helpWrapper = element('label', 'form-field is-wide');
-  helpWrapper.append(element('span', 'field-label', 'What would you like Gerry’s help with?'));
+  helpWrapper.append(element('span', 'field-label', 'What would you like to discuss?'));
   const textarea = element('textarea', 'text-area');
   textarea.name = 'requestedHelp';
   textarea.required = true;
@@ -1747,7 +1781,7 @@ function createHandoffView(currentState) {
   const consentCopy = element('span');
   append(
     consentCopy,
-    element('strong', '', 'I consent to send this reviewed package to Gerry Boylan'),
+    element('strong', '', privateCall ? `I agree to send my contact details and request to Gerry to arrange a ${EDUCATION_CALL.priceLabel}, ${EDUCATION_CALL.durationMinutes}-minute education call.` : 'I consent to send this reviewed package to Gerry Boylan'),
     element('small', '', 'I understand exactly what will be shared and that I can keep my free results without sharing it.')
   );
   append(consentLabel, consent, consentCopy);
@@ -1758,10 +1792,11 @@ function createHandoffView(currentState) {
     'form-note',
     `An email address is required so Gerry can respond; a phone number is optional. This consent is for this handoff only.${retentionDays ? ` The encrypted bridge package is purged after ${retentionDays} days; the linked adviser record follows the separate policy above.` : ''}`
   ));
-  const submit = element('button', 'primary-button', currentState.busy ? 'Sending securely…' : 'Send my request to Gerry');
+  const submit = element('button', 'primary-button', currentState.busy ? 'Sending securely…' : privateCall ? EDUCATION_CALL.action : 'Send my request to Gerry');
   submit.type = 'submit';
   submit.disabled = currentState.busy;
   form.append(submit);
+  if (privateCall) form.append(element('p', 'form-note', 'This requests a proposed time; no payment is taken here. Gerry will email the Zoom invitation. You can share your analysis on screen during the call.'));
   formCard.append(form);
   append(grid, shareCard, formCard);
   section.append(grid);
@@ -1815,7 +1850,7 @@ export function renderOnboarding(root, bootstrap, { busy = false, error = '' } =
   const trust = element('div', 'trust-grid');
   [
     ['01', 'You stay in control', 'Nothing is treated as confirmed until you review it. You can correct or delete the session.'],
-    ['02', 'Clear about AI', 'AI may organise your words if you opt in. It never calculates your financial outputs.'],
+    ['02', 'Clear about AI', 'AI helps identify relevant scenarios and organise your information when you opt in. Planéir’s engines perform the calculations.'],
     ['03', 'No hidden handoff', 'Nothing is sent to Gerry unless you separately choose and consent after seeing your results.']
   ].forEach(([index, title, description]) => {
     const item = element('article', 'trust-item');

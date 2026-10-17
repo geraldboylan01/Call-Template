@@ -7546,8 +7546,12 @@ body.overview-has-selection .toast-host {
     min-height: 82px;
   }
 
+  /* minmax(0, 1fr), not 1fr: a column of 1fr will not go narrower than its widest
+     card's min-content, so a table of four or five columns grew the column to 382px
+     in a 252px slot and the module was laid out at the width it was cut off at. A
+     table now scrolls inside its own wrapper, which is what the wrapper is for. */
   .generated-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .retirement-generated-grid {
@@ -12035,6 +12039,498 @@ body.overview-has-selection .toast-host {
 }
 
 .rks-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(12px, 1vw, 20px);
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+/* =========================================================================
+   HOME, TRADE DOWN
+
+   A home budget built from two blocks, in the brand tokens at the top of this
+   file: the money from selling after buying costs, and a new loan whose block
+   changes by case. Beside it, a track of what is repaid on the mortgage today,
+   split into what is still repaid and what is freed. One element carries the
+   screen: the bar. Everything around it stays quiet. Blue is the home; green
+   appears only as the freed part of the track, and always beside the word
+   "Freed". Text stays in text colours.
+
+   The home and the year are on different scales, and each says so. Nothing
+   animates through CSS. The only motion in this module is the blocks and the
+   track travelling between cases, and that is driven by the module's own clock
+   so that it can be settled, cancelled and left alone under reduced motion.
+
+   The sizes below are the ones js/home_trade_down_view.js lays out with.
+   ========================================================================= */
+
+.htd {
+  --htd-selected: #16222b;
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: clamp(16px, 2vw, 26px);
+  color: var(--text);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.htd-title {
+  max-width: 1300px;
+  margin: 0;
+  font-size: clamp(20px, 2.2vw, 42px);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.24;
+}
+
+.htd-cases {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 405px));
+  gap: clamp(8px, 1vw, 20px);
+}
+
+.htd.is-narrow .htd-cases {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.htd-case {
+  appearance: none;
+  display: flex;
+  min-width: 0;
+  min-height: 56px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 2px solid rgba(247, 244, 238, 0.14);
+  border-radius: var(--radius-ui);
+  background: var(--bg-1);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+
+.htd:not(.is-narrow) .htd-case {
+  min-height: 88px;
+  padding: 0 24px;
+}
+
+.htd-case:hover {
+  border-color: rgba(106, 167, 200, 0.6);
+}
+
+.htd-case:focus-visible {
+  outline: 2px solid var(--electric-blue);
+  outline-offset: 2px;
+}
+
+.htd-case.is-active {
+  border-color: var(--electric-blue);
+  background: var(--htd-selected);
+}
+
+.htd-case-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.htd:not(.is-narrow) .htd-case-name {
+  font-size: clamp(20px, 1.4vw, 27px);
+}
+
+.htd-case.is-active .htd-case-name {
+  font-weight: 800;
+}
+
+.htd-case-sub {
+  display: none;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.htd:not(.is-narrow) .htd-case-sub {
+  display: block;
+  font-size: clamp(16px, 1.15vw, 22px);
+}
+
+/* ------------------------------------------------------------------ stage */
+
+.htd-stage {
+  min-width: 0;
+  padding: 30px 48px 40px;
+  border-radius: var(--radius-card);
+  background: var(--bg-1);
+}
+
+.htd-stage.is-narrow {
+  padding: 20px 16px;
+}
+
+.htd-headline {
+  min-height: 2.72em;
+  margin: 0 0 clamp(16px, 2vw, 32px);
+  font-size: clamp(16px, 1.45vw, 28px);
+  font-weight: 500;
+  line-height: 1.36;
+}
+
+.htd-stage.is-narrow .htd-headline {
+  min-height: 69px;
+  font-size: 16px;
+  line-height: 23px;
+}
+
+.htd-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.htd-chart.is-narrow {
+  margin: 0 auto;
+}
+
+/* ---------------------------------------------------------------- the home */
+
+.htd-figure {
+  position: absolute;
+  line-height: 84px;
+  white-space: nowrap;
+}
+
+.htd-figure-value {
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.htd-figure-word {
+  margin-left: 16px;
+  color: var(--muted);
+  font-size: 26px;
+  font-weight: 500;
+}
+
+.htd-chart.is-narrow .htd-figure {
+  line-height: 52px;
+}
+
+.htd-chart.is-narrow .htd-figure-value {
+  font-size: 44px;
+}
+
+.htd-chart.is-narrow .htd-figure-word {
+  margin-left: 10px;
+  font-size: 16px;
+}
+
+.htd-today-line {
+  position: absolute;
+  width: 0;
+  border-left: 1px dashed rgba(247, 244, 238, 0.4);
+}
+
+.htd-today-label {
+  position: absolute;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 30px;
+}
+
+.htd-today-name,
+.htd-today-value {
+  display: block;
+}
+
+.htd-today-value {
+  color: var(--text);
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.htd-chart.is-narrow .htd-today-label {
+  font-size: 14px;
+  line-height: 18px;
+  text-align: right;
+}
+
+.htd-chart.is-narrow .htd-today-name,
+.htd-chart.is-narrow .htd-today-value {
+  display: inline;
+}
+
+.htd-chart.is-narrow .htd-today-value {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.htd-block {
+  position: absolute;
+}
+
+.htd-block.is-one {
+  border-radius: 4px 0 0 4px;
+  background: var(--electric-blue);
+}
+
+.htd-block.is-two {
+  border-radius: 0 4px 4px 0;
+  background: rgba(106, 167, 200, 0.28);
+  box-shadow: inset 0 0 0 2px var(--electric-blue);
+}
+
+.htd-label {
+  position: absolute;
+}
+
+.htd-amount {
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 44px;
+}
+
+.htd-name {
+  color: var(--muted);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 30px;
+}
+
+.htd-note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.htd-note[hidden] {
+  display: none;
+}
+
+.htd-chart.is-narrow .htd-amount {
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.htd-chart.is-narrow .htd-name {
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.htd-note-full {
+  position: absolute;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+/* ---------------------------------------------------------------- the year */
+
+.htd-rule {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: 0 solid rgba(247, 244, 238, 0.14);
+}
+
+.htd-chart:not(.is-narrow) .htd-rule {
+  border-left-width: 1px;
+}
+
+.htd-chart.is-narrow .htd-rule {
+  border-top-width: 1px;
+}
+
+.htd-freed {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.htd-freed-value {
+  display: block;
+  font-size: 72px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 84px;
+}
+
+.htd-freed-word {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 32px;
+}
+
+.htd-chart.is-narrow .htd-freed-value,
+.htd-chart.is-narrow .htd-freed-word {
+  display: inline;
+}
+
+.htd-chart.is-narrow .htd-freed-value {
+  font-size: 40px;
+  line-height: 48px;
+}
+
+.htd-chart.is-narrow .htd-freed-word {
+  margin-left: 10px;
+  font-size: 16px;
+}
+
+.htd-track {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(247, 244, 238, 0.08);
+}
+
+.htd-track-repaid {
+  position: absolute;
+  background: rgba(247, 244, 238, 0.26);
+}
+
+.htd-track-freed {
+  position: absolute;
+  background: var(--accent-green);
+}
+
+.htd-row {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.htd-row-name {
+  color: var(--muted);
+  font-size: 24px;
+}
+
+.htd-row-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.htd-chart.is-narrow .htd-row-name {
+  font-size: 16px;
+}
+
+.htd-chart.is-narrow .htd-row-value {
+  font-size: 18px;
+}
+
+.htd-track-note {
+  position: absolute;
+  color: var(--muted);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 28px;
+}
+
+.htd-chart.is-narrow .htd-track-note {
+  font-size: 13px;
+  line-height: 17px;
+}
+
+/* ------------------------------------------------------------- compact */
+
+/* A chart under 400px (a phone: the app's shell leaves 252px for the module on
+   a 320px one). The figures put their word beneath them, the two labels sit one
+   above the other behind a swatch of their block, and each year row puts its
+   name over its amount. Sizes the figure and the freed amount are fitted in
+   js/home_trade_down_view.js and set inline. */
+
+.htd-chart.is-compact .htd-figure {
+  line-height: 1.15;
+  white-space: normal;
+}
+
+.htd-chart.is-compact .htd-figure-value,
+.htd-chart.is-compact .htd-figure-word {
+  display: block;
+}
+
+.htd-chart.is-compact .htd-figure-word {
+  margin-left: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-today-label {
+  white-space: nowrap;
+}
+
+.htd-chart.is-compact .htd-label {
+  box-sizing: border-box;
+  padding-left: 20px;
+}
+
+.htd-chart.is-compact .htd-label::before {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  content: '';
+}
+
+.htd-chart.is-compact .htd-label.is-one::before {
+  background: var(--electric-blue);
+}
+
+.htd-chart.is-compact .htd-label.is-two::before {
+  background: rgba(106, 167, 200, 0.28);
+  box-shadow: inset 0 0 0 2px var(--electric-blue);
+}
+
+.htd-chart.is-compact .htd-freed {
+  white-space: normal;
+}
+
+.htd-chart.is-compact .htd-freed-value,
+.htd-chart.is-compact .htd-freed-word {
+  display: block;
+}
+
+.htd-chart.is-compact .htd-freed-word {
+  margin-top: 4px;
+  margin-left: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-row {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.htd-chart.is-compact .htd-row-name {
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.htd-chart.is-compact .htd-row-value {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.htd-footnote {
   margin: 0;
   color: var(--muted);
   font-size: clamp(12px, 1vw, 20px);
