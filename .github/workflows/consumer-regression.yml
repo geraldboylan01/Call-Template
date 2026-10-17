@@ -31,6 +31,9 @@ jobs:
       - name: Install project dependencies
         run: npm ci
 
+      - name: Check demo access and confirmation boundaries
+        run: npm run check:demo
+
       - name: Check consumer boundaries and planning contracts
         run: npm run check:consumer
 

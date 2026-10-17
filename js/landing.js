@@ -117,7 +117,7 @@ function showAdvisorGateNoticeIfNeeded() {
   advisorGateNotice.classList.remove('is-hidden');
 
   window.requestAnimationFrame(() => {
-    scrollToHash('#request-call', { behavior: 'auto' });
+    scrollToHash('#request-demo', { behavior: 'auto' });
     advisorGateNotice.focus({ preventScroll: true });
   });
 }

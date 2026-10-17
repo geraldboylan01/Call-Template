@@ -186,7 +186,7 @@ mode and approved policy set:
 | `CONSUMER_BETA_VOICE_DAILY_BUDGET_EUR_CENTS` | `2000` (€20.00 UTC-day application allowance) |
 | `CONSUMER_BETA_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS` | `10` |
 | `CONSUMER_BETA_VOICE_SPEECH_RESERVATION_EUR_CENTS` | `10` |
-| `CONSUMER_BETA_PRIVACY_NOTICE_URL` | `https://planeir.ie/plan/privacy.html` |
+| `CONSUMER_BETA_PRIVACY_NOTICE_URL` | `https://planeir.ie/plan/privacy-legacy.html` |
 | `CONSUMER_BETA_SESSION_TTL_DAYS` | `7` |
 
 There are no protected switches for model-driven AI intake, handoff, public

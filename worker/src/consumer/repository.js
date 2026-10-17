@@ -1856,6 +1856,7 @@ export async function createHandoff(env, sessionRow, handoff, profile, context =
   const sharedDataDigestB64u = await sha256Base64Url(stableStringify({
     recipient: 'gerry',
     purpose: 'adviser_handoff',
+    ...(handoff.callOfferVersion ? { callOfferVersion: handoff.callOfferVersion } : {}),
     confirmedProfileRevision: Number(sessionRow.confirmed_profile_revision),
     contact,
     requestedHelp: handoff.requestedHelp,
@@ -1864,6 +1865,7 @@ export async function createHandoff(env, sessionRow, handoff, profile, context =
     retentionPolicyId: config.handoffRetentionPolicyId
   }));
   const packageValue = {
+    ...(handoff.callOfferVersion ? { callOfferVersion: handoff.callOfferVersion } : {}),
     handoffId: id,
     consumerSessionId: sessionRow.id,
     confirmedProfileRevision: Number(sessionRow.confirmed_profile_revision),

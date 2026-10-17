@@ -1,3 +1,4 @@
+import { EDUCATION_CALL } from '../../../js/workspace/education_call.js';
 import { badRequest } from './errors.js';
 import {
   applyProfilePatch as applyCanonicalProfilePatch,
@@ -332,6 +333,13 @@ export function validateHandoffBody(body, expectedPolicy) {
   if (body.retry === true) {
     return { consent: true, policyVersion, policyUrl, expectedRevision, retry: true };
   }
+  let callOfferVersion = null;
+  if (body.callOfferVersion !== undefined) {
+    if (body.callOfferVersion !== EDUCATION_CALL.version || body.callOfferAcknowledged !== true) {
+      throw badRequest('Confirm the call offer shown with your results before requesting a time.', 'call_offer_acknowledgement_required');
+    }
+    callOfferVersion = EDUCATION_CALL.version;
+  }
   const fullName = cleanText(body.fullName, 'Full name', 160);
   const email = cleanText(body.email, 'Email', 160).toLowerCase();
   if (!EMAIL_PATTERN.test(email)) throw badRequest('Email is invalid.');
@@ -341,7 +349,7 @@ export function validateHandoffBody(body, expectedPolicy) {
   if (requestedHelp !== rawRequestedHelp) {
     throw badRequest('Requested help contains a prohibited sensitive identifier. Remove it before sharing with an adviser.', 'handoff_sensitive_data_prohibited');
   }
-  return { fullName, email, phone, requestedHelp, consent: true, policyVersion, policyUrl, expectedRevision };
+  return { fullName, email, phone, requestedHelp, consent: true, policyVersion, policyUrl, expectedRevision, ...(callOfferVersion ? { callOfferVersion } : {}) };
 }
 
 export function applyProfilePatch(profile, patch, confirmedPaths, source = 'consumer_edit', removePaths = []) {
