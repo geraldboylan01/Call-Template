@@ -391,7 +391,7 @@ function singleChangeTitle(change, outgoingsById) {
     const label = outgoingsById.get(change.outgoingId)?.label || change.outgoingId;
     return `Clear your ${lowerFirst(label)}${change.paidFrom === 'savings' ? ' from savings' : ''}`;
   }
-  return `Pay ${euroText(change.amount)} more into your pensions`;
+  return `Pay ${pensionChangeText(Math.round(change.amount * 100))} more into your pensions`;
 }
 
 /** The button title a case gets when the payload gives none. */
@@ -1429,11 +1429,15 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
         let levelShown = model.shownIncome;
         const levels = [{ id: 'income', level: levelUnrounded }];
         const shownLevels = [{ id: 'income', level: levelShown }];
+        // Exact balances include every deduction, even a line hidden because
+        // every case rounds to zero. Shown geometry follows only drawn lines.
+        model.shownLines.forEach((line) => {
+          levelUnrounded -= line.amount;
+          levels.push({ id: line.id, level: levelUnrounded });
+        });
         drawnLines.forEach((drawn) => {
           const line = model.shownLines.find((entry) => entry.id === drawn.id);
-          levelUnrounded -= line.amount;
           levelShown -= line.shownAmount;
-          levels.push({ id: drawn.id, level: levelUnrounded });
           shownLevels.push({ id: drawn.id, level: levelShown });
         });
         return {
