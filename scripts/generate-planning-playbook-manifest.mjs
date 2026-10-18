@@ -33,7 +33,8 @@ function entriesFrom(source, label) {
 // The adviser cash-flow prompt needs the same limit values as the runtime.
 // Generate the snapshot in both upload surfaces from the central pension helper.
 const cashFlowPath = resolve(promptDir, '25_household_cash_flow_playbook.md');
-for (const name of ['25_household_cash_flow_playbook.md', '26_home_trade_down_playbook.md']) {
+const requiredAdviserPlaybooks = ['25_household_cash_flow_playbook.md', '26_home_trade_down_playbook.md'];
+for (const name of requiredAdviserPlaybooks) {
   if (!existsSync(resolve(promptDir, name))) throw new Error(`Required adviser playbook is missing: ${name}`);
 }
 {
@@ -63,7 +64,21 @@ const componentSources = componentFiles.map((name) => ({
   text: readFileSync(resolve(promptDir, name), 'utf8')
 }));
 const componentEntries = componentSources.flatMap(({ name, text }) => entriesFrom(text, name));
-const masterEntries = entriesFrom(readFileSync(masterPath, 'utf8'), 'MASTER_PROJECT_PROMPT.md');
+const masterSource = readFileSync(masterPath, 'utf8');
+for (const name of requiredAdviserPlaybooks) {
+  const component = componentSources.find((entry) => entry.name === name).text.trim();
+  // Component headings sit one level deeper in the assembled master.
+  const expected = component.replace(/^#/gm, '##');
+  const heading = expected.split('\n')[0];
+  const sectionMarker = `\n${heading}\n`;
+  const start = masterSource.indexOf(sectionMarker);
+  const next = masterSource.indexOf('\n## ', start + sectionMarker.length);
+  const actual = start < 0 ? '' : masterSource.slice(start + 1, next < 0 ? undefined : next).trim();
+  if (actual !== expected || masterSource.indexOf(sectionMarker, start + sectionMarker.length) !== -1) {
+    throw new Error(`MASTER_PROJECT_PROMPT.md is out of sync with ${name}. Reassemble the adviser playbook section.`);
+  }
+}
+const masterEntries = entriesFrom(masterSource, 'MASTER_PROJECT_PROMPT.md');
 const duplicateIds = componentEntries
   .map((entry) => entry.moduleId)
   .filter((id, index, all) => all.indexOf(id) !== index);

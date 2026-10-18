@@ -98,4 +98,4 @@ The assembled master prompt should include these files in this order:
 - The tax cheat sheet is now an explicit uploaded project asset, not an implicit memory from older instructions.
 
 ## Central pension-limit guidance
-Run `npm run generate:planning-playbooks` after changing the central pension limits. The cash-flow validation snapshot in its component playbook and the assembled master is generated from `pensionConversationGuidance()` in `js/pension_math.js`. `npm run check:planning-playbooks` rejects a stale snapshot. New adviser playbooks still do not register consumer adapters.
+Run `npm run generate:planning-playbooks` after changing the central pension limits. The cash-flow validation snapshot in its component playbook and the assembled master is generated from `pensionConversationGuidance()` in `js/pension_math.js`. `npm run check:planning-playbooks` rejects a stale snapshot, either missing new adviser playbook, or a cash-flow/home-trade-down component that no longer matches its assembled master section. New adviser playbooks still do not register consumer adapters.
