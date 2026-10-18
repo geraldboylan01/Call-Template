@@ -461,6 +461,23 @@ const cases = [
     }
   },
   {
+    name: 'Pension video keeps actual case changes beside rounded chart totals',
+    module: baseModule('cash-pension-precision', 'Household cash flow', {
+      householdCashFlowInputs: {
+        ...householdCashFlowInputs,
+        people: householdCashFlowInputs.people.map((person, index) => ({ ...person, personalPensionContribution: index === 0 ? 3960 : 0 })),
+        scenarios: [{ id: 'today' }, { id: 'extra', changes: [{ type: 'extraPension', amount: 1080 }] }]
+      }
+    }),
+    activeScenario: { householdCashFlowScenarioId: 'extra' },
+    verify(manifest) {
+      assert(manifest.source.calculationStatus === 'resolved', 'Expected pension case to resolve');
+      assert(manifest.source.activeScenario.title === 'Pay €1,080 more into your pensions', 'Video uses the case title with the actual extra');
+      const chart = manifest.story.charts[0];
+      assert(chart.datasets[0].data[chart.labels.indexOf('Pensions')] === 5000, 'Video chart keeps rounded total pensions');
+    }
+  },
+  {
     name: 'Household cash flow figures are the shown ones, so what goes out is the sum of the lines the screen draws',
     module: baseModule('cash-3', 'Household cash flow', {
       householdCashFlowInputs: {

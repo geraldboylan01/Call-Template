@@ -345,6 +345,7 @@ export function runHouseholdCashFlowTests() {
       checkInvariants(projection, 'actual pension change');
       const [, pension, both] = projection.debug.cases;
       assert(pension.sentence.includes(`Paying ${extraText} more`), `actual extra ${extra}`);
+      assert(pension.title.includes(extraText), 'derived case title uses the same actual contribution');
       assert(pension.sentence.includes(`tax by ${taxText}`), 'actual tax saving');
       assert(pension.sentence.includes(`${costText} more goes out`), 'gross less tax saving adds up');
       assert(both.sentence.includes(`${extraText} more goes into`) && both.sentence.includes(`tax ${taxText} lower`), 'combined case uses the same precision');
@@ -364,6 +365,10 @@ export function runHouseholdCashFlowTests() {
     });
     const tiny = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
     assert(!tiny.debug.hasPensionColumn && !tiny.debug.drawnLines.some((line) => line.id === 'pensions'), '40 rounds to zero, no pension column');
+    checkInvariants(tiny, 'hidden current pension');
+    const stillHidden = computeHouseholdCashFlowProjection({ ...raw, scenarios: [...raw.scenarios, { id: 'tiny-extra', changes: [{ type: 'extraPension', amount: 4 }] }] }, { calculationYear: 2026 });
+    assert(!stillHidden.debug.hasPensionColumn, '40 plus 4 stays hidden in all cases');
+    checkInvariants(stillHidden, 'hidden current plus extra pension');
     raw.scenarios.push({ id: 'extra', changes: [{ type: 'extraPension', amount: 20 }] });
     const visible = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
     assert(visible.debug.hasPensionColumn, '60 rounds to 100 in another case, stable column');
