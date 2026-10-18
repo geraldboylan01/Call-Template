@@ -591,7 +591,7 @@ Checks:
 
 
 ### Cash flow: annual costs and case changes
-`Use the cash flow playbook. Niamh and Dara, both 45, married and jointly assessed, earn 75000 each. Mortgage 2500 a month, car 500, living costs 4000. Compare today, clearing the car from savings, paying 10000 extra into pensions and both.`
+`Use the cash flow playbook. Niamh and Dara, both 45, married and jointly assessed, earn 75000 each, with current personal pension contributions of 5000 for Niamh and 3000 for Dara a year. Mortgage 2500 a month, car 500, living costs 4000. Compare today, clearing the car from savings, paying 10000 extra into pensions and both.`
 
 Pass: only `householdCashFlowInputs`, annualised costs, four cases, no stated tax/relief/result amounts, app-derived summary. Use `people[].personalPensionContribution` for confirmed current deductions; never conceal them in spending. Stated take-home means bank pay after that deduction.
 

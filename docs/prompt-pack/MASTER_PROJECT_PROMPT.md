@@ -2866,13 +2866,26 @@ Use the usual NOTES and strict JSON sections. NOTES names each case's change and
 - `calculationYear`: optional tax year; omit for the current year. Do not supply rates or tax figures.
 - `scenarios`: one to four, unique `id`. The base is the first unless `baseScenarioId` selects another. The base has no changes.
 - A `clearOutgoing` names an existing outgoing; optional `paidFrom` can only be `"savings"`. This stops the annual cost; it does not deduct a payoff from a savings balance.
-- An `extraPension` gives a positive annual gross contribution. Optional `personId` names the payer; omitted/`joint` splits equally. Each case has at most one extra-pension change. Today's plus extra contributions must remain within each person's age/earnings relief limit; let the app validate it and never invent a relief percentage.
+- An `extraPension` gives a positive annual gross contribution. Optional `personId` names the payer; omitted/`joint` splits equally. Each case has at most one extra-pension change. Check today's plus extra against each person's limit before emitting JSON, as described below. Never invent a tax-relief percentage or tax-saving amount in the payload.
 - Case `title` and `description` are optional; a supplied title has 1 to 40 characters. Prefer derived titles. A case has at most three changes in total: different cleared outgoings and at most one pension contribution. Three cleared debts plus an extra pension is four changes and is refused. Split excess changes into separate comparisons, or ask which three Gerry wants together; never silently drop a requested change.
+
+### Check the contribution limit before JSON
+The following runtime-validation snapshot is generated from the central pension helper by `npm run generate:planning-playbooks`; do not maintain a separate set of rates here.
+
+<!-- cash-flow-pension-relief:start -->
+Revenue limits the PERSONAL contribution that gets tax relief by age: under 30: 15%, 30 to 39: 20%, 40 to 49: 25%, 50 to 54: 30%, 55 to 59: 35%, 60 and over: 40%. It applies to earnings up to a cap of EUR 115,000.
+<!-- cash-flow-pension-relief:end -->
+
+For each person, the supported annual contribution is the age-band percentage above times the lesser of annual **employment income** and the earnings cap above. Other income types do not increase that earnings base. Split joint employment income and a joint extra contribution equally before checking each person separately. Add today's personal contribution to the case's extra; their sum must not exceed that person's limit.
+
+If current contributions or their ownership are missing for a pension-saving comparison, return NOTES only and ask for them. If a requested contribution exceeds the limit, explain that boundary and ask for revised amounts or state that the confirmed case cannot be represented; never silently cap it, disguise it as spending or emit rejected JSON.
 
 ### Current pension saving and bank pay
 Every case includes `people[].personalPensionContribution`; `extraPension` adds to it. Do not also enter the current deduction in outgoings. When at least one case rounds to a contribution above €0, the Pensions chart column is reserved across cases. Contributions that display as €0 everywhere have no chart column but remain in the exact calculation. The visible row shows the full current-plus-extra gross amount, and the tax line carries the relief. The stated bank amount already has today's deduction taken off; the app does not subtract it twice.
 
 Ask for current personal contributions when they are material to stated payslip pay or a pension-saving comparison. Never infer them from the difference between gross and net. Employer contributions stay outside household spending. A current or total contribution above the site's relief limit is refused; disclose that rather than bypassing it as a spending line.
+
+Charts and ledgers keep totals rounded to €100. Pension-change sentences use the actual extra contribution and the corresponding estimated tax saving and net cost, including cents. Do not replace those runtime sentences with rounded estimates.
 
 A short case is valid. The screen says `Short` with a positive size; the ledger keeps the signed shortfall. Do not force left over to zero or copy rental video's wording into this module.
 

@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pensionConversationGuidance } from '../js/pension_math.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const promptDir = resolve(root, 'docs/prompt-pack');
@@ -27,6 +28,28 @@ function entriesFrom(source, label) {
       source: label
     });
   });
+}
+
+// The adviser cash-flow prompt needs the same limit values as the runtime.
+// Generate the snapshot in both upload surfaces from the central pension helper.
+const cashFlowPath = resolve(promptDir, '25_household_cash_flow_playbook.md');
+if (existsSync(cashFlowPath)) {
+  const begin = '<!-- cash-flow-pension-relief:start -->';
+  const end = '<!-- cash-flow-pension-relief:end -->';
+  const expected = `${begin}\n${pensionConversationGuidance()[0]}\n${end}`;
+  for (const path of [cashFlowPath, masterPath]) {
+    const current = readFileSync(path, 'utf8');
+    const start = current.indexOf(begin);
+    const finish = current.indexOf(end, start);
+    if (start < 0 || finish < start || current.indexOf(begin, start + begin.length) !== -1) {
+      throw new Error(`${path} must contain one cash-flow pension relief guidance block.`);
+    }
+    const updated = current.slice(0, start) + expected + current.slice(finish + end.length);
+    if (current !== updated) {
+      if (process.argv.includes('--check')) throw new Error(`${path} has stale pension relief guidance; regenerate planning playbooks.`);
+      writeFileSync(path, updated);
+    }
+  }
 }
 
 const componentFiles = readdirSync(promptDir)

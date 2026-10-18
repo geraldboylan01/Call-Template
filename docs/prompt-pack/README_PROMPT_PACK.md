@@ -96,3 +96,6 @@ The assembled master prompt should include these files in this order:
 - The current prompt pack now targets the upgraded structured artifact renderer in the app.
 - The prompt pack corrects stale documentation where needed, especially the loan input path and unsupported report meta fields.
 - The tax cheat sheet is now an explicit uploaded project asset, not an implicit memory from older instructions.
+
+## Central pension-limit guidance
+Run `npm run generate:planning-playbooks` after changing the central pension limits. The cash-flow validation snapshot in its component playbook and the assembled master is generated from `pensionConversationGuidance()` in `js/pension_math.js`. `npm run check:planning-playbooks` rejects a stale snapshot. New adviser playbooks still do not register consumer adapters.
