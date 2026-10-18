@@ -34,6 +34,13 @@ jobs:
       - name: Check demo access and confirmation boundaries
         run: npm run check:demo
 
+      - name: Check paid walkthrough booking and internal qualification
+        run: |
+          npm run check:education-call
+          npm run check:education-booking
+          npm run check:stripe
+          npm run check:lead-qualification
+
       - name: Check consumer boundaries and planning contracts
         run: npm run check:consumer
 

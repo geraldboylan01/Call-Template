@@ -1,7 +1,8 @@
 import { EDUCATION_CALL } from '../workspace/education_call.js';
+import { createEducationBookingWidget } from '../workspace/education_booking_ui.js';
 import { WORKSPACE_COPY } from '../workspace/copy.js';
 import { describePlanningCompletion, getDisplayableResultItems as getResultItems } from './completion.js';
-import { getAiConsent, getConsumerInvite } from './store.js';
+import { getAiConsent, getConsumerInvite, getSessionCredential, getSessionId } from './store.js';
 import { isSubscriptionAssistCohort } from './subscription_assist.js';
 import {
   consumerLanguageForModule,
@@ -1494,21 +1495,17 @@ function createMeetingTranscriptSection(currentState) {
 export function createEducationCallCTA(currentState) {
   const completion = describePlanningCompletion(currentState);
   if (!completion.ready || completion.kind !== 'analysis') return null;
-  const card = element('section', 'result-card is-wide education-call-cta');
-  card.dataset.callOfferVersion = EDUCATION_CALL.version;
-  append(card,
-    element('h2', '', EDUCATION_CALL.heading),
-    element('p', '', EDUCATION_CALL.description),
-    element('p', 'education-call-price', `${EDUCATION_CALL.priceLabel} · ${EDUCATION_CALL.durationMinutes} minutes on Zoom`),
-    element('p', 'form-note', 'A private education session. Unrecorded by default. Your analysis remains free to use.')
-  );
-  const request = element('button', 'primary-button', EDUCATION_CALL.action);
-  request.type = 'button';
-  request.dataset.action = 'navigate';
-  request.dataset.view = 'handoff';
-  request.disabled = currentState.bootstrap?.handoffEnabled !== true || currentState.busy === true;
-  card.append(request);
-  if (currentState.bootstrap?.handoffEnabled !== true) card.append(element('p', 'form-note', 'Call requests are not available in this version yet.'));
+  const local = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const baseUrl = local ? 'http://127.0.0.1:8787' : (document.querySelector?.('meta[name="planeir-consumer-api-base-url"]')?.content || document.querySelector?.('meta[name="call-canvas-worker-base-url"]')?.content || '').replace(/\/+$/, '');
+  const card = createEducationBookingWidget({
+    baseUrl,
+    sourceType: 'consumer',
+    sourceId: currentState.session?.id || currentState.session?.sessionId || getSessionId(),
+    analysisRunId: completion.analysisRunId,
+    enabled: currentState.bootstrap?.educationCallEnabled === true,
+    getHeaders: async () => ({ 'X-Consumer-Session': getSessionCredential() })
+  });
+  card.classList.add('result-card', 'is-wide', 'education-call-cta');
   return card;
 }
 
@@ -1650,6 +1647,10 @@ function createHandoffView(currentState) {
     return section;
   }
   const privateCall = completion.kind === 'analysis';
+  if (privateCall && currentState.bootstrap?.educationCallEnabled === true) {
+    section.append(createEducationCallCTA(currentState));
+    return section;
+  }
   append(
     section,
     createWorkspaceHeading(

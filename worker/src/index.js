@@ -1,4 +1,10 @@
-import { EDUCATION_CALL, isPrivateEducationCall, educationCallScheduleIntroduction } from '../../js/workspace/education_call.js';
+import { expandWalkthroughSettings } from './walkthrough_settings.js';
+import { EDUCATION_CALL, getEducationCallOffer, isPrivateEducationCall, educationCallScheduleIntroduction } from '../../js/workspace/education_call.js';
+import { educationCallRouteMethods, handleEducationCalls, processEducationCallJobs, reserveAdvisorCalendar } from './education_calls.js';
+import { createEducationCallHooks } from './education_call_integration.js';
+import { handleStripeWebhook, handleStripePurchases, stripePurchaseRouteMethods, processStripePurchaseJobs } from './stripe_walkthroughs.js';
+import { handleEducationProfile } from './education_customer_profile.js';
+import { handleQualificationRequest } from './advisor/qualification.js';
 import { demoRouteMethods, handleDemoRequest, processDemoOutbox } from './demo/router.js';
 import { ensureAudioAccess, voiceMetadata, handlePublicAudio, deleteVoiceNotes, cleanupVoiceNotes } from './application_audio.js';
 import { hasVoicePublicationConsent } from '../../js/case_application/voice_contract.js';
@@ -321,6 +327,13 @@ export { ConsumerRealtimeSession } from './consumer/realtime_session.js';
 export { ConsumerLiveSession } from './consumer/live/live_session.js';
 
 function getRouteConfig(pathname) {
+  if (pathname === '/api/education-calls/profile') return { methods: 'GET,PATCH,OPTIONS' };
+  const purchaseMethods = stripePurchaseRouteMethods(pathname);
+  if (purchaseMethods) return { methods: purchaseMethods };
+  const bookingMethods = educationCallRouteMethods(pathname);
+  if (bookingMethods) return { methods: bookingMethods };
+  if (pathname === '/api/advisor/qualification/ranking') return { methods: 'GET,OPTIONS' };
+  if (/^\/api\/advisor\/leads\/\d+\/qualification(?:\/outcomes)?$/.test(pathname)) return { methods: pathname.endsWith('/outcomes') ? 'POST,OPTIONS' : 'GET,POST,OPTIONS' };
   const demoMethods = demoRouteMethods(pathname);
   if (demoMethods) return { methods: demoMethods };
   if (/^\/api\/applications\/voice-note\/(config|access|prepare|upload|discard)$/.test(pathname)) {
@@ -1947,10 +1960,17 @@ function getLeadScheduleDurationMinutes(schedule) {
 async function createZoomMeeting(env, lead, schedule) {
   const config = getZoomConfig(env);
   if (!config.enabled) {
-    throw new Error('Zoom meeting creation is not configured. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, and ZOOM_USER_ID.');
+    throw Object.assign(new Error('Zoom meeting creation is not configured. Set ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, and ZOOM_USER_ID.'), { status: 503 });
   }
 
-  const accessToken = await fetchZoomAccessToken(config);
+  let accessToken;
+  try {
+    accessToken = await fetchZoomAccessToken(config);
+  } catch {
+    // The meeting request has not been sent. This is safely retryable after
+    // authorization recovers, rather than an uncertain meeting creation.
+    throw Object.assign(new Error('Zoom authorization failed before meeting creation. Check Zoom configuration and retry delivery.'), { status: 503 });
+  }
   const userId = encodeURIComponent(config.userId);
   const response = await fetch(`${ZOOM_API_BASE_URL}/users/${userId}/meetings`, {
     method: 'POST',
@@ -1985,7 +2005,9 @@ async function createZoomMeeting(env, lead, schedule) {
   }
 
   if (!response.ok) {
-    throw new Error(data?.message || data?.reason || data?.error || `Zoom meeting creation failed with status ${response.status}.`);
+    throw Object.assign(new Error(data?.message || data?.reason || data?.error || `Zoom meeting creation failed with status ${response.status}.`), {
+      status: response.status, uncertain: response.status >= 500
+    });
   }
 
   const joinUrl = normalizeEnvValue(data?.join_url);
@@ -3163,7 +3185,8 @@ async function getConsumerHandoffDeliveryReceipt(env, handoffId) {
 }
 
 export async function createConsumerPipelineHandoff(env, payload = {}) {
-  const privateCall = payload.callOfferVersion === EDUCATION_CALL.version;
+  const callOffer = getEducationCallOffer(payload.callOfferVersion);
+  const privateCall = Boolean(callOffer);
   if (payload.callOfferVersion && !privateCall) throw new Error('The education call offer is no longer current.');
   const source = privateCall ? EDUCATION_CALL.leadSource : 'consumer-plan';
   const timestamp = nowIso();
@@ -3188,7 +3211,7 @@ export async function createConsumerPipelineHandoff(env, payload = {}) {
   const eventMetadata = JSON.stringify({
     handoffId,
     source,
-    ...(privateCall ? { callOffer: EDUCATION_CALL } : {}),
+    ...(privateCall ? { callOffer } : {}),
     educationOnlyConsent: true,
     consentPolicyVersion: normalizeLeadValue(payload.consentPolicyVersion),
     policyUrl: normalizeLeadValue(payload.policyUrl),
@@ -3562,6 +3585,7 @@ async function listClientPublishedSessionRows(env, clientId) {
       id,
       client_id,
       source_lead_id,
+      report_kind,
       version,
       status,
       created_at,
@@ -5032,6 +5056,7 @@ function normalizePublishedSessionRow(row) {
     id: row.id,
     clientId: Number(row.client_id || 0) || null,
     sourceLeadId: Number(row.source_lead_id || 0) || null,
+    reportKind: row.report_kind || 'workspace',
     version,
     status: normalizePublishedStatus(row.status, row.expires_at, row.revoked_at),
     createdAt: row.created_at,
@@ -5077,6 +5102,7 @@ async function getPublishedSessionRow(env, publishedId) {
       id,
       client_id,
       source_lead_id,
+      report_kind,
       version,
       status,
       created_at,
@@ -5216,6 +5242,7 @@ function buildPublishedSessionManagerSummary(row) {
     publishedId: row.id,
     clientId: row.clientId,
     sourceLeadId: row.sourceLeadId,
+    reportKind: row.reportKind || 'workspace',
     version: row.version,
     status: row.status,
     createdAt: row.createdAt,
@@ -5231,9 +5258,9 @@ function buildPublishedSessionManagerSummary(row) {
     emailSendCount: row.emailSendCount,
     lastEmailSentAt: row.lastEmailSentAt,
     recoveryAvailable: row.recoveryAvailable,
-    canEmail: row.status === 'active' && row.version >= PUBLISHED_SPLIT_PAYLOAD_VERSION,
+    canEmail: row.reportKind !== 'consumer-analysis-snapshot' && row.status === 'active' && row.version >= PUBLISHED_SPLIT_PAYLOAD_VERSION,
     canExtend: row.status !== 'revoked' && row.version >= PUBLISHED_SPLIT_PAYLOAD_VERSION,
-    canResetClientAccess: row.status === 'active' && row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
+    canResetClientAccess: row.reportKind !== 'consumer-analysis-snapshot' && row.status === 'active' && row.version >= PUBLISHED_FIRST_OPEN_PAYLOAD_VERSION,
     canRevoke: row.status === 'active'
   };
 }
@@ -5260,6 +5287,7 @@ async function listPublishedSessionRows(env, options = {}) {
       id,
       client_id,
       source_lead_id,
+      report_kind,
       version,
       status,
       created_at,
@@ -6234,10 +6262,22 @@ async function handleAdvisorLeadUpdate(request, env, origin, leadId) {
     return jsonResponse({ error: error.message || 'Invalid payload.' }, 400, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
   }
 
-  await updateLeadWorkflow(env, leadId, validated, {
-    previousStatus: currentLead.status,
-    nextStatus: validated.status
-  });
+  const paidBooking = await env.LEADS_DB.prepare('SELECT id FROM education_bookings WHERE lead_id = ? LIMIT 1').bind(leadId).first();
+  if (paidBooking && (validated.status !== currentLead.status
+    || validated.scheduledStartAt !== currentLead.scheduledStartAt || validated.scheduledEndAt !== currentLead.scheduledEndAt)) {
+    return jsonResponse({ error: 'Use the paid walkthrough controls to change this booking.', bookingId: paidBooking.id }, 409, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+  }
+  try {
+    await updateLeadWorkflow(env, leadId, validated, {
+      previousStatus: currentLead.status,
+      nextStatus: validated.status
+    });
+  } catch (error) {
+    if (String(error.message).includes('education_calendar_conflict')) {
+      return jsonResponse({ error: 'That time overlaps another call or unavailable period.' }, 409, origin, 'PATCH,OPTIONS', null, noStoreHeaders());
+    }
+    throw error;
+  }
   const updatedLead = await getLeadRow(env, leadId);
   const linkedClient = await ensureClientForLead(env, updatedLead).catch(() => null);
   await advanceClientPipelineStage(env, linkedClient?.id || updatedLead?.clientId, inferPipelineStageFromLeadStatus(updatedLead?.status), {
@@ -6410,6 +6450,10 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
   if (!currentLead) {
     return jsonResponse({ error: 'Lead not found.' }, 404, origin, 'POST,OPTIONS', null, noStoreHeaders());
   }
+  const paidBooking = await env.LEADS_DB.prepare('SELECT id FROM education_bookings WHERE lead_id = ? LIMIT 1').bind(leadId).first();
+  if (paidBooking) {
+    return jsonResponse({ error: 'Use the paid walkthrough controls to verify payment or propose another time.', bookingId: paidBooking.id }, 409, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
 
   let body;
   try {
@@ -6442,6 +6486,17 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
   schedule.acceptUrl = buildLeadScheduleResponseUrl(responseBaseUrl, leadId, schedule.scheduleResponseToken, 'accept');
   schedule.declineUrl = buildLeadScheduleResponseUrl(responseBaseUrl, leadId, schedule.scheduleResponseToken, 'decline');
 
+  try {
+    await reserveAdvisorCalendar(env, {
+      leadId, startAt: schedule.scheduledStartAt, endAt: schedule.scheduledEndAt,
+      status: 'pending', expiresAt: schedule.scheduleResponseExpiresAt
+    });
+  } catch (error) {
+    return jsonResponse({ error: String(error.message).includes('education_calendar_conflict')
+      ? 'That time overlaps another call or unavailable period.' : 'This call interval could not be reserved.' },
+    409, origin, 'POST,OPTIONS', null, noStoreHeaders());
+  }
+
   const reusableZoomMeeting = currentLead.zoomJoinUrl
     && currentLead.scheduledStartAt === schedule.scheduledStartAt
     && currentLead.scheduledEndAt === schedule.scheduledEndAt
@@ -6460,6 +6515,16 @@ async function handleSendLeadScheduleEmail(request, env, origin, leadId) {
       ...zoomMeeting,
       scheduledLocation: zoomMeeting.zoomJoinUrl
     };
+    // Persist immediately: a failed email must not create another Zoom meeting
+    // when Gerry retries the same time.
+    await getPublishedSessionsDb(env).prepare(`UPDATE leads SET
+      scheduled_start_at = ?, scheduled_end_at = ?, scheduled_timezone = ?,
+      zoom_meeting_id = ?, zoom_join_url = ?, zoom_meeting_password = ?, zoom_created_at = ?,
+      status = 'awaiting-client', schedule_response_status = 'pending',
+      schedule_response_token = ?, schedule_response_expires_at = ?
+      WHERE id = ?`).bind(schedule.scheduledStartAt, schedule.scheduledEndAt, schedule.scheduledTimezone,
+      schedule.zoomMeetingId, schedule.zoomJoinUrl, schedule.zoomMeetingPassword || null, schedule.zoomCreatedAt,
+      schedule.scheduleResponseToken, schedule.scheduleResponseExpiresAt, leadId).run();
   } catch (error) {
     console.error('Lead schedule Zoom meeting creation failed', {
       leadId,
@@ -6641,18 +6706,21 @@ async function storeConsumerPublishedSession(env, record) {
   // A client record so the call appears in the pipeline, marked with where it
   // came from: an online caller has never spoken to anyone, and mixing them in
   // with adviser sessions makes the list useless for deciding who to follow up.
-  const client = await findOrCreateClientForProfile(env, {
+  const client = record.clientId ? { id: record.clientId } : await findOrCreateClientForProfile(env, {
     fullName: clientName,
     pipelineStage: 'session_published',
     timestamp: createdAt,
     source: 'consumer_call'
   });
   const linkedClientId = client?.id || null;
+  const encryptedRecovery = record.recovery
+    ? await encryptPublishedRecoveryPayload(env, record.recovery) : null;
+  if (record.recovery && !encryptedRecovery) throw new Error('Report recovery is not configured.');
 
   await insertPublishedSessionRow(env, {
     id: publishedId,
     clientId: linkedClientId,
-    sourceLeadId: null,
+    sourceLeadId: record.sourceLeadId || null,
     version: requestBody.v,
     status: 'active',
     createdAt,
@@ -6660,18 +6728,22 @@ async function storeConsumerPublishedSession(env, record) {
     expiresAt,
     revokedAt: null,
     clientName,
-    clientEmail: '',
+    clientEmail: record.clientEmail || '',
     pinRequired: true,
     clientAuthHashB64u: requestBody.auth.clientAuthHashB64u,
     advisorAuthHashB64u: requestBody.auth.advisorAuthHashB64u,
     clientR2Key,
     advisorR2Key,
-    recoveryPayloadB64u: null,
-    recoveryIvB64u: null,
+    recoveryPayloadB64u: encryptedRecovery?.recoveryPayloadB64u || null,
+    recoveryIvB64u: encryptedRecovery?.recoveryIvB64u || null,
     clientPinState: requestBody.clientBundle.clientAccess.pinState,
     clientPinInitializedAt: null,
     clientAccessRevision: requestBody.clientBundle.clientAccess.revision
   });
+  if (record.reportKind) {
+    await getPublishedSessionsDb(env).prepare('UPDATE published_sessions SET report_kind = ? WHERE id = ?')
+      .bind(record.reportKind, publishedId).run();
+  }
 
   if (linkedClientId) {
     await advanceClientPipelineStage(env, linkedClientId, 'session_published', {
@@ -6686,6 +6758,108 @@ async function storeConsumerPublishedSession(env, record) {
     version: requestBody.v,
     expiresAt
   }).catch(() => {});
+}
+
+function educationCallHooks(env, request = null, origin = null) {
+  return createEducationCallHooks(env, {
+    requireAdvisor: async (incoming = request) => {
+      const access = await requireAdvisorSession(incoming, env, origin, 'GET,POST,DELETE,OPTIONS', {
+        requireCsrf: incoming.method !== 'GET', rateScope: 'education-calls-admin', rateLimitMax: 90
+      });
+      if (access.response) return access.response;
+      if (!access.session?.authEnabled || !access.session?.authenticated) {
+        return jsonResponse({ error: 'Advisor login required.' }, 401, origin, 'GET,POST,DELETE,OPTIONS', null, noStoreHeaders());
+      }
+      return access;
+    },
+    getPublishedSession: (id) => getPublishedSessionRow(env, id),
+    recoverPublishedLinks: (row) => decryptPublishedRecoveryPayload(env, row),
+    verifyPublishedCapability,
+    loadPublishedBundle: (key) => loadPublishedSessionBundle(env, key),
+    copyReportAssets: async (sourceId, targetId, reportJson) => {
+      const report = JSON.parse(reportJson);
+      const ids = new Set((report.modules || []).flatMap(module => (module.media?.images || []).map(image => image.assetId)));
+      if (ids.size > MAX_MODULE_ASSETS_PER_SESSION) throw new Error('This report has too many images.');
+      for (const assetId of ids) {
+        if (typeof assetId !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(assetId)) throw new Error('This report contains an invalid image reference.');
+        const object = await env.SESSIONS_BUCKET.get(getPublishedModuleAssetKey(sourceId, assetId));
+        if (!object) throw new Error('A report image is no longer available.');
+        const contentType = getStoredModuleAssetContentType(object);
+        const bytes = new Uint8Array(await new Response(object.body).arrayBuffer());
+        if (!contentType || !bytes.length || bytes.length > MAX_MODULE_ASSET_BYTES || detectModuleAssetContentType(bytes) !== contentType) throw new Error('A report image could not be copied.');
+        await env.SESSIONS_BUCKET.put(getPublishedModuleAssetKey(targetId, assetId), bytes, {
+          httpMetadata: { contentType, cacheControl: 'no-store, max-age=0' },
+          customMetadata: { kind: 'published-module-image', publishedId: targetId }
+        });
+      }
+    },
+    createPipelineLead: (payload) => createConsumerPipelineHandoff(env, payload),
+    storePublishedSession: (record) => storeConsumerPublishedSession(env, record),
+    getLead: (id) => getLeadRow(env, id),
+    createZoom: (lead, schedule) => createZoomMeeting(env, lead, schedule),
+    updateZoom: async (booking) => {
+      const config = getZoomConfig(env);
+      const token = await fetchZoomAccessToken(config);
+      const response = await fetch(`${ZOOM_API_BASE_URL}/meetings/${encodeURIComponent(booking.zoomMeetingId)}`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_time: booking.startAt, duration: 40, timezone: 'Europe/Dublin' })
+      });
+      if (!response.ok) throw new Error('Zoom could not update this meeting. Retry the update from the booking controls.');
+      return { zoomMeetingId: booking.zoomMeetingId, zoomJoinUrl: booking.zoomJoinUrl };
+    },
+    deleteZoom: (id) => deleteZoomMeeting(env, id),
+    emailConfig: () => getLeadEmailConfig(env),
+    sendEmail: sendEmailWithResend,
+    buildIcs: buildLeadScheduleIcs,
+    encodeBase64: (value) => toBase64(new TextEncoder().encode(value))
+  });
+}
+
+async function cleanupWalkthroughReports(env) {
+  if (!env.LEADS_DB || !env.SESSIONS_BUCKET) return;
+  const time = Date.now();
+  const reports = (await env.LEADS_DB.prepare(`SELECT r.*, b.status AS booking_status,
+    b.end_at AS call_end_at, b.updated_at AS booking_updated_at,
+    o.state AS purchase_state, o.lifecycle AS purchase_lifecycle,
+    o.created_at AS purchase_created_at, o.updated_at AS purchase_updated_at,
+    (SELECT MIN(created_at) FROM education_booking_events e WHERE e.booking_id = b.id
+      AND e.event_type IN ('booking_cancelled','hold_expired')) AS closed_at
+    FROM education_call_reports r
+    LEFT JOIN education_stripe_orders o ON o.id = r.booking_id
+    LEFT JOIN education_bookings b ON b.id = COALESCE(o.booking_id, r.booking_id)
+    WHERE r.state != 'purged' ORDER BY r.expires_at LIMIT 200`).all()).results || [];
+  for (const report of reports) {
+    const closed = ['cancelled', 'expired'].includes(report.booking_status);
+    const paidUnscheduled = !report.call_end_at && report.purchase_state === 'paid'
+      && report.purchase_lifecycle === 'awaiting_scheduling';
+    const base = closed ? report.closed_at || report.booking_updated_at
+      : report.call_end_at || report.purchase_updated_at || report.purchase_created_at || Date.parse(report.created_at) / 1000;
+    // A paid, unused purchase keeps its consented analysis available. Expired
+    // unpaid attempts and closed appointments retain the existing 30-day rule.
+    const expiresAt = new Date(paidUnscheduled ? time + 90 * 86_400_000 : Number(base) * 1000 + 30 * 86_400_000).toISOString();
+    await env.LEADS_DB.batch([
+      env.LEADS_DB.prepare('UPDATE education_call_reports SET expires_at = ? WHERE booking_id = ?').bind(expiresAt, report.booking_id),
+      env.LEADS_DB.prepare('UPDATE published_sessions SET expires_at = ? WHERE id = ?').bind(expiresAt, report.published_id)
+    ]);
+    if (Date.parse(expiresAt) > time) continue;
+    // Remove report bytes and the recovery keys. Accounting/payment records
+    // remain separately in the booking ledger.
+    await env.SESSIONS_BUCKET.delete(getPublishedClientKey(report.published_id));
+    await env.SESSIONS_BUCKET.delete(getPublishedAdvisorKey(report.published_id));
+    if (env.SESSIONS_BUCKET.list) {
+      let cursor;
+      do {
+        const page = await env.SESSIONS_BUCKET.list({ prefix: `${MODULE_ASSET_PUBLISHED_KEY_PREFIX}${report.published_id}/`, ...(cursor ? { cursor } : {}) });
+        for (const object of page.objects) await env.SESSIONS_BUCKET.delete(object.key);
+        cursor = page.truncated ? page.cursor : null;
+      } while (cursor);
+    }
+    await env.LEADS_DB.batch([
+      env.LEADS_DB.prepare(`UPDATE published_sessions SET status = 'revoked', revoked_at = ?,
+        recovery_payload_b64u = NULL, recovery_iv_b64u = NULL WHERE id = ?`).bind(nowIso(), report.published_id),
+      env.LEADS_DB.prepare("UPDATE education_call_reports SET state = 'purged', lease_expires_at = NULL WHERE booking_id = ?").bind(report.booking_id)
+    ]);
+  }
 }
 
 /**
@@ -8947,6 +9121,12 @@ async function handleSendPublishedSessionEmail(request, env, origin, publishedId
 
 export default {
   async scheduled(controller, env, ctx) {
+    env = expandWalkthroughSettings(env);
+    ctx.waitUntil(processStripePurchaseJobs(env, educationCallHooks(env))
+      .catch(() => console.error('Walkthrough purchase email delivery will retry.')));
+    ctx.waitUntil(processEducationCallJobs(env, educationCallHooks(env))
+      .then(() => cleanupWalkthroughReports(env))
+      .catch(() => console.error('Walkthrough booking maintenance failed; will retry.')));
     ctx.waitUntil(processDemoOutbox(env, {
       emailConfig: () => getLeadEmailConfig(env), sendEmail: sendEmailWithResend
     }).catch(() => console.error('Demo email maintenance failed.')));
@@ -9025,8 +9205,16 @@ export default {
   },
 
   async fetch(request, env, ctx) {
+    env = expandWalkthroughSettings(env);
     const url = new URL(request.url);
     const pathname = normalizePathname(url.pathname);
+    if (pathname === '/api/stripe/webhook') {
+      const result = await handleStripeWebhook(request, env);
+      if (result.ok) ctx.waitUntil(Promise.all([
+        processStripePurchaseJobs(env, educationCallHooks(env)), processEducationCallJobs(env, educationCallHooks(env))])
+        .catch(() => console.error('Walkthrough delivery will retry.')));
+      return result;
+    }
     const routeConfig = getRouteConfig(pathname);
     const origin = getCorsOrigin(request, env);
     const requestHeaders = getAllowedRequestHeaders(request);
@@ -9066,6 +9254,45 @@ export default {
       }
 
       return optionsResponse(request, origin, routeConfig.methods);
+    }
+
+    if (pathname.startsWith('/api/education-calls/') || pathname.startsWith('/api/advisor/education-calls/')) {
+      const methods = routeConfig?.methods || 'GET,POST,DELETE,OPTIONS';
+      if (request.method !== 'GET' && !origin) {
+        return jsonResponse({ error: 'Origin not allowed.' }, 403, null, methods, requestHeaders, noStoreHeaders());
+      }
+      const publicCreation = pathname === '/api/education-calls/bookings' || pathname === '/api/education-calls/availability'
+        || pathname === '/api/education-calls/purchases';
+      if (publicCreation && isTruthyEnvValue(env.EDUCATION_CALLS_ENABLED)
+        && (!getAdvisorAuthConfig(env).enabled || !env.SESSIONS_BUCKET || !getZoomConfig(env).enabled
+          || !getLeadEmailConfig(env).apiKey || !getLeadEmailConfig(env).from)) {
+        return jsonResponse({ error: 'Walkthrough booking is not configured yet.', code: 'booking_unconfigured' }, 503, origin, methods, requestHeaders, noStoreHeaders());
+      }
+      const allowed = await checkPersistentRateLimit(env, 'education-calls', getClientIp(request), HOUR_MS, request.method === 'GET' ? 180 : 40);
+      if (!allowed) return jsonResponse({ error: 'Too many requests. Please try again later.' }, 429, origin, methods, requestHeaders, noStoreHeaders());
+      const hooks = educationCallHooks(env, request, origin);
+      const response = await handleEducationProfile(request, env, hooks)
+        || await handleStripePurchases(request, env, hooks)
+        || await handleEducationCalls(request, env, hooks);
+      if (!response) return jsonResponse({ error: 'Not found.' }, 404, origin, methods, requestHeaders, noStoreHeaders());
+      if (request.method !== 'GET' && response.ok) {
+        ctx.waitUntil(Promise.all([
+          processStripePurchaseJobs(env, educationCallHooks(env)), processEducationCallJobs(env, educationCallHooks(env))])
+          .catch(() => console.error('Walkthrough delivery will retry.')));
+      }
+      const headers = new Headers(response.headers);
+      for (const [key, value] of Object.entries({ ...corsHeaders(origin, methods, requestHeaders), ...securityHeaders(noStoreHeaders()) })) headers.set(key, value);
+      return new Response(response.body, { status: response.status, headers });
+    }
+
+    if (pathname === '/api/advisor/qualification/ranking'
+      || /^\/api\/advisor\/leads\/\d+\/qualification(?:\/outcomes)?$/.test(pathname)) {
+      return handleQualificationRequest(request, env, {
+        requireAdmin: (requireCsrf) => requireAdvisorSession(request, env, origin, routeConfig.methods, {
+          requireCsrf, rateScope: 'advisor-qualification', rateLimitMax: 60
+        }),
+        respond: (data, status, methods) => jsonResponse(data, status, origin, methods, requestHeaders, noStoreHeaders())
+      });
     }
 
     if (pathname.startsWith('/api/demo/') || pathname.startsWith('/api/advisor/demo/')) {

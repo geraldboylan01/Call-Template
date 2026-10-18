@@ -25,7 +25,8 @@ try {
     for (const path of ['/', '/apply/', '/privacy/', '/plan/privacy.html', '/terms/', '/for-ai-assistants/', '/apply/preparing/']) {
       await page.goto(`${base}${path}`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} overflow on ${path}`);
-      if (path !== '/for-ai-assistants/') assert.doesNotMatch(await page.locator('body').innerText(), /€100|\bpaid\b|\bcharging\b|\bfee\b|\bpayment\b|40[ -]min/i, `${name}: pricing before analysis on ${path}`);
+      // Legal pages disclose the optional paid service; marketing remains free of a pre-analysis offer.
+      if (['/', '/apply/', '/apply/preparing/'].includes(path)) assert.doesNotMatch(await page.locator('body').innerText(), /€100|\bpaid\b|\bcharging\b|\bfee\b|\bpayment\b|40[ -]min/i, `${name}: pricing before analysis on ${path}`);
     }
     await page.goto(`${base}/`);
     await page.locator('.faq-item').first().locator('summary').click();
@@ -74,9 +75,9 @@ try {
 
     await page.goto(`${base}/dev/education-call-preview.html`);
     await page.waitForSelector('.education-call-cta').catch(error => { throw new Error(`${error.message} Browser errors: ${errors.join('; ')}`); });
-    assert.match(await page.locator('.education-call-cta').innerText(), /Talk through your results with Gerry\./);
-    assert.match(await page.locator('.education-call-cta').innerText(), /person who built Planeir/);
-    assert.match(await page.locator('.education-call-cta').innerText(), /€100.*40 minutes on Zoom/);
+    assert.match(await page.locator('.education-call-cta').innerText(), /Personalised Planéir Walkthrough/);
+    assert.match(await page.locator('.education-call-cta').innerText(), /Gerry, the creator of Planéir/);
+    assert.match(await page.locator('.education-call-cta').innerText(), /€99\.99.*40 minutes on Zoom/);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} call invitation overflow`);
     const gates = await page.evaluate(async () => {
       const { createEducationCallCTA, getAvailableViews } = await import('/js/plan/views.js');
@@ -94,17 +95,9 @@ try {
     assert.ok(gates.hidden.every(Boolean), `${name}: incomplete, failed, stale or review-only outcome offered a call`);
     assert.ok(gates.unavailableBeforeAnalysis.every(Boolean), `${name}: request opened before analysis`);
     await page.screenshot({ path: `${output}/analysis-call-${name}.png`, fullPage: true });
-    await page.click('.education-call-cta button');
-    assert.equal(await page.locator('#handoffForm').getAttribute('data-call-offer-version'), 'private-education-call-v1');
-    assert.equal(await page.isChecked('[name="handoffConsent"]'), false);
-    await page.fill('[name="fullName"]', 'Fictional Person');
-    await page.fill('[name="email"]', 'fictional@example.com');
-    await page.fill('[name="requestedHelp"]', 'Explain the assumptions used.');
-    await page.check('[name="handoffConsent"]');
-    await page.click('#handoffForm button[type="submit"]');
-    assert.match(await page.locator('#handoffForm [role="status"]').innerText(), /No request was sent/);
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${name} call form overflow`);
-    await page.screenshot({ path: `${output}/analysis-call-request-${name}.png`, fullPage: true });
+    assert.match(await page.locator('.education-call-cta').innerText(), /Walkthrough bookings are not available in this version yet/);
+    assert.equal(await page.locator('.education-call-cta input, .education-call-cta select, .education-call-cta textarea, .education-call-cta button').count(), 0, 'Dormant preview cannot collect details or submit a purchase');
+    assert.equal(await page.locator('#handoffForm').count(), 0);
     assert.deepEqual(submissions, []);
     assert.deepEqual(errors, [], `${name} browser errors`);
     await context.close();
