@@ -52,9 +52,12 @@ const app = await source('js/apply.js');
 const privacy = await source('privacy/index.html');
 assert.equal(privacy, await source('plan/privacy.html'), 'Both public privacy routes must present the same notice');
 assert.doesNotMatch(home, /€100|\bpaid\b|paidBooking|\bfee\b|\bcharging\b|\bpayment\b|40[ -]min/i);
-for (const file of ['apply/index.html', 'apply/preparing/index.html', 'privacy/index.html', 'plan/privacy.html', 'terms/index.html', 'llms.txt']) {
+for (const file of ['apply/index.html', 'apply/preparing/index.html', 'llms.txt']) {
   assert.doesNotMatch(await source(file), /€100|\bpaid\b|\bcharging\b|\bfee\b|\bpayment\b|40[ -]min/i, `Call pricing must wait until the analysis: ${file}`);
 }
+assert.match(privacy, /explicit permission[^<]*encrypted copy of that exact report/);
+assert.match(await source('terms/index.html'), /€99\.99[^<]*40 minutes/);
+assert.match(await source('terms/index.html'), /id="walkthrough"/);
 assert.doesNotMatch(home, /optional call with Gerry|Can I talk through my results with Gerry/);
 assert.match(home, /technology/i);
 assert.match(home, /worked with clients across every part of the financial advice process/);

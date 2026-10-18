@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://api.planeir.ie; frame-src https://www.youtube-nocookie.com https://www.youtube.com; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta name="call-canvas-worker-base-url" content="https://api.planeir.ie" />
+    <meta name="planeir-consumer-api-base-url" content="https://api.planeir.ie" />
+    <title>Walkthrough report | Planeir</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link id="educationWorkspaceStyles" rel="stylesheet" href="../styles/base.css" media="not all" />
+    <link id="educationResultsStyles" rel="stylesheet" href="../styles/plan.css" />
+  </head>
+  <body>
+    <header id="educationReportHeader" class="plan-header">
+      <a id="educationReportBrand" class="plan-brand" href="./clients.html" aria-label="Back to the client pipeline">
+        <img src="../assets/brand/planeir-lockup-light.svg" alt="Planeir" width="1330" height="384" />
+      </a>
+      <span class="beta-badge">Private report · Read only</span>
+    </header>
+    <main id="educationReportMain" class="plan-main">
+      <section id="educationReportStatus" class="loading-card" role="status" aria-live="polite">
+        <h1>Walkthrough report</h1>
+        <p>Opening the report shared for this call…</p>
+      </section>
+      <div id="educationReportResults" aria-busy="true"></div>
+      <noscript>JavaScript is needed to unlock this private report.</noscript>
+    </main>
+    <script src="../js/vendor/chart.umd.min.js"></script>
+    <script src="../js/vendor/Sortable.min.js"></script>
+    <script type="module" src="../js/education_call_report.js"></script>
+  </body>
+</html>

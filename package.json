@@ -149,11 +149,22 @@
     "check:workspace-copy": "node ./scripts/generate-workspace-pages.mjs --check && node ./scripts/check-workspace-copy.mjs",
     "check:workspace-browser": "node ./scripts/check-workspace-browser.mjs",
     "check:education-call": "node ./scripts/check-education-call.mjs",
+    "check:stripe": "node ./scripts/check-stripe-walkthroughs.mjs && node ./scripts/check-walkthrough-purchase-integration.mjs",
+    "check:stripe-ui": "node ./scripts/check-stripe-ui.mjs",
+    "setup:stripe-sandbox": "node ./scripts/setup-stripe-walkthrough-sandbox.mjs",
+    "probe:stripe-sandbox": "node ./scripts/probe-stripe-walkthrough-sandbox.mjs",
+    "check:education-booking": "node ./scripts/check-education-booking.mjs && node ./scripts/check-education-booking-integration.mjs",
+    "check:education-booking-ui": "node ./scripts/check-education-booking-ui.mjs && node ./scripts/check-education-report-ui.mjs",
+    "check:lead-qualification": "node ./scripts/check-lead-qualification.mjs",
     "check:product-previews": "node ./scripts/check-product-previews.mjs",
     "check:demo": "node ./scripts/check-demo-flow.mjs",
     "check:demo-browser": "node ./scripts/check-demo-browser.mjs"
   },
   "devDependencies": {
-    "@resvg/resvg-js": "2.6.2"
+    "@resvg/resvg-js": "2.6.2",
+    "playwright-core": "1.64.1"
+  },
+  "dependencies": {
+    "stripe": "23.0.0"
   }
 }

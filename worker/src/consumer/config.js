@@ -399,6 +399,7 @@ export function getConsumerConfig(env) {
     handoffRequested,
     handoffConfigured,
     handoffEnabled: journeyEnabled && handoffRequested && handoffConfigured,
+    educationCallEnabled: enabled(env.EDUCATION_CALLS_ENABLED),
     handoffRetentionDays,
     handoffRetentionPolicyId,
     handoffPolicyVersion,
@@ -648,6 +649,7 @@ export function getConsumerConfig(env) {
 
 export function publicConsumerConfig(config) {
   return {
+    educationCallEnabled: config.educationCallEnabled === true,
     flags: {
       consumerJourneyEnabled: config.journeyEnabled,
       consumerAiIntakeEnabled: config.aiEnabled,
@@ -663,7 +665,8 @@ export function publicConsumerConfig(config) {
       consumerRealtimeConversationV2Enabled: false,
       consumerModuleRoutingEnabled: config.moduleRoutingEnabled,
       consumerGoalRoutingEnabled: config.goalRoutingEnabled,
-      consumerHumanHandoffEnabled: config.handoffEnabled
+      consumerHumanHandoffEnabled: config.handoffEnabled,
+      consumerEducationCallEnabled: config.educationCallEnabled === true
     },
     access: {
       publicAccessEnabled: config.publicAccessEnabled,
