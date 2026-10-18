@@ -593,7 +593,7 @@ Checks:
 ### Cash flow: annual costs and case changes
 `Use the cash flow playbook. Niamh and Dara, both 45, married and jointly assessed, earn 75000 each, with current personal pension contributions of 5000 for Niamh and 3000 for Dara a year. Mortgage 2500 a month, car 500, living costs 4000. Compare today, clearing the car from savings, paying 10000 extra into pensions and both.`
 
-Pass: only `householdCashFlowInputs`, annualised costs, four cases, no stated tax/relief/result amounts, app-derived summary. Use `people[].personalPensionContribution` for confirmed current deductions; never conceal them in spending. Stated take-home means bank pay after that deduction.
+Pass: only `summaryHtml` and `householdCashFlowInputs`, annualised costs, four cases, a short AI-written client guide with no calculated figures, and no stated tax/relief/result amounts. Use `people[].personalPensionContribution` for confirmed current deductions; never conceal them in spending. Stated take-home means bank pay after that deduction.
 
 ### Home trade down: repayment defines the house budget
 `Use the home trade down playbook. Home 650000, mortgage 280000, repayments 30000 a year. Selling costs 15000, buying costs 12000. New loan 15 years at 4%. Compare staying, paying 18000, 12000 and no mortgage.`

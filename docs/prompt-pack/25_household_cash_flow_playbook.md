@@ -3,10 +3,10 @@
 Use this playbook for `use the cash flow playbook`, `household cash flow`, or what is left after this year's tax, spending and pension saving. Use Net Retirement Cash Flow for a retirement funding gap instead.
 
 ## Job
-Return `generated.householdCashFlowInputs`. The app runs the Irish tax calculator separately for every case, derives the figures and writes the summary. Do not calculate tax, a pension-relief rate, left over or a shortfall in the payload.
+Return a short client guide in `generated.summaryHtml` plus `generated.householdCashFlowInputs`. The app runs the Irish tax calculator separately for every case, derives the figures and writes each case sentence. The guide is AI-authored: use one or two client-facing sentences about what to compare, without quoting uncalculated results. Do not calculate tax, a pension-relief rate, left over or a shortfall in the payload.
 
 ## Output
-Use the usual NOTES and strict JSON sections. NOTES names each case's change and any missing facts. Emit only `householdCashFlowInputs` in `generated`; omit summary, assumptions, outputs, tables, charts and other module inputs.
+Use the usual NOTES and strict JSON sections. NOTES names each case's change and any missing facts. Emit only `summaryHtml` and `householdCashFlowInputs` in `generated`; omit assumptions, outputs, tables, charts and other module inputs.
 
 ## Example
 
@@ -14,6 +14,7 @@ Use the usual NOTES and strict JSON sections. NOTES names each case's change and
 {
   "title": "Your household cash flow",
   "generated": {
+    "summaryHtml": "<p>See what is left after tax, pension saving and your regular costs. Compare today with clearing the car loan and adding to your pension saving.</p>",
     "householdCashFlowInputs": {
       "householdTaxStatus": "married_or_civil_partners",
       "people": [{ "id": "niamh", "label": "Niamh", "age": 45, "personalPensionContribution": 5000, "statedTakeHome": 50000 }, { "id": "dara", "label": "Dara", "age": 45, "personalPensionContribution": 3000 }],

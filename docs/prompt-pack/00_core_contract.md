@@ -68,7 +68,7 @@ The one exception is a confirmation turn. Where the selected playbook says a fig
   - Keep it short and client-facing.
 - `generated.summaryHtml`:
   - 2 to 4 sentences unless the selected playbook says otherwise.
-  - Leave it out where the selected playbook says the app writes the summary (Protection Gap, Household Cash Flow).
+  - Leave it out where the selected playbook says the app writes the summary (Protection Gap).
   - Professional, client-facing, and suitable for screen-sharing.
   - No tool references.
   - Must be understandable without knowing the playbook name.
@@ -125,7 +125,7 @@ Several playbooks support switchable cases. The same limits apply everywhere.
 ## Client Explanation Standard
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
 
-The exceptions are the Protection Gap and Household Cash Flow playbooks: the app writes that summary from its own figures, so the payload carries none.
+The exception is the Protection Gap playbook: the app writes that summary from its own figures, so the payload carries none.
 
 ## Runtime-Safe Module Boundaries
 - `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.futureCostFundInputs`, `generated.protectionGapInputs`, `generated.rentalKeepOrSellInputs`, `generated.householdCashFlowInputs`, `generated.homeTradeDownInputs`, `generated.housePurchaseInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
@@ -133,7 +133,7 @@ The exceptions are the Protection Gap and Household Cash Flow playbooks: the app
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - The Future Cost Fund playbook emits only `summaryHtml` and `futureCostFundInputs`, and never a rate: price, cash and DIRT rates are central.
 - The Protection Gap playbook emits only `protectionGapInputs`. The app writes the summary from its own figures, and nothing in the payload may mention cover, a premium, a policy, a product or a provider.
-- The Household Cash Flow playbook emits only `householdCashFlowInputs`; the app writes its summary. The Home Trade Down playbook emits only `summaryHtml` and `homeTradeDownInputs`.
+- The Household Cash Flow playbook emits only `summaryHtml` and `householdCashFlowInputs`: the AI writes a short client guide and the app writes the case sentences and figures. The Home Trade Down playbook emits only `summaryHtml` and `homeTradeDownInputs`.
 - The Rental Keep or Sell playbook emits only `summaryHtml` and `rentalKeepOrSellInputs`. Every figure is stated, tax included: the app calculates no tax for it.
 - The House Purchase playbook is stricter: `generated` must contain only `summaryHtml` and `housePurchaseInputs`. The runtime owns capacity, purchase costs, deposit timing, mortgage illustrations, household affordability, scheme screens, bottlenecks, actions, tables, and charts.
 - `generated.outputsBucketed` is used by the PBS playbook.

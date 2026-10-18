@@ -552,4 +552,4 @@ Playbooks should only emit the subset they are responsible for.
 
 
 ## Household Cash Flow and Home Trade Down
-Use the exact input contracts and examples in `25_household_cash_flow_playbook.md` and `26_home_trade_down_playbook.md`. Cash flow derives its summary and every figure. Home trade down accepts `summaryHtml` plus its inputs, with repayments defining cases and no supplied output amounts. Both accept at most four cases. These adviser playbooks do not add consumer-planner registry entries.
+Use the exact input contracts and examples in `25_household_cash_flow_playbook.md` and `26_home_trade_down_playbook.md`. Cash flow accepts a short AI-written `summaryHtml` guide plus its inputs; the app derives every figure and case sentence. Home trade down accepts `summaryHtml` plus its inputs, with repayments defining cases and no supplied output amounts. Both accept at most four cases. These adviser playbooks do not add consumer-planner registry entries.
