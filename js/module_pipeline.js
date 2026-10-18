@@ -2253,7 +2253,7 @@ export function normalizePayload(payload) {
     if (generatedPatch.goalsAndResourcesInputs) {
       const otherKinds = Object.keys(generatedPatch).filter((key) => (
         key !== 'goalsAndResourcesInputs' && generatedPatch[key]
-        && (key.endsWith('Inputs') || ['liquidityPlan', 'education', 'report', 'videoSummary'].includes(key))
+        && (key.endsWith('Inputs') || ['liquidityPlan', 'education', 'report', 'videoSummary', 'outputsBucketed'].includes(key))
       ));
       if (otherKinds.length > 0) {
         throw new Error(`Use one module type per payload: generated.goalsAndResourcesInputs cannot be combined with ${otherKinds.join(', ')}.`);

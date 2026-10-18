@@ -80,6 +80,11 @@ export function runGoalsAndResourcesWiringTests() {
     try { normalizePayload({ generated: { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE, homeTradeDownInputs: HOME_TRADE_DOWN_SAMPLE } }); }
     catch (error) { refused = /one module type/i.test(error.message); }
     assert(refused, 'ambiguous calculators refused before paste');
+    refused = false;
+    try { normalizePayload({ generated: { goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE,
+      outputsBucketed: { sections: [{ key: 'summary', title: 'Summary', columns: ['Item', 'Amount (€)'], rows: [['Net worth', 100000]] }] }
+    } }); } catch (error) { refused = /one module type/i.test(error.message); }
+    assert(refused, 'bucketed-only balance sheet is also a conflicting calculator');
   });
   check('Import recomputes valid figures and drops malformed inputs with stale figures', () => {
     const imported = normalizeGenerated({ goalsAndResourcesInputs: GOALS_AND_RESOURCES_SAMPLE, tables: [{ title: 'FAKE', rows: [] }] });
