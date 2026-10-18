@@ -256,7 +256,7 @@ Playbooks should only emit the subset they are responsible for.
   - `scenarios`: 1 to 4 cases
 - Each case supports `id` (required, unique), `title` (up to 40 characters; the app derives `Today`, `{Name} cannot work` or `If {Name} died` when it is left out), `description` and one `event`. Any other key is refused with `generated.protectionGapInputs.scenarios[i] (<title>): "<key>" is not a field.`
 - Events:
-  - `{ "type": "cannotWork", "personId", "statePayment" }`: `statePayment` is whole euros per year, greater than 0.
+  - `{ "type": "cannotWork", "personId", "statePayment" }`: `statePayment` is required, in whole euros per year, 0 or more. Explicit 0 means no State payment; a missing amount is not zero.
   - `{ "type": "dies", "personId", "survivorsPension", "neededAfter"?, "neededBecause"? }`: needs two people. `survivorsPension` is whole euros per year, 0 or more. `neededAfter` must be lower than `needed`. `neededBecause` lists `mortgageCleared` and/or `livingCostsLower` and needs `neededAfter`.
   - The person whose income stops must have a take-home above 0.
 - The wording limit is enforced on the way in:
