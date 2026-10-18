@@ -38,7 +38,7 @@ Return the usual NOTES and strict JSON sections. Emit only a short client-facing
 - `newLoanTermYears`: integer 1 to 40. `newLoanAnnualRate`: decimal from 0 to 0.15 (4% is `0.04`). Both are required even for an all-cash case; ask when missing, with no invented default or current market-rate assumption.
 - `scenarios`: one to four unique ids. `kind` is `stay` or `move`. Every move gives `annualRepayment`, from 0 to `currentAnnualRepayments`. A repayment of 0 means no new loan. The resulting displayed home budget (cash after selling and buying costs plus the rounded new loan) must also be no more than the current home value. A lower annual repayment can still breach this ceiling when the new term is longer or the rate is lower.
 - Optional `baseScenarioId` names an existing case; otherwise the first is the base.
-- Optional `title` and `description` speak to the client. Prefer the app's derived titles. Never recommend, rank, or say `we`, `us` or `our`.
+- Optional `title` and `description` speak to the client. Prefer the app's derived titles. Never recommend or rank. Neither field may use `we`, `us`, `our`, `p.a.`, `you should`, `best`, `ideal` or `optimal`; write `a year` instead of `p.a.`.
 
 Each move states a repayment, not a home price. The app solves the size of the new loan and the home budget. It rounds the new loan to €1,000 and reconciles the displayed cuts; do not reverse-engineer a desired house price into a made-up repayment.
 

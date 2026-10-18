@@ -33,8 +33,8 @@ function entriesFrom(source, label) {
 // The adviser cash-flow prompt needs the same limit values as the runtime.
 // Generate the snapshot in both upload surfaces from the central pension helper.
 const cashFlowPath = resolve(promptDir, '25_household_cash_flow_playbook.md');
-if (!existsSync(cashFlowPath)) {
-  throw new Error('Required cash-flow playbook is missing: 25_household_cash_flow_playbook.md');
+for (const name of ['25_household_cash_flow_playbook.md', '26_home_trade_down_playbook.md']) {
+  if (!existsSync(resolve(promptDir, name))) throw new Error(`Required adviser playbook is missing: ${name}`);
 }
 {
   const begin = '<!-- cash-flow-pension-relief:start -->';
