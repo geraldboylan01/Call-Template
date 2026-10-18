@@ -322,6 +322,40 @@ export function runHouseholdCashFlowTests() {
     assertEqual(JSON.stringify(normalizeHouseholdCashFlowInputs(normalized)), JSON.stringify(normalized), 'normalises to itself');
   }));
 
+  cases.push(runCase('Pension sentences use the actual extra and matching tax saving across rounding boundaries', () => {
+    for (const [current, extra, extraText, taxText, costText] of [
+      [3960, 1080, '€1,080', '€432', '€648'],
+      [60, 40, '€40', '€16', '€24'],
+      [40, 80, '€80', '€32', '€48'],
+      [3960.35, 1080.55, '€1,080.55', '€432.22', '€648.33'],
+      [60, 0.40, '€0.40', '€0.16', '€0.24']
+    ]) {
+      const raw = {
+        householdTaxStatus: 'single', calculationYear: 2026,
+        people: [{ id: 'a', age: 40, personalPensionContribution: current, statedTakeHome: 50000 }],
+        income: [{ personId: 'a', type: 'employment', amount: 75000 }],
+        outgoings: [{ id: 'car', label: 'Car loan', amount: 2000 }, { id: 'living', label: 'Living costs', amount: 20000 }],
+        scenarios: [
+          { id: 'today' },
+          { id: 'extra', changes: [{ type: 'extraPension', amount: extra }] },
+          { id: 'both', changes: [{ type: 'extraPension', amount: extra }, { type: 'clearOutgoing', outgoingId: 'car' }] }
+        ]
+      };
+      const projection = computeHouseholdCashFlowProjection(raw, { taxFor: ({ contributions }) => ({ a: 22000 - 0.4 * contributions.reduce((n, entry) => n + entry.amount, 0) }) });
+      checkInvariants(projection, 'actual pension change');
+      const [, pension, both] = projection.debug.cases;
+      assert(pension.sentence.includes(`Paying ${extraText} more`), `actual extra ${extra}`);
+      assert(pension.sentence.includes(`tax by ${taxText}`), 'actual tax saving');
+      assert(pension.sentence.includes(`${costText} more goes out`), 'gross less tax saving adds up');
+      assert(both.sentence.includes(`${extraText} more goes into`) && both.sentence.includes(`tax ${taxText} lower`), 'combined case uses the same precision');
+      assert(projection.debug.footnote.includes('nearest €100') && projection.debug.footnote.includes('Pension changes'), 'precision explained');
+      if (current === 3960) {
+        assertEqual(projection.outputsTable.rows[0][2], 4000, 'today ledger stays rounded');
+        assertEqual(projection.outputsTable.rows[1][2], 5000, 'case ledger stays rounded');
+      }
+    }
+  }));
+
   cases.push(runCase('A pension line is drawn only when a case shows a nonzero rounded contribution', () => {
     const raw = payload((p) => {
       p.people[0].personalPensionContribution = 20;

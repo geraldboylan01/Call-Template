@@ -134,6 +134,18 @@ function euroText(amount) {
   return `€${Math.round(Math.abs(amount)).toLocaleString('en-IE')}`;
 }
 
+/** Detail amounts use integer cents so gross minus relief adds up in the sentence. */
+function pensionChangeText(cents) {
+  const digits = cents % 100 === 0 ? 0 : 2;
+  return `€${(Math.abs(cents) / 100).toLocaleString('en-IE', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+function roundingText(inputs) {
+  const totals = 'Chart and ledger amounts, and left over figures, are rounded to the nearest €100.';
+  const hasExtra = inputs.scenarios.some((scenario) => scenario.changes.some((change) => change.type === 'extraPension'));
+  return totals + (hasExtra ? ' Pension changes in the sentences use actual amounts, including cents.' : '');
+}
+
 function roundToHundred(amount) {
   return (Math.round(amount / 100) * 100) || 0;
 }
@@ -1050,7 +1062,7 @@ function buildSentence({ model, today, outgoingsById }) {
 
   const { changes } = model.scenario;
   const effect = effectClause(today.shownLeftOver, shownLeft);
-  const taxDelta = today.shownTax - model.shownTax;
+  const taxDeltaCents = Math.round((today.taxTotal - model.taxTotal) * 100);
 
   if (changes.length === 1) {
     const change = changes[0];
@@ -1060,23 +1072,23 @@ function buildSentence({ model, today, outgoingsById }) {
       const from = change.paidFrom === 'savings' ? ' from savings' : '';
       return `Clearing your ${label}${from} stops ${euroText(line.shownAmount)} a year going out, so ${effect}.`;
     }
-    const extra = model.shownPensions - today.shownPensions;
-    const net = extra - taxDelta;
-    const lead = taxDelta > 0
-      ? `Paying ${euroText(model.shownPensions - today.shownPensions)} more into your pensions lowers your tax by ${euroText(taxDelta)}, `
-      : `Paying ${euroText(model.shownPensions - today.shownPensions)} more into your pensions, `;
-    return `${lead}so ${euroText(net)} more goes out each year and ${effect}.`;
+    const extraCents = Math.round(change.amount * 100);
+    const netCents = extraCents - taxDeltaCents;
+    const lead = taxDeltaCents > 0
+      ? `Paying ${pensionChangeText(extraCents)} more into your pensions lowers your tax by ${pensionChangeText(taxDeltaCents)}, `
+      : `Paying ${pensionChangeText(extraCents)} more into your pensions, `;
+    return `${lead}so ${pensionChangeText(netCents)} more goes out each year and ${effect}.`;
   }
 
   const phrases = changes.map((change) => {
     if (change.type === 'clearOutgoing') {
       return `your ${lowerFirst(outgoingsById.get(change.outgoingId).label)} is gone`;
     }
-    return `${euroText(model.shownPensions - today.shownPensions)} more goes into your pensions each year`;
+    return `${pensionChangeText(Math.round(change.amount * 100))} more goes into your pensions each year`;
   });
-  const taxClause = taxDelta === 0
+  const taxClause = taxDeltaCents === 0
     ? ''
-    : `, with your tax ${euroText(taxDelta)} ${taxDelta > 0 ? 'lower' : 'higher'}`;
+    : `, with your tax ${pensionChangeText(taxDeltaCents)} ${taxDeltaCents > 0 ? 'lower' : 'higher'}`;
   return `${capitalise(effect)}, but ${joinWithAnd(phrases)}${taxClause}.`;
 }
 
@@ -1175,7 +1187,7 @@ function buildAssumptionsTable(inputs, year, models, lines, disclosureRows) {
         + 'Each of your take-home figures is an allocation, not a payslip figure.'
     ]);
   }
-  rows.push(['Rounding', 'Amounts are shown to the nearest €100.']);
+  rows.push(['Rounding', roundingText(inputs)]);
   disclosureRows.rows.forEach((row) => rows.push(row));
   if (disclosureRows.rows.length > 0) {
     rows.push(['Not included in tax estimates', TAX_NOT_INCLUDED.map((entry) => entry.text).join(' ')]);
@@ -1316,7 +1328,7 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
   const lines = taxSourceLines(inputs, today.people);
   const disclosureRows = renderDisclosureRows(inputs, year, models);
   const footnote = `Your income before tax is ${euroText(inputs.incomeTotal)} a year. `
-    + `${taxSourceSentence(inputs, lines)} Amounts are rounded to the nearest €100.`;
+    + `${taxSourceSentence(inputs, lines)} ${roundingText(inputs)}`;
 
   const warnings = [];
   inputs.people.forEach((person, index) => {

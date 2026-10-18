@@ -204,17 +204,19 @@ function referenceSentences(ref) {
     return `the amount you have left over falls from ${eur(base)} to ${eur(left)}`;
   };
   const cap = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-  const taxDrop = (entry) => today.shownTax - entry.shownTax;
+  const taxDrop = (entry) => Math.round((today.tax - entry.tax) * 100);
+  const extra = (entry) => Math.round((entry.pensions - today.pensions) * 100);
+  const detail = (cents) => `€${(Math.abs(cents) / 100).toLocaleString('en-IE', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: cents % 100 ? 2 : 0 })}`;
   const carToday = today.shownStated[1];
   return [
     today.shownLeft < 0
       ? `Today, ${eur(today.shownOut)} goes out against your ${eur(today.shownIncome)}, and you are short by ${eur(today.shownLeft)}.`
       : `Today, ${eur(today.shownOut)} of your ${eur(today.shownIncome)} goes out and you have ${eur(today.shownLeft)} left over.`,
     `Clearing your car loan from savings stops ${eur(carToday)} a year going out, so ${effect(clear.shownLeft, today.shownLeft)}.`,
-    `Paying ${eur(pension.shownPensions - today.shownPensions)} more into your pensions lowers your tax by ${eur(taxDrop(pension))}, `
-      + `so ${eur(pension.shownPensions - today.shownPensions - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
-    `${cap(effect(both.shownLeft, today.shownLeft))}, but your car loan is gone and ${eur(both.shownPensions - today.shownPensions)} more goes into your pensions each year, `
-      + `with your tax ${eur(taxDrop(both))} ${taxDrop(both) > 0 ? 'lower' : 'higher'}.`
+    `Paying ${detail(extra(pension))} more into your pensions lowers your tax by ${detail(taxDrop(pension))}, `
+      + `so ${detail(extra(pension) - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
+    `${cap(effect(both.shownLeft, today.shownLeft))}, but your car loan is gone and ${detail(extra(both))} more goes into your pensions each year, `
+      + `with your tax ${detail(taxDrop(both))} ${taxDrop(both) > 0 ? 'lower' : 'higher'}.`
   ];
 }
 
@@ -266,7 +268,14 @@ const currentAndStated = clone(currentPensions);
 currentAndStated.people[0].statedTakeHome = 50000;
 currentAndStated.people[1].statedTakeHome = 55000;
 
+const pensionRoundingBoundary = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+pensionRoundingBoundary.people[0].personalPensionContribution = 3960.35;
+pensionRoundingBoundary.scenarios.forEach((scenario) => (scenario.changes || []).forEach((change) => {
+  if (change.type === 'extraPension') change.amount = 1080.55;
+}));
+
 const SAMPLE_SHAPED = [
+  ['pension change precision at a rounding boundary', pensionRoundingBoundary],
   ['current pensions, estimated bank pay', currentPensions],
   ['current pensions, stated bank pay', currentAndStated],
   ['engine, 75,000 each', HOUSEHOLD_CASH_FLOW_SAMPLE],

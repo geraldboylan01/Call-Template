@@ -111,7 +111,7 @@ A stated take-home changes this. If Niamh's payslips say her take-home is 50,000
 1. **Release surface.** Adviser-only through the Dev Panel, the presenter and the published session viewer. `consumer: false`, as the pension and mortgage modules were. No consumer routing, no voice, no planner facts. The plan adapter is a later change (see Out of scope).
 2. **One ordinary year.** Every amount is per year, in today's money. No growth, no inflation, no projection. "Each year" means a typical year.
 3. **Pension money is not spent.** The picture treats a pension contribution as leaving the household's spending money, which is what the case is about. The wording is "goes out" and "goes into your pensions", never "lost" or "spent". The assumptions table says what the left-over figure is: income after tax, pension contributions and the stated costs.
-4. **Rounding on screen.** Every amount to the nearest €100, from unrounded values. Rules in the contract.
+4. **Rounding on screen.** Chart and ledger totals and left over figures use the nearest €100; pension changes in case sentences use the actual extra and tax saving, to cents. Rules in the contract.
 5. **No rates and no tax lines in the payload.** The payload carries income, stated costs and, optionally, a person's take-home. Tax rules come from the engine, so every module and adviser reads the same number.
 6. **Stated take-home means bank pay after today's pension deduction.** The legacy calculated `takeHome` summary remains income minus tax for compatibility. Explicit bank-pay fields deduct the full case contribution once; see the contribution input contract below.
 
@@ -481,7 +481,7 @@ Three effect clauses are not on a frame and were approved in the plan: "nothing 
 
 On screen a short figure has **no sign**. The word carries it: "Short", "€2,800 a year" and "About €230 a month". Nothing says "negative", "deficit" or "overdrawn".
 
-Footnote, from the model and never typed: `Your income before tax is {€income} a year. {tax-source sentence} Amounts are rounded to the nearest €100.` The tax-source sentence is the disclosure line from Outputs: with everything estimated, `Your tax is an estimate of income tax, USC and PRSI.`; with everything stated, `Your tax uses the take-home pay you gave. The change each case makes to it is an estimate.`; mixed, `Your tax uses the take-home pay you gave for {label} and an estimate for {label}. The change each case makes to it is an estimate.` This is the one element not drawn in the frames: one muted line at the bottom, 18/26 on a wide screen and 14/20 on a phone.
+Footnote, from the model and never typed: `Your income before tax is {€income} a year. {tax-source sentence} Chart and ledger amounts, and left over figures, are rounded to the nearest €100. Pension changes in the sentences use actual amounts, including cents.` The tax-source sentence is the disclosure line from Outputs: with everything estimated, `Your tax is an estimate of income tax, USC and PRSI.`; with everything stated, `Your tax uses the take-home pay you gave. The change each case makes to it is an estimate.`; mixed, `Your tax uses the take-home pay you gave for {label} and an estimate for {label}. The change each case makes to it is an estimate.` This is the one element not drawn in the frames: one muted line at the bottom, 18/26 on a wide screen and 14/20 on a phone.
 
 Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", or the name of any product or provider. Test it (below).
 
@@ -671,3 +671,10 @@ With €75,000 gross income, a €5,000 current contribution and €50,000 state
 For compatibility, `summary.cases[].takeHome.total` and each `takeHome` remain after tax and before pension contributions. The added `bankTotal`, `bankTakeHome` and `estimatedBankTakeHome` explicitly represent the amount after the full case contribution. `bankTotal − stated outgoings = leftOver.amount`. Warnings compare the stated bank amount with estimated bank pay, so today's pension deduction cannot trigger a false discrepancy.
 
 Validation: independent reference cases for estimated and stated bank pay with existing pensions; a failing-before/passing-after no-double-deduction fixture; combined relief-limit rejection; zero/default compatibility; paste/import/refresh persistence; existing chart, animation, presenter and video checks.
+
+
+### Case precision decision (18 October 2026)
+
+Gerry approved the actual extra pension amount in case sentences while chart and ledger totals remain rounded to €100. With €3,960 currently paid and €1,080 extra, the chart shows €4,000 → €5,000 but the sentence says €1,080 more. The tax saving uses the tax engine's unrounded difference; gross, saving and net cost are expressed in integer cents so the sentence adds up. Under the illustrative 40% tax fixture, it says €432 less tax and €648 more going out. Combined cases use the same actual extra and saving. Left over wording still follows the rounded screen figure, as explained by the shared footnote and assumptions row.
+
+Inputs containing cents keep those cents in the pension-change detail. Cases such as €60 current plus €40 extra no longer say €0 more. The chart and ledger rounding, exact summary amounts and bank-pay contract are unchanged. Boundary and cent-valued regression cases fail before this change and pass after.
