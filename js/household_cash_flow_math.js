@@ -41,8 +41,7 @@
  * relief (an age-band share of earnings up to a cap) lives in `pension_math.js`,
  * so a case that would pay more than a person can have relieved is refused here
  * rather than shown with a saving it would not get. Earnings are employment
- * income only. When today's contributions arrive, the limit applies to today's
- * contribution plus the extra.
+ * income only. The limit applies to today's contribution plus the extra.
  *
  * `options` exists so tests can inject a design fixture. It is never reachable
  * from a payload.
@@ -82,8 +81,8 @@ const TAX_SUM_TOLERANCE_EUR = 0.01;
 /**
  * What a household's income may be made of. The engine validates the same
  * list again; a test proves every entry here is one it accepts.
- * `employmentPensionContribution` is deliberately absent: only a case change
- * produces one, until today's contributions are designed.
+ * `employmentPensionContribution` is deliberately absent from income. The
+ * person's current contribution and case changes supply the pension items.
  */
 export const HOUSEHOLD_CASH_FLOW_INCOME_TYPES = Object.freeze([
   'employment',
@@ -95,7 +94,7 @@ export const HOUSEHOLD_CASH_FLOW_INCOME_TYPES = Object.freeze([
 
 const CHANGE_TYPES = Object.freeze(['clearOutgoing', 'extraPension']);
 const RESERVED_LINE_IDS = Object.freeze(['tax', 'pensions', 'left_over']);
-const PERSON_FIELDS = Object.freeze(['id', 'age', 'label', 'statedTakeHome']);
+const PERSON_FIELDS = Object.freeze(['id', 'age', 'label', 'statedTakeHome', 'personalPensionContribution']);
 // `mappedFromJoint` is written by normalising, so a normalised payload can be normalised again.
 const INCOME_FIELDS = Object.freeze(['personId', 'type', 'amount', 'mappedFromJoint']);
 const OUTGOING_FIELDS = Object.freeze(['id', 'label', 'amount']);
@@ -133,6 +132,18 @@ function isPlainObject(value) {
 
 function euroText(amount) {
   return `€${Math.round(Math.abs(amount)).toLocaleString('en-IE')}`;
+}
+
+/** Detail amounts use integer cents so gross minus relief adds up in the sentence. */
+function pensionChangeText(cents) {
+  const digits = cents % 100 === 0 ? 0 : 2;
+  return `€${(Math.abs(cents) / 100).toLocaleString('en-IE', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+
+function roundingText(inputs) {
+  const totals = 'Chart and ledger amounts, and left over figures, are rounded to the nearest €100.';
+  const hasExtra = inputs.scenarios.some((scenario) => scenario.changes.some((change) => change.type === 'extraPension'));
+  return totals + (hasExtra ? ' Pension changes in the sentences use actual amounts, including cents.' : '');
 }
 
 function roundToHundred(amount) {
@@ -275,7 +286,11 @@ function normalizePeople(raw) {
       statedTakeHome = rawPerson.statedTakeHome;
     }
 
-    return { id, age: rawPerson.age, label, statedTakeHome };
+    const personalPensionContribution = has(rawPerson, 'personalPensionContribution') ? rawPerson.personalPensionContribution : 0;
+    if (!isFiniteNumber(personalPensionContribution) || personalPensionContribution < 0) {
+      throw new Error(`${where}.personalPensionContribution must be a finite annual gross amount, 0 or more.`);
+    }
+    return { id, age: rawPerson.age, label, statedTakeHome, personalPensionContribution };
   });
 }
 
@@ -297,7 +312,7 @@ function normalizeIncome(raw, people) {
 
     if (rawItem.type === 'employmentPensionContribution') {
       throw new Error(
-        `${where}: today's pension contributions are not supported yet. A case's extraPension adds one.`
+        `${where}: pension contributions are not income. Use people[].personalPensionContribution for today's gross contribution, or extraPension for an increase.`
       );
     }
     if (!HOUSEHOLD_CASH_FLOW_INCOME_TYPES.includes(rawItem.type)) {
@@ -376,7 +391,7 @@ function singleChangeTitle(change, outgoingsById) {
     const label = outgoingsById.get(change.outgoingId)?.label || change.outgoingId;
     return `Clear your ${lowerFirst(label)}${change.paidFrom === 'savings' ? ' from savings' : ''}`;
   }
-  return `Pay ${euroText(change.amount)} more into your pensions`;
+  return `Pay ${pensionChangeText(Math.round(change.amount * 100))} more into your pensions`;
 }
 
 /** The button title a case gets when the payload gives none. */
@@ -628,6 +643,9 @@ export function normalizeHouseholdCashFlowInputs(raw) {
         `${FIELD}.people[${index}] (${person.label || person.id}): statedTakeHome needs income before tax for this person.`
       );
     }
+    if (person.personalPensionContribution > 0 && person.statedTakeHome + person.personalPensionContribution > gross[person.id]) {
+      throw new Error(`${FIELD}.people[${index}]: statedTakeHome after the pension deduction plus personalPensionContribution cannot exceed income before tax.`);
+    }
     if (person.statedTakeHome >= gross[person.id]) {
       throw new Error(
         `${FIELD}.people[${index}] (${person.label || person.id}): statedTakeHome (${euroText(person.statedTakeHome)}) `
@@ -653,10 +671,7 @@ export function normalizeHouseholdCashFlowInputs(raw) {
     );
   }
 
-  // Today's contributions are not accepted from a payload yet. The field is
-  // internal and zero, so the follow-up adds an input instead of reshaping the
-  // model, and the relief limit already applies to today's plus the extra.
-  const todayContributions = Object.fromEntries(people.map((person) => [person.id, 0]));
+  const todayContributions = Object.fromEntries(people.map((person) => [person.id, person.personalPensionContribution]));
   checkReliefLimits(scenarios, people, gross, earnings, todayContributions);
 
   return {
@@ -850,10 +865,6 @@ function buildCaseModels(inputs, year, options) {
   const noContributions = Object.fromEntries(inputs.people.map((person) => [person.id, 0]));
   const outgoingsById = new Map(inputs.outgoings.map((line) => [line.id, line]));
 
-  const hasPensionColumn = inputs.scenarios.some((scenario) => (
-    scenario.changes.some((change) => change.type === 'extraPension')
-  ));
-
   const personEstimatedInBase = {};
   inputs.people.forEach((person) => {
     personEstimatedInBase[person.id] = injected
@@ -880,7 +891,7 @@ function buildCaseModels(inputs, year, options) {
         );
       const stated = person.statedTakeHome !== null;
       const taxBeforeFloor = stated
-        ? (gross - person.statedTakeHome) + (estimatedTax - personEstimatedInBase[person.id])
+        ? (gross - person.personalPensionContribution - person.statedTakeHome) + (estimatedTax - personEstimatedInBase[person.id])
         : estimatedTax;
       // RELIEF CAN NEVER BE MORE THAN THE TAX PAID. A stated take-home close to
       // gross pay leaves almost no tax for a contribution's relief to come off,
@@ -894,11 +905,15 @@ function buildCaseModels(inputs, year, options) {
         gross,
         tax,
         heldAtZero: tax !== taxBeforeFloor ? taxBeforeFloor : null,
+        // Preserve the existing after-tax figure; bank pay also deducts the
+        // full contribution, exactly once, as the household ledger does.
         takeHome: gross - tax,
+        bankTakeHome: gross - tax - contributions[person.id],
         taxSource: stated ? 'stated' : 'estimated',
         basis: inputs.taxStatus === 'married_or_civil_partners' && inputs.people.length === 2 ? 'allocated' : 'own',
         estimatedTax: Math.max(0, estimatedTax),
         estimatedTakeHome: gross - Math.max(0, estimatedTax),
+        estimatedBankTakeHome: gross - Math.max(0, estimatedTax) - contributions[person.id],
         usc: injected ? null : caseEstimate.people[person.id].usc,
         prsi: injected ? null : caseEstimate.people[person.id].prsi
       };
@@ -929,7 +944,7 @@ function buildCaseModels(inputs, year, options) {
         const withoutTax = Math.max(
           0,
           statedHere !== null
-            ? (person.gross - statedHere) + (withoutEstimated - personEstimatedInBase[person.personId])
+            ? (person.gross - inputs.todayContributions[person.personId] - statedHere) + (withoutEstimated - personEstimatedInBase[person.personId])
             : withoutEstimated
         );
         taxRelief += Math.max(0, withoutTax - person.tax);
@@ -966,6 +981,7 @@ function buildCaseModels(inputs, year, options) {
     };
   });
 
+  const hasPensionColumn = models.some((model) => roundToHundred(model.pensionsGross) !== 0);
   return { models, baseEstimate, hasPensionColumn, outgoingsById, injected };
 }
 
@@ -1046,7 +1062,7 @@ function buildSentence({ model, today, outgoingsById }) {
 
   const { changes } = model.scenario;
   const effect = effectClause(today.shownLeftOver, shownLeft);
-  const taxDelta = today.shownTax - model.shownTax;
+  const taxDeltaCents = Math.round((today.taxTotal - model.taxTotal) * 100);
 
   if (changes.length === 1) {
     const change = changes[0];
@@ -1056,22 +1072,23 @@ function buildSentence({ model, today, outgoingsById }) {
       const from = change.paidFrom === 'savings' ? ' from savings' : '';
       return `Clearing your ${label}${from} stops ${euroText(line.shownAmount)} a year going out, so ${effect}.`;
     }
-    const net = model.shownPensions - taxDelta;
-    const lead = taxDelta > 0
-      ? `Paying ${euroText(model.shownPensions)} more into your pensions lowers your tax by ${euroText(taxDelta)}, `
-      : `Paying ${euroText(model.shownPensions)} more into your pensions, `;
-    return `${lead}so ${euroText(net)} more goes out each year and ${effect}.`;
+    const extraCents = Math.round(change.amount * 100);
+    const netCents = extraCents - taxDeltaCents;
+    const lead = taxDeltaCents > 0
+      ? `Paying ${pensionChangeText(extraCents)} more into your pensions lowers your tax by ${pensionChangeText(taxDeltaCents)}, `
+      : `Paying ${pensionChangeText(extraCents)} more into your pensions, `;
+    return `${lead}so ${pensionChangeText(netCents)} more goes out each year and ${effect}.`;
   }
 
   const phrases = changes.map((change) => {
     if (change.type === 'clearOutgoing') {
       return `your ${lowerFirst(outgoingsById.get(change.outgoingId).label)} is gone`;
     }
-    return `${euroText(model.shownPensions)} more goes into your pensions each year`;
+    return `${pensionChangeText(Math.round(change.amount * 100))} more goes into your pensions each year`;
   });
-  const taxClause = taxDelta === 0
+  const taxClause = taxDeltaCents === 0
     ? ''
-    : `, with your tax ${euroText(taxDelta)} ${taxDelta > 0 ? 'lower' : 'higher'}`;
+    : `, with your tax ${pensionChangeText(taxDeltaCents)} ${taxDeltaCents > 0 ? 'lower' : 'higher'}`;
   return `${capitalise(effect)}, but ${joinWithAnd(phrases)}${taxClause}.`;
 }
 
@@ -1160,8 +1177,8 @@ function buildAssumptionsTable(inputs, year, models, lines, disclosureRows) {
   ];
   lines.forEach((line) => rows.push(['Where your tax comes from', line.text]));
   rows.push(
-    ['Your take-home pay', 'Your income after income tax, USC and PRSI, before any pension contribution a case adds.'],
-    ['Pension contributions', 'Shown in full. The income tax relief on them shows as lower tax.']
+    ['Your stated take-home pay', 'The amount reaching your bank after income tax, USC, PRSI and your current personal pension deduction. It is not reduced by that deduction again.'],
+    ['Pension contributions', 'Your current personal contribution plus any extra in the case, shown in full. The income tax relief on them shows as lower tax. Employer contributions are not taken from your cash flow.']
   );
   if (models.some((model) => model.people.some((person) => person.basis === 'allocated'))) {
     rows.push([
@@ -1170,7 +1187,7 @@ function buildAssumptionsTable(inputs, year, models, lines, disclosureRows) {
         + 'Each of your take-home figures is an allocation, not a payslip figure.'
     ]);
   }
-  rows.push(['Rounding', 'Amounts are shown to the nearest €100.']);
+  rows.push(['Rounding', roundingText(inputs)]);
   disclosureRows.rows.forEach((row) => rows.push(row));
   if (disclosureRows.rows.length > 0) {
     rows.push(['Not included in tax estimates', TAX_NOT_INCLUDED.map((entry) => entry.text).join(' ')]);
@@ -1311,14 +1328,14 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
   const lines = taxSourceLines(inputs, today.people);
   const disclosureRows = renderDisclosureRows(inputs, year, models);
   const footnote = `Your income before tax is ${euroText(inputs.incomeTotal)} a year. `
-    + `${taxSourceSentence(inputs, lines)} Amounts are rounded to the nearest €100.`;
+    + `${taxSourceSentence(inputs, lines)} ${roundingText(inputs)}`;
 
   const warnings = [];
   inputs.people.forEach((person, index) => {
     if (person.statedTakeHome === null) {
       return;
     }
-    const estimated = today.people.find((entry) => entry.personId === person.id).estimatedTakeHome;
+    const estimated = today.people.find((entry) => entry.personId === person.id).estimatedBankTakeHome;
     if (estimated > 0 && Math.abs(person.statedTakeHome - estimated) / estimated > STATED_TAKE_HOME_WARNING_SHARE) {
       warnings.push(
         `${FIELD}.people[${index}] (${personLabelFor(person)}): statedTakeHome (${euroText(person.statedTakeHome)}) `
@@ -1362,11 +1379,14 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
       },
       takeHome: {
         total: model.people.reduce((sum, person) => sum + person.takeHome, 0),
+        bankTotal: model.people.reduce((sum, person) => sum + person.bankTakeHome, 0),
         byPerson: model.people.map((person) => ({
           personId: person.personId,
           gross: person.gross,
           tax: person.tax,
           takeHome: person.takeHome,
+          bankTakeHome: person.bankTakeHome,
+          estimatedBankTakeHome: person.estimatedBankTakeHome,
           taxSource: person.taxSource,
           basis: person.basis,
           estimatedTakeHome: person.estimatedTakeHome
@@ -1409,11 +1429,15 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
         let levelShown = model.shownIncome;
         const levels = [{ id: 'income', level: levelUnrounded }];
         const shownLevels = [{ id: 'income', level: levelShown }];
+        // Exact balances include every deduction, even a line hidden because
+        // every case rounds to zero. Shown geometry follows only drawn lines.
+        model.shownLines.forEach((line) => {
+          levelUnrounded -= line.amount;
+          levels.push({ id: line.id, level: levelUnrounded });
+        });
         drawnLines.forEach((drawn) => {
           const line = model.shownLines.find((entry) => entry.id === drawn.id);
-          levelUnrounded -= line.amount;
           levelShown -= line.shownAmount;
-          levels.push({ id: drawn.id, level: levelUnrounded });
           shownLevels.push({ id: drawn.id, level: levelShown });
         });
         return {

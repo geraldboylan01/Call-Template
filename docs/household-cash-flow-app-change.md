@@ -111,9 +111,9 @@ A stated take-home changes this. If Niamh's payslips say her take-home is 50,000
 1. **Release surface.** Adviser-only through the Dev Panel, the presenter and the published session viewer. `consumer: false`, as the pension and mortgage modules were. No consumer routing, no voice, no planner facts. The plan adapter is a later change (see Out of scope).
 2. **One ordinary year.** Every amount is per year, in today's money. No growth, no inflation, no projection. "Each year" means a typical year.
 3. **Pension money is not spent.** The picture treats a pension contribution as leaving the household's spending money, which is what the case is about. The wording is "goes out" and "goes into your pensions", never "lost" or "spent". The assumptions table says what the left-over figure is: income after tax, pension contributions and the stated costs.
-4. **Rounding on screen.** Every amount to the nearest €100, from unrounded values. Rules in the contract.
+4. **Rounding on screen.** Chart and ledger totals and left over figures use the nearest €100; pension changes in case sentences use the actual extra and tax saving, to cents. Rules in the contract.
 5. **No rates and no tax lines in the payload.** The payload carries income, stated costs and, optionally, a person's take-home. Tax rules come from the engine, so every module and adviser reads the same number.
-6. **Take-home means before the pension contribution a case adds.** Take-home is income minus tax (income tax, USC and PRSI). A case's extra pension contribution is its own line after that, so take-home never changes by the contribution itself, only by the tax it saves.
+6. **Stated take-home means bank pay after today's pension deduction.** The legacy calculated `takeHome` summary remains income minus tax for compatibility. Explicit bank-pay fields deduct the full case contribution once; see the contribution input contract below.
 
 ## Before you write code
 
@@ -135,7 +135,7 @@ Add `generated.householdCashFlowInputs`. Engine in `js/household_cash_flow_math.
 | Field | Type | Rule |
 |---|---|---|
 | `householdTaxStatus` | string, optional | `single`, `married_or_civil_partners` or `widowed_or_surviving_civil_partner`. Same values, same errors and same disclosure behaviour as `pensionInputs`. Not given: each person is assessed as single, disclosed. |
-| `people` | array, required | 1 to 2 of `{ id, age, label?, statedTakeHome? }`. See below. |
+| `people` | array, required | 1 to 2 of `{ id, age, label?, statedTakeHome?, personalPensionContribution? }`. See below. |
 | `income` | array, required | 1 to 6 of `{ personId, type, amount }`. `personId` is a person id or `joint` (split equally, as in the engine). `type` is any Phase 1 income type of `computeTaxYear` **except** `employmentPensionContribution`, which only a case change can produce. `amount` greater than 0, per year, before tax. |
 | `outgoings` | array, required | 1 to 6 of `{ id, label, amount }`. Stated, per year, 0 or more. `id` unique and stable, `[a-z0-9_]`. `label` client-facing, 1 to 24 characters, sentence case, a noun phrase ("Mortgage", "Living costs"), never third person. Drawn in the order given. |
 | `calculationYear` | integer, optional | The tax year. Default: whatever year `pensionInputs` uses as `currentYear`. |
@@ -149,7 +149,8 @@ Add `generated.householdCashFlowInputs`. Engine in `js/household_cash_flow_math.
 | `id` | Unique, `[a-z0-9_-]`. Opaque and stable: a plan adapter will map profile person ids onto it, and it is carried unchanged into `summary`. |
 | `age` | Integer, 16 to 110. |
 | `label` | Client-facing first name, 1 to 40 characters. **Required when there are two people**, because the screen must say which person's take-home was used. Optional for one. |
-| `statedTakeHome` | Optional number, per year, **after income tax, USC and PRSI and before any pension contribution a case adds** (so it is a payslip figure for someone who pays no extra pension). Greater than 0 and less than that person's income before tax. When present it replaces the estimate for that person's tax (see The model). |
+| `personalPensionContribution` | Optional annual gross personal contribution today, 0 or more, default 0. Excludes employer contributions. |
+| `statedTakeHome` | Optional annual amount reaching the bank **after tax and today's personal pension deduction**. Greater than 0 and less than gross income; it plus the current contribution cannot exceed gross. It sets the tax level, while case differences come from the tax engine. |
 
 A line that is €0 in every case is not drawn. More than 6 outgoing lines is rejected rather than grouped: the staircase gets one column per line, and the adviser decides what to combine.
 
@@ -181,7 +182,7 @@ That gives the four sample cases exactly: no changes; `clearOutgoing: car`; `ext
   - **Jointly assessed** (D6): the household income tax is one figure. In the base case each person's share is their income before tax over the household's. A case's **change** in household income tax against the base goes to whoever pays the contribution, split by amount, so a `joint` contribution splits it equally. Nothing else moves.
 - **Each person's tax in a case:**
   - Nothing stated: the estimate above.
-  - `statedTakeHome` given: `incomeBeforeTax − statedTakeHome` in the base case, **plus the engine's estimated change** for that person in the case. The stated figure sets the level and the engine supplies only the change, because a payslip cannot know what a pension contribution would save.
+  - `statedTakeHome` given: `incomeBeforeTax − personalPensionContribution − statedTakeHome` in the base case, **plus the engine's estimated change** for that person in the case. The stated figure sets the level and the engine supplies only the change, because a payslip cannot know what a pension contribution would save.
 - `taxTotal` is the sum of the people's tax. With nothing stated it equals the engine's `totals.recurringTax` for that case, to the cent.
 - **`takeHome` for a person** is `incomeBeforeTax − tax`. The household's is the sum. A pension contribution is not subtracted here.
 - `pensionContributions` is the sum of `extraPension` amounts. It is its own line, after tax.
@@ -480,7 +481,7 @@ Three effect clauses are not on a frame and were approved in the plan: "nothing 
 
 On screen a short figure has **no sign**. The word carries it: "Short", "€2,800 a year" and "About €230 a month". Nothing says "negative", "deficit" or "overdrawn".
 
-Footnote, from the model and never typed: `Your income before tax is {€income} a year. {tax-source sentence} Amounts are rounded to the nearest €100.` The tax-source sentence is the disclosure line from Outputs: with everything estimated, `Your tax is an estimate of income tax, USC and PRSI.`; with everything stated, `Your tax uses the take-home pay you gave. The change each case makes to it is an estimate.`; mixed, `Your tax uses the take-home pay you gave for {label} and an estimate for {label}. The change each case makes to it is an estimate.` This is the one element not drawn in the frames: one muted line at the bottom, 18/26 on a wide screen and 14/20 on a phone.
+Footnote, from the model and never typed: `Your income before tax is {€income} a year. {tax-source sentence} Chart and ledger amounts, and left over figures, are rounded to the nearest €100. Pension changes in the sentences use actual amounts, including cents.` The tax-source sentence is the disclosure line from Outputs: with everything estimated, `Your tax is an estimate of income tax, USC and PRSI.`; with everything stated, `Your tax uses the take-home pay you gave. The change each case makes to it is an estimate.`; mixed, `Your tax uses the take-home pay you gave for {label} and an estimate for {label}. The change each case makes to it is an estimate.` This is the one element not drawn in the frames: one muted line at the bottom, 18/26 on a wide screen and 14/20 on a phone.
 
 Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", or the name of any product or provider. Test it (below).
 
@@ -497,7 +498,7 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 
 - One person (`single`): the engine handles it and `basis` is `own`. `label` is optional and the tax-source line has no name.
 - Two people, one stated and one estimated: mixed tax-source sentence, and the stated person's tax is the payslip level plus the engine's change.
-- Both stated: household tax is `income − the two take-homes`, and a case's change is still the engine's.
+- Both stated: household tax is `income − current pension contributions − the two stated bank take-homes`, and a case's change is still the engine's.
 - A stated take-home far from the estimate: a `debug.warnings` entry, no rejection, and the screen still says which was used.
 - One case: no buttons, no ghosts, no "against today" wording. The sentence is the "today" sentence.
 - A line that is €0 in the selected case but not in today: kept as a column or row with "€0" and its delta.
@@ -573,18 +574,18 @@ Before finishing, run `npm run build`, `npm run check:household-cash-flow`, the 
 - **More than six lines, grouping, or a long tail called "Other".**
 - **A projection.** Anything beyond one year, inflation, drawdown, accounts. That is the multi-year cashflow module's brief.
 - **Where the money goes after the pension.** What the contribution is worth, its tax at retirement, or its growth. The retirement module owns that.
-- **Existing pension contributions in the household, in this change.** The base household takes none, so "10,000 more" means 10,000 on top of nothing, and a stated take-home must be one that has none deducted. Reject `employmentPensionContribution` in `income`. **This is the first follow-up after the screen lands** (see "Follow-up: today's pension contributions"), because a plan's households usually pay into a pension today.
+- **Existing pension contributions are now supported in the separate follow-up below.** They belong on each person, never as income or an ordinary outgoing.
 - **A stated take-home that varies by month, or a bonus.** One figure a year per person.
 - **The other drawings.** The single bar at 1920, the stream, and the quarter-turned staircase for phones are not built. If a tablet in portrait needs something better than the bar, that is a new design.
 - **Consumer routing, voice, planner facts, manifest, playbook and goal catalogue entries.** Follow the retirement precedent: do not edit `docs/prompt-pack/`. The playbook, aliases, matrix and master prompt are updated separately once this lands, so they describe what the code does.
 
-## Follow-up: today's pension contributions
+## Today's pension contributions (separate follow-up after #71)
 
 Decided 13 October 2026, evening. A separate change, after the screen has landed and before the plan work, because the plan's illustrative household (Niamh and Dara) pays 5% and 4% today and this module cannot show it yet.
 
-- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so the Pensions column exists in today's case and tax and take-home follow it (D7).
+- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so tax and take-home follow it (D7). The chart reserves a Pensions column only if at least one case rounds above €0.
 - An `extraPension` change adds to it. The sentence templates stay: "Paying €10,000 more into your pensions" is still the extra.
-- Decide in the plan, and say which: whether `statedTakeHome` is before or after today's contribution. A payslip's net pay is after it.
+- **Decided by Gerry:** `statedTakeHome` is the amount reaching the bank **after** today's personal pension deduction. The base tax level is gross income minus today's gross contribution minus stated bank pay; a case adds the tax engine's difference to that level.
 - Give the field name, the validation strings and the new fixture in the plan, and wait for the go-ahead, as for the main change.
 
 ## Build notes (engine)
@@ -593,10 +594,10 @@ Built on this branch, after merging main. Files: `js/household_cash_flow_math.js
 
 Settled while building, and these override anything above that reads differently:
 
-- **Relief limit.** An `extraPension` above the relievable maximum is refused, with a message naming the person and the limit. A `joint` contribution is split before the limit is applied. When today's contributions arrive, the limit applies to today's plus the extra. The tax engine itself relieves any contribution in full, so this guard is the only thing that stops an overstated saving.
+- **Relief limit.** An `extraPension` above the relievable maximum is refused, with a message naming the person and the limit. A `joint` contribution is split before the limit is applied. The limit applies to today's plus the extra. The tax engine itself relieves any contribution in full, so this guard is the only thing that stops an overstated saving.
 - **`summary`.** Each case also carries `pensionContributions: { gross, taxRelief, costAfterRelief }`. `outgoings.pensionContributions` stays the gross figure, so the invariants are as written.
 - **Base case.** A base case that carries changes is refused.
-- **Today's contributions.** An internal per-person field, 0, not accepted from a payload yet.
+- **Today's contributions.** `people[].personalPensionContribution`, annual gross, finite and 0 or more, default 0. Included in every case and in the per-person relief-limit check.
 - **`"joint"` in a one-person household** is mapped to that person, for income and as the default for `extraPension`. The engine refuses it for one person.
 - **"No second tax" is proved three ways**, because `computeTaxYear` has no catalogue seam to inject a test catalogue through: (1) the module's tax equals `computeTaxYear` at test time, (2) a scan of the module's source finds no tax import beyond the engine, resolver, disclosures and `IE_TAX_FIRST_YEAR`, and no rate, band or credit literal, (3) `taxFor` is the only seam and a payload cannot reach it. Test 6 above is superseded by this.
 
@@ -659,3 +660,21 @@ End with a contract summary for the prompt pack: field names, the model and the 
 ### Final layout checks (17 October 2026)
 
 The phone bar measures each case’s rendered label rows after fonts load, reserves that room for every case and reuses those heights during animation. Labels wrap without changing their text. The staircase keeps its outline key in a separate top band. Real-app Chrome checks cover 252, 280, 320 and 390px modules, including 24 consecutive wide letters and all four cases at a 320px viewport. The ordinary €20,000 income/€20,000 outgoing case also checks that clearing the outgoing leaves the Today label clear of the key.
+
+
+### Contribution input and bank-pay contract
+
+`people[].personalPensionContribution` is the annual gross amount the person pays today, excluding employer contributions. It defaults to 0 for existing sessions. Every tax run includes it; an `extraPension` adds to it, and the age/earnings limit applies to their sum. The Pensions row exists whenever at least one case's contribution rounds above €0, including a module containing today alone. Exact smaller contributions remain in the calculation, without a zero-only chart column. A contribution must not also be entered in outgoings.
+
+With €75,000 gross income, a €5,000 current contribution and €50,000 stated bank pay, base tax is €20,000. The chart deducts €20,000 tax and €5,000 pension, leaving the stated €50,000 before spending. If an extra €10,000 saves €4,000 tax in an illustrative injected tax fixture, the bank amount becomes €44,000. The sentence says €10,000 more, never €15,000 more. Actual tax differences always come from the site's tax calculator.
+
+For compatibility, `summary.cases[].takeHome.total` and each `takeHome` remain after tax and before pension contributions. The added `bankTotal`, `bankTakeHome` and `estimatedBankTakeHome` explicitly represent the amount after the full case contribution. `bankTotal − stated outgoings = leftOver.amount`. Warnings compare the stated bank amount with estimated bank pay, so today's pension deduction cannot trigger a false discrepancy.
+
+Validation: independent reference cases for estimated and stated bank pay with existing pensions; a failing-before/passing-after no-double-deduction fixture; combined relief-limit rejection; zero/default compatibility; paste/import/refresh persistence; existing chart, animation, presenter and video checks.
+
+
+### Case precision decision (18 October 2026)
+
+Gerry approved the actual extra pension amount in case sentences while chart and ledger totals remain rounded to €100. With €3,960 currently paid and €1,080 extra, the chart shows €4,000 → €5,000 but the sentence says €1,080 more. The tax saving uses the tax engine's unrounded difference; gross, saving and net cost are expressed in integer cents so the sentence adds up. Under the illustrative 40% tax fixture, it says €432 less tax and €648 more going out. Combined cases use the same actual extra and saving. Left over wording still follows the rounded screen figure, as explained by the shared footnote and assumptions row.
+
+Inputs containing cents keep those cents in the pension-change detail. Cases such as €60 current plus €40 extra no longer say €0 more. The chart and ledger rounding, exact summary amounts and bank-pay contract are unchanged. Boundary and cent-valued regression cases fail before this change and pass after.

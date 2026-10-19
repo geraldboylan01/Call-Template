@@ -64,7 +64,7 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
   const income = sum(Object.values(gross));
 
   const extraFor = (scenario) => {
-    const paid = Object.fromEntries(ids.map((id) => [id, 0]));
+    const paid = Object.fromEntries(payload.people.map((person) => [person.id, person.personalPensionContribution || 0]));
     (scenario.changes || []).filter((change) => change.type === 'extraPension').forEach((change) => {
       const owners = (change.personId || 'joint') === 'joint' ? ids : [change.personId];
       owners.forEach((owner) => {
@@ -131,7 +131,7 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
       const baseEstimated = estimatedTax(baseRun, basePaid, person.id);
       const level = person.statedTakeHome == null
         ? estimated
-        : (gross[person.id] - person.statedTakeHome) + (estimated - baseEstimated);
+        : (gross[person.id] - (person.personalPensionContribution || 0) - person.statedTakeHome) + (estimated - baseEstimated);
       return Math.max(0, level);
     };
     const people = payload.people.map((person) => {
@@ -204,17 +204,19 @@ function referenceSentences(ref) {
     return `the amount you have left over falls from ${eur(base)} to ${eur(left)}`;
   };
   const cap = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-  const taxDrop = (entry) => today.shownTax - entry.shownTax;
+  const taxDrop = (entry) => Math.round((today.tax - entry.tax) * 100);
+  const extra = (entry) => Math.round((entry.pensions - today.pensions) * 100);
+  const detail = (cents) => `€${(Math.abs(cents) / 100).toLocaleString('en-IE', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: cents % 100 ? 2 : 0 })}`;
   const carToday = today.shownStated[1];
   return [
     today.shownLeft < 0
       ? `Today, ${eur(today.shownOut)} goes out against your ${eur(today.shownIncome)}, and you are short by ${eur(today.shownLeft)}.`
       : `Today, ${eur(today.shownOut)} of your ${eur(today.shownIncome)} goes out and you have ${eur(today.shownLeft)} left over.`,
     `Clearing your car loan from savings stops ${eur(carToday)} a year going out, so ${effect(clear.shownLeft, today.shownLeft)}.`,
-    `Paying ${eur(pension.shownPensions)} more into your pensions lowers your tax by ${eur(taxDrop(pension))}, `
-      + `so ${eur(pension.shownPensions - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
-    `${cap(effect(both.shownLeft, today.shownLeft))}, but your car loan is gone and ${eur(both.shownPensions)} more goes into your pensions each year, `
-      + `with your tax ${eur(taxDrop(both))} ${taxDrop(both) > 0 ? 'lower' : 'higher'}.`
+    `Paying ${detail(extra(pension))} more into your pensions lowers your tax by ${detail(taxDrop(pension))}, `
+      + `so ${detail(extra(pension) - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
+    `${cap(effect(both.shownLeft, today.shownLeft))}, but your car loan is gone and ${detail(extra(both))} more goes into your pensions each year, `
+      + `with your tax ${detail(taxDrop(both))} ${taxDrop(both) > 0 ? 'lower' : 'higher'}.`
   ];
 }
 
@@ -259,7 +261,23 @@ shortAndStated.people[0].statedTakeHome = 50_000;
 const shortSeparate = withIncome(100_000, 50_000, 100_000);
 shortSeparate.householdTaxStatus = 'single';
 
+const currentPensions = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+currentPensions.people[0].personalPensionContribution = 5000;
+currentPensions.people[1].personalPensionContribution = 3000;
+const currentAndStated = clone(currentPensions);
+currentAndStated.people[0].statedTakeHome = 50000;
+currentAndStated.people[1].statedTakeHome = 55000;
+
+const pensionRoundingBoundary = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+pensionRoundingBoundary.people[0].personalPensionContribution = 3960.35;
+pensionRoundingBoundary.scenarios.forEach((scenario) => (scenario.changes || []).forEach((change) => {
+  if (change.type === 'extraPension') change.amount = 1080.55;
+}));
+
 const SAMPLE_SHAPED = [
+  ['pension change precision at a rounding boundary', pensionRoundingBoundary],
+  ['current pensions, estimated bank pay', currentPensions],
+  ['current pensions, stated bank pay', currentAndStated],
   ['engine, 75,000 each', HOUSEHOLD_CASH_FLOW_SAMPLE],
   ['engine, today short (the frames: living costs 60,000)', HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE],
   ['engine, left over tipped under by 20,000 into pensions', HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE],
