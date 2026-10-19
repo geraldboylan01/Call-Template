@@ -294,6 +294,15 @@ await test('An estimated bank income is marked and warned; protection still requ
   const entry = entryFor(r, 'household_cash_flow', 'current');
   assert.equal(entry.basis, 'includes_estimated_bank_pay');
   assert(entry.warnings.some(w => w.includes('estimated')));
+  p.household.incomeSources[0].netAnnual = { amount: 10000, currency: 'EUR' };
+  const short = await compilePlanPack(p);
+  assert.equal(short.status, 'compiled', JSON.stringify(short.diagnostics));
+  const shortEntry = entryFor(short, 'household_cash_flow', 'current');
+  assert(shortEntry.metrics.leftOver < 0);
+  const native = computeHouseholdCashFlowProjection(shortEntry.input);
+  assert(native.debug.warnings.length > 0);
+  for (const warning of native.debug.warnings) assert(shortEntry.warnings.includes(warning));
+  assert(shortEntry.assumptionsUsed.some(a => a.key === 'taxSourceByPerson'));
 });
 await test('An absent income record is not treated as a confirmed zero', async () => {
   await refused(p => { p.household.incomeSources.pop(); }, 'invalid', '/household/incomeSources');

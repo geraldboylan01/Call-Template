@@ -230,7 +230,9 @@ export async function buildChapter(context, pack, chapter) {
       input, payload: { title: 'Your cash flow', generated: { summaryHtml: '<p>Compare the income and regular costs for this route.</p>', householdCashFlowInputs: input } },
       metrics: { income: summary.income.total, bankTakeHome: summary.takeHome.bankTotal, tax: summary.outgoings.tax, pensions: summary.outgoings.pensionContributions, leftOver: summary.leftOver.amount },
       builderHousehold: context.profile,
-      warnings: input.people.some(p => p.statedTakeHome === undefined) ? ['Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated.'] : [],
+      assumptionsUsed: Object.entries(projection.debug.assumptionsUsed).map(([key, value]) => ({ key, value })),
+      warnings: [...projection.debug.warnings, ...(input.people.some(p => p.statedTakeHome === undefined)
+        ? ['Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated.'] : [])],
       basis: input.people.every(p => p.statedTakeHome !== undefined) ? 'stated_bank_pay_with_engine_case_differences' : 'includes_estimated_bank_pay'
     };
   }
