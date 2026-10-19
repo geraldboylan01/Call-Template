@@ -96,6 +96,7 @@ import {
   getDefaultHomeTradeDownScenarioId,
   getHomeTradeDownCases
 } from './home_trade_down_math.js';
+import { getDefaultGoalsAndResourcesScenarioId, getGoalsAndResourcesCases } from './goals_and_resources_math.js';
 import { runNetRetirementMathTests } from './tests_net_retirement_math.js';
 import { extractModulePayloadsFromEditorText, normalizeEditorJsonInput } from './dev_payload_input.js';
 import { validateOutputsBucketedPayload } from './outputs_bucketed_contract.js';
@@ -293,6 +294,7 @@ const appState = {
   protectionGapScenarioByModuleId: new Map(),
   rentalKeepOrSellScenarioByModuleId: new Map(),
   homeTradeDownScenarioByModuleId: new Map(),
+  goalsAndResourcesScenarioByModuleId: new Map(),
   assumptionsEditorStateByModuleId: new Map(),
   lastValidProjectionByModuleId: new Map(),
   chartHydrationRunId: 0,
@@ -1730,6 +1732,70 @@ const EXAMPLE_PAYLOADS = [
     }
   },
   {
+    id: 'goals-and-resources-demo',
+    label: 'Goals and resources',
+    payload: {
+      "title": "Your goals and resources",
+      "generated": {
+            "goalsAndResourcesInputs": {
+                  "spareCash": 60000,
+                  "leftOverEachYear": 6000,
+                  "householdTaxStatus": "married_or_civil_partners",
+                  "mortgage": {
+                        "currentBalance": 380000,
+                        "annualInterestRate": 0.04,
+                        "startDateIso": "2026-11-01",
+                        "remainingTermYears": 18,
+                        "currentAge": 45,
+                        "clearByAge": 60
+                  },
+                  "pensions": [
+                        {
+                              "id": "niamh",
+                              "title": "Niamh",
+                              "currentAge": 45,
+                              "currentSalary": 90000,
+                              "currentPot": 100000,
+                              "personalPct": 0.05,
+                              "employerPct": 0.05,
+                              "includeStatePension": true
+                        },
+                        {
+                              "id": "dara",
+                              "title": "Dara",
+                              "currentAge": 45,
+                              "currentSalary": 60000,
+                              "currentPot": 40000,
+                              "personalPct": 0.04,
+                              "employerPct": 0.04,
+                              "includeStatePension": true
+                        }
+                  ],
+                  "retirement": {
+                        "retirementAge": 62,
+                        "targetIncomeToday": 50000
+                  },
+                  "laterRetirement": {
+                        "retirementAge": 65,
+                        "targetIncomeToday": 46000
+                  },
+                  "children": [
+                        {
+                              "id": "child-1",
+                              "title": "First child",
+                              "age": 10
+                        },
+                        {
+                              "id": "child-2",
+                              "title": "Second child",
+                              "age": 8
+                        }
+                  ]
+            }
+      }
+}
+  },
+  {
     id: 'home-trade-down-demo',
     label: 'Home: Trade Down',
     payload: {
@@ -2357,6 +2423,7 @@ function hasCalculatedGeneratedOutputs(module) {
     || generated.protectionGapInputs
     || generated.rentalKeepOrSellInputs
     || generated.homeTradeDownInputs
+    || generated.goalsAndResourcesInputs
     || generated.housePurchaseInputs
     || generated.netRetirementInputs
   );
@@ -3329,6 +3396,7 @@ function applyUpdatedProjectionToModule({
     module.generated.protectionGapInputs = null;
     module.generated.rentalKeepOrSellInputs = null;
     module.generated.homeTradeDownInputs = null;
+    module.generated.goalsAndResourcesInputs = null;
     applyNetRetirementProjectionToModule(module);
     return;
   }
@@ -4761,6 +4829,7 @@ function getCodexVideoActiveScenarios() {
     protectionGapScenarioId: {},
     rentalKeepOrSellScenarioId: {},
     homeTradeDownScenarioId: {},
+    goalsAndResourcesScenarioId: {},
     housePurchaseScenarioOverrides: {}
   };
   getOrderedModules(appState.session).forEach((module) => {
@@ -4772,6 +4841,7 @@ function getCodexVideoActiveScenarios() {
     activeScenarios.protectionGapScenarioId[module.id] = getProtectionGapScenarioForModule(module.id);
     activeScenarios.rentalKeepOrSellScenarioId[module.id] = getRentalKeepOrSellScenarioForModule(module.id);
     activeScenarios.homeTradeDownScenarioId[module.id] = getHomeTradeDownScenarioForModule(module.id);
+    activeScenarios.goalsAndResourcesScenarioId[module.id] = getGoalsAndResourcesScenarioForModule(module.id);
     activeScenarios.housePurchaseScenarioOverrides[module.id] = getHousePurchaseScenarioOverrides(module.id);
   });
   return activeScenarios;
@@ -6103,6 +6173,7 @@ async function replaceSession(nextSession, options = {}) {
   appState.protectionGapScenarioByModuleId = new Map();
   appState.rentalKeepOrSellScenarioByModuleId = new Map();
   appState.homeTradeDownScenarioByModuleId = new Map();
+  appState.goalsAndResourcesScenarioByModuleId = new Map();
   clearAllAssumptionsEditorState();
   appState.lastValidProjectionByModuleId = new Map();
 
@@ -6738,6 +6809,7 @@ async function handleHousePurchaseEditor(moduleId, payload = {}) {
       module.generated.protectionGapInputs = null;
       module.generated.rentalKeepOrSellInputs = null;
       module.generated.homeTradeDownInputs = null;
+      module.generated.goalsAndResourcesInputs = null;
       module.generated.netRetirementInputs = null;
       module.generated.education = null;
       module.generated.report = null;
@@ -7320,6 +7392,18 @@ function getHomeTradeDownCasesForModule(module) {
   }
 }
 
+function getGoalsAndResourcesCasesForModule(module) {
+  if (!module?.generated?.goalsAndResourcesInputs) {
+    return [];
+  }
+
+  try {
+    return getGoalsAndResourcesCases(module.generated.goalsAndResourcesInputs);
+  } catch (_error) {
+    return [];
+  }
+}
+
 function getHomeTradeDownScenarioForModule(moduleId) {
   if (typeof moduleId !== 'string' || !moduleId) {
     return '';
@@ -7351,6 +7435,37 @@ function getHomeTradeDownScenarioForModule(moduleId) {
   }
 }
 
+function getGoalsAndResourcesScenarioForModule(moduleId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return '';
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const cases = getGoalsAndResourcesCasesForModule(module);
+  if (cases.length === 0) {
+    return '';
+  }
+
+  const validIds = new Set(cases.map((item) => item.id));
+  const fromMemory = appState.goalsAndResourcesScenarioByModuleId.get(moduleId);
+  if (validIds.has(fromMemory)) {
+    return fromMemory;
+  }
+
+  const fromModule = ensureModuleUi(module)?.goalsAndResourcesScenarioId || '';
+  if (validIds.has(fromModule)) {
+    appState.goalsAndResourcesScenarioByModuleId.set(moduleId, fromModule);
+    return fromModule;
+  }
+
+  appState.goalsAndResourcesScenarioByModuleId.delete(moduleId);
+  try {
+    return getDefaultGoalsAndResourcesScenarioId(module.generated.goalsAndResourcesInputs) || cases[0].id;
+  } catch (_error) {
+    return cases[0].id;
+  }
+}
+
 function setHomeTradeDownScenarioForModule(moduleId, scenarioId) {
   if (typeof moduleId !== 'string' || !moduleId) {
     return;
@@ -7377,6 +7492,37 @@ function setHomeTradeDownScenarioForModule(moduleId, scenarioId) {
   const uiState = ensureModuleUi(module);
   if (uiState) {
     uiState.homeTradeDownScenarioId = nextCase.id;
+  }
+  module.updatedAt = nowIso();
+  scheduleSessionSave();
+}
+
+function setGoalsAndResourcesScenarioForModule(moduleId, scenarioId) {
+  if (typeof moduleId !== 'string' || !moduleId) {
+    return;
+  }
+
+  const module = getModuleById(appState.session, moduleId);
+  const nextCase = getGoalsAndResourcesCasesForModule(module).find((item) => item.id === scenarioId);
+  if (!nextCase) {
+    return;
+  }
+
+  if (getGoalsAndResourcesScenarioForModule(moduleId) === nextCase.id) {
+    return;
+  }
+
+  appState.goalsAndResourcesScenarioByModuleId.set(moduleId, nextCase.id);
+
+  // Nothing to patch and nothing to rebuild: rebuilding would replace the
+  // travel the client is watching.
+  if (runtimeConfig.readOnly) {
+    return;
+  }
+
+  const uiState = ensureModuleUi(module);
+  if (uiState) {
+    uiState.goalsAndResourcesScenarioId = nextCase.id;
   }
   module.updatedAt = nowIso();
   scheduleSessionSave();
@@ -8160,6 +8306,7 @@ function openVideoScene(moduleId) {
         protectionGapScenarioId: getProtectionGapScenarioForModule(module.id),
         rentalKeepOrSellScenarioId: getRentalKeepOrSellScenarioForModule(module.id),
         homeTradeDownScenarioId: getHomeTradeDownScenarioForModule(module.id),
+        goalsAndResourcesScenarioId: getGoalsAndResourcesScenarioForModule(module.id),
         housePurchaseScenarioOverrides: getHousePurchaseScenarioOverrides(module.id)
       }
     });
@@ -10132,7 +10279,7 @@ function bindEvents() {
 // Presentation runs against a disposable session and disposable scenario maps.
 // Pending autosaves still refer to the original session, never this copy.
 function installLivePresenter() {
-  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'protectionGapScenarioByModuleId', 'rentalKeepOrSellScenarioByModuleId', 'homeTradeDownScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
+  const mapKeys = ['pensionShowMaxByModuleId', 'pensionScenarioByModuleId', 'netRetirementScenarioByModuleId', 'housePurchaseScenarioByModuleId', 'pbsScenarioByModuleId', 'mortgageScenarioByModuleId', 'futureCostFundScenarioByModuleId', 'householdCashFlowScenarioByModuleId', 'protectionGapScenarioByModuleId', 'rentalKeepOrSellScenarioByModuleId', 'homeTradeDownScenarioByModuleId', 'goalsAndResourcesScenarioByModuleId', 'assumptionsEditorStateByModuleId', 'lastValidProjectionByModuleId'];
   window.planeirPresenter = installPresenter({
     session: () => appState.presenterSnapshot?.session || appState.session,
     root: () => ui.swipeStage.querySelector('.focused-module-card'),
@@ -10160,7 +10307,7 @@ function installLivePresenter() {
     async setScenario(module, scenarioId) {
       if (!appState.presenterSnapshot) throw new Error('Presentation state is not isolated.');
       const root = ui.swipeStage.querySelector('.focused-module-card');
-      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow' || module.kind === 'protection-gap' || module.kind === 'rental-keep-or-sell' || module.kind === 'home-trade-down') {
+      if (module.kind === 'balance-sheet' || module.kind === 'mortgage' || module.kind === 'loan' || module.kind === 'future-cost-fund' || module.kind === 'household-cash-flow' || module.kind === 'protection-gap' || module.kind === 'rental-keep-or-sell' || module.kind === 'home-trade-down' || module.kind === 'goals-and-resources') {
         const control = [...root.querySelectorAll('*')].find(el => typeof el.presenterSelectScenario === 'function');
         if (!control) throw new Error(`Scenario control is unavailable in ${module.label}.`);
         await control.presenterSelectScenario(scenarioId);
@@ -10376,6 +10523,10 @@ export async function initApp(options = {}) {
       setHomeTradeDownScenarioForModule(moduleId, scenarioId);
     };
     window.__getHomeTradeDownScenarioForModule = (moduleId) => getHomeTradeDownScenarioForModule(moduleId);
+    window.__setGoalsAndResourcesScenario = (moduleId, scenarioId) => {
+      setGoalsAndResourcesScenarioForModule(moduleId, scenarioId);
+    };
+    window.__getGoalsAndResourcesScenarioForModule = (moduleId) => getGoalsAndResourcesScenarioForModule(moduleId);
     window.__runMortgageMathTests = () => runMortgageMathTests();
     window.__runPensionMathTests = () => runPensionMathTests();
     window.__runIeTaxTests = () => runIeTaxTests();
