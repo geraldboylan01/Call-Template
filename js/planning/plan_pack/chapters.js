@@ -39,7 +39,7 @@ export function routeContext(pack, route, index) {
     const goal = profile.goals.find(g => g.goalId === change.goalId);
     const binding = inputs.goalBindings.find(b => b.goalId === change.goalId);
     if (change.type === 'moveGoal') {
-      movedGoals.push(goal.goalId);
+      if (!movedGoals.includes(goal.goalId)) movedGoals.push(goal.goalId);
       for (const [key, value] of Object.entries(change)) {
         if (['type', 'goalId'].includes(key)) continue;
         if (key === 'retirementAge') {

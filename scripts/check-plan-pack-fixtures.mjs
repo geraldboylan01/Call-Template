@@ -312,6 +312,20 @@ await test('A calendar-year placeholder has no thousands separator', () => {
     'pension_projection.retirementYear': { value: 2048, type: 'year' }
   }).text, 'From 2048.');
 });
+await test('Separate age and income changes count and name one moved goal once', async () => {
+  const p = oneRoute(base()); p.chapters = ['pension_projection'];
+  p.goalFlexibility.goal_retirement.targetIncomeToday = [40000, 50000];
+  p.routes.push({ id: 'later', changes: [
+    { type: 'moveGoal', goalId: 'goal_retirement', retirementAge: 65 },
+    { type: 'moveGoal', goalId: 'goal_retirement', targetIncomeToday: 45000 }
+  ] });
+  p.narration.later = '{route.goalChangeCount}: {route.goalsMoved}';
+  const r = await compilePlanPack(p);
+  assert.equal(r.status, 'compiled', JSON.stringify(r.diagnostics));
+  assert.equal(r.routes[1].narration.text, '1: ' + p.household.goals[0].title);
+  assert.equal(entryFor(r, 'pension_projection', 'later').input.targetIncomeToday, 45000);
+  assert.equal(entryFor(r, 'pension_projection', 'later').input.pensions[0].retirementAge, 65);
+});
 console.info=originalInfo;
 console.log('Plan-pack checks: '+(total-failures)+'/'+total+' passed.');
 process.exitCode=failures?1:0;
