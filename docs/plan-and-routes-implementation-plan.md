@@ -1,19 +1,19 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 17 October 2026; the central illness-scenario assumption was approved that day. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; the plan-pack brief (B0) is next.
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 19 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; B0 is now being implemented against its [v1 contract](plan-pack-v1.md).
 
 ## 1. Where things stand
 
 | Piece | Where | State |
 |---|---|---|
 | Future cost fund | `main` (#55 and #57) | Engine, screen, wiring, central cash rate and DIRT built and tested. Prompt-pack entry merged. |
-| Household cash flow | Engine, screen and wiring on `main`; short-state changes in #71 | #71 includes bounded charts, the negative-tax fix and phone layout checked with #72. Fresh review and CI precede its merge. Today's pension contributions remain a separate follow-up. |
-| Goals and resources | Engine and timeline fields on `main` (#58, #67, #70, #75); screen in draft #76, now targeting `main` | Engine and earnings-cap fixes built. #75 adds year offsets and calendar-year ledger labels. #76 implements Proposal A, but app wiring and conditional relief footnotes remain to be finished. |
-| Protection gap | `main` (#61, #65); zero-payment extension in #77 | Engine, screen, wiring and prompt-pack entry built. #77 allows a confirmed €0 State payment and records sourced Irish payment references. The approved central assumption for hypothetical illness scenarios is specified below; its adapter and tax support remain to be built. |
+| Household cash flow | `main` (#71, #82, #83) | Bounded short-state charts and phone layout merged. Today's contributions and their app/prompt contracts are merged; stated take-home is bank pay after the personal pension deduction. |
+| Goals and resources | `main` (#58, #67, #70, #75, #76) | Engine, calendar-year wording, Proposal A screen, app wiring and conditional relief footnotes merged. |
+| Protection gap | `main` (#61, #65, #77) | Engine, screen, wiring and prompt-pack entry built. Confirmed €0 State payments and sourced Irish payment references merged. The approved central assumption for hypothetical illness scenarios is specified below; its adapter and tax support remain to be built. |
 | Property decisions | Rental on `main` (#64, #66); home trade down on `main` (#72) | Both modules built and wired. Shared phone grids also include #73. Property chapters remain outside the first version of the plan. |
 | On `main` | | Mortgage, loan, pension, net retirement, college cost, cash reserve and balance sheet engines. The Irish tax engine, now with CGT on property. Household profile v1 with its adapters, module registry and orchestrator. Case packs and the presenter. |
 
-Module briefs accompany the code. Open-PR references above are a dated snapshot, not additional dependencies on the B0 brief. Prompt-pack entries for cash flow and home trade down follow their final merged contracts; the protection-gap zero-payment entry follows #77.
+Module briefs accompany the code. The module follow-ups above are merged. #83 includes the final cash-flow and home-trade-down prompt contracts. B0 uses those engine contracts without changing consumer activation.
 
 ## 2. What the first version does, end to end
 
@@ -44,7 +44,7 @@ A contribution counts at its full amount wherever the question is what goes into
 | Where | Full amount (gross) | Cost after relief |
 |---|---|---|
 | Pension projection (on `main`) | Pot growth, the relief limit, the extra needed to close a gap | Already shown as the net cost of a contribution. No change. |
-| Household cash flow | The Pensions line | Shows as lower tax, so left over moves by the cost after relief. Already how the model works; the assumptions wording is corrected (its D7). Today's contributions become a follow-up (section 5). |
+| Household cash flow | The Pensions line | Shows as lower tax, so left over moves by the cost after relief. Already how the model works; the assumptions wording is corrected (its D7). Today's contributions are included after #82; bank take-home is after the personal deduction. |
 | Goals and resources | The search for the extra contribution | Needed this year, paid out over the life of the goals, and the yearly ledger. **Changed.** In the illustration the extra €15,435 a year saves about €6,174 of income tax, so it costs about €9,300. |
 | Resource ledger | The pension chapter's figures | Money each year. |
 | Protection gap, future cost fund, property | No pension money | |
@@ -74,9 +74,9 @@ The ledger's assumptions say this order in plain words. The goals module uses th
 
 Small changes to modules already briefed, needed before the plan can use them for a real household. None changes a design.
 
-- **Cash flow does not accept today's pension contributions.** Its Stage 1 household pays none. Niamh and Dara pay 5% and 4%. Now in its brief as the first follow-up after the screen lands.
-- **The red "short" state.** Designed and implemented in #71, including signed summary figures, a status based on the shown amount, bounded chart geometry and the narrow phone layout. Its merge is required before the plan view uses a short current position. No new design task is needed for that state.
-- **Protection reads cash flow in a plan.** `needed` maps to cash flow's outgoings without tax and pensions (`outgoings.statedTotal`), and `people[].takeHome` to `takeHome.byPerson[].takeHome`, which is marked `allocated` for a jointly assessed couple. `savings` is the cash the route leaves (decision 3). The field names stay as briefed.
+- **Today's pension contributions are implemented.** #82/#83 accept each person's current personal contribution and state that bank take-home is after that deduction. Niamh and Dara's 5% and 4% rates must not be deducted from stated bank pay twice.
+- **The red "short" state.** Designed and implemented in #71, including signed summary figures, a status based on the shown amount, bounded chart geometry and the narrow phone layout. It is merged, so the plan layer can use a short current position. No new design task is needed for that state.
+- **Protection reads cash flow in a plan.** `needed` maps to cash flow's outgoings without tax and pensions (`outgoings.statedTotal`), and `people[].takeHome` to `takeHome.byPerson[].bankTakeHome`, which is marked `allocated` for a jointly assessed couple. `savings` is the cash the route leaves (decision 3). The field names stay as briefed.
 - **Goals reads cash flow in a plan.** `leftOverEachYear` becomes cash flow's `summary.cases[].leftOver.amount` for the base case. The goals brief already expects this.
 - **Each brief has its own sample household.** The golden plan pack is the first time every chapter sees one household (Niamh and Dara), so its figures will differ from every brief's sample. That is expected, not a defect.
 
@@ -126,7 +126,7 @@ The B2 change updates the module's provenance, footnote, assumptions table and p
 
 Verification on 17 October: the existing tax engine passed all 64 tax tests. An additional frozen-input audit repeated A–B–A and other call orders, confirmed equal outputs and unchanged inputs, and confirmed independent copies of shared opening pension-tax history. It also confirmed that `illnessBenefit` is currently refused as an unrecognised income type. That is a required extension, not an implemented protection scenario.
 
-Expense-label phrasing belongs to the final AI authoring stage, with no deterministic rewriting of natural language. The [expense-label decision note](backlog/ai-authored-expense-labels.md) records Gerry's instruction, the deferred implementation and the known #71 phone-layout edge case.
+Expense-label phrasing belongs to the final AI authoring stage, with no deterministic rewriting of natural language. The [expense-label decision note](backlog/ai-authored-expense-labels.md) records Gerry's instruction, the deferred implementation and the historical #71 phone-layout finding and its merged positioning fix.
 
 ## 7. The order of work
 
@@ -134,21 +134,21 @@ Two tracks run side by side. Track A builds the module screens, one Claude Code 
 
 | Step | What | Waits for | Who |
 |---|---|---|---|
-| D1 | Red "short" state designed; cash flow implementation in #71 and goals drawing in #76 | Merge #71; finish goals integration | Module work |
+| D1 | Red "short" state merged in #71 and #76 | Complete | Module work |
 | A1 | Future cost fund screen and wiring complete on `main`; its updated wiring list remains the pattern | Complete | Future cost fund module |
-| A2 | Cash flow engine, screen and wiring complete; merge #71, then add today's pension contributions in its own change | Clean final review and CI for #71; contribution input contract | Cash flow module |
-| A3 | Protection gap complete; confirmed zero-payment extension in #77 | Clean review and CI for #77 | Protection module |
-| A4 | Goals engine and #75 complete; #76 targets `main`; finish app wiring and conditional relief footnotes, then review the screen | Screen wiring checks | Goals module |
-| P | Prompt pack entries for each module, from its contract summary (section 8) | Each module merged | Claude |
-| B0 | Plan pack v1: format, validator, compiler for the modules on `main`, and `check:plan-pack` | | Plan chat |
-| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | B0 and the A4 engine. Left over is stated until A2 lands. | Plan chat |
+| A2 | Cash flow, short state and today's pension contributions merged (#71/#82/#83) | Complete | Cash flow module |
+| A3 | Protection gap and confirmed zero-payment extension merged (#77) | Complete | Protection module |
+| A4 | Goals engine, timeline fields, app wiring and relief footnotes merged (#75/#76) | Complete | Goals module |
+| P | Existing module prompt contracts merged, including cash flow and home trade down (#83) | Complete for current modules | Claude |
+| B0 | Plan pack v1: format, validator, compiler and `check:plan-pack`; implementation in #80 | Current work; supported/deferred builders in the v1 contract | Plan chat |
+| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | B0. Cash flow can now supply left over; a separate stated amount is allowed only without that chapter. | Plan chat |
 | B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6; central Illness Benefit assumption, shared-engine tax treatment and duration contract | Each module's engine; versioned assumptions and tax support for illness scenarios | Plan chat |
 | D2 | The plan view: the current position and the routes side by side | B1's output shape | Claude Design |
 | B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats | D2, B1, B2 | Plan chat |
 | B4 | The plan playbook (how an author writes a plan pack) and two golden plan packs | B1 | Gerry and Claude |
 | Later | Property chapters as routes, where a sale's proceeds become money now. The consumer questions from section 6. The website version through the API. | B3 | |
 
-B0 can start now, in parallel with A1 to A4, because it needs only engines already on `main` and a stated left-over figure. That is the reason to keep the plan work in its own chat rather than in a module chat.
+B0 is the current step. It compiles complete builders through the existing engines, returns explicit later-stage diagnostics for incomplete builders and makes no resource-ledger conclusions. B1 adds allocation and the balance test; B2 completes the automatic profile and illness-tax contracts.
 
 The module screens stay adviser-only (`consumer: false`) as their briefs say. The plan view starts the same way.
 
