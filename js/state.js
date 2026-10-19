@@ -27,6 +27,7 @@ import {
   normalizeHomeTradeDownInputs,
   computeHomeTradeDownProjection
 } from './home_trade_down_math.js';
+import { normalizeGoalsAndResourcesInputs, projectGoalsAndResources } from './goals_and_resources_math.js';
 
 const STORAGE_KEY = 'call_canvas_session_current';
 const LEGACY_STORAGE_KEY = 'call-template-session-v1';
@@ -112,7 +113,8 @@ const RUNTIME_OWNED_INPUT_KEYS = Object.freeze([
   'householdCashFlowInputs',
   'protectionGapInputs',
   'rentalKeepOrSellInputs',
-  'homeTradeDownInputs'
+  'homeTradeDownInputs',
+  'goalsAndResourcesInputs'
 ]);
 
 function makeSessionId() {
@@ -791,9 +793,10 @@ function normalizeFutureCostFundSessionInputs(futureCostFundInputs) {
  * Tolerant on the way in, like the other capped arrays: an over-cap list of
  * cases is cut with an import warning and never thrown over, because a link
  * that was valid when it was published is a promise already kept. What the
- * engine will not read at all (a stated tax line, a case that leaves less than
- * nothing, which this release does not draw) is dropped with a warning and the
- * module simply has no inputs. Projecting it here is what finds the second kind.
+ * engine will not read at all (a stated tax line, a relief limit exceeded) is
+ * dropped with a warning and the module simply has no inputs. Projecting it
+ * here is what finds the second kind. A case that leaves less than nothing is
+ * not one of them: it is kept, and drawn as Short.
  */
 function normalizeHouseholdCashFlowSessionInputs(householdCashFlowInputs) {
   if (householdCashFlowInputs === undefined || householdCashFlowInputs === null) {
@@ -901,6 +904,28 @@ function normalizeHomeTradeDownSessionInputs(homeTradeDownInputs) {
     return normalized;
   } catch (error) {
     recordSessionImportWarning(`homeTradeDownInputs could not be read and was left out: ${error.message}`);
+    return null;
+  }
+}
+
+function normalizeGoalsAndResourcesSessionInputs(goalsAndResourcesInputs) {
+  if (goalsAndResourcesInputs === undefined || goalsAndResourcesInputs === null) {
+    return null;
+  }
+  if (typeof goalsAndResourcesInputs !== 'object' || Array.isArray(goalsAndResourcesInputs)) {
+    recordSessionImportWarning('goalsAndResourcesInputs could not be read and was left out: it must be an object.');
+    return null;
+  }
+
+  // Cases are derived by the engine; authored scenarios are refused.
+  const candidate = goalsAndResourcesInputs;
+
+  try {
+    const normalized = normalizeGoalsAndResourcesInputs(candidate);
+    projectGoalsAndResources(normalized);
+    return normalized;
+  } catch (error) {
+    recordSessionImportWarning(`goalsAndResourcesInputs could not be read and was left out: ${error.message}`);
     return null;
   }
 }
@@ -1883,6 +1908,7 @@ export function createEmptyGenerated() {
     protectionGapInputs: null,
     rentalKeepOrSellInputs: null,
     homeTradeDownInputs: null,
+    goalsAndResourcesInputs: null,
     housePurchaseInputs: null,
     netRetirementInputs: null,
     mortgageInputs: null,
@@ -1914,6 +1940,7 @@ export function normalizeGenerated(generated) {
     protectionGapInputs: normalizeProtectionGapSessionInputs(generated.protectionGapInputs),
     rentalKeepOrSellInputs: normalizeRentalKeepOrSellSessionInputs(generated.rentalKeepOrSellInputs),
     homeTradeDownInputs: normalizeHomeTradeDownSessionInputs(generated.homeTradeDownInputs),
+    goalsAndResourcesInputs: normalizeGoalsAndResourcesSessionInputs(generated.goalsAndResourcesInputs),
     housePurchaseInputs: normalizeHousePurchaseInputs(generated.housePurchaseInputs, { allowPartial: true }),
     netRetirementInputs: normalizeNetRetirementInputs(generated.netRetirementInputs || generated.netCashflowInputs),
     mortgageInputs: normalizeMortgageInputs(generated.mortgageInputs, { defaultLoanKind: 'mortgage' }),
@@ -1953,6 +1980,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -1979,6 +2007,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -1993,6 +2022,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -2009,6 +2039,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
@@ -2021,6 +2052,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.education = null;
@@ -2031,6 +2063,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.education = null;
@@ -2044,6 +2077,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
     normalized.loanInputs = null;
@@ -2072,6 +2106,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -2096,6 +2131,7 @@ export function normalizeGenerated(generated) {
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.pbsInputs = null;
     normalized.liquidityPlan = null;
     normalized.pensionInputs = null;
@@ -2130,6 +2166,7 @@ export function normalizeGenerated(generated) {
     normalized.householdCashFlowInputs = null;
     normalized.rentalKeepOrSellInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -2162,6 +2199,7 @@ export function normalizeGenerated(generated) {
     normalized.householdCashFlowInputs = null;
     normalized.protectionGapInputs = null;
     normalized.homeTradeDownInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -2191,6 +2229,7 @@ export function normalizeGenerated(generated) {
     normalized.householdCashFlowInputs = null;
     normalized.protectionGapInputs = null;
     normalized.rentalKeepOrSellInputs = null;
+    normalized.goalsAndResourcesInputs = null;
     normalized.housePurchaseInputs = null;
     normalized.netRetirementInputs = null;
     normalized.mortgageInputs = null;
@@ -2200,6 +2239,36 @@ export function normalizeGenerated(generated) {
     normalized.outputsBucketed = null;
     try {
       const projection = computeHomeTradeDownProjection(normalized.homeTradeDownInputs);
+      normalized.assumptions = projection.assumptionsTable;
+      normalized.outputs = projection.outputsTable;
+      normalized.tables = projection.tables;
+      normalized.charts = projection.charts;
+    } catch (_error) {
+      // Never preserve model-supplied calculations for a runtime-owned module.
+      normalized.assumptions = { columns: [], rows: [] };
+      normalized.outputs = { columns: [], rows: [] };
+      normalized.tables = [];
+      normalized.charts = [];
+    }
+  } else if (normalized.goalsAndResourcesInputs) {
+    normalized.homeTradeDownInputs = null;
+    normalized.pbsInputs = null;
+    normalized.liquidityPlan = null;
+    normalized.pensionInputs = null;
+    normalized.collegeFundingInputs = null;
+    normalized.futureCostFundInputs = null;
+    normalized.householdCashFlowInputs = null;
+    normalized.protectionGapInputs = null;
+    normalized.rentalKeepOrSellInputs = null;
+    normalized.housePurchaseInputs = null;
+    normalized.netRetirementInputs = null;
+    normalized.mortgageInputs = null;
+    normalized.loanInputs = null;
+    normalized.education = null;
+    normalized.report = null;
+    normalized.outputsBucketed = null;
+    try {
+      const projection = projectGoalsAndResources(normalized.goalsAndResourcesInputs);
       normalized.assumptions = projection.assumptionsTable;
       normalized.outputs = projection.outputsTable;
       normalized.tables = projection.tables;
@@ -2368,6 +2437,9 @@ function normalizeModuleUi(ui) {
       : '',
     homeTradeDownScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.homeTradeDownScenarioId === 'string'
       ? ui.homeTradeDownScenarioId.trim()
+      : '',
+    goalsAndResourcesScenarioId: ui && typeof ui === 'object' && !Array.isArray(ui) && typeof ui.goalsAndResourcesScenarioId === 'string'
+      ? ui.goalsAndResourcesScenarioId.trim()
       : '',
     housePurchaseEditor: normalizedHousePurchaseEditor
   };

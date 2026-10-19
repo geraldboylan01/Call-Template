@@ -8,6 +8,7 @@ import { getHouseholdCashFlowCases } from './household_cash_flow_math.js';
 import { getProtectionGapCases } from './protection_gap_math.js';
 import { getRentalKeepOrSellCases } from './rental_keep_or_sell_math.js';
 import { getHomeTradeDownCases } from './home_trade_down_math.js';
+import { getGoalsAndResourcesCases } from './goals_and_resources_math.js';
 
 const CATALOGUE_VERSION = 1;
 const plainText = (v) => String(v ?? '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -44,7 +45,7 @@ function moduleSource(module) {
   return { title: (module.title || '').trim(), generated, hiddenCardIds: module.ui?.hiddenCardIds || [], cardOrder: module.ui?.cardOrder || [] };
 }
 export function moduleKind(g) {
-  for (const [key, kind] of Object.entries({ report: 'report', liquidityPlan: 'liquidity', outputsBucketed: 'balance-sheet', mortgageInputs: 'mortgage', loanInputs: 'loan', pensionInputs: 'pension', netRetirementInputs: 'net-retirement', futureCostFundInputs: 'future-cost-fund', householdCashFlowInputs: 'household-cash-flow', protectionGapInputs: 'protection-gap', rentalKeepOrSellInputs: 'rental-keep-or-sell', homeTradeDownInputs: 'home-trade-down', housePurchaseInputs: 'house-purchase', education: 'education' })) {
+  for (const [key, kind] of Object.entries({ report: 'report', liquidityPlan: 'liquidity', outputsBucketed: 'balance-sheet', mortgageInputs: 'mortgage', loanInputs: 'loan', pensionInputs: 'pension', netRetirementInputs: 'net-retirement', futureCostFundInputs: 'future-cost-fund', householdCashFlowInputs: 'household-cash-flow', protectionGapInputs: 'protection-gap', rentalKeepOrSellInputs: 'rental-keep-or-sell', homeTradeDownInputs: 'home-trade-down', goalsAndResourcesInputs: 'goals-and-resources', housePurchaseInputs: 'house-purchase', education: 'education' })) {
     if (g[key]) return kind;
   }
   return 'analysis';
@@ -58,6 +59,7 @@ function scenarios(g, kind) {
   if (kind === 'protection-gap') return getProtectionGapCases(g.protectionGapInputs);
   if (kind === 'rental-keep-or-sell') return getRentalKeepOrSellCases(g.rentalKeepOrSellInputs);
   if (kind === 'home-trade-down') return getHomeTradeDownCases(g.homeTradeDownInputs);
+  if (kind === 'goals-and-resources') return getGoalsAndResourcesCases(g.goalsAndResourcesInputs);
   if (kind === 'mortgage' || kind === 'loan') return getMortgageScenarioCases(g.loanInputs || g.mortgageInputs, { defaultLoanKind: kind });
   return [];
 }

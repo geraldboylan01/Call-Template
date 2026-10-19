@@ -1,12 +1,12 @@
 import {
   buildPublishedCapabilityToken,
-  decryptPublishedSessionV2ForClient,
   decryptPublishedSessionWithRememberedDek,
   decryptSessionJson,
   finalizePublishedClientPinV4,
   resolvePublishedClientSessionAccess
 } from './crypto_session.js';
 import { importPublishedSession } from './state.js';
+import { createEducationBookingWidget } from './workspace/education_booking_ui.js';
 
 window.__CALL_CANVAS_AUTO_INIT__ = false;
 
@@ -360,7 +360,7 @@ async function submitPublishedClientPinSetup(publishedId, clientSecretB64u, expe
   };
 }
 
-async function openReadonlySession(sessionInput) {
+async function openReadonlySession(sessionInput, reportDekB64u = '') {
   const importedSession = importPublishedSession(sessionInput);
   const { initApp } = await import('./app.js');
   const publishedId = getPublishedIdFromUrl();
@@ -382,6 +382,24 @@ async function openReadonlySession(sessionInput) {
   });
 
   setUnlockLayerVisible(false);
+  if (publishedId && publishedClientSecret && reportDekB64u) {
+    document.getElementById('publishedWalkthroughBooking')?.remove();
+    const panel = document.createElement('details');
+    panel.id = 'publishedWalkthroughBooking';
+    panel.className = 'education-booking-published-wrapper';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Talk through this report · €99.99';
+    panel.append(summary);
+    const widget = createEducationBookingWidget({
+      baseUrl: WORKER_BASE_URL,
+      sourceType: 'published', sourceId: publishedId,
+      getHeaders: async () => ({ 'X-Published-Capability': await buildPublishedCapabilityToken(publishedClientSecret, 'client') }),
+      getReportKey: async () => reportDekB64u
+    });
+    widget.classList.add('education-booking-published');
+    panel.append(widget);
+    document.body.append(panel);
+  }
 }
 
 async function tryOpenPublishedSessionWithRememberedAccess(publishedId, rememberedAccess) {
@@ -391,7 +409,7 @@ async function tryOpenPublishedSessionWithRememberedAccess(publishedId, remember
 
   try {
     const plaintext = await decryptPublishedSessionWithRememberedDek(publishedBundle, rememberedAccess.dekB64u);
-    await openReadonlySession(plaintext);
+    await openReadonlySession(plaintext, rememberedAccess.dekB64u);
     void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-remembered');
     return true;
   } catch (_error) {
@@ -459,8 +477,8 @@ async function bootstrapPublishedSession() {
 
     if (!getPublishedPinRequired(publishedBundle)) {
       setHint('Secure link verified. Opening your session.');
-      const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle);
-      await openReadonlySession(plaintext);
+      const resolved = await resolvePublishedClientSessionAccess(publishedClientSecret, publishedBundle);
+      await openReadonlySession(resolved.plaintext, resolved.dekB64u);
       void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-no-pin');
       return true;
     }
@@ -564,7 +582,7 @@ async function unlockPublishedSession() {
           ...publishedBundle,
           clientAccess: finalized.clientBundle.clientAccess
         };
-        await openReadonlySession(finalized.plaintext);
+        await openReadonlySession(finalized.plaintext, finalized.dekB64u);
         void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-first-open-pin-created');
       } catch (error) {
         setError(error?.message || 'Could not save your PIN.');
@@ -590,7 +608,7 @@ async function unlockPublishedSession() {
         dekB64u: resolved.dekB64u,
         expiresAt: publishedBundle?.expiresAt || ''
       });
-      await openReadonlySession(resolved.plaintext);
+      await openReadonlySession(resolved.plaintext, resolved.dekB64u);
       void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-pin');
     } catch (error) {
       setError(error?.message || 'Could not unlock session.');
@@ -610,8 +628,8 @@ async function unlockPublishedSession() {
   setLoading(true);
 
   try {
-    const plaintext = await decryptPublishedSessionV2ForClient(publishedClientSecret, publishedBundle, { pin });
-    await openReadonlySession(plaintext);
+    const resolved = await resolvePublishedClientSessionAccess(publishedClientSecret, publishedBundle, { pin });
+    await openReadonlySession(resolved.plaintext, resolved.dekB64u);
     void recordPublishedUnlock(publishedId, publishedClientSecret, 'viewer-pin');
   } catch (error) {
     setError(error?.message || 'Could not unlock session.');

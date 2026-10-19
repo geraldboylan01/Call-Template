@@ -38,6 +38,8 @@ jobs:
       ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
       WORKER_BASE_URL: "https://api.planeir.ie"
       DEMO_REQUESTS_ENABLED: ${{ vars.DEMO_REQUESTS_ENABLED || 'false' }}
+      # Protected production setting; absence keeps all payment/email gates off.
+      WALKTHROUGH_SETTINGS_JSON: ${{ vars.WALKTHROUGH_SETTINGS_JSON }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
       RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
       # Explicit source approval activates only the fixed adviser-test,
@@ -726,14 +728,34 @@ jobs:
           }
 
           const replaceTomlString = (input, name, value) => {
-            const expression = new RegExp('^' + name + '\\s*=\\s*"[^"\\n]*"\\s*$', 'gm');
+            const expression = new RegExp('^' + name + '\\s*=\\s*"(?:\\\\.|[^"\\\\\\n])*"\\s*$', 'gm');
             const matches = input.match(expression) || [];
             if (matches.length !== 1) {
               throw new Error(name + ' must have exactly one explicit string value in the source config.');
             }
             return input.replace(expression, name + ' = ' + JSON.stringify(value));
           };
-          let generatedSource = source;
+          // Keep this validation equivalent to parseWalkthroughSettings. The
+          // runtime also fails closed if a dashboard change bypasses this gate.
+          const walkthroughDefaults = {
+            STRIPE_MODE: 'test', STRIPE_TAX_MODE: 'no_collection', STRIPE_WALKTHROUGH_PRICE_ID: '',
+            STRIPE_WALKTHROUGHS_ENABLED: 'false', STRIPE_WALKTHROUGH_LIVE_ACTIVATED: 'false', WALKTHROUGH_EMAILS_ENABLED: 'false'
+          };
+          const walkthroughRaw = envValue('WALKTHROUGH_SETTINGS_JSON') || '{}';
+          let walkthroughSupplied;
+          try { walkthroughSupplied = JSON.parse(walkthroughRaw); } catch { throw new Error('Invalid walkthrough settings.'); }
+          const walkthroughGates = ['STRIPE_WALKTHROUGHS_ENABLED', 'STRIPE_WALKTHROUGH_LIVE_ACTIVATED', 'WALKTHROUGH_EMAILS_ENABLED'];
+          if (Buffer.byteLength(walkthroughRaw) > 4096 || !walkthroughSupplied || typeof walkthroughSupplied !== 'object'
+            || Array.isArray(walkthroughSupplied) || Object.entries(walkthroughSupplied).some(([name, value]) =>
+              !Object.hasOwn(walkthroughDefaults, name) || typeof value !== 'string')) throw new Error('Invalid walkthrough settings.');
+          const walkthroughSettings = { ...walkthroughDefaults, ...walkthroughSupplied };
+          if (!['test', 'live'].includes(walkthroughSettings.STRIPE_MODE) || walkthroughSettings.STRIPE_TAX_MODE !== 'no_collection'
+            || !/^(?:|price_[A-Za-z0-9]+)$/.test(walkthroughSettings.STRIPE_WALKTHROUGH_PRICE_ID)
+            || walkthroughGates.some(name => !['true', 'false'].includes(walkthroughSettings[name]))
+            || (walkthroughSettings.STRIPE_WALKTHROUGHS_ENABLED === 'true' && !walkthroughSettings.STRIPE_WALKTHROUGH_PRICE_ID)) {
+            throw new Error('Invalid walkthrough settings.');
+          }
+          let generatedSource = replaceTomlString(source, 'WALKTHROUGH_SETTINGS_JSON', JSON.stringify(walkthroughSettings));
           const demoEnabled = envValue('DEMO_REQUESTS_ENABLED') || 'false';
           if (!['true', 'false'].includes(demoEnabled)) throw new Error('DEMO_REQUESTS_ENABLED must be true or false.');
           generatedSource = replaceTomlString(generatedSource, 'DEMO_REQUESTS_ENABLED', demoEnabled);
@@ -881,6 +903,7 @@ jobs:
           }
 
           const expectedGeneratedFlags = {
+            EDUCATION_CALLS_ENABLED: 'true',
             CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
             CONSUMER_VOICE_ENABLED: 'false',
             CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
@@ -937,13 +960,19 @@ jobs:
             // the planner below is forced off -- safe by accident rather than
             // by this list, which is what the comment above promises.
             'CONSUMER_TYPED_LANE_ENABLED',
-            'CONSUMER_HANDOFF_ENABLED'
+            'CONSUMER_HANDOFF_ENABLED',
+            'EDUCATION_CALLS_ENABLED'
           ].reduce((source, flag) => replaceTomlString(source, flag, 'false'), generatedSource);
           bootstrapSource = replaceTomlString(
             bootstrapSource,
             'CONSUMER_MODULE_PLANNER_MODE',
             'off'
           );
+          // Retain environment/Price identity for outstanding signed webhooks,
+          // while the infrastructure bootstrap cannot collect or send emails.
+          bootstrapSource = replaceTomlString(bootstrapSource, 'WALKTHROUGH_SETTINGS_JSON', JSON.stringify({
+            ...walkthroughSettings, ...Object.fromEntries(walkthroughGates.map(name => [name, 'false']))
+          }));
           if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
             throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
           }
@@ -999,7 +1028,12 @@ jobs:
         run: node ./scripts/check-consumer-static-headers.mjs
 
       - name: Check demo access flow
-        run: npm run check:demo
+        run: |
+          npm run check:demo
+          npm run check:education-call
+          npm run check:education-booking
+          npm run check:stripe
+          npm run check:lead-qualification
 
       - name: Ensure demo encryption key is provisioned
         working-directory: ./worker

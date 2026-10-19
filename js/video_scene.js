@@ -6,6 +6,8 @@ import { computeProtectionGapProjection } from './protection_gap_math.js';
 import { computeRentalKeepOrSellProjection } from './rental_keep_or_sell_math.js';
 import { buildRentalCopy } from './rental_keep_or_sell_view.js';
 import { computeHomeTradeDownProjection } from './home_trade_down_math.js';
+import { projectGoalsAndResources } from './goals_and_resources_math.js';
+import { buildGarModel } from './goals_and_resources_view.js';
 import { buildTradeDownCopy } from './home_trade_down_view.js';
 import { computeNetRetirementProjection } from './net_retirement_math.js';
 import { computeMortgageProjection } from './mortgage_math.js';
@@ -111,6 +113,9 @@ export function getVideoModuleKind(module) {
   }
   if (generated.homeTradeDownInputs) {
     return { id: 'home-trade-down', label: 'Home trade down' };
+  }
+  if (generated.goalsAndResourcesInputs) {
+    return { id: 'goals-and-resources', label: 'Goals and resources' };
   }
   if (generated.collegeFundingInputs) {
     return { id: 'college-funding', label: 'College funding' };
@@ -293,32 +298,38 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       const cases = projection.debug.cases;
       const known = cases.find((entry) => entry.id === requestedId);
       const selected = known || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
-      const index = cases.findIndex((entry) => entry.id === selected.id);
-      const row = projection.summary.cases[index];
-      const shown = (amount) => Math.round(amount / 100) * 100;
+      // EVERY FIGURE IS A SHOWN ONE, the one on the screen, so the story adds up
+      // as the screen does. The lines are tax, pensions, then the stated lines,
+      // and the stated ones are summed as shown: rounding their total instead
+      // would differ from the lines by a few hundred.
+      const [taxLine, pensionsLine, ...statedLines] = selected.lines;
+      const otherShown = statedLines.reduce((sum, line) => sum + line.shownAmount, 0);
       // The figures that add up come first: what comes in, what goes out and
       // what is left, because a story shows only the first few. Anything that is
       // nothing in this case is left out.
+      // A short year says "Short" and its size, as the screen does, so the story
+      // never reads "left over" of a negative figure.
+      const isShort = selected.shownLeftOver < 0;
       const figures = [
-        ['Your income before tax (€)', shown(row.income.total)],
+        ['Your income before tax (€)', selected.shownIncome],
         ['Goes out (€)', selected.shownIncome - selected.shownLeftOver],
-        ['Left over (€)', selected.shownLeftOver],
-        ['Tax (€)', shown(row.outgoings.tax)],
-        ['Pensions (€)', shown(row.outgoings.pensionContributions)],
-        ['Other outgoings (€)', shown(row.outgoings.statedTotal)]
+        isShort ? ['Short (€)', -selected.shownLeftOver] : ['Left over (€)', selected.shownLeftOver],
+        ['Tax (€)', taxLine.shownAmount],
+        ['Pensions (€)', pensionsLine.shownAmount],
+        ['Other outgoings (€)', otherShown]
       ].filter(([, value]) => value !== 0);
       const drawn = projection.debug.drawnLines;
       const chart = {
         title: 'Where a year of your income goes',
         subtitle: `For “${selected.title}”.`,
         type: 'bar',
-        labels: ['Your income before tax', ...drawn.map((line) => line.label), 'Left over'],
+        labels: ['Your income before tax', ...drawn.map((line) => line.label), isShort ? 'Short' : 'Left over'],
         datasets: [{
           label: 'A year',
           data: [
             selected.shownIncome,
             ...drawn.map((line) => selected.lines.find((entry) => entry.id === line.id).shownAmount),
-            selected.shownLeftOver
+            Math.abs(selected.shownLeftOver)
           ]
         }],
         display: { variant: 'wide', valueFormat: 'currency', yAxisTitle: 'A year' }
@@ -477,6 +488,40 @@ export function resolveModuleForVideo(module, activeScenario = {}) {
       return {
         module: resolved,
         activeScenario: { id: selected.id, title: selected.title, description: selected.description || '' },
+        projectionDebug: projection.debug,
+        calculationStatus: 'resolved'
+      };
+    }
+
+    if (kind.id === 'goals-and-resources') {
+      const projection = projectGoalsAndResources(generated.goalsAndResourcesInputs);
+      const { cases } = projection.debug;
+      const selected = cases.find((entry) => entry.id === asTrimmedText(activeScenario.goalsAndResourcesScenarioId))
+        || cases.find((entry) => entry.id === projection.debug.baseScenarioId) || cases[0];
+      const shown = buildGarModel(projection).cases.find((entry) => entry.id === selected.id);
+      const escapeHtml = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      resolved.generated.assumptions = projection.assumptionsTable;
+      resolved.generated.outputs = {
+        columns: ['Figure', selected.title],
+        rows: [
+          ['Used from your cash (€)', selected.cashUsed],
+          ['Cash left (€)', selected.cashLeft],
+          ['Spare cash at the start (€)', projection.debug.inputs.spareCash],
+          ['What you have each year (€)', shown.year.haveTotal],
+          ['What your goals need each year (€)', shown.year.needTotal],
+          [`${shown.year.label} each year (€)`, shown.year.kind === 'short' ? shown.year.short : shown.year.spare]
+        ]
+      };
+      resolved.generated.tables = [projection.tables[cases.indexOf(selected)]];
+      resolved.generated.charts = [{
+        id: 'goals-selected-year', type: 'bar', title: 'Your money each year',
+        labels: ['What you have', 'What your goals need'],
+        datasets: [{ label: 'A year (€)', data: [shown.year.haveTotal, shown.year.needTotal] }]
+      }];
+      resolved.generated.summaryHtml = `<p>${escapeHtml(shown.headline.text)}. ${escapeHtml(shown.support)}</p>`;
+      return {
+        module: resolved,
+        activeScenario: { id: selected.id, title: selected.title, description: selected.words.amountLine },
         projectionDebug: projection.debug,
         calculationStatus: 'resolved'
       };

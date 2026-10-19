@@ -6,7 +6,7 @@ If this file ever conflicts with another copy of it on `main`, this branch's ver
 
 ## Build status
 
-Everything in Stage 1 is built, in two changes on `module/household-cash-flow`: the engine, then the screen and the wiring. The shortfall (D3) is the next change and is not in this one.
+Everything in Stage 1 is built, in two changes on `module/household-cash-flow`: the engine, then the screen and the wiring. The shortfall (D3) is built as its own change on `household-cash-flow-short`, described in "The short state" below, and today's pension contributions are the one follow-up still to come.
 
 - `js/household_cash_flow_math.js`: the engine, with `summary` for the plan. `js/household_cash_flow_view.js`: the words, the width switch and the geometry for both drawings, with no DOM so they are checked in Node. `js/household_cash_flow_module.js`: the drawing, its own 520ms clock and `presenterSelectScenario`.
 - State, paste pipeline, render, app, presenter catalogue, video scene and codex brief wiring, two Dev Panel examples, `dev/household-cash-flow-preview.html`, the `.hcf-` styles and the CI listing. The wiring followed "Wiring a new engine module" in `docs/future-cost-fund-app-change.md`, not this brief's own first list below.
@@ -18,9 +18,9 @@ Differences from this brief as first written:
 - **Type floors.** The staircase's type follows the column down to the floors (16 for amounts, 14 for names, 13 for the delta line), with no lower clamp on the scale, so ten columns still fit their amounts at 848.
 - **The width is measured by a probe.** A zero-height strip as wide as the module's content box, because beside the answer the chart is only part of the content. The module keeps 28px of side padding, for an amount centred on a bar to reach a little past the plot.
 - **Today's label.** It is two lines at a wide pitch and three at a narrow one ("Today", "€9,200", "left over").
-- **A short case is refused in three places**, not one: the engine, the paste pipeline (which projects the payload before applying it) and the session importer (which drops it with a warning).
+- **A short case was refused in three places**, not one: the engine, the paste pipeline (which projects the payload before applying it) and the session importer (which drops it with a warning). The short-state change lifted all three together, and nothing refuses a short case now.
 - **Normalised inputs write back `householdTaxStatus` and `mappedFromJoint`**, so a saved payload normalises to itself. The test that proves it covers a status, no status, a stated take-home and a one-person household.
-- **Not built, as agreed:** the hover read-off (`attachScrub`), the plan adapter, the short state, and today's pension contributions.
+- **Not built, as agreed:** the hover read-off (`attachScrub`), the plan adapter, and today's pension contributions.
 
 ## Context
 
@@ -47,13 +47,17 @@ Reference frames, in the design canvas (private link: https://claude.ai/artifact
 | `C · Steps · Both selected` | `StepsBoth.dc.html` | Wide, 1920×1080, case 4 selected |
 | `Phone · Today selected` | `Phone.dc.html` | Phone, 390×1420, case 1 selected |
 | `Phone · Both selected` | `PhoneBoth.dc.html` | Phone, 390×1420, case 4 selected |
+| `Short · €20,000 more into your pensions selected` | `ShortWide.dc.html` | Wide, 1920×1080, a left over year tipped under: the steps run past the floor |
+| `Short · Today short (living costs €60,000)` | `TodayShortWide.dc.html` | Wide, 1920×1080, today itself short, with the outlines of today as a fixed reference |
+| `Short on a phone · €20,000 more into your pensions selected` | `ShortPhone.dc.html` | Phone, 390×1480, the costs run past the end of income |
+| `Short on a phone · Today short (living costs €60,000)` | `TodayShortPhone.dc.html` | Phone, 390×1480, today short |
 
 The canvas also holds frames you must **not** build: the single bar and the narrowing stream at 1920 (`Main`, `BarBoth`, `Flow`, `FlowBoth`), the quarter-turned staircase for phones (`Cascade`, `CascadeBoth`) and the squeezed staircase (`Squeezed`). They were explored and set aside. The squeezed one exists to show why the staircase cannot simply shrink: nine columns in 350px means type under 12px and amounts that collide.
 
 Five things to know before you use the frames:
 
-- They were drawn with **design fixture figures** (tax 48,000 and 44,000), not figures from the tax engine. See "What the sample does in the engine". Their numbers are not what the module will show with engine tax.
-- **Their words are superseded, and they are not being redrawn yet.** They were drawn before the voice was settled (D5) and speak about "Niamh and Dara" in the third person. They will be redrawn together with the red "short" state (D3), which is next. Until then take geometry and structure from the frames and every word from this brief, and where the two disagree the brief wins.
+- They were first drawn with **design fixture figures** (tax 48,000 and 44,000), not figures from the tax engine. See "What the sample does in the engine". The staircase and phone frames were later redrawn with engine figures (tax 44,800 and 40,800 at the rules of 10 October), in the second person, together with the short frames. The golden strings in the tests keep the design fixture, because it is injected and the rules cannot move it.
+- **Their words.** The first frames were drawn before the voice was settled (D5) and speak about "Niamh and Dara" in the third person. The redrawn ones speak in the second person. Where a frame and this brief disagree on a word, the brief wins.
 - They were built in the design tool and have **not been opened and checked in a browser**. Treat them as a drawing, not a reference implementation.
 - They draw no footnote. One is required here (see Words), and it is the only element on screen that is not in a frame.
 - Where this brief and a frame disagree, the brief wins. Say which.
@@ -66,7 +70,7 @@ It is used two ways at once. It is shared at 1920×1080 on a call while the advi
 |---|---|---|
 | D1 | Where tax comes from | **The Irish tax engine is the default.** A person's take-home pay may also be **stated**, and then it overrides the engine's tax for that person. The screen and the assumptions say which was used. A payslip figure beats an estimate. The change a case makes to tax is always the engine's estimate. |
 | D2 | What "tight" means | **Nothing left over after rounding** (shown left over is €0). Green is anything above that. No percentage threshold. |
-| D3 | A case that leaves less than nothing | **Rejected on the way in, for now.** The red "short" state is being designed. It must land **before the plan work**, because plans will read households that are short. |
+| D3 | A case that leaves less than nothing | **Settled: drawn as Short, not refused.** The screen draws it (red, always beside the word "Short"), the engine summarises it, the paste pipeline and the session importer accept it. It landed **before the plan work**, because plans read households that are short. Status follows the amount shown: above €0 is left over, exactly €0 is tight, below €0 is short. The monthly figure in `summary` is signed. See "The short state". |
 | D4 | Module name | **Household cash flow**, kind `household-cash-flow`, id `household_cash_flow`. |
 | D5 | Voice | **"You" in all on-screen words.** Derived wording, headings, labels, the footnote and the assumptions table speak to the household as "you" and "your". |
 | D6 | Per-person take-home for a couple | **Settled: allocated by income share.** The engine assesses a couple's income tax jointly, as one figure, so per-person take-home needs an allocation rule. Each person's share is their income before tax over the household's. The output marks it `basis: 'allocated'` and the assumptions table says so. The rule is in "The model". |
@@ -107,9 +111,9 @@ A stated take-home changes this. If Niamh's payslips say her take-home is 50,000
 1. **Release surface.** Adviser-only through the Dev Panel, the presenter and the published session viewer. `consumer: false`, as the pension and mortgage modules were. No consumer routing, no voice, no planner facts. The plan adapter is a later change (see Out of scope).
 2. **One ordinary year.** Every amount is per year, in today's money. No growth, no inflation, no projection. "Each year" means a typical year.
 3. **Pension money is not spent.** The picture treats a pension contribution as leaving the household's spending money, which is what the case is about. The wording is "goes out" and "goes into your pensions", never "lost" or "spent". The assumptions table says what the left-over figure is: income after tax, pension contributions and the stated costs.
-4. **Rounding on screen.** Every amount to the nearest €100, from unrounded values. Rules in the contract.
+4. **Rounding on screen.** Chart and ledger totals and left over figures use the nearest €100; pension changes in case sentences use the actual extra and tax saving, to cents. Rules in the contract.
 5. **No rates and no tax lines in the payload.** The payload carries income, stated costs and, optionally, a person's take-home. Tax rules come from the engine, so every module and adviser reads the same number.
-6. **Take-home means before the pension contribution a case adds.** Take-home is income minus tax (income tax, USC and PRSI). A case's extra pension contribution is its own line after that, so take-home never changes by the contribution itself, only by the tax it saves.
+6. **Stated take-home means bank pay after today's pension deduction.** The legacy calculated `takeHome` summary remains income minus tax for compatibility. Explicit bank-pay fields deduct the full case contribution once; see the contribution input contract below.
 
 ## Before you write code
 
@@ -131,7 +135,7 @@ Add `generated.householdCashFlowInputs`. Engine in `js/household_cash_flow_math.
 | Field | Type | Rule |
 |---|---|---|
 | `householdTaxStatus` | string, optional | `single`, `married_or_civil_partners` or `widowed_or_surviving_civil_partner`. Same values, same errors and same disclosure behaviour as `pensionInputs`. Not given: each person is assessed as single, disclosed. |
-| `people` | array, required | 1 to 2 of `{ id, age, label?, statedTakeHome? }`. See below. |
+| `people` | array, required | 1 to 2 of `{ id, age, label?, statedTakeHome?, personalPensionContribution? }`. See below. |
 | `income` | array, required | 1 to 6 of `{ personId, type, amount }`. `personId` is a person id or `joint` (split equally, as in the engine). `type` is any Phase 1 income type of `computeTaxYear` **except** `employmentPensionContribution`, which only a case change can produce. `amount` greater than 0, per year, before tax. |
 | `outgoings` | array, required | 1 to 6 of `{ id, label, amount }`. Stated, per year, 0 or more. `id` unique and stable, `[a-z0-9_]`. `label` client-facing, 1 to 24 characters, sentence case, a noun phrase ("Mortgage", "Living costs"), never third person. Drawn in the order given. |
 | `calculationYear` | integer, optional | The tax year. Default: whatever year `pensionInputs` uses as `currentYear`. |
@@ -145,7 +149,8 @@ Add `generated.householdCashFlowInputs`. Engine in `js/household_cash_flow_math.
 | `id` | Unique, `[a-z0-9_-]`. Opaque and stable: a plan adapter will map profile person ids onto it, and it is carried unchanged into `summary`. |
 | `age` | Integer, 16 to 110. |
 | `label` | Client-facing first name, 1 to 40 characters. **Required when there are two people**, because the screen must say which person's take-home was used. Optional for one. |
-| `statedTakeHome` | Optional number, per year, **after income tax, USC and PRSI and before any pension contribution a case adds** (so it is a payslip figure for someone who pays no extra pension). Greater than 0 and less than that person's income before tax. When present it replaces the estimate for that person's tax (see The model). |
+| `personalPensionContribution` | Optional annual gross personal contribution today, 0 or more, default 0. Excludes employer contributions. |
+| `statedTakeHome` | Optional annual amount reaching the bank **after tax and today's personal pension deduction**. Greater than 0 and less than gross income; it plus the current contribution cannot exceed gross. It sets the tax level, while case differences come from the tax engine. |
 
 A line that is €0 in every case is not drawn. More than 6 outgoing lines is rejected rather than grouped: the staircase gets one column per line, and the adviser decides what to combine.
 
@@ -177,7 +182,7 @@ That gives the four sample cases exactly: no changes; `clearOutgoing: car`; `ext
   - **Jointly assessed** (D6): the household income tax is one figure. In the base case each person's share is their income before tax over the household's. A case's **change** in household income tax against the base goes to whoever pays the contribution, split by amount, so a `joint` contribution splits it equally. Nothing else moves.
 - **Each person's tax in a case:**
   - Nothing stated: the estimate above.
-  - `statedTakeHome` given: `incomeBeforeTax − statedTakeHome` in the base case, **plus the engine's estimated change** for that person in the case. The stated figure sets the level and the engine supplies only the change, because a payslip cannot know what a pension contribution would save.
+  - `statedTakeHome` given: `incomeBeforeTax − personalPensionContribution − statedTakeHome` in the base case, **plus the engine's estimated change** for that person in the case. The stated figure sets the level and the engine supplies only the change, because a payslip cannot know what a pension contribution would save.
 - `taxTotal` is the sum of the people's tax. With nothing stated it equals the engine's `totals.recurringTax` for that case, to the cent.
 - **`takeHome` for a person** is `incomeBeforeTax − tax`. The household's is the sum. A pension contribution is not subtracted here.
 - `pensionContributions` is the sum of `extraPension` amounts. It is its own line, after tax.
@@ -216,14 +221,14 @@ summary: {
     outgoings: { tax, pensionContributions,
                  stated: [{ id, label, amount }], statedTotal,
                  total },                          // tax + pensionContributions + statedTotal
-    leftOver: { amount, shown, monthly, status }   // status: 'left_over' | 'tight' | 'short'
+    leftOver: { amount, shown, monthly, status }   // status: 'left_over' | 'tight' | 'short'. amount, shown and monthly are SIGNED: negative when short
   }]
 }
 ```
 
 - **Take-home per person, total outgoings and left over are the three things plans need**, and they are `takeHome.byPerson[]`, `outgoings.total` and `leftOver.amount`.
 - `basis` is `allocated` for a person in a jointly assessed couple and `own` otherwise (D6). A reader must not treat an allocated figure as a payslip.
-- `status` is `short` in the type and **unreachable in Stage 1**, because such a case is rejected (D3). A plan reader must still handle it, so say so in the contract summary.
+- `status` is `short` when the amount shown is below €0, and then `amount`, `shown` and `monthly` are negative. The status follows the SHOWN figure, so a case that is short by €40 unrounded shows €0 and is `tight`. `monthly` is rounded as a size first and given its sign afterwards, so a short year and a left over year of the same size round alike. A plan reader must handle all three statuses.
 - Every figure is per year. A reader divides by 12.
 - Invariants a test asserts for every case: the people's `takeHome` sum to `takeHome.total`; the people's `tax` sum to `outgoings.tax`; `takeHome.total − pensionContributions − statedTotal = leftOver.amount`; `income.total − outgoings.total = leftOver.amount`.
 
@@ -231,7 +236,7 @@ Also:
 
 - `debug.cases[]`: `id`, `title`, `description`, `changes`, `lines[]` (`{ id, label, amount, shownAmount, deltaVsToday }`), `levels[]`, `sentence`, `taxBreakdown` (`incomeTax`, `usc`, `prsi`, per person where jointly assessed the income tax is the allocated share) and `disclosureCodes`.
 - `debug.assumptionsUsed`: `IE_TAX_RULES_VERSION` read at run time, the tax year, `PLANEIR_ASSUMPTIONS_VERSION`, the household tax status and whether it was defaulted, and `taxSourceByPerson`.
-- `debug.warnings[]`: a stated take-home that differs from the estimate by more than 15%. A warning, never a rejection, because a payslip is allowed to differ.
+- `debug.warnings[]`: a stated take-home that differs from the estimate by more than 15%. A warning, never a rejection, because a payslip is allowed to differ. Also a person's tax held at €0 (see "Tax is never below nothing" in the build notes).
 - The assumptions table states, in plain words and in the second person: per-year figures in today's money; **which tax was used for each person** (the disclosure line, below); pension contributions are shown in full, and the income tax relief on them shows as lower tax (D7); for a couple, income tax is assessed together, so each person's share is an allocation by income share and their take-home is marked `allocated` (D6); and amounts are rounded to the nearest €100. Use the engine's own disclosure text (`renderTaxDisclosures`) for the estimated parts and do not write tax sentences of your own.
 - `charts` carries **one** ordinary chart (the base case's lines in order, income at the left) for the surfaces with no module to draw for them, chiefly the video summary. This is what `repayment_case_module.js` does. The focused pane shows no charts card for this module.
 - `getHouseholdCashFlowCases(rawInputs)` returns `[{ id, title, description }]` for the presenter, like `getMortgageScenarioCases`.
@@ -255,7 +260,8 @@ Messages follow the existing style and name the field and the case:
 - `generated.householdCashFlowInputs.leftOver is not accepted. It is calculated.`
 - `generated.householdCashFlowInputs.people[0] (Niamh): statedTakeHome (€80,000) must be less than income before tax (€75,000).`
 - `generated.householdCashFlowInputs.people[1] needs a label when there are two people.`
-- `generated.householdCashFlowInputs.scenarios[2] (Pay €10,000 more into your pensions): leaves €1,200 less than nothing each year, which this screen does not draw yet.` (D3)
+- *(Removed by the short-state change: a case that leaves less than nothing used to be refused with "leaves €X less than nothing each year, which this screen does not draw yet." It is drawn now.)*
+- `generated.householdCashFlowInputs.outgoings[0] (mortgage).label ("Best mortgage"): this screen speaks to you in plain words. It never recommends or ranks, never names a product or a provider, never says "the household", "the couple", "the client", "they" or "their", and writes amounts with a thousands separator.` The same message, with its own path, for `people[i].label`, `scenarios[i].title` and `scenarios[i].description`.
 - `generated.householdCashFlowInputs.scenarios[1] (Clear your car loan): outgoingId "car" is not one of the outgoings.`
 - Also: duplicate case id, outgoing id or person id, unknown case, person or change key, `baseScenarioId` not matching, a line cleared twice, more than one `extraPension`, an unknown `personId`, `householdTaxStatus` errors worded as `pensionInputs` words them, an `income` item of type `employmentPensionContribution`, and a `statedTakeHome` for a person who has no income.
 - The session importer in `js/state.js` treats `scenarios` like the other capped arrays: tolerate on the way in, cap with an import warning, never throw.
@@ -338,6 +344,41 @@ Reference is 350 of content width (a 390 phone with 20px sides). The bar is spen
 
 The answer block above the sentence on a phone: swatch 14 and status word 18/600, the figure at 56/700 with "a year" at 20/500 muted beside it, the month figure at 16/500 muted. The sentence is 18/500 at 1.4 line height with a minimum height of four lines, so the drawing below never moves when a shorter sentence is shown.
 
+### The short state
+
+A case may leave less than nothing. It is an ordinary year, drawn on the same scale as every other, with its own word and its own colour (D3).
+
+**What the engine says.**
+
+- `status` follows the amount SHOWN: above €0 `left_over`, exactly €0 `tight`, below €0 `short`.
+- In `summary`, `leftOver.amount`, `shown` and `monthly` are negative when short. The invariants are unchanged, and a short case is simply a left over below zero.
+- On the screen the figure and the month have no sign, because the word beside them carries it.
+- The ledger tables (`outputsTable` and the per-case `tables`) keep the sign: left over is negative, and the month reads "About −€230 a month". The one chart for surfaces that cannot draw the module, and the video scene, say "Short" with the size, as the screen does.
+
+**The staircase.** The steps keep falling past the floor, and what is short hangs below it.
+
+| Thing | Rule |
+|---|---|
+| Scale | The same as every other case. A step that crosses the floor is one bar, drawn on the one scale. |
+| Room below the floor | `deepest × scale + 20` px, kept **in every case** (the deepest short case in the payload sets it), so nothing moves on a click. Names sit below it. None when no case is short. |
+| Floor | 55% text when room is kept, 32% otherwise, and named "€0" at its left end: 18/500 muted, right-aligned 4px left of the plot, centred on the line. It lives in the 28px the module keeps either side. |
+| The short bar | The last column. `#c96f62`, as wide as the others, hanging from the floor down to the depth where the last step ended, so the last step and the red bar end at the same depth. Beside the word "Short" under it. |
+| Amounts | Above each bar, as before. A step that starts below the floor has its amount above its own top, inside the room. |
+| Today's outlines | Unchanged. The last column's outline stands on the floor when today was left over and hangs from it when today was short. Its label ("Today" and "€2,800 short", or "€9,200 left over") sits above whichever stands higher **above** the floor, and never below it. |
+
+**The bar.** The costs run past the end of income.
+
+| Thing | Rule |
+|---|---|
+| Scale | 700 ÷ income, as before. |
+| Room | `deepest × scale + 16` px below the 700, kept in every case. The track and the chart are that much taller. None when no case is short. |
+| End of income | A 1px hairline at 60% text, 6px wider than the bar each side, once room is kept. |
+| The short part | A red segment: the part of the costs that runs past the end of income, from the 700 line down. Costs above it are drawn as before. |
+| Row | "Short" with the size, centred on the red part, and placed with the same rules as the other rows, pulled up from the bottom of the room plus 8. |
+| Sentence | Keeps the room of the longest case's sentence, measured in the browser once the module is on the page, never less than four lines. The short sentences run to five lines on a 390 phone, so four is not enough. |
+
+**Colour and motion.** Red is the colour of the last mark, **decided by the figure being drawn and not the case being chosen**, so a click that crosses the floor changes colour where the mark crosses it, and settles on the case.
+
 ### Case buttons
 
 Real `<button>`s in a group with an accessible name, `aria-pressed`, 64px high, radius 8.
@@ -354,7 +395,7 @@ Three drawing fills are new. Add them as variables, do not inline them: income `
 
 - Blue marks the selected case **and** what changed against today. Both are neutral emphasis, and a changed line always carries "less" or "more" in words.
 - Green means money left over, and always sits beside "Left over".
-- Amber means tight and always sits beside "Tight". Red is **not used in Stage 1** (D3); the short state is being designed and lands before the plan work.
+- Amber means tight and always sits beside "Tight". Red (`--accent-red`, #c96f62) means short and always sits beside "Short": the swatch in the answer, and the bar or segment that hangs below the floor or past the end of income.
 - Text is in text colours, never the series colour.
 
 ### Motion
@@ -372,7 +413,7 @@ Three drawing fills are new. Add them as variables, do not inline them: income `
 
 Plain, sentence case, euro with thousands separators, "a year" never "p.a.". It shows what is, and what each case would change, and nothing else.
 
-Fixed copy: muted line `Your household cash flow`, heading `After everything you pay, what is left each year?`, income label `Your income before tax`, statuses `Left over` and `Tight`.
+Fixed copy: muted line `Your household cash flow`, heading `After everything you pay, what is left each year?`, income label `Your income before tax`, statuses `Left over`, `Tight` and `Short`.
 
 Fallback case titles when the payload gives none:
 
@@ -389,6 +430,7 @@ The sentence is derived, never typed. It is one sentence: a **change clause**, t
 | Case shape | Template |
 |---|---|
 | today | `Today, {€outgoing} of your {€income} goes out and you have {€left} left over.` |
+| today, short | `Today, {€outgoing} goes out against your {€income}, and you are short by {€short}.` |
 | `clearOutgoing` | `Clearing your {label, lower case} {from savings} stops {€amount} a year going out, so {effect}.` |
 | `extraPension` | `Paying {€amount} more into your pensions lowers your tax by {€taxDelta}, so {€net} more goes out each year and {effect}.` |
 | two or more changes | `{effect, first letter capitalised}, but {change phrases joined with "and"}, with your tax {€x} lower.` |
@@ -404,6 +446,13 @@ Effect clause by the change in shown left over against today:
 | up | `the amount you have left over rises by {€d}, from {€T} to {€N}` |
 | down, not to zero | `the amount you have left over falls from {€T} to {€N}` |
 | down to zero | `you have nothing left over` |
+| the same, and short | `you are short by the same {€S} as today` |
+| now short, left over or tight today | `you are short by {€N}` |
+| now short, and short today | `you are short by {€N} instead of {€S}` (whether more or less) |
+| short today, now above zero | `you have {€N} left over instead of being short by {€S}` |
+| short today, now exactly zero | `you have nothing left over instead of being short by {€S}` |
+
+`{€S}` is today's shortfall and `{€N}` is this case's, both with no sign. The effect clause is chosen on the SHOWN figures, and the same-as-today test comes first, so a case that is short by exactly what today is short by is "the same", and one that moves by €100 is "instead of".
 
 The four design-fixture sentences, which are golden strings:
 
@@ -419,7 +468,20 @@ The engine-fixture sentences must come out of the same templates (figures as in 
 3. `Paying €10,000 more into your pensions lowers your tax by €4,000, so €6,000 more goes out each year and the amount you have left over falls from €9,200 to €3,200.`
 4. `You have the same €9,200 left over as today, but your car loan is gone and €10,000 more goes into your pensions each year, with your tax €4,000 lower.`
 
-Footnote, from the model and never typed: `Your income before tax is {€income} a year. {tax-source sentence} Amounts are rounded to the nearest €100.` The tax-source sentence is the disclosure line from Outputs: with everything estimated, `Your tax is an estimate of income tax, USC and PRSI.`; with everything stated, `Your tax uses the take-home pay you gave. The change each case makes to it is an estimate.`; mixed, `Your tax uses the take-home pay you gave for {label} and an estimate for {label}. The change each case makes to it is an estimate.` This is the one element not drawn in the frames: one muted line at the bottom, 18/26 on a wide screen and 14/20 on a phone.
+The short sentences, which are golden strings (the engine fixture with living costs of 60,000, so today is short; the tax is the engine's at the rules of 10 October, and the tests derive it rather than hard-code it):
+
+1. `Today, €152,800 goes out against your €150,000, and you are short by €2,800.`
+2. `Clearing your car loan from savings stops €6,000 a year going out, so you have €3,200 left over instead of being short by €2,800.`
+3. `Paying €10,000 more into your pensions lowers your tax by €4,000, so €6,000 more goes out each year and you are short by €8,800 instead of €2,800.`
+4. `You are short by the same €2,800 as today, but your car loan is gone and €10,000 more goes into your pensions each year, with your tax €4,000 lower.`
+
+And from left over to short, with 20,000 into pensions on the engine fixture: `Paying €20,000 more into your pensions lowers your tax by €8,000, so €12,000 more goes out each year and you are short by €2,800.`
+
+Three effect clauses are not on a frame and were approved in the plan: "nothing left over instead of being short by", "short by €N instead of €S" when the shortfall is smaller, and left over to short with no "instead of". The tests prove them with the design fixture, so their figures are literal: today short by €6,000 clears to `you have nothing left over instead of being short by €6,000`, living costs of €62,000 and the car loan cleared give `you are short by €2,000 instead of €8,000`.
+
+On screen a short figure has **no sign**. The word carries it: "Short", "€2,800 a year" and "About €230 a month". Nothing says "negative", "deficit" or "overdrawn".
+
+Footnote, from the model and never typed: `Your income before tax is {€income} a year. {tax-source sentence} Chart and ledger amounts, and left over figures, are rounded to the nearest €100. Pension changes in the sentences use actual amounts, including cents.` The tax-source sentence is the disclosure line from Outputs: with everything estimated, `Your tax is an estimate of income tax, USC and PRSI.`; with everything stated, `Your tax uses the take-home pay you gave. The change each case makes to it is an estimate.`; mixed, `Your tax uses the take-home pay you gave for {label} and an estimate for {label}. The change each case makes to it is an estimate.` This is the one element not drawn in the frames: one muted line at the bottom, 18/26 on a wide screen and 14/20 on a phone.
 
 Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", or the name of any product or provider. Test it (below).
 
@@ -436,13 +498,15 @@ Never: "we recommend", "you should", "best option", "best", "ideal", "optimal", 
 
 - One person (`single`): the engine handles it and `basis` is `own`. `label` is optional and the tax-source line has no name.
 - Two people, one stated and one estimated: mixed tax-source sentence, and the stated person's tax is the payslip level plus the engine's change.
-- Both stated: household tax is `income − the two take-homes`, and a case's change is still the engine's.
+- Both stated: household tax is `income − current pension contributions − the two stated bank take-homes`, and a case's change is still the engine's.
 - A stated take-home far from the estimate: a `debug.warnings` entry, no rejection, and the screen still says which was used.
 - One case: no buttons, no ghosts, no "against today" wording. The sentence is the "today" sentence.
 - A line that is €0 in the selected case but not in today: kept as a column or row with "€0" and its delta.
 - A line that is €0 in every case: not drawn.
 - A pension column that no case uses: not a column at all.
 - Left over that rounds to €0: "Tight", amber floor mark, "€0 a month".
+- Short: "Short", the size with no sign, a red mark below the floor (or past the end of income on the bar), and "About €230 a month" beside it. See "The short state".
+- Short by less than €50 unrounded: shows €0, so it is Tight, and its `amount` in `summary` is still the exact negative.
 - Amounts of €1m and over: amounts above bars and axis text go compact ("€1.2m"), and the bar labels follow the pitch rule.
 - A long label (24 characters): wraps, never truncates.
 - Six outgoing lines on the narrowest wide screen (n = 10 at 832): names wrap to three lines, which is the layout test's worst case.
@@ -492,7 +556,7 @@ Two fixtures, both proved against a reference calculator.
 4. **Allocation (D6).** For jointly assessed couples at several income splits, the two people's tax sums to the household's, `basis` is `allocated`, and a contribution by one person moves only that person's tax. For `single` with two people, `basis` is `own` and each figure is the engine's own for that person.
 5. **Case 4 is not case 1.** In every fixture, case 4's shown left over equals today's, and the staircase's left-over bar is identical, but the model reports car loan, pensions and tax as changed, today's outlines exist for exactly the changed columns where today had an amount (tax and the car loan, not pensions) and for the last column when its figure differs, none on any column that only moved, and the bar's changed segments are exactly those lines. A case that changes only a pension contribution draws an outline on Tax and nothing on the stated lines below it, which is the €6,000, €9,000 and €3,000 boxes the first drawing wrongly put behind their labels. The key and the last column's "Today" label are present exactly when an outline is. This is the design's acceptance test.
 6. **No second tax.** Change a rule in a test catalogue and the module's tax follows it, which proves it holds no copy. Search `js/household_cash_flow_*.js` for tax rates and bands and find none.
-7. **Rejections** with the exact messages: a stated tax line, a typed `leftOver`, a fifth case, a seventh line, duplicate ids, an unknown outgoing id in a change, a pension change twice, a case below zero, `baseScenarioId` not matching, a missing label for two people, and a `householdTaxStatus` error.
+7. **Rejections** with the exact messages: a stated tax line, a typed `leftOver`, a fifth case, a seventh line, duplicate ids, an unknown outgoing id in a change, a pension change twice, `baseScenarioId` not matching, a missing label for two people, and a `householdTaxStatus` error.
 8. **Layout, in Node.** For all four cases of every fixture at content widths 1728, 1360, 1200, 976, 848 and 832 for the staircase, and 560, 350 and 320 for the bar (a 390 phone and a 360 phone, less 20px each side): no two labels overlap, no label box is crossed by a bar or connector, every box sits inside the container, the plot height equals the formula, and bar heights are identical in every case for a given width (one scale). Type never falls below 14px for names or 16px for amounts.
 9. **The switch.** At 831 exactly one drawing is in the DOM and it is the bar. At 848 it is the staircase. Across the line the selected case survives and the engine is not rerun. A jitter of 15px around 840 does not flip it.
 10. **Motion discipline.** After any sequence of clicks, including a rapid one and one in a throttled tab, the drawn state equals a fresh render of the last case, and no two figures on the screen disagree. With `prefers-reduced-motion` the new case is drawn at once.
@@ -503,26 +567,25 @@ Before finishing, run `npm run build`, `npm run check:household-cash-flow`, the 
 
 ## Out of scope
 
-- **The short state, and lifting the D3 rejection.** A case that leaves less than nothing needs a drawn state: a red segment, the word "Short", an overflow past income on the bar, and a floor line below zero on the staircase. The design is under way. It is a separate change and **must land before the plan work**, because the protection gap and goals modules will read households that are short. Until then `status: 'short'` exists in the type and is unreachable.
-- **Redrawing the frames.** They are redrawn with the short state, in the second person. That is a design task, not a build one, and the build does not wait for it: this brief wins until it is done.
+- **The short state** is built: see "The short state" and "Build notes (short state)". The frames were redrawn with it.
 - **The plan adapter.** `js/planning/adapters/household_cash_flow.js`, the module registry and manifest entries, routing, goal catalogue entries and anything that makes a plan call this module. `summary` is its input and is written here. Stated take-home arriving from a profile's income facts is the adapter's job.
 - **The money used to clear a loan.** "From savings" is wording only. The balance paid off, and what it does to savings, are not in the household's figures and are not shown. If a payoff amount arrives later it needs its own row and a disclosure, and it must never be added to the yearly picture.
 - **More kinds of change.** Cutting a cost, changing income, a second pension, a one-off: each needs wording drawn and approved before it is built. Only the two designed changes exist.
 - **More than six lines, grouping, or a long tail called "Other".**
 - **A projection.** Anything beyond one year, inflation, drawdown, accounts. That is the multi-year cashflow module's brief.
 - **Where the money goes after the pension.** What the contribution is worth, its tax at retirement, or its growth. The retirement module owns that.
-- **Existing pension contributions in the household, in this change.** The base household takes none, so "10,000 more" means 10,000 on top of nothing, and a stated take-home must be one that has none deducted. Reject `employmentPensionContribution` in `income`. **This is the first follow-up after the screen lands** (see "Follow-up: today's pension contributions"), because a plan's households usually pay into a pension today.
+- **Existing pension contributions are now supported in the separate follow-up below.** They belong on each person, never as income or an ordinary outgoing.
 - **A stated take-home that varies by month, or a bonus.** One figure a year per person.
 - **The other drawings.** The single bar at 1920, the stream, and the quarter-turned staircase for phones are not built. If a tablet in portrait needs something better than the bar, that is a new design.
 - **Consumer routing, voice, planner facts, manifest, playbook and goal catalogue entries.** Follow the retirement precedent: do not edit `docs/prompt-pack/`. The playbook, aliases, matrix and master prompt are updated separately once this lands, so they describe what the code does.
 
-## Follow-up: today's pension contributions
+## Today's pension contributions (separate follow-up after #71)
 
 Decided 13 October 2026, evening. A separate change, after the screen has landed and before the plan work, because the plan's illustrative household (Niamh and Dara) pays 5% and 4% today and this module cannot show it yet.
 
-- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so the Pensions column exists in today's case and tax and take-home follow it (D7).
+- Each person may carry today's personal contribution, per year, gross. It becomes an `employmentPensionContribution` item in **every** case, so tax and take-home follow it (D7). The chart reserves a Pensions column only if at least one case rounds above €0.
 - An `extraPension` change adds to it. The sentence templates stay: "Paying €10,000 more into your pensions" is still the extra.
-- Decide in the plan, and say which: whether `statedTakeHome` is before or after today's contribution. A payslip's net pay is after it.
+- **Decided by Gerry:** `statedTakeHome` is the amount reaching the bank **after** today's personal pension deduction. The base tax level is gross income minus today's gross contribution minus stated bank pay; a case adds the tax engine's difference to that level.
 - Give the field name, the validation strings and the new fixture in the plan, and wait for the go-ahead, as for the main change.
 
 ## Build notes (engine)
@@ -531,10 +594,10 @@ Built on this branch, after merging main. Files: `js/household_cash_flow_math.js
 
 Settled while building, and these override anything above that reads differently:
 
-- **Relief limit.** An `extraPension` above the relievable maximum is refused, with a message naming the person and the limit. A `joint` contribution is split before the limit is applied. When today's contributions arrive, the limit applies to today's plus the extra. The tax engine itself relieves any contribution in full, so this guard is the only thing that stops an overstated saving.
+- **Relief limit.** An `extraPension` above the relievable maximum is refused, with a message naming the person and the limit. A `joint` contribution is split before the limit is applied. The limit applies to today's plus the extra. The tax engine itself relieves any contribution in full, so this guard is the only thing that stops an overstated saving.
 - **`summary`.** Each case also carries `pensionContributions: { gross, taxRelief, costAfterRelief }`. `outgoings.pensionContributions` stays the gross figure, so the invariants are as written.
 - **Base case.** A base case that carries changes is refused.
-- **Today's contributions.** An internal per-person field, 0, not accepted from a payload yet.
+- **Today's contributions.** `people[].personalPensionContribution`, annual gross, finite and 0 or more, default 0. Included in every case and in the per-person relief-limit check.
 - **`"joint"` in a one-person household** is mapped to that person, for income and as the default for `extraPension`. The engine refuses it for one person.
 - **"No second tax" is proved three ways**, because `computeTaxYear` has no catalogue seam to inject a test catalogue through: (1) the module's tax equals `computeTaxYear` at test time, (2) a scan of the module's source finds no tax import beyond the engine, resolver, disclosures and `IE_TAX_FIRST_YEAR`, and no rate, band or credit literal, (3) `taxFor` is the only seam and a payload cannot reach it. Test 6 above is superseded by this.
 
@@ -546,6 +609,72 @@ Found while building:
 
 Not built: the screen, the wiring and the plan adapter.
 
+### Tax is never below nothing
+
+Found by review after the screen merged. A stated take-home sets the level of a person's tax (`income − statedTakeHome`) and the engine supplies only what a case changes, so a stated figure close to gross pay left a person with almost no tax to relieve, and a pension case then subtracted more relief than there was tax. €75,000 gross, €74,999 stated and €10,000 more into a pension gave tax of −€3,999 and a take-home of €78,999.
+
+- **Each person's tax is held at €0 or more, in every case.** Relief cannot be more than the tax paid.
+- **Relief is realised per person**: what a person's tax would have been with no extra contribution, less what it is, never below nothing. So `taxRelief` in `pensionContributions` is what there was to relieve (€1 in the example above, not €4,000), and `costAfterRelief` is the gross contribution less that (€9,999). The invariants are unchanged.
+- **The cap is recorded.** A `debug.warnings` entry names the case, the person and the figure it would have been, and says it is held at €0. The screen says nothing; the tax figure is simply never negative.
+- **Nothing changes in an ordinary case**: the cap only binds where a stated figure leaves less tax than the relief. The check script has the example as a fixture, and its reference calculator applies the same rule independently.
+
+## Build notes (short state)
+
+Built as its own change on `household-cash-flow-short`, after the engine, screen and wiring. It also carries the tax floor above.
+
+**The engine** (`js/household_cash_flow_math.js`). The refusal is gone. `statusFor` has its third value. `monthlyFor` returns a signed `amount` and an unsigned `text`: it rounds the size and gives it the sign afterwards, because `Math.round(-2.5)` is -2 and `Math.round(2.5)` is 3, and a short year of €300 must round like a left over year of €300. `effectClause` and the today sentence have the short wording. The ledger tables carry the sign and the chart says "Short".
+
+**The view** (`js/household_cash_flow_view.js`). `readCashFlowModel` no longer throws and carries `deepest`. `layoutStairs` keeps `band` and a "€0" label, `layoutBar` keeps `reserve` and `incomeEnd`. `stairsGeometry` and `barGeometry` give the last mark a `short` kind. The layout checks run over the short shapes at every width, and also check that nothing reaches the names and that what hangs fits the room kept.
+
+**The module** (`js/household_cash_flow_module.js`). One `markShort` decides the last mark's colour from the figure being drawn. The sentence's room is measured.
+
+**Paste pipeline and session import.** Neither needed a change of logic: both project the payload, and the projection no longer throws. Their comments were wrong and are corrected. A short session is kept and tables are derived.
+
+**Review lessons applied.** Rows 4, 12, 15, 17 and 18 of the wiring list were tightened after the first modules were reviewed, and this change checked the module against them:
+
+- Row 4: text a payload supplies (a person's label, an outgoing's label, a case's title and description) is held to the module's wording **on the way in**, not only in a test. The engine owns the list and the view imports it, so there is one. This module does not write its own `summaryHtml`, because its limit is the education-only wording and not a regulatory one.
+- Row 12: the session importer cuts cases with `capImportedEngineCases`, which keeps the named base among the cases kept, and `householdCashFlowInputs` is in `RUNTIME_OWNED_INPUT_KEYS`. Both came from main.
+- Row 15: no charts card in the grid or in the patch path. Already so.
+- Row 17: the video's figures are the SHOWN ones. "Other outgoings" was the rounded total of the stated lines, which can differ from the lines drawn by a few hundred, and is now their sum as shown. The chart has at most ten points, under the fourteen a video keeps.
+- Row 18: the module's own wiring tests now include an import that cannot be read taking its stored figures with it, and a cut that keeps the base.
+
+**Where it differs from the frames**
+
+- The "€0" label is 18px, not 20, so it fits the 28px the module keeps beside the plot.
+- The phone frame's text column is 350px wide. The module's is 306 on a 390 phone, because it keeps 28px beside the bar for the staircase's amounts. The sentence's room is measured for that reason.
+- The selected case button gives back the border's pixel on every side. It gave it back only sideways, so a button whose label wrapped to three lines was 2px taller selected and moved the bar by 2px on a phone. On a 390 phone the bar now sits at the same height in every case.
+
+**Tests.** Engine: the frames' sentences as golden strings under the design fixture, the three effect clauses that are not on a frame, a short case in each direction, status following the shown figure, and the sign of the month. Reference calculator: five short payloads (today short, tipped under, stated, assessed separately, and the design fixture) against the engine. View: every shape check also runs over three short shapes, plus the geometry below the floor and on the bar. Module: the colour follows the figure at every frame of a click that crosses the floor. Wiring: a short payload is accepted by the paste and kept by the session import. Video: a short case says "Short" and its size.
+
+**Review follow-up (16 October).** Income that rounds to €0 is refused in the engine with `generated.householdCashFlowInputs.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.` This applies to the household total, using the screen's nearest-€100 rounding.
+
+The staircase's plotted span is at most 600px and the bar's at most 900px, including the shortfall padding. When income plus the deepest shortfall would exceed that span, income and every case use the same reduced scale. Ordinary cases keep their existing scale. Below 400px of chart width, the income header and each row stack their name above the amount; row heights include wrapping and the delta line. Node layout checks now include 252, 280 and 320px, plus 196px for a 252px module after its side padding.
+
+**Looked at in the real app** at 320 and 390, with the pending #72 grid declaration, through every short-fixture case: the modules measure 252 and 322px, no text runs past them, and the chart stays at the same position on a case change. Earlier preview checks covered 1920, 1360 and 390 (`?preset=short`, `?preset=tipped`, `?preset=shortdesign`). Not on a physical phone.
+
 ## When you finish
 
 End with a contract summary for the prompt pack: field names, the model and the two change kinds, where tax comes from and what a stated take-home does, the allocation convention for couples, the `summary` shape and its invariants, the rounding rule, every validation string, the derived copy templates (in the second person) and the width switch, plus the Dev Panel examples. Keep to the repo's commit style: short plain-English commits describing what the client sees change.
+
+
+### Final layout checks (17 October 2026)
+
+The phone bar measures each case’s rendered label rows after fonts load, reserves that room for every case and reuses those heights during animation. Labels wrap without changing their text. The staircase keeps its outline key in a separate top band. Real-app Chrome checks cover 252, 280, 320 and 390px modules, including 24 consecutive wide letters and all four cases at a 320px viewport. The ordinary €20,000 income/€20,000 outgoing case also checks that clearing the outgoing leaves the Today label clear of the key.
+
+
+### Contribution input and bank-pay contract
+
+`people[].personalPensionContribution` is the annual gross amount the person pays today, excluding employer contributions. It defaults to 0 for existing sessions. Every tax run includes it; an `extraPension` adds to it, and the age/earnings limit applies to their sum. The Pensions row exists whenever at least one case's contribution rounds above €0, including a module containing today alone. Exact smaller contributions remain in the calculation, without a zero-only chart column. A contribution must not also be entered in outgoings.
+
+With €75,000 gross income, a €5,000 current contribution and €50,000 stated bank pay, base tax is €20,000. The chart deducts €20,000 tax and €5,000 pension, leaving the stated €50,000 before spending. If an extra €10,000 saves €4,000 tax in an illustrative injected tax fixture, the bank amount becomes €44,000. The sentence says €10,000 more, never €15,000 more. Actual tax differences always come from the site's tax calculator.
+
+For compatibility, `summary.cases[].takeHome.total` and each `takeHome` remain after tax and before pension contributions. The added `bankTotal`, `bankTakeHome` and `estimatedBankTakeHome` explicitly represent the amount after the full case contribution. `bankTotal − stated outgoings = leftOver.amount`. Warnings compare the stated bank amount with estimated bank pay, so today's pension deduction cannot trigger a false discrepancy.
+
+Validation: independent reference cases for estimated and stated bank pay with existing pensions; a failing-before/passing-after no-double-deduction fixture; combined relief-limit rejection; zero/default compatibility; paste/import/refresh persistence; existing chart, animation, presenter and video checks.
+
+
+### Case precision decision (18 October 2026)
+
+Gerry approved the actual extra pension amount in case sentences while chart and ledger totals remain rounded to €100. With €3,960 currently paid and €1,080 extra, the chart shows €4,000 → €5,000 but the sentence says €1,080 more. The tax saving uses the tax engine's unrounded difference; gross, saving and net cost are expressed in integer cents so the sentence adds up. Under the illustrative 40% tax fixture, it says €432 less tax and €648 more going out. Combined cases use the same actual extra and saving. Left over wording still follows the rounded screen figure, as explained by the shared footnote and assumptions row.
+
+Inputs containing cents keep those cents in the pension-change detail. Cases such as €60 current plus €40 extra no longer say €0 more. The chart and ledger rounding, exact summary amounts and bank-pay contract are unchanged. Boundary and cent-valued regression cases fail before this change and pass after.

@@ -31,6 +31,8 @@ This file is a reference source of truth for the prompt pack. It mirrors the cur
 - `futureCostFundInputs`
 - `protectionGapInputs`
 - `rentalKeepOrSellInputs`
+- `householdCashFlowInputs`
+- `homeTradeDownInputs`
 - `housePurchaseInputs`
 - `mortgageInputs`
 - `loanInputs`
@@ -254,7 +256,7 @@ Playbooks should only emit the subset they are responsible for.
   - `scenarios`: 1 to 4 cases
 - Each case supports `id` (required, unique), `title` (up to 40 characters; the app derives `Today`, `{Name} cannot work` or `If {Name} died` when it is left out), `description` and one `event`. Any other key is refused with `generated.protectionGapInputs.scenarios[i] (<title>): "<key>" is not a field.`
 - Events:
-  - `{ "type": "cannotWork", "personId", "statePayment" }`: `statePayment` is whole euros per year, greater than 0.
+  - `{ "type": "cannotWork", "personId", "statePayment" }`: `statePayment` is required, in whole euros per year, 0 or more. Explicit 0 means no State payment; a missing amount is not zero.
   - `{ "type": "dies", "personId", "survivorsPension", "neededAfter"?, "neededBecause"? }`: needs two people. `survivorsPension` is whole euros per year, 0 or more. `neededAfter` must be lower than `needed`. `neededBecause` lists `mortgageCleared` and/or `livingCostsLower` and needs `neededAfter`.
   - The person whose income stops must have a take-home above 0.
 - The wording limit is enforced on the way in:
@@ -547,3 +549,7 @@ Playbooks should only emit the subset they are responsible for.
 - Interest-only mortgages are not supported.
 - `generated.outputsBucketed` supports only 2-column sections.
 - The runtime supports both `tone` and some older aliases internally for callouts, but new playbooks should emit `tone`.
+
+
+## Household Cash Flow and Home Trade Down
+Use the exact input contracts and examples in `25_household_cash_flow_playbook.md` and `26_home_trade_down_playbook.md`. Cash flow accepts a short AI-written `summaryHtml` guide plus its inputs; the app derives every figure and case sentence. Home trade down accepts `summaryHtml` plus its inputs, with repayments defining cases and no supplied output amounts. Both accept at most four cases. These adviser playbooks do not add consumer-planner registry entries.

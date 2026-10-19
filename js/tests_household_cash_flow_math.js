@@ -62,6 +62,30 @@ export const HOUSEHOLD_CASH_FLOW_SAMPLE = Object.freeze({
   ])
 });
 
+/**
+ * The same household with living costs of 60,000, so TODAY is short. The short
+ * frames were drawn from this one (with the tax engine, short by 2,800 today).
+ */
+export const HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE = Object.freeze({
+  ...HOUSEHOLD_CASH_FLOW_SAMPLE,
+  outgoings: Object.freeze(HOUSEHOLD_CASH_FLOW_SAMPLE.outgoings.map((line) => (
+    line.id === 'living' ? Object.freeze({ ...line, amount: 60_000 }) : line
+  )))
+});
+
+/**
+ * The sample with 20,000 into the pension, so today leaves money over and ONE
+ * case tips it below nothing: the other direction across the floor.
+ */
+export const HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE = Object.freeze({
+  ...HOUSEHOLD_CASH_FLOW_SAMPLE,
+  scenarios: Object.freeze(HOUSEHOLD_CASH_FLOW_SAMPLE.scenarios.map((entry) => (
+    entry.id === 'pension'
+      ? Object.freeze({ id: 'pension', changes: Object.freeze([Object.freeze({ type: 'extraPension', amount: 20_000 })]) })
+      : entry
+  )))
+});
+
 /** The tax the design frames assumed: 24,000 each, less 40% relief on what each pays in. */
 export function designFixtureOptions() {
   return {
@@ -92,6 +116,23 @@ export const HOUSEHOLD_CASH_FLOW_DESIGN_EXPECTED = Object.freeze({
     'Clearing your car loan from savings stops €6,000 a year going out, so the amount you have left over doubles, from €6,000 to €12,000.',
     'Paying €10,000 more into your pensions lowers your tax by €4,000, so €6,000 more goes out each year and you have nothing left over.',
     'You have the same €6,000 left over as today, but your car loan is gone and €10,000 more goes into your pensions each year, with your tax €4,000 lower.'
+  ])
+});
+
+/**
+ * The short state under the same design tax, so every figure is a literal. The
+ * sentences are the ones on the approved frames, with these figures.
+ */
+const HOUSEHOLD_CASH_FLOW_SHORT_EXPECTED = Object.freeze({
+  leftOver: Object.freeze([-6_000, 0, -12_000, -6_000]),
+  monthly: Object.freeze(['€500 a month', '€0 a month', '€1,000 a month', '€500 a month']),
+  signedMonthly: Object.freeze([-500, 0, -1_000, -500]),
+  status: Object.freeze(['short', 'tight', 'short', 'short']),
+  sentences: Object.freeze([
+    'Today, €156,000 goes out against your €150,000, and you are short by €6,000.',
+    'Clearing your car loan from savings stops €6,000 a year going out, so you have nothing left over instead of being short by €6,000.',
+    'Paying €10,000 more into your pensions lowers your tax by €4,000, so €6,000 more goes out each year and you are short by €12,000 instead of €6,000.',
+    'You are short by the same €6,000 as today, but your car loan is gone and €10,000 more goes into your pensions each year, with your tax €4,000 lower.'
   ])
 });
 
@@ -226,7 +267,19 @@ function checkInvariants(projection, label) {
       `${where}: cost after relief`
     );
     assert(entry.pensionContributions.taxRelief >= 0, `${where}: relief is never negative`);
-    assert(entry.leftOver.amount >= -0.005, `${where}: a short case is refused, never summarised`);
+    // The status follows the figure SHOWN, and the month carries its sign.
+    const shownLeft = entry.leftOver.shown;
+    assertEqual(
+      entry.leftOver.status,
+      shownLeft > 0 ? 'left_over' : (shownLeft === 0 ? 'tight' : 'short'),
+      `${where}: status follows the amount shown`
+    );
+    assertWithin(
+      entry.leftOver.monthly,
+      Math.sign(shownLeft) * Math.round(Math.abs(shownLeft) / 12 / 10) * 10,
+      0.005,
+      `${where}: the month is to the nearest 10 and has the sign of the year`
+    );
 
     const detail = debug.cases[index];
     const shownLines = detail.lines.reduce((sum, line) => sum + line.shownAmount, 0);
@@ -243,6 +296,137 @@ function checkInvariants(projection, label) {
 
 export function runHouseholdCashFlowTests() {
   const cases = [];
+
+  cases.push(runCase('Current pension saving uses bank take-home once and cases add only the extra', () => {
+    const raw = {
+      householdTaxStatus: 'single', calculationYear: 2026,
+      people: [{ id: 'a', age: 40, personalPensionContribution: 5000, statedTakeHome: 50000 }],
+      income: [{ personId: 'a', type: 'employment', amount: 75000 }],
+      outgoings: [{ id: 'living', label: 'Living costs', amount: 20000 }],
+      scenarios: [{ id: 'today' }, { id: 'extra', changes: [{ type: 'extraPension', amount: 10000 }] }]
+    };
+    const projection = computeHouseholdCashFlowProjection(raw, { taxFor: ({ contributions }) => ({ a: 22000 - 0.4 * contributions.reduce((n, entry) => n + entry.amount, 0) }) });
+    checkInvariants(projection, 'current pensions');
+    const [today, extra] = projection.summary.cases;
+    assertEqual(today.outgoings.tax, 20000, 'gross less current pension and stated bank amount');
+    assertEqual(today.pensionContributions.gross, 5000, "today's full contribution");
+    assertEqual(today.leftOver.amount, 30000, 'stated bank amount less ordinary spending');
+    assertEqual(today.takeHome.byPerson[0].bankTakeHome, 50000, 'bank amount explicit in debug');
+    assertEqual(extra.outgoings.tax, 16000, 'case tax change from the pension-aware base');
+    assertEqual(extra.pensionContributions.gross, 15000, 'today plus extra');
+    assertEqual(extra.leftOver.amount, 24000, 'extra costs 6000 after relief');
+    assert(projection.debug.cases[1].sentence.includes('€10,000 more') && !projection.debug.cases[1].sentence.includes('€15,000 more'), 'wording compares with today');
+    const todayOnly = computeHouseholdCashFlowProjection({ ...raw, scenarios: [raw.scenarios[0]] });
+    assert(todayOnly.debug.drawnLines.some((line) => line.id === 'pensions'), 'current contributions have a drawn row without an extra case');
+    const normalized = normalizeHouseholdCashFlowInputs(raw);
+    assertEqual(JSON.stringify(normalizeHouseholdCashFlowInputs(normalized)), JSON.stringify(normalized), 'normalises to itself');
+  }));
+
+  cases.push(runCase('Pension sentences use the actual extra and matching tax saving across rounding boundaries', () => {
+    for (const [current, extra, extraText, taxText, costText] of [
+      [3960, 1080, '€1,080', '€432', '€648'],
+      [60, 40, '€40', '€16', '€24'],
+      [40, 80, '€80', '€32', '€48'],
+      [3960.35, 1080.55, '€1,080.55', '€432.22', '€648.33'],
+      [60, 0.40, '€0.40', '€0.16', '€0.24']
+    ]) {
+      const raw = {
+        householdTaxStatus: 'single', calculationYear: 2026,
+        people: [{ id: 'a', age: 40, personalPensionContribution: current, statedTakeHome: 50000 }],
+        income: [{ personId: 'a', type: 'employment', amount: 75000 }],
+        outgoings: [{ id: 'car', label: 'Car loan', amount: 2000 }, { id: 'living', label: 'Living costs', amount: 20000 }],
+        scenarios: [
+          { id: 'today' },
+          { id: 'extra', changes: [{ type: 'extraPension', amount: extra }] },
+          { id: 'both', changes: [{ type: 'extraPension', amount: extra }, { type: 'clearOutgoing', outgoingId: 'car' }] }
+        ]
+      };
+      const projection = computeHouseholdCashFlowProjection(raw, { taxFor: ({ contributions }) => ({ a: 22000 - 0.4 * contributions.reduce((n, entry) => n + entry.amount, 0) }) });
+      checkInvariants(projection, 'actual pension change');
+      const [, pension, both] = projection.debug.cases;
+      assert(pension.sentence.includes(`Paying ${extraText} more`), `actual extra ${extra}`);
+      assert(pension.title.includes(extraText), 'derived case title uses the same actual contribution');
+      assert(pension.sentence.includes(`tax by ${taxText}`), 'actual tax saving');
+      assert(pension.sentence.includes(`${costText} more goes out`), 'gross less tax saving adds up');
+      assert(both.sentence.includes(`${extraText} more goes into`) && both.sentence.includes(`tax ${taxText} lower`), 'combined case uses the same precision');
+      assert(projection.debug.footnote.includes('nearest €100') && projection.debug.footnote.includes('Pension changes'), 'precision explained');
+      if (current === 3960) {
+        assertEqual(projection.outputsTable.rows[0][2], 4000, 'today ledger stays rounded');
+        assertEqual(projection.outputsTable.rows[1][2], 5000, 'case ledger stays rounded');
+      }
+    }
+  }));
+
+  cases.push(runCase('A pension line is drawn only when a case shows a nonzero rounded contribution', () => {
+    const raw = payload((p) => {
+      p.people[0].personalPensionContribution = 20;
+      p.people[1].personalPensionContribution = 20;
+      p.scenarios = [{ id: 'today' }];
+    });
+    const tiny = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
+    assert(!tiny.debug.hasPensionColumn && !tiny.debug.drawnLines.some((line) => line.id === 'pensions'), '40 rounds to zero, no pension column');
+    checkInvariants(tiny, 'hidden current pension');
+    const stillHidden = computeHouseholdCashFlowProjection({ ...raw, scenarios: [...raw.scenarios, { id: 'tiny-extra', changes: [{ type: 'extraPension', amount: 4 }] }] }, { calculationYear: 2026 });
+    assert(!stillHidden.debug.hasPensionColumn, '40 plus 4 stays hidden in all cases');
+    checkInvariants(stillHidden, 'hidden current plus extra pension');
+    raw.scenarios.push({ id: 'extra', changes: [{ type: 'extraPension', amount: 20 }] });
+    const visible = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
+    assert(visible.debug.hasPensionColumn, '60 rounds to 100 in another case, stable column');
+    assertEqual(visible.summary.cases[0].pensionContributions.gross, 40, 'exact current saving is retained');
+  }));
+
+  cases.push(runCase('Existing and extra pension saving share the per-person relief limit', () => {
+    const base = {
+      householdTaxStatus: 'single', people: [{ id: 'a', age: 40, personalPensionContribution: 5000 }],
+      income: [{ personId: 'a', type: 'employment', amount: 75000 }],
+      outgoings: [{ id: 'living', label: 'Living costs', amount: 20000 }],
+      scenarios: [{ id: 'today' }, { id: 'extra', changes: [{ type: 'extraPension', amount: 14000 }] }]
+    };
+    let refused = false;
+    try { computeHouseholdCashFlowProjection(base); } catch (error) { refused = /relief|limit/i.test(error.message); }
+    assert(refused, '5000 plus 14000 exceeds the limit');
+    for (const amount of [-1, NaN, Infinity]) {
+      let invalid = false;
+      try { normalizeHouseholdCashFlowInputs({ ...base, people: [{ id: 'a', age: 40, personalPensionContribution: amount }] }); }
+      catch (_error) { invalid = true; }
+      assert(invalid, `bad current contribution ${amount} refused`);
+    }
+    let impossible = false;
+    try { normalizeHouseholdCashFlowInputs({ ...base, people: [{ id: 'a', age: 40, personalPensionContribution: 5000, statedTakeHome: 72000 }] }); }
+    catch (error) { impossible = /take.home|pension/i.test(error.message); }
+    assert(impossible, 'bank pay plus pension cannot exceed gross');
+  }));
+
+  cases.push(runCase('Finite inputs whose calculated totals overflow are refused before rendering', () => {
+    const fixtures = [
+      ['income', (p) => { p.income.forEach((item) => { item.amount = 1e308; }); }],
+      ['outgoings', (p) => { p.outgoings[0].amount = 1e308; p.outgoings[1].amount = 1e308; }],
+      ['case total', (p) => { p.outgoings[0].amount = 1e308; }, {
+        calculationYear: 2026, taxFor: () => ({ niamh: 6e307, dara: 6e307 })
+      }]
+    ];
+    fixtures.forEach(([label, mutate, options]) => {
+      let message = '';
+      try {
+        computeHouseholdCashFlowProjection(payload(mutate), options || designFixtureOptions());
+      } catch (error) { message = error.message; }
+      assert(message.startsWith(FIELD) && message.includes('too large to calculate'), `${label}: clear engine refusal (${message})`);
+    });
+  }));
+
+  cases.push(runCase('Income must remain above zero on the figures shown', () => {
+    [1, 49].forEach((amount) => {
+      const raw = {
+        people: [{ id: 'alex', age: 40 }],
+        income: [{ personId: 'alex', type: 'employment', amount }],
+        outgoings: [{ id: 'living', label: 'Living costs', amount: 100 }],
+        scenarios: [{ id: 'today' }]
+      };
+      let message = '';
+      try { computeHouseholdCashFlowProjection(raw); } catch (error) { message = error.message; }
+      assertEqual(message, `${FIELD}.income: your income before tax rounds to €0 on this screen. Give a yearly total of at least €50.`, `income of €${amount}`);
+    });
+  }));
 
   cases.push(runCase('Design fixture reproduces the frames: tax, pensions, car loan, left over, month and status', () => {
     const projection = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions());
@@ -271,6 +455,95 @@ export function runHouseholdCashFlowTests() {
     const projection = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SAMPLE, designFixtureOptions());
     assertEqual(projection.summary.cases[2].leftOver.status, 'tight', 'case 3 is tight');
     assertEqual(projection.summary.cases[2].leftOver.amount, 0, 'case 3 leaves exactly nothing');
+  }));
+
+  cases.push(runCase('A case that leaves less than nothing is drawn, not refused: figures, signs, status and the frames\' sentences', () => {
+    const projection = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, designFixtureOptions());
+    const expected = HOUSEHOLD_CASH_FLOW_SHORT_EXPECTED;
+    projection.debug.cases.forEach((entry, index) => {
+      assertEqual(entry.shownLeftOver, expected.leftOver[index], `case ${index + 1} left over`);
+      assertEqual(entry.status, expected.status[index], `case ${index + 1} status`);
+      assertEqual(entry.monthly.text, expected.monthly[index], `case ${index + 1} month, as the screen says it`);
+      assertEqual(entry.monthly.amount, expected.signedMonthly[index], `case ${index + 1} month, signed`);
+      assertEqual(entry.sentence, expected.sentences[index], `case ${index + 1} sentence`);
+      const summary = projection.summary.cases[index].leftOver;
+      assertEqual(summary.status, expected.status[index], `case ${index + 1} summary status`);
+      assertEqual(summary.monthly, expected.signedMonthly[index], `case ${index + 1} summary month is signed`);
+      assertEqual(summary.shown, expected.leftOver[index], `case ${index + 1} summary shown`);
+    });
+    checkInvariants(projection, 'short design');
+    // The ledger keeps its sign, and the last level is below the floor.
+    const today = projection.debug.cases[0];
+    assertEqual(today.levels[today.levels.length - 1].level, -6_000, 'the steps run past the floor');
+    assertEqual(projection.outputsTable.rows[0][4], -6_000, 'the outputs table is a ledger: left over is negative');
+    assertEqual(projection.outputsTable.rows[0][5], 'About −€500 a month'.replace('About ', ''), 'and so is its month');
+    assertEqual(projection.tables[0].rows[projection.tables[0].rows.length - 1][1], -6_000, 'and the case table');
+    // What the chart and the video say is the screen's word, with the size.
+    const chart = projection.charts[0];
+    assertEqual(chart.labels[chart.labels.length - 1], 'Short', 'the chart names it Short');
+    assertEqual(chart.datasets[0].data[chart.datasets[0].data.length - 1], 6_000, 'and gives the size');
+  }));
+
+  cases.push(runCase('Short, in the other directions: a left over year tipped under, short made smaller, short made left over', () => {
+    // Left over today, short in a case.
+    const tipped = computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE, designFixtureOptions());
+    assertEqual(tipped.debug.cases[0].status, 'left_over', 'today leaves money over');
+    assertEqual(tipped.debug.cases[2].shownLeftOver, -6_000, 'the 20,000 case is short');
+    assertEqual(
+      tipped.debug.cases[2].sentence,
+      'Paying €20,000 more into your pensions lowers your tax by €8,000, so €12,000 more goes out each year and you are short by €6,000.',
+      'left over to short has no "instead of"'
+    );
+    checkInvariants(tipped, 'tipped');
+    const chart = tipped.charts[0];
+    assertEqual(chart.labels[chart.labels.length - 1], 'Left over', 'the chart is for today, which is not short');
+
+    // Short today, and a smaller short, and money left over.
+    const living = (amount) => payload((p) => {
+      p.outgoings.find((line) => line.id === 'living').amount = amount;
+    });
+    const smaller = computeHouseholdCashFlowProjection(living(62_000), designFixtureOptions());
+    assertEqual(smaller.debug.cases[0].shownLeftOver, -8_000, 'today is short by 8,000');
+    assertEqual(
+      smaller.debug.cases[1].sentence,
+      'Clearing your car loan from savings stops €6,000 a year going out, so you are short by €2,000 instead of €8,000.',
+      'short by less than today'
+    );
+    const over = computeHouseholdCashFlowProjection(living(55_000), designFixtureOptions());
+    assertEqual(over.debug.cases[0].shownLeftOver, -1_000, 'today is short by 1,000');
+    assertEqual(
+      over.debug.cases[1].sentence,
+      'Clearing your car loan from savings stops €6,000 a year going out, so you have €5,000 left over instead of being short by €1,000.',
+      'left over instead of short'
+    );
+    [tipped, smaller, over].forEach((projection, index) => checkInvariants(projection, `direction ${index + 1}`));
+  }));
+
+  cases.push(runCase('Short follows the amount shown, and a short month rounds as a left over month of the same size does', () => {
+    const living = (amount) => payload((p) => {
+      p.outgoings.find((line) => line.id === 'living').amount = amount;
+    });
+    const run = (amount) => computeHouseholdCashFlowProjection(living(amount), designFixtureOptions());
+    // €40 short unrounded shows €0, which is Tight and not Short.
+    const near = run(54_040).summary.cases[0];
+    assertWithin(near.leftOver.amount, -40, 0.005, 'short by 40 unrounded');
+    assertEqual(near.leftOver.shown, 0, 'and it shows nothing');
+    assertEqual(near.leftOver.status, 'tight', 'so it is tight');
+    assertEqual(near.leftOver.monthly, 0, 'with no month, and not a negative zero');
+    assert(Object.is(near.leftOver.monthly, 0), 'the month is +0');
+    // €60 short shows €100 short.
+    const just = run(54_060).summary.cases[0];
+    assertEqual(just.leftOver.shown, -100, 'short by 60 shows 100');
+    assertEqual(just.leftOver.status, 'short', 'so it is short');
+    assertEqual(just.leftOver.monthly, -10, 'and its month is signed');
+    // 300 a year is 25 a month: the tie goes up, in both directions.
+    const plus = run(53_700).debug.cases[0];
+    const minus = run(54_300).debug.cases[0];
+    assertEqual(plus.shownLeftOver, 300, 'left over by 300');
+    assertEqual(minus.shownLeftOver, -300, 'short by 300');
+    assertEqual(plus.monthly.amount, 30, 'a tie rounds up');
+    assertEqual(minus.monthly.amount, -30, 'and a short tie rounds the same size, signed');
+    assertEqual(plus.monthly.text, minus.monthly.text, 'and says the same words');
   }));
 
   cases.push(runCase('Case 4 is not case 1: the same left over, and exactly tax, pensions and the car loan changed', () => {
@@ -329,6 +602,56 @@ export function runHouseholdCashFlowTests() {
     assert(lines[0].source === 'stated' && /take-home pay you gave, €50,000 a year/.test(lines[0].text), 'stated line');
     assert(lines[1].source === 'estimated', 'estimated line');
     assert(/for Niamh and an estimate for Dara/.test(projection.debug.footnote), 'the footnote says which was used');
+  }));
+
+  cases.push(runCase('Tax is never below nothing: a take-home close to gross pay cannot be relieved into a negative', () => {
+    // Codex's example: 75,000 gross, 74,999 stated, 10,000 more into a pension.
+    // Relief of 4,000 against 1 of tax used to give tax of -3,999 and a
+    // take-home of 78,999, which is more than was earned.
+    const near = payload((p) => {
+      p.people[0].statedTakeHome = 74_999;
+      p.scenarios = [
+        { id: 'today' },
+        { id: 'pension', changes: [{ type: 'extraPension', amount: 10_000, personId: 'niamh' }] }
+      ];
+    });
+    const projection = computeHouseholdCashFlowProjection(near, { calculationYear: 2026 });
+    checkInvariants(projection, 'near gross');
+    const niamh = (entry) => entry.takeHome.byPerson.find((person) => person.personId === 'niamh');
+    const [today, pension] = projection.summary.cases;
+
+    assertWithin(niamh(today).tax, 1, 0.005, 'today: the 1 of tax the payslip leaves');
+    assertEqual(niamh(pension).tax, 0, 'with the pension: held at nothing, not -3,999');
+    assertEqual(niamh(pension).takeHome, 75_000, 'and take-home is gross pay, not more than was earned');
+    assert(pension.takeHome.byPerson.every((person) => person.tax >= 0 && person.takeHome <= person.gross), 'nobody is taxed below nothing');
+
+    // The relief is what was there to relieve, so the cost after relief adds up.
+    assertWithin(pension.pensionContributions.taxRelief, 1, 0.005, 'relief is the 1 of tax that was paid');
+    assertWithin(pension.pensionContributions.costAfterRelief, 9_999, 0.005, 'cost after relief');
+    assertWithin(
+      today.leftOver.amount - pension.leftOver.amount,
+      pension.pensionContributions.costAfterRelief,
+      0.005,
+      'the fall in left over is the cost after relief'
+    );
+
+    // And the screen's maker is told, in debug and not on the client's screen.
+    const held = projection.debug.warnings.filter((text) => /held at €0/.test(text));
+    assertEqual(held.length, 1, 'one warning');
+    assert(/scenarios\[1\] \(Pay €10,000 more into your pensions\)/.test(held[0]), 'it names the case');
+    assert(/Niamh would have been −€3,999/.test(held[0]), 'and the person and the figure');
+  }));
+
+  cases.push(runCase('The floor changes nothing in an ordinary case, and says nothing', () => {
+    [HOUSEHOLD_CASH_FLOW_SAMPLE, payload((p) => {
+      p.people[0].statedTakeHome = 50_000;
+    })].forEach((raw, index) => {
+      const projection = computeHouseholdCashFlowProjection(raw, { calculationYear: 2026 });
+      assertEqual(projection.debug.warnings.filter((text) => /held at €0/.test(text)).length, 0, `shape ${index + 1}: no warning`);
+      projection.debug.cases.forEach((entry) => {
+        assert(entry.taxBreakdown.byPerson.every((person) => person.estimatedTax >= 0), 'no negative estimate');
+      });
+    });
   }));
 
   cases.push(runCase('A stated figure far from the estimate warns and is never refused', () => {
@@ -502,11 +825,6 @@ export function runHouseholdCashFlowTests() {
     }, `${FIELD}.baseScenarioId must match a case id.`, 'an unknown base');
 
     check((p) => {
-      p.outgoings[2].amount = 80_000;
-    }, `${FIELD}.scenarios[0] (Today): leaves €26,000 less than nothing each year, which this screen does not draw yet.`,
-    'a case that leaves less than nothing');
-
-    check((p) => {
       delete p.people[1].label;
     }, `${FIELD}.people[1] needs a label when there are two people.`, 'a missing label for two people');
 
@@ -532,8 +850,55 @@ export function runHouseholdCashFlowTests() {
 
     check((p) => {
       p.income.push({ personId: 'niamh', type: 'employmentPensionContribution', amount: 5_000 });
-    }, `${FIELD}.income[2]: today's pension contributions are not supported yet. A case's extraPension adds one.`,
+    }, `${FIELD}.income[2]: pension contributions are not income. Use people[].personalPensionContribution for today's gross contribution, or extraPension for an increase.`,
     'today\'s pension contribution in income');
+  }));
+
+  cases.push(runCase('Text a payload supplies is held to the module\'s wording at the door, in every place it can be', () => {
+    const refused = (mutate) => {
+      try {
+        normalizeHouseholdCashFlowInputs(payload(mutate));
+      } catch (error) {
+        return error.message;
+      }
+      return '';
+    };
+    const places = [
+      ['a person\'s label', (p, text) => { p.people[0].label = text; }, /people\[0\] \(niamh\)\.label/],
+      ['an outgoing\'s label', (p, text) => { p.outgoings[0].label = text; }, /outgoings\[0\] \(mortgage\)\.label/],
+      ['a case\'s title', (p, text) => { p.scenarios[1].title = text; }, /scenarios\[1\] \(clear-car\)\.title/],
+      ['a case\'s description', (p, text) => { p.scenarios[1].description = text; }, /scenarios\[1\] \(clear-car\)\.description/]
+    ];
+    const bad = [
+      'The best option for you',
+      'We recommend this',
+      'Their mortgage',
+      'The household\'s car loan',
+      'Paid to AIB',
+      'Paid to Standard Life',
+      'Paid to Permanent TSB',
+      'Paid to ptsb',
+      'Permanent  TSB',
+      'Bank  of Ireland',
+      'irish\tLife',
+      'STANDARD   LIFE',
+      'Paid to standard life',
+      'Paid to aib',
+      'Paid to IRISH LIFE',
+      'Savings of €12000'
+    ];
+    places.forEach(([name, set, where]) => {
+      bad.forEach((text) => {
+        const message = refused((p) => set(p, text));
+        assert(where.test(message), `${name}, "${text}": refused where it was said (${message})`);
+        assert(message.includes(`("${text}")`), `${name}, "${text}": and quotes it`);
+      });
+      assertEqual(refused((p) => set(p, 'Your holiday fund')), '', `${name}: plain words go through`);
+    });
+    // The fixtures' own words are plain, and a label that merely contains a banned
+    // word's letters is not refused.
+    assertEqual(refused(() => {}), '', 'the sample is accepted');
+    assertEqual(refused((p) => { p.outgoings[0].label = 'Bestway rent'; }), '', 'a word is matched whole');
   }));
 
   cases.push(runCase('Every income type this module allows is one the tax engine accepts', () => {

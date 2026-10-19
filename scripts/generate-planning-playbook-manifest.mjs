@@ -1,5 +1,6 @@
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pensionConversationGuidance } from '../js/pension_math.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
 const promptDir = resolve(root, 'docs/prompt-pack');
@@ -29,6 +30,32 @@ function entriesFrom(source, label) {
   });
 }
 
+// The adviser cash-flow prompt needs the same limit values as the runtime.
+// Generate the snapshot in both upload surfaces from the central pension helper.
+const cashFlowPath = resolve(promptDir, '25_household_cash_flow_playbook.md');
+const requiredAdviserPlaybooks = ['25_household_cash_flow_playbook.md', '26_home_trade_down_playbook.md'];
+for (const name of requiredAdviserPlaybooks) {
+  if (!existsSync(resolve(promptDir, name))) throw new Error(`Required adviser playbook is missing: ${name}`);
+}
+{
+  const begin = '<!-- cash-flow-pension-relief:start -->';
+  const end = '<!-- cash-flow-pension-relief:end -->';
+  const expected = `${begin}\n${pensionConversationGuidance()[0]}\n${end}`;
+  for (const path of [cashFlowPath, masterPath]) {
+    const current = readFileSync(path, 'utf8');
+    const start = current.indexOf(begin);
+    const finish = current.indexOf(end, start);
+    if (start < 0 || finish < start || current.indexOf(begin, start + begin.length) !== -1) {
+      throw new Error(`${path} must contain one cash-flow pension relief guidance block.`);
+    }
+    const updated = current.slice(0, start) + expected + current.slice(finish + end.length);
+    if (current !== updated) {
+      if (process.argv.includes('--check')) throw new Error(`${path} has stale pension relief guidance; regenerate planning playbooks.`);
+      writeFileSync(path, updated);
+    }
+  }
+}
+
 const componentFiles = readdirSync(promptDir)
   .filter((name) => /^\d{2}_.+_playbook\.md$/.test(name))
   .sort();
@@ -37,7 +64,21 @@ const componentSources = componentFiles.map((name) => ({
   text: readFileSync(resolve(promptDir, name), 'utf8')
 }));
 const componentEntries = componentSources.flatMap(({ name, text }) => entriesFrom(text, name));
-const masterEntries = entriesFrom(readFileSync(masterPath, 'utf8'), 'MASTER_PROJECT_PROMPT.md');
+const masterSource = readFileSync(masterPath, 'utf8');
+for (const name of requiredAdviserPlaybooks) {
+  const component = componentSources.find((entry) => entry.name === name).text.trim();
+  // Component headings sit one level deeper in the assembled master.
+  const expected = component.replace(/^#/gm, '##');
+  const heading = expected.split('\n')[0];
+  const sectionMarker = `\n${heading}\n`;
+  const start = masterSource.indexOf(sectionMarker);
+  const next = masterSource.indexOf('\n## ', start + sectionMarker.length);
+  const actual = start < 0 ? '' : masterSource.slice(start + 1, next < 0 ? undefined : next).trim();
+  if (actual !== expected || masterSource.indexOf(sectionMarker, start + sectionMarker.length) !== -1) {
+    throw new Error(`MASTER_PROJECT_PROMPT.md is out of sync with ${name}. Reassemble the adviser playbook section.`);
+  }
+}
+const masterEntries = entriesFrom(masterSource, 'MASTER_PROJECT_PROMPT.md');
 const duplicateIds = componentEntries
   .map((entry) => entry.moduleId)
   .filter((id, index, all) => all.indexOf(id) !== index);

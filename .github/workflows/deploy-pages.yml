@@ -41,6 +41,9 @@ jobs:
           npm run check:workspace-copy
           npm run check:demo
           npm run check:education-call
+          npm run check:education-booking
+          npm run check:stripe
+          npm run check:lead-qualification
 
       - name: Build dist artifact
         run: npm run build

@@ -17,7 +17,9 @@ import { readFileSync } from 'node:fs';
 import { computeHouseholdCashFlowProjection } from '../js/household_cash_flow_math.js';
 import {
   HOUSEHOLD_CASH_FLOW_DESIGN_EXPECTED,
+  HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE,
   HOUSEHOLD_CASH_FLOW_SAMPLE,
+  HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
   designFixtureOptions,
   runHouseholdCashFlowTests
 } from '../js/tests_household_cash_flow_math.js';
@@ -62,7 +64,7 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
   const income = sum(Object.values(gross));
 
   const extraFor = (scenario) => {
-    const paid = Object.fromEntries(ids.map((id) => [id, 0]));
+    const paid = Object.fromEntries(payload.people.map((person) => [person.id, person.personalPensionContribution || 0]));
     (scenario.changes || []).filter((change) => change.type === 'extraPension').forEach((change) => {
       const owners = (change.personId || 'joint') === 'joint' ? ids : [change.personId];
       owners.forEach((owner) => {
@@ -120,21 +122,31 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
   const cases = payload.scenarios.map((scenario) => {
     const paid = extraFor(scenario);
     const run = scenario.id === baseId ? baseRun : taxRun(paid, scenario.id);
-    const people = payload.people.map((person) => {
-      const estimated = estimatedTax(run, paid, person.id);
+    const zeroPaid = Object.fromEntries(ids.map((id) => [id, 0]));
+    const none = taxRun(zeroPaid, `${scenario.id}:none`);
+    // A person's tax is what the payslip leaves plus what the case changes, and
+    // never less than nothing: relief cannot be more than the tax paid.
+    const taxOf = (person, theRun, thePaid) => {
+      const estimated = estimatedTax(theRun, thePaid, person.id);
       const baseEstimated = estimatedTax(baseRun, basePaid, person.id);
-      const tax = person.statedTakeHome == null
+      const level = person.statedTakeHome == null
         ? estimated
-        : (gross[person.id] - person.statedTakeHome) + (estimated - baseEstimated);
-      return { id: person.id, tax, takeHome: gross[person.id] - tax };
+        : (gross[person.id] - (person.personalPensionContribution || 0) - person.statedTakeHome) + (estimated - baseEstimated);
+      return Math.max(0, level);
+    };
+    const people = payload.people.map((person) => {
+      const tax = taxOf(person, run, paid);
+      return { id: person.id, tax, takeHome: gross[person.id] - tax, withoutTax: taxOf(person, none, zeroPaid) };
     });
     const tax = sum(people.map((person) => person.tax));
     const pensions = sum(Object.values(paid));
     const cleared = new Set((scenario.changes || []).filter((change) => change.type === 'clearOutgoing').map((change) => change.outgoingId));
     const stated = payload.outgoings.map((line) => ({ id: line.id, amount: cleared.has(line.id) ? 0 : line.amount }));
     const statedTotal = sum(stated.map((line) => line.amount));
-    const none = taxRun(Object.fromEntries(ids.map((id) => [id, 0])), `${scenario.id}:none`);
-    const relief = pensions > 0 ? Math.max(0, none.total - run.total) : 0;
+    // What the contribution saves, person by person: never more than their tax.
+    const relief = pensions > 0
+      ? sum(people.map((person) => Math.max(0, person.withoutTax - person.tax)))
+      : 0;
 
     const shownTax = nearest(tax, 100);
     const shownPensions = nearest(pensions, 100);
@@ -142,8 +154,11 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
     const shownIncome = nearest(income, 100);
     const shownOut = shownTax + shownPensions + sum(shownStated);
     const shownLeft = shownIncome - shownOut;
+    // The month: the size to the nearest 10, then its sign (a short year is a
+    // negative month), so a tie rounds the same size in both directions.
     const monthlyExact = shownLeft / 12;
-    const monthly = nearest(monthlyExact, 10);
+    const monthlySize = nearest(Math.abs(monthlyExact), 10);
+    const monthly = (monthlyExact < 0 ? -monthlySize : monthlySize) || 0;
     return {
       id: scenario.id,
       people,
@@ -158,7 +173,10 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
       shownIncome,
       shownOut,
       shownLeft,
-      monthlyText: `${Math.abs(monthlyExact - monthly) < 0.005 ? '' : 'About '}${eur(monthly)} a month`
+      // Above nothing is left over, nothing is tight, below nothing is short.
+      status: shownLeft > 0 ? 'left_over' : (shownLeft === 0 ? 'tight' : 'short'),
+      monthlySigned: monthly,
+      monthlyText: `${Math.abs(Math.abs(monthlyExact) - monthlySize) < 0.005 ? '' : 'About '}${eur(monthlySize)} a month`
     };
   });
 
@@ -169,22 +187,36 @@ function reference(payload, { year = YEAR, taxFor = null } = {}) {
 function referenceSentences(ref) {
   const [today, clear, pension, both] = ref.cases;
   const effect = (left, base) => {
-    if (left === base) return `you have the same ${eur(left)} left over as today`;
+    if (left === base) {
+      return left < 0 ? `you are short by the same ${eur(left)} as today` : `you have the same ${eur(left)} left over as today`;
+    }
+    if (left < 0) {
+      return base < 0 ? `you are short by ${eur(left)} instead of ${eur(base)}` : `you are short by ${eur(left)}`;
+    }
+    if (base < 0) {
+      return left === 0
+        ? `you have nothing left over instead of being short by ${eur(base)}`
+        : `you have ${eur(left)} left over instead of being short by ${eur(base)}`;
+    }
     if (left === 0) return 'you have nothing left over';
     if (base > 0 && left === 2 * base) return `the amount you have left over doubles, from ${eur(base)} to ${eur(left)}`;
     if (left > base) return `the amount you have left over rises by ${eur(left - base)}, from ${eur(base)} to ${eur(left)}`;
     return `the amount you have left over falls from ${eur(base)} to ${eur(left)}`;
   };
   const cap = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-  const taxDrop = (entry) => today.shownTax - entry.shownTax;
+  const taxDrop = (entry) => Math.round((today.tax - entry.tax) * 100);
+  const extra = (entry) => Math.round((entry.pensions - today.pensions) * 100);
+  const detail = (cents) => `€${(Math.abs(cents) / 100).toLocaleString('en-IE', { minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: cents % 100 ? 2 : 0 })}`;
   const carToday = today.shownStated[1];
   return [
-    `Today, ${eur(today.shownOut)} of your ${eur(today.shownIncome)} goes out and you have ${eur(today.shownLeft)} left over.`,
+    today.shownLeft < 0
+      ? `Today, ${eur(today.shownOut)} goes out against your ${eur(today.shownIncome)}, and you are short by ${eur(today.shownLeft)}.`
+      : `Today, ${eur(today.shownOut)} of your ${eur(today.shownIncome)} goes out and you have ${eur(today.shownLeft)} left over.`,
     `Clearing your car loan from savings stops ${eur(carToday)} a year going out, so ${effect(clear.shownLeft, today.shownLeft)}.`,
-    `Paying ${eur(pension.shownPensions)} more into your pensions lowers your tax by ${eur(taxDrop(pension))}, `
-      + `so ${eur(pension.shownPensions - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
-    `${cap(effect(both.shownLeft, today.shownLeft))}, but your car loan is gone and ${eur(both.shownPensions)} more goes into your pensions each year, `
-      + `with your tax ${eur(taxDrop(both))} ${taxDrop(both) > 0 ? 'lower' : 'higher'}.`
+    `Paying ${detail(extra(pension))} more into your pensions lowers your tax by ${detail(taxDrop(pension))}, `
+      + `so ${detail(extra(pension) - taxDrop(pension))} more goes out each year and ${effect(pension.shownLeft, today.shownLeft)}.`,
+    `${cap(effect(both.shownLeft, today.shownLeft))}, but your car loan is gone and ${detail(extra(both))} more goes into your pensions each year, `
+      + `with your tax ${detail(taxDrop(both))} ${taxDrop(both) > 0 ? 'lower' : 'higher'}.`
   ];
 }
 
@@ -223,8 +255,34 @@ const onePerson = {
   ]
 };
 
+const shortAndStated = clone(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE);
+shortAndStated.people[0].statedTakeHome = 50_000;
+
+const shortSeparate = withIncome(100_000, 50_000, 100_000);
+shortSeparate.householdTaxStatus = 'single';
+
+const currentPensions = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+currentPensions.people[0].personalPensionContribution = 5000;
+currentPensions.people[1].personalPensionContribution = 3000;
+const currentAndStated = clone(currentPensions);
+currentAndStated.people[0].statedTakeHome = 50000;
+currentAndStated.people[1].statedTakeHome = 55000;
+
+const pensionRoundingBoundary = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+pensionRoundingBoundary.people[0].personalPensionContribution = 3960.35;
+pensionRoundingBoundary.scenarios.forEach((scenario) => (scenario.changes || []).forEach((change) => {
+  if (change.type === 'extraPension') change.amount = 1080.55;
+}));
+
 const SAMPLE_SHAPED = [
+  ['pension change precision at a rounding boundary', pensionRoundingBoundary],
+  ['current pensions, estimated bank pay', currentPensions],
+  ['current pensions, stated bank pay', currentAndStated],
   ['engine, 75,000 each', HOUSEHOLD_CASH_FLOW_SAMPLE],
+  ['engine, today short (the frames: living costs 60,000)', HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE],
+  ['engine, left over tipped under by 20,000 into pensions', HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE],
+  ['engine, short with one person stated', shortAndStated],
+  ['engine, short with two people assessed separately', shortSeparate],
   ['engine, 120,000 and 30,000', withIncome(120_000, 30_000, 40_000)],
   ['engine, 100,000 and 50,000', withIncome(100_000, 50_000, 40_000)],
   ['one person stated', statedOne],
@@ -248,6 +306,9 @@ function compare(payload, ref, projection, label) {
     assert.ok(Math.abs(summary.pensionContributions.taxRelief - expected.relief) < 0.005, `${where}: relief`);
     assert.equal(detail.shownLeftOver, expected.shownLeft, `${where}: shown left over`);
     assert.equal(detail.monthly.text, expected.monthlyText, `${where}: month`);
+    assert.equal(summary.leftOver.status, expected.status, `${where}: status`);
+    assert.equal(detail.status, expected.status, `${where}: status on the screen's side`);
+    assert.equal(summary.leftOver.monthly, expected.monthlySigned, `${where}: the month is signed`);
     expected.people.forEach((person) => {
       const found = summary.takeHome.byPerson.find((entry) => entry.personId === person.id);
       assert.ok(Math.abs(found.tax - person.tax) < 0.005, `${where}: ${person.id} tax ${found.tax} vs ${person.tax}`);
@@ -290,6 +351,34 @@ check('the engine agrees with the reference: one person, other income and a clea
   compare(onePerson, reference(onePerson), projection, 'one person');
 });
 
+check('the short fixtures are short where they should be, so the checks above are not vacuous', () => {
+  const frames = reference(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE);
+  assert.equal(frames.cases[0].status, 'short', 'today is short');
+  assert.ok(frames.cases[0].shownLeft < 0, 'by an amount');
+  assert.ok(frames.cases.some((entry) => entry.status !== 'short'), 'and a case gets out of it');
+  const tipped = reference(HOUSEHOLD_CASH_FLOW_PENSION_SHORT_SAMPLE);
+  assert.equal(tipped.cases[0].status, 'left_over', 'today leaves money over');
+  assert.equal(tipped.cases[2].status, 'short', 'and 20,000 into pensions tips it under');
+  [shortAndStated, shortSeparate].forEach((payload) => {
+    assert.ok(reference(payload).cases.some((entry) => entry.status === 'short'), 'every short fixture has a short case');
+  });
+  // The design fixture is short too, in literal figures.
+  const design = reference(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, { taxFor: designFixtureOptions().taxFor });
+  assert.deepEqual(design.cases.map((entry) => entry.shownLeft), [-6_000, 0, -12_000, -6_000]);
+  assert.deepEqual(design.cases.map((entry) => entry.status), ['short', 'tight', 'short', 'short']);
+  assert.deepEqual(design.cases.map((entry) => entry.monthlySigned), [-500, 0, -1_000, -500]);
+  compare(
+    HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE,
+    design,
+    computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, designFixtureOptions()),
+    'design, short'
+  );
+  assert.deepEqual(
+    referenceSentences(design),
+    computeHouseholdCashFlowProjection(HOUSEHOLD_CASH_FLOW_SHORT_SAMPLE, designFixtureOptions()).debug.cases.map((entry) => entry.sentence)
+  );
+});
+
 check('with nothing stated, the people\'s tax sums to the engine\'s household total for every case', () => {
   SAMPLE_SHAPED.filter(([, payload]) => payload.people.every((person) => person.statedTakeHome == null)).forEach(([name, payload]) => {
     const projection = computeHouseholdCashFlowProjection(payload, { calculationYear: YEAR });
@@ -312,6 +401,21 @@ check('a stated take-home never moves the other person, and the change in a case
     const changeEstimated = tax(estimated, index, 'niamh') - tax(estimated, 0, 'niamh');
     assert.ok(Math.abs(changeStated - changeEstimated) < 0.005, `Niamh's change, case ${index + 1}`);
   });
+});
+
+check('a stated take-home close to gross pay cannot be relieved below nothing (Codex\'s example)', () => {
+  const near = clone(HOUSEHOLD_CASH_FLOW_SAMPLE);
+  near.people[0].statedTakeHome = 74_999;
+  near.scenarios = [
+    { id: 'today' },
+    { id: 'pension', changes: [{ type: 'extraPension', amount: 10_000, personId: 'niamh' }] }
+  ];
+  const projection = computeHouseholdCashFlowProjection(near, { calculationYear: YEAR });
+  compare(near, reference(near), projection, 'near gross');
+  const niamh = projection.summary.cases[1].takeHome.byPerson.find((person) => person.personId === 'niamh');
+  assert.equal(niamh.tax, 0);
+  assert.equal(niamh.takeHome, 75_000);
+  assert.ok(projection.debug.warnings.some((text) => /held at €0/.test(text)), 'the cap is recorded');
 });
 
 check('relief is the engine\'s saving, so D7 reads: gross for growth, cost after relief for cash flow', () => {

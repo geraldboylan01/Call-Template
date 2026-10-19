@@ -28,6 +28,8 @@ import { resolveShippedConsumerEnv } from './lib/shipped-consumer-config.mjs';
 import { compactConsumerSettings } from './pack-consumer-settings.mjs';
 import { expandConsumerSettings } from '../worker/src/consumer/packed_settings.js';
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
+import { parseWalkthroughSettings } from '../worker/src/walkthrough_settings.js';
+import './check-walkthrough-settings.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const workflow = readFileSync(`${root}/.github/workflows/deploy-worker.yml`, 'utf8');
@@ -565,7 +567,7 @@ for (const tableName of ['fixedRealtimeValues']) {
       ...overrides
     };
     runInNewContext(builder, {
-      process: { env }, URL, console,
+      process: { env }, URL, console, Buffer,
       require: name => name === 'node:fs' ? {
         readFileSync: path => readFileSync(`${root}/${path}`, 'utf8'),
         writeFileSync: (path, text) => written.set(path, text)
@@ -595,9 +597,9 @@ for (const tableName of ['fixedRealtimeValues']) {
     for (const source of Object.values(configs)) {
       const original = readVariables(source);
       const compacted = readVariables(compactConsumerSettings(source));
-      // Leave half the free plan's 64 bindings available for existing and
-      // future secrets, rather than checking plain-text bindings alone.
-      assert(Object.keys(compacted).length <= 32, 'packed settings must leave room for 32 secrets');
+      // One separate payment-settings binding leaves 31 of the free plan's
+      // 64 settings available for existing and future secrets.
+      assert(Object.keys(compacted).length <= 33, 'packed settings must leave room for 31 secrets');
       for (const [name, value] of Object.entries(compacted)) {
         if (name.startsWith('CONSUMER_SETTINGS_JSON_')) assert(Buffer.byteLength(value) <= 4096);
       }
@@ -609,6 +611,25 @@ for (const tableName of ['fixedRealtimeValues']) {
       assert.deepEqual(getConsumerConfig({ ...compacted, ...bindings }), getConsumerConfig({ ...original, ...bindings }));
     }
   }
+  const configuredPayments = JSON.stringify({ STRIPE_MODE: 'live', STRIPE_WALKTHROUGH_PRICE_ID: 'price_Live123',
+    STRIPE_TAX_MODE: 'no_collection', STRIPE_WALKTHROUGHS_ENABLED: 'true', STRIPE_WALKTHROUGH_LIVE_ACTIVATED: 'true', WALKTHROUGH_EMAILS_ENABLED: 'true' });
+  const payments = buildConfig({ WALKTHROUGH_SETTINGS_JSON: configuredPayments });
+  const finalPaymentSettings = parseWalkthroughSettings(readVariables(payments['worker/wrangler.production.generated.toml']).WALKTHROUGH_SETTINGS_JSON);
+  const bootstrapPaymentSettings = parseWalkthroughSettings(readVariables(payments['worker/wrangler.bootstrap.generated.toml']).WALKTHROUGH_SETTINGS_JSON);
+  assert.equal(finalPaymentSettings.STRIPE_WALKTHROUGHS_ENABLED, 'true');
+  assert.equal(finalPaymentSettings.STRIPE_WALKTHROUGH_LIVE_ACTIVATED, 'true');
+  assert.equal(finalPaymentSettings.WALKTHROUGH_EMAILS_ENABLED, 'true');
+  for (const flag of ['STRIPE_WALKTHROUGHS_ENABLED', 'STRIPE_WALKTHROUGH_LIVE_ACTIVATED', 'WALKTHROUGH_EMAILS_ENABLED']) {
+    assert.equal(bootstrapPaymentSettings[flag], 'false');
+  }
+  assert.equal(bootstrapPaymentSettings.STRIPE_MODE, 'live');
+  assert.equal(bootstrapPaymentSettings.STRIPE_WALKTHROUGH_PRICE_ID, 'price_Live123');
+  assert.equal(parseWalkthroughSettings(readVariables(ordinary['worker/wrangler.production.generated.toml']).WALKTHROUGH_SETTINGS_JSON).STRIPE_WALKTHROUGHS_ENABLED, 'false');
+  for (const invalid of ['{', 'null', '[]', '{"STRIPE_API_KEY":"forbidden"}', '{"STRIPE_MODE":"typo"}', '{"STRIPE_WALKTHROUGHS_ENABLED":"true"}']) {
+    assert.throws(() => buildConfig({ WALKTHROUGH_SETTINGS_JSON: invalid }), /Invalid walkthrough settings/);
+  }
+  assert.match(jobEnv, /WALKTHROUGH_SETTINGS_JSON:\s*\$\{\{ vars\.WALKTHROUGH_SETTINGS_JSON \}\}/);
+  pass('payment settings survive production pushes, stay disabled during bootstrap and reject credentials or malformed activation settings');
   const packed = { CONSUMER_SETTINGS_JSON_1: JSON.stringify({ CONSUMER_SESSION_TTL_DAYS: '7' }) };
   assert.equal(expandConsumerSettings({ ...packed, CONSUMER_SESSION_TTL_DAYS: '3' }).CONSUMER_SESSION_TTL_DAYS, '3');
   for (const invalid of ['{', 'null', '[]', '{"CONSUMER_JOURNEY_ENABLED":"true"}', '{"OPENAI_API_KEY":"not-allowed"}', '{"__proto__":"not-allowed"}', '{"CONSUMER_SESSION_TTL_DAYS":7}']) {

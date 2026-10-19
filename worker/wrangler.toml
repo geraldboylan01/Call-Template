@@ -58,6 +58,10 @@ new_sqlite_classes = ["ConsumerLiveSession"]
 crons = ["5 * * * *"]
 
 [vars]
+# The protected production workflow overlays this one non-secret setting from
+# its WALKTHROUGH_SETTINGS_JSON variable. Credentials stay separate secrets.
+# Bootstrap deployments keep purchase/email gates disabled independently.
+WALKTHROUGH_SETTINGS_JSON = "{\"STRIPE_MODE\":\"test\",\"STRIPE_TAX_MODE\":\"no_collection\",\"STRIPE_WALKTHROUGH_PRICE_ID\":\"\",\"STRIPE_WALKTHROUGHS_ENABLED\":\"false\",\"STRIPE_WALKTHROUGH_LIVE_ACTIVATED\":\"false\",\"WALKTHROUGH_EMAILS_ENABLED\":\"false\"}"
 DEMO_REQUESTS_ENABLED = "false"
 # Historical application records remain available; new public case intake is closed.
 CASE_APPLICATIONS_ENABLED = "false"
@@ -105,6 +109,8 @@ CONSUMER_AGENT_TEST_ENABLED = "false"
 # this deployment's CONSUMER_COHORT is named here. Production runs "internal".
 CONSUMER_AGENT_TEST_COHORTS = "automated_test,consumer_test"
 CONSUMER_HANDOFF_ENABLED = "false"
+# Independent paid report walkthroughs; this never enables adviser distribution.
+EDUCATION_CALLS_ENABLED = "true"
 CONSUMER_PUBLIC_ACCESS_ENABLED = "false"
 # Every module that passes all four consumer gates in the manifest
 # (runnable engine, platform approval, adviser enablement, client language).

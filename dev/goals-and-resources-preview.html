@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Goals and resources module - standalone preview</title>
+    <link rel="stylesheet" href="../styles/base.css" />
+    <style>
+      /* The module alone, with none of the app shell around it, so its own
+         responsive behaviour is what is being looked at. Resize the window to
+         see it change arrangement at 760px and again at 1740px. */
+      html, body { height: auto; overflow: auto; }
+      body {
+        margin: 0;
+        background: #070c10;
+        padding: clamp(18px, 3.5vw, 44px) clamp(14px, 3.5vw, 72px) clamp(40px, 6vw, 80px);
+      }
+      #mount { max-width: 1920px; margin: 0 auto; }
+      #params { color: #a9b5bd; font: 13px/1.5 system-ui; margin: 0 0 18px; }
+      #params a { color: #6aa7c8; }
+    </style>
+  </head>
+  <body>
+    <p id="params"></p>
+    <div id="mount"></div>
+    <script type="module">
+      import { buildGoalsAndResourcesModule } from '../js/goals_and_resources_module.js';
+      import { GOALS_AND_RESOURCES_SAMPLE } from '../js/tests_goals_and_resources_math.js';
+
+      const params = new URLSearchParams(location.search);
+      const preset = params.get('preset') || 'illustrative';
+      const caseId = params.get('case') || null;
+      // ?width=390 holds the module at one width, for looking at a phone on a desktop.
+      const forcedWidth = Number(params.get('width')) || 0;
+      if (forcedWidth > 0) document.getElementById('mount').style.width = `${forcedWidth}px`;
+
+      const sample = GOALS_AND_RESOURCES_SAMPLE;
+      const withoutLater = { ...sample };
+      delete withoutLater.laterRetirement;
+
+      const presets = {
+        // The illustrative household the design frames were drawn from.
+        illustrative: sample,
+        // One child: three goals, and the cases that touch the mortgage and college change.
+        'one-child': { ...sample, children: [sample.children[0]] },
+        // Four children: the tallest list of goals the screen holds.
+        'four-children': {
+          ...sample,
+          children: [
+            { id: 'child-1', title: 'First child', age: 15 },
+            { id: 'child-2', title: 'Second child', age: 12 },
+            { id: 'child-3', title: 'Third child', age: 9 },
+            { id: 'child-4', title: 'Fourth child', age: 6 }
+          ]
+        },
+        // The mortgage ends before the age it is meant to be cleared by.
+        'mortgage-ends': { ...sample, mortgage: { ...sample.mortgage, remainingTermYears: 9 } },
+        // Everything covered, with money to spare in every case.
+        spare: { ...sample, leftOverEachYear: 26000 },
+        // Money remains this year, but retirement saving is short from next year.
+        'later-short': { ...sample, leftOverEachYear: 14500 },
+        // No spare cash: one case, and "your money now" is empty.
+        'no-cash': { ...sample, spareCash: 0 },
+        // No later retirement option: the quiet line is not drawn.
+        'no-later': withoutLater,
+        // A target out of reach: the pension is at the most income tax relief allows and still short.
+        stretched: { ...sample, retirement: { retirementAge: 55, targetIncomeToday: 200000 } },
+        // The same target with the money to pay in the most: "partly", with nothing short of money.
+        'stretched-rich': {
+          ...sample,
+          leftOverEachYear: 30000,
+          retirement: { retirementAge: 55, targetIncomeToday: 200000 }
+        }
+      };
+
+      const raw = presets[preset] || presets.illustrative;
+      const names = Object.keys(presets);
+      document.getElementById('params').innerHTML = 'preset: '
+        + names.map((name) => (name === preset
+          ? `<strong>${name}</strong>`
+          : `<a href="?preset=${name}">${name}</a>`)).join(' · ')
+        + ' &nbsp;|&nbsp; <code>?case=&lt;id&gt;</code> opens on a case: '
+        + 'cash-stays, college-today, mortgage-all-cash, mortgage-then-college'
+        + ' &nbsp;|&nbsp; <code>?width=390</code> holds one width';
+
+      const module = buildGoalsAndResourcesModule({
+        rawInputs: raw,
+        selectedCaseId: caseId,
+        badge: 'Illustrative household, not real figures'
+      });
+      if (!module) {
+        document.getElementById('mount').textContent = 'The payload could not be projected.';
+      } else {
+        document.getElementById('mount').append(module);
+      }
+    </script>
+  </body>
+</html>

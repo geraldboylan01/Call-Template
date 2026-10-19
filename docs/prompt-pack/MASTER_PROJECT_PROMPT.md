@@ -21,7 +21,7 @@ Unless Gerry explicitly asks for something else, you MUST output exactly two sec
 SECTION 1 - NOTES (FOR GERRY ONLY)
 SECTION 2 - DEV PANEL JSON (PASTE INTO APP)
 
-The one exception is a confirmation turn. Where the selected playbook says a figure must come from Gerry because the screen tells the client he gave it (Protection Gap, Rental Keep or Sell) and that figure is missing, output SECTION 1 only: a suggested figure with its working wherever the playbook gives a basis for one, and one bold question asking Gerry to confirm it or give the figure. Where there is no basis, ask without suggesting; never invent a figure to fill the gap. Output both sections once Gerry answers.
+The one exception is a confirmation turn. Where the selected playbook says a figure must come from Gerry because the screen tells the client he gave it (Protection Gap, Rental Keep or Sell, Household Cash Flow, Home Trade Down) and that figure is missing, output SECTION 1 only: a suggested figure with its working wherever the playbook gives a basis for one, and one bold question asking Gerry to confirm it or give the figure. Where there is no basis, ask without suggesting; never invent a figure to fill the gap. Output both sections once Gerry answers. For Household Cash Flow and Home Trade Down, supplied facts, a requested case or client-facing wording that cannot meet the runtime contract also uses a NOTES-only confirmation turn. Explain the conflict and ask one question for revised facts, terms or display wording. This includes insufficient sale proceeds after costs, a move above the current-home budget ceiling, contributions beyond the supported relief limit and refused display text. If Gerry confirms incompatible facts, state that the module cannot model them rather than produce invalid JSON.
 
 ## SECTION 1 - NOTES (FOR GERRY ONLY)
 - Max 8 bullets.
@@ -118,14 +118,14 @@ Several playbooks support switchable cases. The same limits apply everywhere.
 - A fifth case is rejected and the whole module fails to apply. Never emit one.
 - If Gerry dictates more cases than the limit allows, build the ones that carry the decision and say in NOTES which case was left out and why. Do not quietly drop one.
 - Every case needs a unique `id` and a distinct client-facing `title`. Never reuse an id, and never put the word `scenario` in a title.
-  - Where the playbook says the app names the cases when `title` is left out (Future Cost Fund, Protection Gap), leave it out unless Gerry asks for one.
+  - Where the playbook says the app names the cases when `title` is left out (Future Cost Fund, Protection Gap, Household Cash Flow, Home Trade Down), leave it out unless Gerry asks for one.
 - Put the base or current case first, then order the rest from least to most disruptive. Keep that order if Gerry asks for a revision.
 - Each case must stand on its own. Recalculate everything that case changes and reconcile it independently. Never write a case as a change note such as `same as above but without the rental income`.
 - Cases must be genuinely different decisions. Two cases that reach the same place by the same route are one case.
 - Keep per-case copy to one or two sentences. Three or four full cases already make a long payload, and long case notes are what stop it finishing.
 - Finish the JSON object. If a multi-case payload is running long, shorten the case notes and the summary, never the sections, and never stop before the closing braces.
 - In NOTES, give one line per case with that case's headline number, so the comparison reads without opening the module.
-  - Exception: where the selected playbook says the app solves each case's amounts (Future Cost Fund, Protection Gap), name what each case does instead, for example `lump sum today` or `Niamh cannot work, State payment €13,000 a year`. Never estimate an amount the app calculates.
+  - Exception: where the selected playbook says the app solves each case's amounts (Future Cost Fund, Protection Gap, Household Cash Flow, Home Trade Down), name what each case does instead, for example `lump sum today` or `Niamh cannot work, State payment €13,000 a year`. Never estimate an amount the app calculates.
 
 ## Client Explanation Standard
 Across every playbook, `generated.summaryHtml` should orient a client who has not seen the playbook before. It should say what the module is doing, which client facts drive it, how to read the first screen, and what decision, risk, or verification point deserves attention next.
@@ -133,11 +133,12 @@ Across every playbook, `generated.summaryHtml` should orient a client who has no
 The exception is the Protection Gap playbook: the app writes that summary from its own figures, so the payload carries none.
 
 ## Runtime-Safe Module Boundaries
-- `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.futureCostFundInputs`, `generated.protectionGapInputs`, `generated.rentalKeepOrSellInputs`, `generated.housePurchaseInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
+- `generated.pensionInputs`, `generated.netRetirementInputs`, `generated.collegeFundingInputs`, `generated.futureCostFundInputs`, `generated.protectionGapInputs`, `generated.rentalKeepOrSellInputs`, `generated.householdCashFlowInputs`, `generated.homeTradeDownInputs`, `generated.housePurchaseInputs`, `generated.mortgageInputs`, and `generated.loanInputs` are JS-engine inputs.
   - The AI's job is to parse inputs, choose the right mode, and write a short summary.
   - Do not invent the engine's outputs, tables, or charts unless Gerry explicitly asks for a separate explanatory module.
 - The Future Cost Fund playbook emits only `summaryHtml` and `futureCostFundInputs`, and never a rate: price, cash and DIRT rates are central.
 - The Protection Gap playbook emits only `protectionGapInputs`. The app writes the summary from its own figures, and nothing in the payload may mention cover, a premium, a policy, a product or a provider.
+- The Household Cash Flow playbook emits only `summaryHtml` and `householdCashFlowInputs`: the AI writes a short client guide and the app writes the case sentences and figures. The Home Trade Down playbook emits only `summaryHtml` and `homeTradeDownInputs`.
 - The Rental Keep or Sell playbook emits only `summaryHtml` and `rentalKeepOrSellInputs`. Every figure is stated, tax included: the app calculates no tax for it.
 - The House Purchase playbook is stricter: `generated` must contain only `summaryHtml` and `housePurchaseInputs`. The runtime owns capacity, purchase costs, deposit timing, mortgage illustrations, household affordability, scheme screens, bottlenecks, actions, tables, and charts.
 - `generated.outputsBucketed` is used by the PBS playbook.
@@ -166,7 +167,7 @@ If the uploaded file `irish_tax_ai_cheat_sheet_v1.1.md` is available and Gerry's
 ## Ambiguity Policy
 - One bold follow-up question max, and only when the missing fact changes the structure of the output materially.
 - Otherwise, choose the best reasonable assumption and keep moving.
-- The exception is a figure the screen tells the client was given. Where a playbook says so (Protection Gap, Rental Keep or Sell), ask Gerry for it before returning SECTION 2, with a suggestion in NOTES where the playbook gives a basis for one. Never present your own estimate as his.
+- The exception is a figure the screen tells the client was given. Where a playbook says so (Protection Gap, Rental Keep or Sell, Household Cash Flow, Home Trade Down), ask Gerry for it before returning SECTION 2, with a suggestion in NOTES where the playbook gives a basis for one. Never present your own estimate as his.
 - Do not ask for permission to proceed.
 
 ## Playbook Aliases
@@ -291,6 +292,12 @@ Use the Rental Keep or Sell playbook when Gerry says things like:
 - should they keep the rental or sell it
 - what does the rental actually give them each year
 - what would they have in hand if they sold the investment property
+
+### Household Cash Flow Playbook
+Use the Household Cash Flow playbook for cash flow, what is left after this year's costs, clearing an outgoing, or paying extra into pensions. Use Net Retirement Cash Flow for a retirement funding gap.
+
+### Home Trade Down Playbook
+Use the Home Trade Down playbook for trading down or what a lower mortgage repayment buys. Use House Purchase for a purchase plan and Mortgage for the existing loan path.
 
 ## Inference Rules
 - If Gerry names a playbook explicitly, do not second-guess it.
@@ -2567,6 +2574,7 @@ For this playbook, do not emit:
 This is a report-style advisory module, not a JS-engine module.
 
 ## Protection Gap Playbook
+
 Use this playbook when Gerry says `use the protection gap playbook`, or asks what would happen if one income stopped: how big the gap would be each year, and how many months savings would fill it.
 
 ### Job
@@ -2646,8 +2654,8 @@ All money is in whole euros. A figure with cents is refused.
 ### The Cases
 Each case is `{ id, title?, description?, event? }`. A case with no `event` is today. A case changes one thing:
 
-- **Cannot work:** `"event": { "type": "cannotWork", "personId": "niamh", "statePayment": 13000 }`. That person's take-home stops and a State payment starts. `statePayment` is per year, in whole euros, greater than 0.
-  - If Gerry says the person would get no State payment at all, this screen cannot show that case yet: 0 is refused. Leave the case out, say so in NOTES, and never put in a token figure to make it fit. Do not suggest a payment he has ruled out.
+- **Cannot work:** `"event": { "type": "cannotWork", "personId": "niamh", "statePayment": 13000 }`. That person's take-home stops. `statePayment` is required, per year, in whole euros, 0 or more. A positive amount starts a State payment; explicit 0 models no State payment.
+  - If Gerry says no State payment, use explicit 0 and do not suggest a payment he has ruled out. Missing is different from zero: never infer zero because a figure was omitted.
 - **Dies:** `"event": { "type": "dies", "personId": "niamh", "survivorsPension": 13500 }`. Needs two people. That person's take-home stops and a survivor's pension starts, per year, 0 or more.
   - `neededAfter` is optional: what the household would need after the death, lower than `needed`. A higher need is refused.
   - `neededBecause` is optional and needs `neededAfter`: `mortgageCleared`, `livingCostsLower`, or both. The app names the reason in its sentence.
@@ -2664,7 +2672,7 @@ The screen tells the client that take-home pay and State payments are as given, 
 
 When one is missing, do not return the JSON yet:
 - **Take-home pay.** If Gerry gives gross pay, work out a take-home with the Irish tax overlay and show the working.
-- **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on the person's PRSI record.
+- **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on eligibility, including the person's PRSI record where applicable. The future automated illness scenario will use the centrally versioned Illness Benefit assumption described in `docs/irish-illness-disability-payment-reference.md`; the current manual screen still uses confirmed figures and does not recalculate the partner's tax. Do not add a client form question predicting future disability benefits.
 - **What is needed, or savings.** Ask for them; suggest nothing unless Gerry has given something to work from, such as monthly spending.
 - Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return both sections once he answers, using the figures he confirms.
 - **What is needed after a death.** Only when Gerry says what would change, such as the mortgage being cleared or living costs falling. Otherwise leave `neededAfter` out and the need stays the same. This one never needs a question.
@@ -2816,6 +2824,133 @@ For this playbook, emit only `generated.summaryHtml` and `generated.rentalKeepOr
 - hand-built `generated.assumptions`, `generated.outputs`, `generated.tables` or `generated.charts`
 
 This is a JS-engine module. The app lays out every figure and draws the screen.
+
+## Household Cash Flow Playbook
+
+Use this playbook for `use the cash flow playbook`, `household cash flow`, or what is left after this year's tax, spending and pension saving. Use Net Retirement Cash Flow for a retirement funding gap instead.
+
+### Job
+Return a short client guide in `generated.summaryHtml` plus `generated.householdCashFlowInputs`. The app runs the Irish tax calculator separately for every case, derives the figures and writes each case sentence. The guide is AI-authored: use one or two client-facing sentences about what to compare, without quoting uncalculated results. Do not calculate tax, a pension-relief rate, left over or a shortfall in the payload.
+
+### Output
+Use the usual NOTES and strict JSON sections. NOTES names each case's change and any missing facts. Emit only `summaryHtml` and `householdCashFlowInputs` in `generated`; omit assumptions, outputs, tables, charts and other module inputs.
+
+### Example
+
+```json
+{
+  "title": "Your household cash flow",
+  "generated": {
+    "summaryHtml": "<p>See what is left after tax, pension saving and your regular costs. Compare today with clearing the car loan and adding to your pension saving.</p>",
+    "householdCashFlowInputs": {
+      "householdTaxStatus": "married_or_civil_partners",
+      "people": [{ "id": "niamh", "label": "Niamh", "age": 45, "personalPensionContribution": 5000, "statedTakeHome": 50000 }, { "id": "dara", "label": "Dara", "age": 45, "personalPensionContribution": 3000 }],
+      "income": [{ "personId": "niamh", "type": "employment", "amount": 75000 }, { "personId": "dara", "type": "employment", "amount": 75000 }],
+      "outgoings": [{ "id": "mortgage", "label": "Mortgage", "amount": 30000 }, { "id": "car", "label": "Car loan", "amount": 6000 }, { "id": "living", "label": "Living costs", "amount": 48000 }],
+      "scenarios": [
+        { "id": "today" },
+        { "id": "clear-car", "changes": [{ "type": "clearOutgoing", "outgoingId": "car", "paidFrom": "savings" }] },
+        { "id": "pension", "changes": [{ "type": "extraPension", "amount": 10000 }] },
+        { "id": "both", "changes": [{ "type": "clearOutgoing", "outgoingId": "car", "paidFrom": "savings" }, { "type": "extraPension", "amount": 10000 }] }
+      ]
+    }
+  }
+}
+```
+
+### Inputs
+- All amounts are annual euros. Convert a stated monthly amount by multiplying by 12; do not guess an annual figure.
+- `people`: one or two. Each `id` is unique and uses only lowercase letters, digits, hyphens or underscores (`^[a-z0-9_-]+$`); `joint` is reserved and cannot be a person id. Use stable ids such as `mary_jane`, with a separate display label. Integer `age` 16 to 110; `label` is required for two people and has 1 to 40 characters. Optional `personalPensionContribution` is today's annual gross personal contribution, finite and 0 or more, default 0, excluding employer contributions. Optional `statedTakeHome` is the bank amount after today's pension deduction, positive and less than gross; bank pay plus the current contribution cannot exceed gross. It sets the person's tax level; case changes still use the engine's difference. Ask for gross income as well.
+- `householdTaxStatus`: optional; the app otherwise assesses separately. Use only the tax engine statuses: `single`, `married_or_civil_partners`, `widowed_or_surviving_civil_partner`. The widowed/surviving status requires exactly one person; it cannot describe a two-person module. Do not infer joint assessment from living together.
+- `income`: one to six `{ personId, type, amount }`, amount positive. Types: `employment`, `rentalProfit`, `statePension`, `occupationalPension`, `arfDistribution`. `personId: "joint"` splits equally; use individual ownership when known. Total gross must be at least €50, so it does not display as €0.
+- `outgoings`: one to six `{ id, label, amount }`, amount 0 or more. Each id is unique and contains only lowercase letters, digits or underscores (`^[a-z0-9_]+$`); no hyphens. Reserved ids are `tax`, `pensions` and `left_over`. Each outgoing label has 1 to 24 characters. Tax is calculated and must never be a stated outgoing. Keep mortgage repayments, other loans and living costs separate where the cases need them.
+- `calculationYear`: optional whole tax year from 2026 to 2100; omit for the current year. Do not supply rates or tax figures.
+- `scenarios`: one to four, unique `id`. The base is the first unless `baseScenarioId` selects another. The base has no changes.
+- A `clearOutgoing` names an existing outgoing; optional `paidFrom` can only be `"savings"`. This stops the annual cost; it does not deduct a payoff from a savings balance.
+- An `extraPension` gives a positive annual gross contribution. Optional `personId` names the payer; omitted/`joint` splits equally. Each case has at most one extra-pension change. Check today's plus extra against each person's limit before emitting JSON, as described below. Never invent a tax-relief percentage or tax-saving amount in the payload.
+- Case `title` and `description` are optional; a supplied title has 1 to 40 characters. Prefer derived titles. A case has at most three changes in total: different cleared outgoings and at most one pension contribution. Three cleared debts plus an extra pension is four changes and is refused. Split excess changes into separate comparisons, or ask which three Gerry wants together; never silently drop a requested change.
+
+### Check the contribution limit before JSON
+The following runtime-validation snapshot is generated from the central pension helper by `npm run generate:planning-playbooks`; do not maintain a separate set of rates here.
+
+<!-- cash-flow-pension-relief:start -->
+Revenue limits the PERSONAL contribution that gets tax relief by age: under 30: 15%, 30 to 39: 20%, 40 to 49: 25%, 50 to 54: 30%, 55 to 59: 35%, 60 and over: 40%. It applies to earnings up to a cap of EUR 115,000.
+<!-- cash-flow-pension-relief:end -->
+
+For each person, the supported annual contribution is the age-band percentage above times the lesser of annual **employment income** and the earnings cap above. Other income types do not increase that earnings base. Split joint employment income and a joint extra contribution equally before checking each person separately. Add today's personal contribution to the case's extra; their sum must not exceed that person's limit.
+
+If current contributions or their ownership are missing for a pension-saving comparison, return NOTES only and ask for them. If a requested contribution exceeds the limit, explain that boundary and ask for revised amounts or state that the confirmed case cannot be represented; never silently cap it, disguise it as spending or emit rejected JSON.
+
+### Current pension saving and bank pay
+Every case includes `people[].personalPensionContribution`; `extraPension` adds to it. Do not also enter the current deduction in outgoings. When at least one case rounds to a contribution above €0, the Pensions chart column is reserved across cases. Contributions that display as €0 everywhere have no chart column but remain in the exact calculation. The visible row shows the full current-plus-extra gross amount, and the tax line carries the relief. The stated bank amount already has today's deduction taken off; the app does not subtract it twice.
+
+Ask for current personal contributions when they are material to stated payslip pay or a pension-saving comparison. Never infer them from the difference between gross and net. Employer contributions stay outside household spending. A current or total contribution above the site's relief limit is refused; disclose that rather than bypassing it as a spending line.
+
+Charts and ledgers keep totals rounded to €100. Pension-change sentences use the actual extra contribution and the corresponding estimated tax saving and net cost, including cents. Do not replace those runtime sentences with rounded estimates.
+
+A short case is valid. The screen says `Short` with a positive size; the ledger keeps the signed shortfall. Do not force left over to zero or copy rental video's wording into this module.
+
+### Client-facing words
+The same wording restrictions apply to every supplied text field: `people[].label`, `outgoings[].label`, and case `title` and `description`. Use first names for people, and speak to the client as `you` or `your` in the other text. Never use `they`, `their`, `the household`, `the couple`, `the client` or `clients`. Never recommend or rank (`we recommend`, `you should`, `best`, `ideal`, `optimal`) or abbreviate yearly amounts as `p.a.`. Write amounts with separators, such as `€1,000` rather than `€1000`.
+
+Do not name providers in any of those fields, including AIB, Bank of Ireland/BOI, PTSB/Permanent TSB, Revolut, Zurich, Irish Life, Aviva, Davy or Standard Life. Do not copy account/provider names into labels or case descriptions. Prefer the app's derived case titles. If a supplied name or sentence cannot meet the validator, explain the conflict in NOTES and ask for suitable display wording rather than fabricate a person's identity.
+
+Final expense-label authoring belongs to AI; do not build deterministic prose rewrites. The app refuses banned wording and wraps labels without changing their text.
+
+This playbook describes the adviser Dev Panel workflow. It does not register a consumer planner adapter or claim that the future plan-pack ledger is implemented.
+
+## Home Trade Down Playbook
+
+Use this playbook for `use the home trade down playbook`, trading down, or what a lower mortgage repayment would buy. Use House Purchase for a future purchase plan and Mortgage for paying off the existing loan.
+
+### Job and output
+Return the usual NOTES and strict JSON sections. Emit only a short client-facing `summaryHtml` and `homeTradeDownInputs` in `generated`. Describe what the viewer can compare without quoting uncalculated results. The app solves the loan, home budget, released cash and yearly saving. Never supply those outputs yourself.
+
+### Example
+
+```json
+{
+  "title": "Your home: trading down",
+  "generated": {
+    "summaryHtml": "<p>Compare staying with what a lower repayment could buy. The home value, costs and loan terms are the figures you gave.</p>",
+    "homeTradeDownInputs": {
+      "homeValue": 650000,
+      "mortgageBalance": 280000,
+      "currentAnnualRepayments": 30000,
+      "sellingCosts": 15000,
+      "buyingCosts": 12000,
+      "newLoanTermYears": 15,
+      "newLoanAnnualRate": 0.04,
+      "baseScenarioId": "stay",
+      "scenarios": [
+        { "id": "stay", "kind": "stay" },
+        { "id": "repay-18000", "kind": "move", "annualRepayment": 18000 },
+        { "id": "repay-12000", "kind": "move", "annualRepayment": 12000 },
+        { "id": "no-mortgage", "kind": "move", "annualRepayment": 0 }
+      ]
+    }
+  }
+}
+```
+
+### Required facts
+- `homeValue`, `mortgageBalance` and `currentAnnualRepayments`: positive euros; annual repayments include the whole mortgage payment.
+- `sellingCosts`, `buyingCosts`: 0 or more. Selling must clear the mortgage and selling costs; buying costs cannot exceed what is released. These are given figures, not a property-tax calculation.
+- `newLoanTermYears`: integer 1 to 40. `newLoanAnnualRate`: decimal from 0 to 0.15 (4% is `0.04`). Both are required even for an all-cash case; ask when missing, with no invented default or current market-rate assumption.
+- `scenarios`: one to four unique ids. `kind` is `stay` or `move`. Every move gives `annualRepayment`, from 0 to `currentAnnualRepayments`. A repayment of 0 means no new loan. The resulting displayed home budget (cash after selling and buying costs plus the rounded new loan) must also be no more than the current home value. A lower annual repayment can still breach this ceiling when the new term is longer or the rate is lower.
+- Optional `baseScenarioId` names an existing case; otherwise the first is the base.
+- Optional `title` and `description` speak to the client. Prefer the app's derived titles. Never recommend or rank. Neither field may use `we`, `us`, `our`, `p.a.`, `you should`, `best`, `ideal` or `optimal`; write `a year` instead of `p.a.`.
+
+Each move states a repayment, not a home price. The app solves the size of the new loan and the home budget. It rounds the new loan to €1,000 and reconciles the displayed cuts; do not reverse-engineer a desired house price into a made-up repayment.
+
+For the ceiling preflight, use the app's monthly-payment calculation exactly. Let `P = annualRepayment / 12`, `r = newLoanAnnualRate / 12` and `n = newLoanTermYears * 12`. The unrounded loan is `P * n` when `r = 0`; otherwise it is `P * (-expm1(-n * log1p(r))) / r` (equivalently `P * (1 - (1 + r)^(-n)) / r`, but use the first form near zero). Round the loan to the nearest €1,000: `loanShown = 1000 * Math.round(loan / 1000)`. Round each of `homeValue`, `mortgageBalance`, `sellingCosts` and `buyingCosts` separately to whole euros using `Math.round`. Compute `released = homeValue - mortgageBalance - sellingCosts` and `releasedShown = roundedHomeValue - roundedMortgageBalance - roundedSellingCosts`. Require `released >= 0` and `releasedShown >= 0`. Buying costs must fit both: `buyingCosts <= released` and `roundedBuyingCosts <= releasedShown`. A cents-valued case can pass the exact checks while failing the displayed ones; either failure requires the NOTES-only handling below. Then `cashShown = releasedShown - roundedBuyingCosts`; accept the move only when `cashShown + loanShown <= roundedHomeValue`. These are preflight calculations, never additional JSON output fields.
+
+When sale proceeds would not clear the mortgage and selling costs, or buying costs exceed the released proceeds, no case can be modelled. Return NOTES only, explain the constraint and ask for revised figures; if the figures are confirmed, state that this module cannot model that situation instead of emitting invalid JSON. When a required figure is missing, return NOTES only and ask one confirmation question before producing JSON. If a requested move would exceed the home-value ceiling, explain that this screen models trading down and ask for a lower repayment or revised loan terms; do not silently cap the loan, alter a requested repayment or emit a case the app refuses. Ask for any missing figure the screen would describe as given. Do not return fabricated costs, loan terms or a token mortgage balance. A mortgage-free current home is outside this contract; say so rather than using €1.
+
+### Omit
+No other engine input, hand-built assumptions, outputs, tables or charts. No `newLoan`, `homeBudget`, `releasedCash` or `freedPerYear` fields. No recommendation about moving, eligibility for a loan or a provider.
+
+The video follows this screen. Leave rental keep-or-sell video wording as it is. This is an adviser Dev Panel playbook; consumer routing requires its own adapter work.
 
 ## Start
 Gerry will dictate:
