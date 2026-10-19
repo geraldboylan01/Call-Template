@@ -10,8 +10,8 @@ No implementation is approved yet for the proposed label-authoring changes or ad
 
 ## Evidence to retain
 
-PR #71 has a known compact-layout edge case. In the real app at a 320px viewport, its module is 252px wide. A synthetic 24-character unbroken label (24 W characters) occupies four rendered lines; the attempted line-count estimate allowed three. Selecting the car-loan-cleared case exposed a 16px text overlap. This is a label/layout issue with an ordinary €150,000 combined-income sample, not a million-euro salary or an axes problem.
+PR #71 exposed a compact-layout edge case during review. In the real app at a 320px viewport, its module is 252px wide. A synthetic 24-character unbroken label (24 W characters) occupies four rendered lines; the attempted line-count estimate allowed three. Selecting the car-loan-cleared case exposed a 16px text overlap. This is a label/layout issue with an ordinary €150,000 combined-income sample, not a million-euro salary or an axes problem.
 
-The estimated-wrapping patch was not pushed. Its failure should become a real-browser regression when this design is resumed. An AI authoring instruction alone is not evidence that every accepted label fits; resolving the outstanding rendering finding is still required before #71 can be described as clean and merged.
+The estimated-wrapping patch was not pushed. The final #71 fix measures rendered label height and positions text accordingly; its narrow-layout regression checks include the unbroken label. #71 is now merged. This history remains evidence for the AI-authoring brief, not an open merge blocker or permission to rewrite labels.
 
-The separate finite-total overflow and provider-refusal fixes in #71 can proceed. They do not rewrite language. No change to the household's amounts, case logic, tax or engine rounding is part of this labelling decision.
+The separate finite-total overflow and provider-refusal fixes also merged with #71. They do not rewrite language. No change to the household's amounts, case logic, tax or engine rounding is part of this labelling decision.

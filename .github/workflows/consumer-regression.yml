@@ -53,6 +53,8 @@ jobs:
           npm run check:rental-keep-or-sell
           npm run check:home-trade-down
           npm run check:goals-and-resources
+          npm run check:case-pack
+          npm run check:plan-pack-fixtures
           npm run check:module-media
           npm run check:video-summary
           npm run check:video-scene

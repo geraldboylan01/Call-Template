@@ -158,7 +158,9 @@
     "check:lead-qualification": "node ./scripts/check-lead-qualification.mjs",
     "check:product-previews": "node ./scripts/check-product-previews.mjs",
     "check:demo": "node ./scripts/check-demo-flow.mjs",
-    "check:demo-browser": "node ./scripts/check-demo-browser.mjs"
+    "check:demo-browser": "node ./scripts/check-demo-browser.mjs",
+    "check:plan-pack": "node ./scripts/check-plan-pack.mjs",
+    "check:plan-pack-fixtures": "node ./scripts/check-plan-pack-fixtures.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",

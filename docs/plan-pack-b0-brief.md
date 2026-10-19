@@ -1,6 +1,6 @@
 # B0: plan pack v1 — implementation brief
 
-Prepared 17 October 2026 against the implementation plan in #56. This brief specifies the format, validation, deterministic module compilation and command-line check. It does not author a client plan or implement the later planning stages.
+Prepared 17 October 2026 against the implementation plan in #56; implementation status updated 19 October 2026. See [the frozen v1 contract](plan-pack-v1.md), its supported/deferred builder table and local fixtures. This brief specifies the format, validation, deterministic module compilation and command-line check. It does not author a client plan or implement the later planning stages.
 
 ## Outcome
 
@@ -12,7 +12,7 @@ Use the existing case-pack contract and module input validators as the final bou
 
 - **B0:** pack format and normalizer, compiler, case mapping, engine dispatch, diagnostics, placeholders and fixtures.
 - **B1:** allocate resources, protect the emergency reserve, price goal funding in the method's fixed order, test route balance and produce the resource ledger. B0 must not claim a route is affordable or balanced merely because its chapters compile.
-- **B2:** automatic profile adapters and any missing profile questions; current pension contributions (stated take-home is the amount reaching the bank after the current pension deduction); central illness-scenario rates, tax treatment and duration support. Existing approved adapters may be reused where their input contract is complete, but B0 must not invent facts to fill a missing adapter.
+- **B2:** automatic consumer profile adapters and any missing profile questions; central illness-scenario rates, tax treatment and duration support. Today's contributions are already on `main` through #82/#83; stated take-home is bank pay after the current pension deduction. Existing approved adapters may be reused where their input contract is complete, but B0 must not invent facts to fill a missing adapter.
 - **B3:** route-linked plan screen, client reopening and presenter behaviour.
 - **B4:** final AI authoring playbook. Expense-label wording belongs here under the recorded AI-authorship decision; no deterministic text rewriting is part of B0.
 
@@ -92,4 +92,4 @@ Use small fixtures whose financial results are compared with direct calls to the
 
 ## Delivery
 
-One implementation PR for B0, with a valid small pack, invalid fixtures, checker output and the schema/contract summary for later AI authoring. Keep prompt-pack rollout, B1's allocation, B2's new consumer questions and B3's screen in their own changes. The brief itself is documentation; merging it does not activate a compiler or consumer feature.
+One implementation PR for B0, with a valid small pack, invalid fixtures, checker output and the schema/contract summary for later AI authoring. Keep prompt-pack rollout, B1's allocation, B2's new consumer questions and B3's screen in their own changes. This PR implements the local compiler and checker described in the v1 contract; it does not activate a consumer feature or plan screen.

@@ -1,0 +1,305 @@
+{
+  "planPackVersion": 1,
+  "clientName": "Niamh and Dara",
+  "calculationDate": "2026-11-01",
+  "household": {
+    "profileId": "plan_niamh_dara",
+    "schemaVersion": 1,
+    "revision": 0,
+    "source": "adviser",
+    "primaryPerson": {
+      "personId": "niamh",
+      "role": "primary",
+      "displayName": "Niamh",
+      "age": 45,
+      "employmentStatus": "employee",
+      "intendedRetirementAge": 67
+    },
+    "dependants": [],
+    "assets": [
+      {
+        "assetId": "cash",
+        "ownerIds": [
+          "niamh",
+          "dara"
+        ],
+        "type": "cash",
+        "label": "Savings",
+        "currentValue": {
+          "amount": 90000,
+          "currency": "EUR"
+        },
+        "liquid": true
+      }
+    ],
+    "liabilities": [
+      {
+        "liabilityId": "home_loan",
+        "ownerIds": [
+          "niamh",
+          "dara"
+        ],
+        "type": "mortgage",
+        "label": "Mortgage",
+        "currentBalance": {
+          "amount": 280000,
+          "currency": "EUR"
+        },
+        "annualInterestRate": 0.04,
+        "monthlyPayment": {
+          "amount": 1700,
+          "currency": "EUR"
+        },
+        "remainingTermMonths": 240
+      },
+      {
+        "liabilityId": "car_loan",
+        "ownerIds": [
+          "niamh"
+        ],
+        "type": "loan",
+        "label": "Car loan",
+        "currentBalance": {
+          "amount": 15000,
+          "currency": "EUR"
+        },
+        "annualInterestRate": 0.06,
+        "monthlyPayment": {
+          "amount": 500,
+          "currency": "EUR"
+        },
+        "remainingTermMonths": 36
+      }
+    ],
+    "incomeSources": [
+      {
+        "incomeId": "niamh_salary",
+        "ownerIds": [
+          "niamh"
+        ],
+        "type": "employment",
+        "label": "Salary",
+        "grossAnnual": {
+          "amount": 75000,
+          "currency": "EUR"
+        },
+        "netAnnual": {
+          "amount": 50000,
+          "currency": "EUR"
+        }
+      },
+      {
+        "incomeId": "dara_salary",
+        "ownerIds": [
+          "dara"
+        ],
+        "type": "employment",
+        "label": "Salary",
+        "grossAnnual": {
+          "amount": 75000,
+          "currency": "EUR"
+        },
+        "netAnnual": {
+          "amount": 45000,
+          "currency": "EUR"
+        }
+      }
+    ],
+    "householdIncome": {},
+    "expenses": {
+      "annualTotal": {
+        "amount": 84000,
+        "currency": "EUR"
+      }
+    },
+    "pensions": [
+      {
+        "pensionId": "niamh_pension",
+        "ownerId": "niamh",
+        "type": "occupational",
+        "label": "Pension",
+        "currentValue": {
+          "amount": 200000,
+          "currency": "EUR"
+        },
+        "employeeContributionRate": 0.05,
+        "employerContributionRate": 0.06,
+        "contributionStatus": "active"
+      },
+      {
+        "pensionId": "dara_pension",
+        "ownerId": "dara",
+        "type": "occupational",
+        "label": "Pension",
+        "currentValue": {
+          "amount": 180000,
+          "currency": "EUR"
+        },
+        "employeeContributionRate": 0.04,
+        "employerContributionRate": 0.05,
+        "contributionStatus": "active"
+      }
+    ],
+    "properties": [],
+    "businesses": [],
+    "goals": [
+      {
+        "goalId": "goal_retirement",
+        "type": "retire",
+        "title": "Retirement",
+        "priority": "medium",
+        "status": "active",
+        "targetAmount": {
+          "amount": 46000,
+          "currency": "EUR"
+        }
+      },
+      {
+        "goalId": "goal_mortgage",
+        "type": "optimise_mortgage",
+        "title": "Mortgage",
+        "priority": "medium",
+        "status": "active"
+      },
+      {
+        "goalId": "goal_loan",
+        "type": "manage_loan",
+        "title": "Car loan",
+        "priority": "medium",
+        "status": "active"
+      }
+    ],
+    "preferences": {
+      "baseCurrency": "EUR",
+      "riskDiscussionCompleted": false
+    },
+    "assumptions": {
+      "calculationDateIso": "2026-11-01",
+      "values": {
+        "persona": {
+          "retirementStatus": "not-retired"
+        },
+        "planning": {},
+        "completionFacts": {
+          "confirmedNonePaths": {
+            "/properties": true,
+            "/businesses": true
+          }
+        }
+      }
+    },
+    "fieldMetadata": {},
+    "missingInformation": [],
+    "consent": [],
+    "createdAt": "2026-11-01T00:00:00.000Z",
+    "updatedAt": "2026-11-01T00:00:00.000Z",
+    "partner": {
+      "personId": "dara",
+      "role": "partner",
+      "displayName": "Dara",
+      "age": 43,
+      "employmentStatus": "employee",
+      "intendedRetirementAge": 67
+    }
+  },
+  "planningInputs": {
+    "householdTaxStatus": "married_or_civil_partners",
+    "cashAssetId": "cash",
+    "outgoingBindings": [
+      {
+        "id": "mortgage",
+        "liabilityId": "home_loan"
+      },
+      {
+        "id": "car",
+        "liabilityId": "car_loan"
+      }
+    ],
+    "goalBindings": [
+      {
+        "goalId": "goal_retirement",
+        "personId": "niamh"
+      },
+      {
+        "goalId": "goal_mortgage",
+        "personId": "niamh",
+        "liabilityId": "home_loan"
+      },
+      {
+        "goalId": "goal_loan",
+        "personId": "niamh",
+        "liabilityId": "car_loan"
+      }
+    ],
+    "protectionCases": [
+      {
+        "id": "niamh_stops",
+        "event": {
+          "type": "cannotWork",
+          "personId": "niamh",
+          "statePayment": 0
+        }
+      }
+    ],
+    "takeHomeBasis": "after_personal_pension",
+    "spendingBasis": "regular_costs_including_debt_excluding_tax_and_pensions",
+    "spendingLabel": "Living costs"
+  },
+  "goalFlexibility": {
+    "goal_retirement": {
+      "retirementAge": [
+        62,
+        67
+      ],
+      "targetIncomeToday": [
+        42000,
+        50000
+      ]
+    },
+    "goal_mortgage": {
+      "clearByAge": [
+        60,
+        67
+      ]
+    }
+  },
+  "routes": [
+    {
+      "id": "current"
+    },
+    {
+      "id": "unchanged",
+      "title": "Same facts"
+    },
+    {
+      "id": "clear_car",
+      "changes": [
+        {
+          "type": "clearOutgoing",
+          "outgoingId": "car",
+          "paidFrom": "savings"
+        }
+      ]
+    },
+    {
+      "id": "cash_to_mortgage",
+      "changes": [
+        {
+          "type": "useCash",
+          "goalId": "goal_mortgage",
+          "amount": 20000
+        }
+      ]
+    }
+  ],
+  "chapters": [
+    "household_cash_flow",
+    "liquidity_analysis",
+    "protection_gap",
+    "mortgage_analysis",
+    "personal_balance_sheet"
+  ],
+  "narration": {
+    "clear_car": "This route uses {route.cashUsed} from savings. You have {household_cash_flow.leftOver} left over each year."
+  }
+}
