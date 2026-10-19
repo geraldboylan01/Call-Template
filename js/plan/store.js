@@ -119,6 +119,7 @@ export function normaliseBootstrap(payload) {
     aiEnabled: flags.consumerAiIntakeEnabled === true,
     routingEnabled: flags.consumerModuleRoutingEnabled !== false,
     handoffEnabled: flags.consumerHumanHandoffEnabled === true,
+    educationCallEnabled: root.educationCallEnabled === true || flags.consumerEducationCallEnabled === true,
     handoffPolicyVersion: String(firstDefined(root.handoff?.policyVersion, '') || ''),
     handoffPolicyUrl: String(firstDefined(root.handoff?.policyUrl, '') || ''),
     handoffRetentionPolicyId: String(firstDefined(root.handoff?.retentionPolicyId, '') || ''),

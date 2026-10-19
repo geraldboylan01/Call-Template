@@ -18,6 +18,8 @@ import {
 } from './case_application/index.js';
 import { stillUsefulQuestions } from './case_application/agent.js';
 import { createAdvisorVoice } from './advisor_voice.js';
+import { createEducationBookingAdmin } from './workspace/education_booking_admin.js';
+import { createQualificationAdmin } from './workspace/qualification_admin.js';
 
 function getMetaContent(name) {
   const element = document.querySelector(`meta[name="${name}"]`);
@@ -175,6 +177,24 @@ const advisorAuthState = {
 };
 
 let advisorAuthWaiters = [];
+
+async function requestEducationAdmin(path, { method = 'GET', body } = {}) {
+  const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}${path}`, {
+    method, cache: 'no-store', headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
+  }, { includeCsrf: method !== 'GET', authPrompt: 'Sign in to manage walkthroughs and internal assessments.' });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || payload?.error || payload?.message || `Request failed (${response.status}).`);
+    error.status = response.status; throw error;
+  }
+  return payload;
+}
+
+const walkthroughAdminRoot = document.getElementById('educationWalkthroughAdmin');
+const walkthroughAdmin = walkthroughAdminRoot ? createEducationBookingAdmin(walkthroughAdminRoot, { request: requestEducationAdmin, toast: showToast }) : null;
+const qualificationAdminRoot = document.getElementById('clientQualificationAdmin');
+const qualificationAdmin = qualificationAdminRoot ? createQualificationAdmin(qualificationAdminRoot, { request: requestEducationAdmin, toast: showToast }) : null;
 
 function showToast(message, type = 'success') {
   if (!ui.toastHost) {
@@ -424,8 +444,8 @@ function buildClientSessionLink(publishedId, clientSecretB64u) {
   return url.toString();
 }
 
-function buildAdvisorSessionLink(publishedId, advisorSecretB64u) {
-  const url = new URL('./index.html', window.location.href);
+function buildAdvisorSessionLink(publishedId, advisorSecretB64u, reportKind = '') {
+  const url = new URL(reportKind === 'consumer-analysis-snapshot' ? './education-call-report.html' : './index.html', window.location.href);
   url.searchParams.set('pub', publishedId);
   url.searchParams.set('view', 'overview');
   url.hash = new URLSearchParams({ ak: advisorSecretB64u }).toString();
@@ -819,6 +839,7 @@ function renderLeadWorkflow() {
 
   renderApplication();
   void loadSelectedApplication();
+  void qualificationAdmin?.refresh(lead?.id || '');
 }
 
 /* ---------- case applications (/apply/) ---------- */
@@ -1105,7 +1126,7 @@ function renderPublishedWorkflow() {
   populatePublishedSelect();
 
   if (ui.clientPublishedStatus) {
-    ui.clientPublishedStatus.textContent = session ? formatPublishedStatus(session.status) : 'No session';
+    ui.clientPublishedStatus.textContent = session ? `${formatPublishedStatus(session.status)}${session.reportKind === 'consumer-analysis-snapshot' ? ' · Consented walkthrough copy for Gerry' : ''}` : 'No session';
   }
   if (ui.clientPublishedExpires) {
     ui.clientPublishedExpires.textContent = session ? formatDateTime(session.expiresAt) : 'Not set';
@@ -1124,6 +1145,7 @@ function renderPublishedWorkflow() {
   }
   if (ui.clientPublishedClientLink) {
     ui.clientPublishedClientLink.value = session?.clientLink || '';
+    ui.clientPublishedClientLink.closest('.publish-field-wrap')?.classList.toggle('is-hidden', session?.reportKind === 'consumer-analysis-snapshot');
   }
   if (ui.clientPublishedAdvisorLink) {
     ui.clientPublishedAdvisorLink.value = session?.advisorLink || '';
@@ -1162,7 +1184,8 @@ function updateActionState() {
   const hasClient = Boolean(state.selectedClient);
   const lead = getSelectedLead();
   const session = getSelectedPublishedSession();
-  const recoveryReady = Boolean(session?.clientLink && session?.advisorLink);
+  const walkthroughCopy = session?.reportKind === 'consumer-analysis-snapshot';
+  const recoveryReady = Boolean(session?.advisorLink && (walkthroughCopy || session?.clientLink));
   const hasEmail = Boolean(String(ui.clientPublishedEmailInput?.value || '').trim());
 
   if (ui.clientSaveButton) {
@@ -1179,20 +1202,21 @@ function updateActionState() {
     ui.clientCopyScheduleButton.disabled = busy || !lead;
   }
   if (ui.clientCopyClientLinkButton) {
-    ui.clientCopyClientLinkButton.disabled = busy || !recoveryReady || !session?.clientLink;
+    ui.clientCopyClientLinkButton.disabled = busy || walkthroughCopy || !recoveryReady || !session?.clientLink;
+    ui.clientCopyClientLinkButton.classList.toggle('is-hidden', walkthroughCopy);
   }
   if (ui.clientCopyAdvisorLinkButton) {
     ui.clientCopyAdvisorLinkButton.disabled = busy || !recoveryReady || !session?.advisorLink;
   }
   if (ui.clientSendFinalEmailButton) {
-    ui.clientSendFinalEmailButton.disabled = busy || !recoveryReady || session?.status !== 'active' || !hasEmail;
+    ui.clientSendFinalEmailButton.disabled = busy || walkthroughCopy || !recoveryReady || session?.status !== 'active' || !hasEmail;
     ui.clientSendFinalEmailButton.textContent = session?.emailSendCount > 0 ? 'Resend Final Email' : 'Send Final Email';
   }
   if (ui.clientUpdateExpiryButton) {
     ui.clientUpdateExpiryButton.disabled = busy || !recoveryReady || session?.status === 'revoked';
   }
   if (ui.clientResetAccessButton) {
-    ui.clientResetAccessButton.disabled = busy || !recoveryReady || session?.status !== 'active' || Number(session?.version || 0) < 4;
+    ui.clientResetAccessButton.disabled = busy || walkthroughCopy || !recoveryReady || session?.status !== 'active' || Number(session?.version || 0) < 4;
   }
   if (ui.clientRevokeAccessButton) {
     ui.clientRevokeAccessButton.disabled = busy || !recoveryReady || session?.status !== 'active';
@@ -1375,8 +1399,8 @@ async function loadSelectedPublishedSession(publishedId) {
 
     const session = payload?.session || null;
     if (session?.clientSecretB64u && session?.advisorSecretB64u) {
-      session.clientLink = buildClientSessionLink(publishedId, session.clientSecretB64u);
-      session.advisorLink = buildAdvisorSessionLink(publishedId, session.advisorSecretB64u);
+      session.clientLink = session.reportKind === 'consumer-analysis-snapshot' ? '' : buildClientSessionLink(publishedId, session.clientSecretB64u);
+      session.advisorLink = buildAdvisorSessionLink(publishedId, session.advisorSecretB64u, session.reportKind);
     }
     state.selectedPublishedSession = session;
     renderPublishedWorkflow();
@@ -1674,7 +1698,7 @@ async function resetPublishedClientAccess(session) {
     ...session,
     status: payload?.status || 'active',
     clientLink: buildClientSessionLink(publishedId, rotated.clientSecretB64u),
-    advisorLink: buildAdvisorSessionLink(publishedId, advisorSecretB64u),
+    advisorLink: buildAdvisorSessionLink(publishedId, advisorSecretB64u, session.reportKind),
     clientEmail: payload?.clientEmail || session.clientEmail || '',
     lastEmailSentAt: payload?.lastEmailSentAt || null,
     emailSendCount: Number(payload?.emailSendCount || 0),
@@ -1812,6 +1836,7 @@ function bindEvents() {
   voiceFilter.addEventListener('change', () => { state.voiceFilter = voiceFilter.checked; void loadClientList(); });
   ui.clientRefreshButton?.addEventListener('click', async () => {
     await loadClientList({ preserveSelection: true, autoSelect: true });
+    await walkthroughAdmin?.refresh();
   });
 
   ui.clientSearchInput?.addEventListener('input', () => {
@@ -2090,6 +2115,7 @@ async function init() {
   try {
     await ensureAdvisorAuthenticated('Sign in to manage the client pipeline.');
     await loadClientList({ preserveSelection: true, autoSelect: true });
+    await walkthroughAdmin?.refresh();
   } catch (error) {
     if (!advisorAuthState.enabled || advisorAuthState.authenticated) {
       showToast(error?.message || 'Could not initialize client pipeline.', 'error');

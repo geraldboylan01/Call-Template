@@ -8,7 +8,6 @@
     "js/crypto_session.js:bytesToBase64Url",
     "js/crypto_session.js:decryptPublishedSessionV3ForAdvisor",
     "js/crypto_session.js:decryptPublishedSessionV3ForClient",
-    "js/crypto_session.js:decryptPublishedSessionV4ForAdvisor",
     "js/crypto_session.js:decryptPublishedSessionV4ForClient",
     "js/crypto_session.js:deriveKeyFromPin",
     "js/crypto_session.js:encryptPublishedSessionV2",
