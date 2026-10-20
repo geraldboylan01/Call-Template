@@ -113,7 +113,10 @@ function capitalGainsRateOn(date, rateSchedule) {
  * anything else.
  */
 export function computeDisposalGain(disposal, cgtRules) {
-  const index = indexationMultiplier(disposal.acquisitionDate, cgtRules.indexation);
+  const investment = disposal.type === 'investmentDisposal';
+  const index = investment && !disposal.acquisitionDate
+    ? { period: null, multiplier: 1 }
+    : indexationMultiplier(disposal.acquisitionDate, cgtRules.indexation);
   const netProceeds = disposal.proceeds - disposal.sellingCosts;
   const monetaryGain = netProceeds - disposal.acquisitionCost;
   const indexedCost = disposal.acquisitionCost * index.multiplier;
@@ -133,8 +136,8 @@ export function computeDisposalGain(disposal, cgtRules) {
     outcome = 'loss';
   }
 
-  const homeExempt = disposal.homeUse === 'throughout';
-  const relief = homeExempt
+  const homeExempt = !investment && disposal.homeUse === 'throughout';
+  const relief = homeExempt || investment
     ? { inWindow: false, applies: false, yearsOwned: null, exemptShare: 0 }
     : section604AShare(disposal, cgtRules.section604A);
   const exemptShare = homeExempt ? 1 : relief.exemptShare;
@@ -257,7 +260,7 @@ export const capitalGainsHead = Object.freeze({
         const pieceTax = piece.remaining * piece.rate;
         tax += pieceTax;
         records[piece.disposalIndex].tax += pieceTax;
-        lines.push({ head: CAPITAL_GAINS_HEAD_ID, ruleId: piece.ruleId, personId: ledger.personId, kind: 'charge', label: 'Capital gains tax on property', base: piece.remaining, rate: piece.rate, amount: pieceTax });
+        lines.push({ head: CAPITAL_GAINS_HEAD_ID, ruleId: piece.ruleId, personId: ledger.personId, kind: 'charge', label: records[piece.disposalIndex].type === 'investmentDisposal' ? 'Capital gains tax on investment' : 'Capital gains tax on property', base: piece.remaining, rate: piece.rate, amount: pieceTax });
       });
       if (annualExemptionUsed > 0) {
         lines.push({ head: CAPITAL_GAINS_HEAD_ID, ruleId: cgtRules.ruleId, personId: ledger.personId, kind: 'exempt', label: 'CGT annual exemption', base: annualExemptionUsed, rate: 0, amount: 0 });
@@ -314,13 +317,17 @@ export const capitalGainsHead = Object.freeze({
       } else if (record.section604A.inWindow && !record.section604A.applies && record.acquiredBy !== 'purchase') {
         disclosures.push({ code: 'CGT_2011_2014_NOT_BOUGHT' });
       }
-      disclosures.push({ code: 'CGT_COSTS_ENTERED' });
+      if (record.type === 'investmentDisposal') {
+        disclosures.push({ code: 'CGT_INVESTMENT_SCOPE' });
+        if (record.acquisitionCostBasis === 'assumed_zero') disclosures.push({ code: 'CGT_BASE_COST_ASSUMED_ZERO' });
+        if (!record.acquisitionDate && record.acquisitionCost > 0) disclosures.push({ code: 'CGT_ACQUISITION_DATE_UNKNOWN' });
+      } else disclosures.push({ code: 'CGT_COSTS_ENTERED' });
     });
 
     // A sale of the family home alone raises only its own line: no rate, no
     // assumptions about other gains, because nothing is taxed.
     const taxedRecords = records.filter((record) => record.homeUse !== 'throughout');
-    if (taxedRecords.length > 0) {
+    if (taxedRecords.some(record => record.type !== 'investmentDisposal')) {
       disclosures.push({ code: 'CGT_SCOPE' });
     }
     if (taxedRecords.some((record) => record.personId === JOINT_PERSON_ID)) {

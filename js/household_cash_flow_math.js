@@ -493,7 +493,7 @@ function normalizeScenarios(raw, people, outgoings) {
 
     // Now that the case has a name, the checks that quote it.
     const cleared = new Set();
-    let pensionChanges = 0;
+    const pensionOwners = new Set();
     changes.forEach((change) => {
       if (change.type === 'clearOutgoing') {
         if (!outgoingsById.has(change.outgoingId)) {
@@ -504,10 +504,11 @@ function normalizeScenarios(raw, people, outgoings) {
         }
         cleared.add(change.outgoingId);
       } else {
-        pensionChanges += 1;
-        if (pensionChanges > 1) {
-          throw new Error(`${where} (${title}): a case can have only one extraPension.`);
+        const owners = change.personId === JOINT ? personIds : [change.personId];
+        if (owners.some(owner => pensionOwners.has(owner))) {
+          throw new Error(`${where} (${title}): a case can have only one extraPension for each person.`);
         }
+        owners.forEach(owner => pensionOwners.add(owner));
         if (change.personId !== JOINT && !personIds.includes(change.personId)) {
           throw new Error(`${where} (${title}): personId "${change.personId}" is not one of the people.`);
         }
@@ -1064,8 +1065,9 @@ function buildSentence({ model, today, outgoingsById }) {
   const effect = effectClause(today.shownLeftOver, shownLeft);
   const taxDeltaCents = Math.round((today.taxTotal - model.taxTotal) * 100);
 
-  if (changes.length === 1) {
-    const change = changes[0];
+  if (changes.length === 1 || changes.every(change => change.type === 'extraPension')) {
+    const change = changes.length === 1 ? changes[0]
+      : { type: 'extraPension', amount: changes.reduce((sum, entry) => sum + entry.amount, 0) };
     if (change.type === 'clearOutgoing') {
       const line = today.shownLines.find((entry) => entry.id === change.outgoingId);
       const label = lowerFirst(outgoingsById.get(change.outgoingId).label);

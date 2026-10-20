@@ -40,7 +40,7 @@ const TAX_ITEM_TYPES = Object.freeze([
 ]);
 
 /** Events a caller may enter: a pension crystallisation, or the sale of a property. */
-const TAX_EVENT_TYPES = Object.freeze(['benefitCrystallisation', 'propertyDisposal']);
+const TAX_EVENT_TYPES = Object.freeze(['benefitCrystallisation', 'propertyDisposal', 'investmentDisposal']);
 
 /** How a property was acquired. Only a purchase can qualify for the 2011 to 2014 relief. */
 const PROPERTY_ACQUIRED_BY = Object.freeze(['purchase', 'gift_or_inheritance']);
@@ -187,7 +187,7 @@ function requireIsoDate(value, fieldName) {
   return value;
 }
 
-function normalizePropertyDisposal(raw, field, year, people, ids) {
+function disposalIdentity(raw, field, year, people, ids) {
   const personId = typeof raw.personId === 'string' ? raw.personId.trim() : '';
   if (personId === JOINT_PERSON_ID) {
     if (people.length !== 2) {
@@ -200,6 +200,33 @@ function normalizePropertyDisposal(raw, field, year, people, ids) {
   if (Number(disposalDate.slice(0, 4)) !== year) {
     throw new Error(`${field}.disposalDate ${disposalDate} is not in the tax year ${year}.`);
   }
+  return { personId, disposalDate };
+}
+
+function normalizeInvestmentDisposal(raw, field, year, people, ids) {
+  const fields = ['type', 'personId', 'disposalDate', 'proceeds', 'sellingCosts', 'acquisitionCost', 'acquisitionDate', 'acquisitionCostBasis'];
+  for (const key of Object.keys(raw)) if (!fields.includes(key)) throw new Error(`${field}.${key} is not accepted for an ordinary CGT investment.`);
+  const identity = disposalIdentity(raw, field, year, people, ids);
+  const acquisitionCost = requireNonNegativeNumber(raw.acquisitionCost, `${field}.acquisitionCost`);
+  const acquisitionCostBasis = raw.acquisitionCostBasis ?? 'stated';
+  if (!['stated', 'assumed_zero'].includes(acquisitionCostBasis) || (acquisitionCostBasis === 'assumed_zero' && acquisitionCost !== 0)) {
+    throw new Error(`${field}.acquisitionCostBasis must be stated or assumed_zero; an assumed zero cost must equal zero.`);
+  }
+  const result = { type: raw.type, ...identity, acquisitionCost, acquisitionCostBasis,
+    proceeds: requireNonNegativeNumber(raw.proceeds, `${field}.proceeds`),
+    sellingCosts: raw.sellingCosts === undefined ? 0 : requireNonNegativeNumber(raw.sellingCosts, `${field}.sellingCosts`) };
+  if (raw.acquisitionDate !== undefined) {
+    const date = requireIsoDate(raw.acquisitionDate, `${field}.acquisitionDate`);
+    if (date > result.disposalDate || date < IE_CGT_FIXED_RULES.indexation.earliestSupportedAcquisition) {
+      throw new Error(`${field}.acquisitionDate must be from 6 April 1974 through the disposal date.`);
+    }
+    result.acquisitionDate = date;
+  }
+  return result;
+}
+
+function normalizePropertyDisposal(raw, field, year, people, ids) {
+  const { personId, disposalDate } = disposalIdentity(raw, field, year, people, ids);
   const acquisitionDate = requireIsoDate(raw.acquisitionDate, `${field}.acquisitionDate`);
   if (acquisitionDate > disposalDate) {
     throw new Error(`${field}.acquisitionDate ${acquisitionDate} is after the disposalDate ${disposalDate}.`);
@@ -310,6 +337,9 @@ function normalizeTaxYearInput(input) {
     checkItemType(raw.type, `${field}.type`, TAX_EVENT_TYPES);
     if (raw.type === 'propertyDisposal') {
       return normalizePropertyDisposal(raw, field, year, people, ids);
+    }
+    if (raw.type === 'investmentDisposal') {
+      return normalizeInvestmentDisposal(raw, field, year, people, ids);
     }
     const personId = typeof raw.personId === 'string' ? raw.personId.trim() : '';
     if (!ids.has(personId)) {
@@ -602,7 +632,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
     people,
     personById,
     crystallisations,
-    disposals: normalized.events.filter((event) => event.type === 'propertyDisposal'),
+    disposals: normalized.events.filter((event) => ['propertyDisposal', 'investmentDisposal'].includes(event.type)),
     state: workingState
   };
 

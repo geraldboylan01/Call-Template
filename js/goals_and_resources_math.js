@@ -546,8 +546,8 @@ function priceCollege(inputs, lumpShare, fundOptions) {
 
 // ---- retirement
 
-function pensionRun(inputs, target, extraPoints, year) {
-  const { debug } = computePensionProjection(pensionEnginePayload(inputs, target, extraPoints, year));
+function pensionRun(inputs, target, extraPoints, year, makePayload = pensionEnginePayload) {
+  const { debug } = computePensionProjection(makePayload(inputs, target, extraPoints, year));
   assertPensionDebugContract(debug);
   const rawGap = debug.requiredPot - debug.projectedPotCurrent;
   return {
@@ -647,8 +647,8 @@ function solveContribution(runAt, points, minX, maxX) {
  * The ages, salaries and growth are the pension engine's own, from its
  * normalised inputs, so they cannot drift from it.
  */
-function reliefCeilingPoints(inputs, target, year) {
-  const household = normalizePensionInputs(pensionEnginePayload(inputs, target, 0, year));
+function reliefCeilingPoints(inputs, target, year, makePayload = pensionEnginePayload) {
+  const household = normalizePensionInputs(makePayload(inputs, target, 0, year));
   return Math.max(0, ...household.pensions.map((member) => {
     let room = 0;
     for (let working = household.currentYear; working < member.retirementYear; working += 1) {
@@ -688,12 +688,12 @@ function reliefLimitDisclosures(inputs, { asOf, year }) {
   });
 }
 
-function priceRetirement(inputs, target, year, { includeHeadroom, asOf }) {
-  const runAt = (x) => pensionRun(inputs, target, x, year);
+function priceRetirement(inputs, target, year, { includeHeadroom, asOf, makePayload = pensionEnginePayload }) {
+  const runAt = (x) => pensionRun(inputs, target, x, year, makePayload);
   const f = (run) => run.rawGap - run.tolerance;
   const atToday = runAt(0);
-  const costsToday = computePersonalContributionCosts(pensionEnginePayload(inputs, target, 0, year));
-  const capPoints = reliefCeilingPoints(inputs, target, year);
+  const costsToday = computePersonalContributionCosts(makePayload(inputs, target, 0, year));
+  const capPoints = reliefCeilingPoints(inputs, target, year, makePayload);
 
   let extraPoints = 0;
   let result = atToday;
@@ -723,7 +723,7 @@ function priceRetirement(inputs, target, year, { includeHeadroom, asOf }) {
 
   const costsWithExtra = extraPoints === 0
     ? costsToday
-    : computePersonalContributionCosts(pensionEnginePayload(inputs, target, extraPoints, year));
+    : computePersonalContributionCosts(makePayload(inputs, target, extraPoints, year));
   const costOf = (costs, index) => (costs.years[index] ? costs.years[index].cost : 0);
   const salaryTotal = sumOf(inputs.pensions.map((person) => person.currentSalary));
   const yearlyExtra = costsWithExtra.years[0].gross - costsToday.years[0].gross;
@@ -773,6 +773,41 @@ function priceRetirement(inputs, target, year, { includeHeadroom, asOf }) {
     headroomYearly,
     capPointsAvailable: capPoints
   };
+}
+
+/** The same contribution search, retaining each member's own retirement date. */
+export function pricePlanRetirement(raw, { calculationDate } = {}) {
+  const normalized = normalizePensionInputs(raw);
+  const makePayload = (_inputs, _target, extraPoints) => ({
+    ...raw,
+    pensions: raw.pensions.map(person => ({ ...person,
+      personalPct: Math.max(0, normalized.pensions.find(p => p.id === person.id).personalPct + extraPoints) }))
+  });
+  const target = { id: 'retirement', retirementAge: Math.max(...normalized.pensions.map(p => p.retirementAge)), targetIncomeToday: normalized.targetIncomeToday };
+  const priced = priceRetirement({ pensions: normalized.pensions }, target, normalized.currentYear,
+    { includeHeadroom: false, asOf: calculationDate ?? `${normalized.currentYear}-01-01`, makePayload });
+  const plannedInput = makePayload(null, null, priced.extraPoints);
+  return { ...priced, currentInput: makePayload(null, null, 0), plannedInput,
+    costsToday: computePersonalContributionCosts(raw), costsWithExtra: computePersonalContributionCosts(plannedInput) };
+}
+
+/** Reuse the goals module's debt pricing and whole-goal search for the ledger. */
+export function pricePlanMortgage(mortgage, lumpSum = 0) {
+  const inputs = { mortgage };
+  const input = mortgageEnginePayload(mortgage, lumpSum);
+  normalizeMortgageInputs(input);
+  const priced = priceMortgage(inputs, lumpSum);
+  if (priced.alreadyEnds && lumpSum > 0) {
+    // A target already met does not justify extending the loan or reducing its
+    // payment. Apply an explicit lump sum on the current repayment schedule.
+    input.scenarios[1] = { id: 'clear-by-age', title: 'Use the stated cash', oneOffOverpayment: lumpSum, oneOffOverpaymentMonth: 0, overpaymentBenefit: 'shorterTerm' };
+    const schedule = computeAmortizationMonthlySchedule(input, { scenarioId: 'clear-by-age' });
+    return { ...priced, lumpSum, monthlyPayment: schedule.openingBalance === 0 ? 0 : schedule.monthlyPaymentUsed,
+      balanceAfterLumpSum: schedule.openingBalance, payoffDateIso: schedule.payoffDateIso,
+      totalPaidOverTheLoan: schedule.totalPaidLifetime + schedule.lumpSumApplied,
+      interestOverTheLoan: schedule.totalInterestLifetime, wholeCash: 0, input };
+  }
+  return { ...priced, wholeCash: solveWholeMortgageLump(inputs), input };
 }
 
 // --------------------------------------------------------------- allocation ---

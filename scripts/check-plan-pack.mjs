@@ -4,9 +4,10 @@ import { resolve } from 'node:path';
 import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
 
 function args(argv) {
-  const result = { file: '', json: false, output: null };
+  const result = { file: '', json: false, output: null, ledger: false };
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--json') result.json = true;
+    else if (argv[i] === '--ledger') result.ledger = true;
     else if (argv[i] === '--output') {
       if (!argv[i + 1] || argv[i + 1].startsWith('--')) throw new Error('--output requires a new output path.');
       result.output = argv[++i];
@@ -14,7 +15,7 @@ function args(argv) {
     else if (result.file) throw new Error('Supply one plan-pack path.');
     else result.file = argv[i];
   }
-  if (!result.file) throw new Error('Usage: npm run check:plan-pack -- <pack.json> [--json] [--output new-file.json]');
+  if (!result.file) throw new Error('Usage: npm run check:plan-pack -- <pack.json> [--ledger] [--json] [--output new-file.json]');
   if (result.output && resolve(result.output) === resolve(result.file)) throw new Error('The input file cannot be an output destination.');
   return result;
 }
@@ -25,14 +26,25 @@ try {
   const previousInfo = console.info;
   console.info = (...values) => console.error(...values);
   let result;
-  try { result = await compilePlanPack(input); } finally { console.info = previousInfo; }
+  try { result = await compilePlanPack(input, { resourceLedger: options.ledger }); } finally { console.info = previousInfo; }
   if (options.output) await writeFile(options.output, JSON.stringify(result, null, 2) + '\n', { flag: 'wx' });
   if (options.json) process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   else {
     console.log('Plan pack v' + (result.planPackVersion ?? input.planPackVersion) + ': ' + result.status);
     if (result.calculationDate) console.log('Calculation date: ' + result.calculationDate);
     if (result.versions) console.log('Versions: ' + JSON.stringify(result.versions));
-    console.log('B0 checks compilation only. Resource-ledger conclusions arrive in B1.');
+    console.log(options.ledger ? 'Resource ledger: ' + (result.resourceLedger?.status ?? 'invalid') : 'B0 checks compilation only. Use --ledger for B1 resource checks.');
+    for (const ledger of result.resourceLedger?.routes ?? []) {
+      console.log(ledger.routeId + ': ' + (ledger.balanced ? 'funding balances' : 'funding does not balance') + '; reserve ' + ledger.reserve.protectedAmount.toFixed(2)
+        + '; cash left ' + ledger.cashRemaining.toFixed(2));
+      for (const row of ledger.years) console.log('  ' + row.year + ': available ' + row.available.toFixed(2) + ', planned ' + row.planned.toFixed(2) + ', left ' + row.remaining.toFixed(2));
+      for (const goal of ledger.goals) console.log('  ' + goal.goalId + ': ' + goal.state);
+      for (const disclosure of ledger.investmentSales.disclosures) console.log('  ' + (disclosure.text ?? disclosure));
+      if (ledger.investments.potentialSale) {
+        console.log('  Investment sale illustration (not added to cash): ' + ledger.investments.potentialSale.netProceeds.toFixed(2));
+        for (const disclosure of ledger.investments.potentialSale.disclosures) console.log('  ' + disclosure.text);
+      }
+    }
     for (const route of result.routes) console.log(route.id + ': ' + route.status + ' ' + JSON.stringify(route.chapterCases));
     for (const chapter of result.chapters) {
       for (const entry of chapter.cases) {

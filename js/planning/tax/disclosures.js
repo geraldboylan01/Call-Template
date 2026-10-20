@@ -402,6 +402,21 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
     label: 'Costs deducted',
     render: () => 'Only the price paid and the selling costs entered are deducted from the sale price. Buying costs such as stamp duty and legal fees, and money spent improving the property, would lower the tax.'
   },
+  CGT_BASE_COST_ASSUMED_ZERO: {
+    kind: 'applied',
+    label: 'Base cost assumed to be zero',
+    render: () => 'Base cost not supplied. This illustration assumes a €0 base cost, so the full sale value is treated as a gain before applicable costs and allowances.'
+  },
+  CGT_ACQUISITION_DATE_UNKNOWN: {
+    kind: 'applied',
+    label: 'Acquisition date not supplied',
+    render: () => 'No indexation relief is included because the acquisition date was not supplied.'
+  },
+  CGT_INVESTMENT_SCOPE: {
+    kind: 'applied',
+    label: 'Investment sale estimate',
+    render: () => 'This is an ordinary CGT investment sale, using the stated or disclosed assumed tax base cost and selling costs. Funds and ETFs, special share schemes, connected-party transactions and share-lot identification are outside this estimate.'
+  },
   CGT_SCOPE: {
     kind: 'applied',
     label: 'What is assumed',

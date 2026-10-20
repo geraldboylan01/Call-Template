@@ -21,7 +21,7 @@
  * bump `IE_TAX_RULES_VERSION` and rerun the golden cases.
  */
 
-export const IE_TAX_RULES_VERSION = 'ie-tax-2026.4';
+export const IE_TAX_RULES_VERSION = 'ie-tax-2026.5';
 
 /** The first tax year the catalogue covers. Earlier years are refused. */
 export const IE_TAX_FIRST_YEAR = 2026;
