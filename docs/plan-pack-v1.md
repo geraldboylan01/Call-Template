@@ -1,6 +1,6 @@
-# Plan pack v1: B0 authoring contract
+# Plan pack v1: authoring contract
 
-Implemented 19 October 2026. B0 checks whether a route can be compiled through the existing calculators. A `compiled` result says nothing about affordability, goal coverage or how much cash should be reserved. The resource ledger is explicitly `not_computed`; B1 supplies those decisions. There is no plan-screen or consumer activation in B0.
+Implemented 19 October 2026. B0 checks whether a route can be compiled through the existing calculators. A `compiled` result says nothing about affordability, goal coverage or how much cash should be reserved. The resource ledger is explicitly `not_computed`; B1 supplies those decisions. B1 is available explicitly with `--ledger`; its contract is below. Neither mode activates a plan screen or consumer routing.
 
 ## Run locally
 
@@ -27,7 +27,7 @@ The executable schema is `js/planning/plan_pack/schema.js`, shared by the compil
 | `household` | Required canonical HouseholdProfile v1. IDs and current financial facts live here once. Fields the household normalizer would discard are refused, including unsupported aliases and explicitly null optional fields it omits. All money must be EUR. |
 | `planningInputs` | Optional strict transition object, described below. No per-chapter payloads, calculated outputs or arbitrary fields. |
 | `goalFlexibility` | Optional object keyed by existing goal ID. Each field is a two-element inclusive `[minimum, maximum]` range. |
-| `routes` | Required array: `current` first, no changes; up to three alternatives. Unique IDs matching `[a-z][a-z0-9_-]{0,63}`. Input order is preserved. |
+| `routes` | Required array: `current` first, no changes; up to three alternatives. Unique IDs matching `[a-z][a-z0-9_-]{0,63}`. B0 preserves input order; B1 applies the neutral order below. |
 | `chapters` | Required non-empty array of distinct chapter IDs from the table below, in author order. |
 | `narration` | Optional object keyed by existing route ID, containing non-empty template strings. |
 
@@ -49,7 +49,7 @@ All monetary numbers below are annual EUR unless specified otherwise. They are s
 | `goalBindings` | Array of `{goalId, personId?, liabilityId?}`. Unique goal IDs. Retirement-age moves identify their person (implicit only in a one-person household). A debt binding must match the goal and liability type. |
 | `chapterGoals` | Object mapping a chapter ID to its existing goal ID. Pension, net retirement and college require an unambiguous relevant goal; multiple goals are never resolved by array order or priority. |
 | `protectionCases` | Up to three `{id, event}` records beside code-owned `today`. Event fields are `type`, `personId`, `statePayment`, `survivorsPension`, `neededAfter`, `neededBecause`; the native protection validator applies. A State payment may be explicitly zero. No hypothetical benefit is selected automatically. |
-| `leftOverEachYear` | Signed stated amount for goals before their builder exists. Refused if the cash-flow chapter is present, because cash flow owns this result. It does not enable the B1 ledger. |
+| `leftOverEachYear` | Signed stated annual left over before goal-saving transfers, used only without the cash-flow chapter. Refused if that chapter is present, because cash flow owns this result. B1 requires it when cash flow is absent. |
 
 Current pension rates use each owner's recorded employment income. Paid-up/non-contributing positions and pension types without personal contributions are handled explicitly; missing contribution facts require confirmation. Cash flow may use its native estimate where complete per-person bank pay is absent; the result says `includes_estimated_bank_pay` and emits a warning. A stated zero is never replaced by an estimate. Protection requires stated bank income per actual person and refuses missing or joint amounts rather than splitting a household total.
 
@@ -69,10 +69,11 @@ A route is `{id, title?, changes?}`. Titles use neutral wording and existing pro
 }
 ```
 
-Only these change families are accepted:
+These change families are accepted:
 
 - `useCash`: `{type, goalId, amount}`. Amount is a positive whole-euro number, `whole` or `remaining`. Numeric amounts can fund a bound debt in B0. Other goals and symbolic amounts report B1 `requires_resource_ledger`.
 - `clearOutgoing`: `{type, outgoingId, paidFrom: "savings"}`. Uses the referenced liability's opening balance. The household cash balance and debt are reduced once; a fully cleared debt removes its contractual payment from annual spending. Partial cash repayments retain the contractual payment and let the amortisation engine calculate the changed term.
+- `sellAsset`: `{type, assetId}`. B1 only: sell one entire investment holding; proceeds are calculated after tax and selling costs and deposited in the selected cash account. Duplicate sales, assigned assets, funds/ETFs and unknown tax treatment are refused. Partial lots are outside v1.
 - `moveGoal`: `{type, goalId, retirementAge?, targetIncomeToday?, clearByAge?, targetDate?, targetAmount?}`. At least one field, each within the goal's stated flexibility. Ages are whole years; money is non-negative EUR; dates are valid ISO dates. Retirement fields require a retirement goal; use `targetIncomeToday`, not `targetAmount`, for its annual income target. `clearByAge` requires a mortgage goal. Dated/non-retirement funding changes require B1. Retirement ages cannot precede the person's current age or exceed 100; goal dates cannot move into the past.
 
 Repeated/conflicting changes, two goals changing the same person's retirement age, funding a liability twice, spending beyond its balance or overdrawing the selected cash account are refused. B0's cash bookkeeping does **not** protect an emergency reserve or determine spendable surplus. Those are B1 calculations, so a successful B0 route must not be presented as affordable.
@@ -105,7 +106,7 @@ Property chapters are outside v1 and fail validation. Insufficient facts produce
 - `chapters[].cases[]`: input and input hash, original calculator payload, derived engine output, typed metrics, native case ID, assumptions, warnings and provenance.
 - `casePacks[]`: one existing version-1 case pack per route, each checked through `checkCasePack` before export.
 
-Distinct cases are hashed from their financial input, chapter, calculation date and versions. Route titles and narration do not change financial case IDs. Equal settings reuse one case; at most four cases per chapter. `provenance.uses` records every referencing route and its exact change pointers. `builderHousehold` preserves the actual profile view used for the first matching case, including adapter-specific selections/overrides. Together with the original normalized source, transition inputs, builder version and compiled input snapshot, this makes the adapter boundary reproducible without pretending that a derived input was a separately stated client fact.
+Distinct cases are hashed from their financial input, chapter, calculation date and versions. Route titles and narration do not change financial case IDs. Equal settings reuse one case; at most four cases per chapter. `provenance.uses` records every referencing route and its exact change pointers. `builderHousehold` preserves the actual profile view used for the first matching case, including adapter-specific selections/overrides. The compiled native input and recorded cash-assignment assumption retain B1’s balance-sheet purpose split; the publisher receives that same validated input instead of rebuilding the unsplit profile. Together with the original normalized source, transition inputs, builder version and compiled input snapshot, this makes the adapter boundary reproducible without pretending that a derived input was a separately stated client fact.
 
 Plan case IDs identify different compiled input settings. `nativeCaseId` identifies the selected case *inside* that calculator, such as `route` versus `current` for a mortgage cash comparison. Protection's today/illness/death cases remain native event cases. B3 must respect both mappings when building a linked screen; loading separate case packs today does not implement linked route selection.
 
@@ -133,3 +134,54 @@ Use `{route.cashUsed}`, `{route.goalsMoved}`, `{route.goalChangeCount}`, `{plan.
 Money uses EUR formatting to cents; counts and durations use number formatting; calendar years have no thousands separator. Goal names and dates are text. Missing computed values fail: for example an unbounded protection runway has no finite `months` placeholder. Unknown paths and malformed braces fail even when another chapter requires a later stage.
 
 Example: `This route uses {route.cashUsed} of savings. It leaves {household_cash_flow.leftOver} each year.` Figures in templates must come from the registry. This is a local contract example, not the B4 authoring playbook or a prompt-pack rollout.
+
+
+## B1: explicit resource checks
+
+Updated 20 October 2026. Run the joined example and the independent regression checks:
+
+```sh
+npm run check:plan-pack -- scripts/fixtures/plan-packs/valid-b1.json --ledger
+npm run check:plan-resource-ledger
+```
+
+The programmatic equivalent is `compilePlanPack(pack, {resourceLedger: true})`. Check `scope` and `resourceLedger.stage/status`; a B0 result with `not_computed` must never pass as a resource-checked plan. The schema version remains 1; the compiler is versioned independently. B3 must require the resource check.
+
+Additional transition facts are strict and optional until the relevant goal needs them:
+
+| Field | Contract |
+|---|---|
+| `goalFundingFacts` | Unique goal IDs. `{goalId, kind?, dependantId?, currentAnnualSaving?, costKind?, durationYears?, debtTarget?}`. Only fields used by that goal's funding kind are accepted. |
+| `assetAssignments` | Unique assets: `{assetId, goalId}`. Existing cash assigned to a dated/college goal remains an asset but is unavailable to any other goal or the reserve. Cash committed to dated spending is shown under Lifestyle in the balance sheet, with its original label and total value preserved; Liquidity contains only free cash. This follows explicit funding facts, with no label inference. Other assignment kinds need B2. |
+| `goalSavingBasis` | `excluded_from_regular_costs`: stated regular spending and left over exclude goal-saving transfers. Current saving is counted separately, once. Required for dated goals. |
+| `goalFundingLabel` | Author wording for the cash-flow transfer row, required when goal saving is positive. No label rewriting. |
+| `retirementIncomeBasis` | `net`, with explicit household tax status, when retirement is priced. |
+| `openingTaxState` | Optional canonical shared-engine history keyed by actual person IDs. Each route receives a fresh copy; alternatives never inherit each other's gains/losses. Unknown/discarded fields fail. |
+
+An education goal normally binds one child by `dependantId`, with `currentAnnualSaving` including explicit zero. It uses central college assumptions and the profile's chosen college scenario; the goal may supply its own annual cost/date. An explicitly dated cost uses `kind: dated_cost`, its goal amount/date, `costKind` (`general` or `education`), positive whole `durationYears`, and current annual saving. The native future-cost fund prices it. Multiple college goals cannot price the same child twice.
+
+A debt goal names its liability and the person whose age defines the target. Its target is the goal's future date, a bounded `clearByAge` move for a mortgage, or the explicit fact `debtTarget: current_contract`. Date-based debt targets use calendar-year offsets; current contracts use the remaining term rounded up to whole years. One liability cannot be priced by two goals. A partial debt-balance target (`targetAmount`) needs a later adapter; it is not silently treated as full clearance. Native amortisation determines the extra repayment and `whole` cash requirement. A cash payment on a goal already met by the current contract keeps that repayment schedule and shortens the loan.
+
+Retirement timing uses each named person’s retirement age; a goal `targetDate` needs a later date-to-age adapter. Quantitative targets on informational goals also require a funding contract. Unsupported goal fields never disappear from the pricing.
+
+One combined household retirement goal uses the existing contribution search and pension/shared-tax engines, preserving each member's own retirement age. Growth counts gross contributions; yearly requirements count their extra cost after relief. Today's pension deduction is already in bank pay. Different named personal increases are retained separately; joint changes cannot overlap either person's own change. If protection is requested after a pension change, cash flow must also be present so protection gets the resulting per-person bank pay. Protection's native whole-euro input boundary is explicitly rounded; the ledger, tax and cash allocation retain full precision and the rounding is recorded in provenance. The balance sheet reconciles to the cent, so a holding split into free and earmarked cash is split in whole cents that add back to it, also recorded in provenance.
+
+The resource order is cash-flow deficit, opening central-policy reserve, explicit outgoing clearances, loan funding, dated costs by start date, mortgage and retirement. Goal priority does not reorder this method. `whole` resolves the native amount needed today. `remaining` takes only cash left after explicit/whole commitments, up to the goal's limit. Cash is never borrowed from the reserve. Annual left over is held constant, including years between different retirement dates; it is a funding assumption throughout. No future salary rise or loan-expiry windfall is credited. Each dated goal's saving ends when its cost starts. No accumulated annual surplus is silently turned into an opening lump sum.
+
+`current` keeps actual payments, saving and pension deductions, with no new goal funding. It can compile while short or while goals remain unmet. Alternatives apply the required payments for their targets and must protect the reserve and balance every model year. An unbalanced alternative returns `unbalanced_route`, retains its diagnostic ledger and exports no case packs. A relief-capped retirement goal can have affordable contributions and an unmet target: `balanced` and `goalsCovered` are separate results.
+
+Each ledger retains the reserve input/result, cash opening/allocated/remaining, hypothetical investment valuation and explicit sales, fixed goal order, yearly requirements/planned amounts/allocations/shortfalls, goal states and native pricing input/results. Goal state is `covered`, `partly` or `not`; the shared native `stateWord` supplies “Covered”, “Partly covered” or “Not covered” to narration and human output. Timeline fields remain offsets: `firstShortYear`, `firstMoneyYear`, `coveredFromYear`; the narration registry converts available timeline values to calendar years. Current debt/pension requirements describe the extra funding the target needs; planned zero records that those increases are not being made today. Current's budget shortfall is separate from its unmet funding requirements.
+
+Route order is current first, then cash committed, number of distinct changed entities, then author order for ties. No outcome score ranks routes. Ledger-only annual funding changes are recorded separately from authored changes.
+
+### Investment-sale facts and disclosure
+
+Canonical investment assets retain optional `baseCost` and `sellingCosts` EUR money, `acquisitionDate`, `saleInterest` and `investmentTaxTreatment` (`ordinary_cgt`, `fund_exit_tax`, `unknown`). These fields are refused on non-investment assets. Current market value and actual owners are required to price a sale. A known ordinary-CGT asset with missing base cost uses the approved €0 assumption; a supplied zero remains distinguishable as stated. If the acquisition date is missing, no indexation is assumed. Property-only reliefs never apply to this event.
+
+The shared tax engine accepts `investmentDisposal` and settles all explicit sales in one route together, using its dated rates, losses and one annual exemption per person. The current rate's announced/enacted status remains visible. The ledger adds only net proceeds, removes the sold holding's value, and preserves a prominent disclosure: “Base cost not supplied. This illustration assumes a €0 base cost, so the full sale value is treated as a gain before applicable costs and allowances.” This is an illustration assumption, not a statement of actual tax cost. Existing disclosures explain the scope and other gains/losses excluded from the estimate.
+
+Unallocated holdings and one hypothetical sale batch appear separately. That batch holds only the holdings the route keeps, is priced from opening history and is never another cash resource or a second tax allowance; a holding the route sells is marked `sold_in_route` and priced once, in the route's own sale. Funds/ETFs and unknown treatment stay visibly unpriced and cannot fund a route without their later tax adapter. Selling an assigned asset requires a later reassignment contract. The existing asset-intake question asks for base cost only when exploring a sale and states it is optional. Automatic sale routing and a dedicated asset form remain intake work.
+
+B1 narration adds `{ledger.cashAvailable}`, `{ledger.reserve}`, `{ledger.cashRemaining}`, `{ledger.yearlyRemaining}`, `{ledger.balanceStatus}` and `{goals.<goalId>.state}`, `{goals.<goalId>.firstShortYear}`, `{goals.<goalId>.firstMoneyYear}`, `{goals.<goalId>.coveredFromYear}`. Missing timeline values fail if referenced; never invent a date. All references remain within the route.
+
+The native goals screen still needs B2's exact route adapter, and the future-cost-fund screen still needs an explicit dated input boundary. A priced ledger does not relabel an existing native case or complete those screen adapters. Illness tax/duration and automatic consumer profile routing also remain B2; the linked plan view is B3 and AI authoring is B4.

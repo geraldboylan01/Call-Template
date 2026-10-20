@@ -214,6 +214,21 @@ function normalizeAsset(value, index) {
     if (typeof value.liquid !== 'boolean') throw new Error(`${fieldName}.liquid must be a boolean when provided.`);
     asset.liquid = value.liquid;
   }
+  const saleFields = ['baseCost', 'sellingCosts', 'acquisitionDate', 'investmentTaxTreatment', 'saleInterest'];
+  if (asset.type !== 'investment' && saleFields.some(key => value[key] !== undefined)) {
+    throw new Error(`${fieldName}: investment sale facts require an investment asset.`);
+  }
+  for (const field of ['baseCost', 'sellingCosts']) {
+    const money = normalizeMoney(value[field], `${fieldName}.${field}`, { optional: true });
+    if (money) asset[field] = money;
+  }
+  const acquisitionDate = optionalDate(value.acquisitionDate, `${fieldName}.acquisitionDate`);
+  if (acquisitionDate) asset.acquisitionDate = acquisitionDate;
+  if (value.investmentTaxTreatment !== undefined) asset.investmentTaxTreatment = enumValue(value.investmentTaxTreatment, ['ordinary_cgt', 'fund_exit_tax', 'unknown'], `${fieldName}.investmentTaxTreatment`);
+  if (value.saleInterest !== undefined) {
+    if (typeof value.saleInterest !== 'boolean') throw new Error(`${fieldName}.saleInterest must be a boolean.`);
+    asset.saleInterest = value.saleInterest;
+  }
   return asset;
 }
 

@@ -207,7 +207,7 @@ export const SEMANTIC_FACT_CATALOGUE = Object.freeze([
     ],
     entity: { kind: 'indexed_collection', indexSegment: 1, idKey: 'assetId' },
     confirmationPolicy: FACT_CONFIRMATION_POLICIES.VISUAL_AND_FINAL,
-    questionPrompt: 'Please add each cash, investment or other asset and its current value, or confirm that there are none.',
+    questionPrompt: 'Please add each cash, investment or other asset and its current value, or confirm that there are none. If you want to explore selling an investment, include its tax base cost if you know it. This is optional; when the base cost of an ordinary CGT investment is missing, the sale illustration assumes €0 and clearly shows that assumption.',
     answerType: 'text',
     materiality: 5,
     ambiguity: 4,

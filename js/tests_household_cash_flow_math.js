@@ -806,7 +806,7 @@ export function runHouseholdCashFlowTests() {
         id: 'both',
         changes: [{ type: 'extraPension', amount: 1_000 }, { type: 'extraPension', amount: 2_000 }]
       };
-    }, `${FIELD}.scenarios[3] (Both): a case can have only one extraPension.`, 'two pension changes');
+    }, `${FIELD}.scenarios[3] (Both): a case can have only one extraPension for each person.`, 'two pension changes');
 
     check((p) => {
       p.scenarios[1] = {

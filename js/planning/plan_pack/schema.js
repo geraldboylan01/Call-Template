@@ -1,5 +1,6 @@
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 import { normalizeHouseholdProfile } from '../profile.js';
+import { createTaxState } from '../tax/engine.js';
 import { assertIsoDate, assertJsonCompatible, cloneJson, isPlainObject } from '../utils.js';
 
 const PLAN_PACK_VERSION = 1;
@@ -7,7 +8,7 @@ const PLAN_PACK_CONTRACT = Object.freeze({
   version: PLAN_PACK_VERSION,
   fields: ['planPackVersion', 'clientName', 'calculationDate', 'household', 'planningInputs', 'goalFlexibility', 'routes', 'chapters', 'narration'],
   chapters: ['personal_balance_sheet', 'liquidity_analysis', 'household_cash_flow', 'protection_gap', 'mortgage_analysis', 'loan_analysis', 'pension_projection', 'net_retirement_cashflow', 'college_funding', 'future_cost_fund', 'goals_and_resources'],
-  planningFields: ['spendingLabel', 'takeHomeBasis', 'spendingBasis', 'householdTaxStatus', 'personalPensionContributions', 'cashAssetId', 'outgoingBindings', 'goalBindings', 'chapterGoals', 'protectionCases', 'leftOverEachYear'],
+  planningFields: ['spendingLabel', 'takeHomeBasis', 'spendingBasis', 'householdTaxStatus', 'personalPensionContributions', 'cashAssetId', 'outgoingBindings', 'goalBindings', 'chapterGoals', 'protectionCases', 'leftOverEachYear', 'goalFundingFacts', 'assetAssignments', 'goalSavingBasis', 'goalFundingLabel', 'retirementIncomeBasis', 'openingTaxState'],
   goalFields: ['retirementAge', 'targetIncomeToday', 'clearByAge', 'targetDate', 'targetAmount']
 });
 
@@ -96,6 +97,49 @@ function normalizePlanning(raw, household) {
   const goals = new Set(household.goals.map(g => g.goalId));
   const liabilities = new Set(household.liabilities.map(l => l.liabilityId));
   const result = {};
+  if (value.goalSavingBasis !== undefined) {
+    if (value.goalSavingBasis !== 'excluded_from_regular_costs') fail(path + '/goalSavingBasis', 'must be excluded_from_regular_costs.');
+    result.goalSavingBasis = value.goalSavingBasis;
+  }
+  if (value.retirementIncomeBasis !== undefined) {
+    if (value.retirementIncomeBasis !== 'net') fail(path + '/retirementIncomeBasis', 'the ledger retirement target is net income.');
+    result.retirementIncomeBasis = 'net';
+  }
+  if (value.goalFundingLabel !== undefined) result.goalFundingLabel = text(value.goalFundingLabel, path + '/goalFundingLabel');
+  if (value.openingTaxState !== undefined) {
+    object(value.openingTaxState, path + '/openingTaxState', ['people']);
+    object(value.openingTaxState.people, path + '/openingTaxState/people', [...people]);
+    result.openingTaxState = createTaxState(value.openingTaxState.people);
+    noDiscardedFacts(value.openingTaxState, result.openingTaxState, path + '/openingTaxState');
+  }
+  result.assetAssignments = array(value.assetAssignments ?? [], path + '/assetAssignments').map((entry, i) => {
+    const here = path + '/assetAssignments/' + i;
+    object(entry, here, ['assetId', 'goalId']);
+    return { assetId: reference(entry.assetId, new Set(household.assets.map(a => a.assetId)), here + '/assetId'), goalId: reference(entry.goalId, goals, here + '/goalId') };
+  });
+  unique(result.assetAssignments, 'assetId', path + '/assetAssignments');
+  result.goalFundingFacts = array(value.goalFundingFacts ?? [], path + '/goalFundingFacts').map((entry, i) => {
+    const here = path + '/goalFundingFacts/' + i;
+    object(entry, here, ['goalId', 'kind', 'dependantId', 'currentAnnualSaving', 'costKind', 'durationYears', 'debtTarget']);
+    const next = { goalId: reference(entry.goalId, goals, here + '/goalId') };
+    if (entry.kind !== undefined) {
+      if (!['college', 'dated_cost', 'debt', 'retirement'].includes(entry.kind)) fail(here + '/kind', 'is not a supported funding kind.');
+      next.kind = entry.kind;
+    }
+    if (entry.dependantId !== undefined) next.dependantId = reference(entry.dependantId, new Set(household.dependants.map(d => d.dependantId)), here + '/dependantId');
+    if (entry.currentAnnualSaving !== undefined) next.currentAnnualSaving = number(entry.currentAnnualSaving, here + '/currentAnnualSaving');
+    if (entry.durationYears !== undefined) next.durationYears = number(entry.durationYears, here + '/durationYears', { min: 1, integer: true });
+    if (entry.costKind !== undefined) {
+      if (!['education', 'general'].includes(entry.costKind)) fail(here + '/costKind', 'must be education or general.');
+      next.costKind = entry.costKind;
+    }
+    if (entry.debtTarget !== undefined) {
+      if (entry.debtTarget !== 'current_contract') fail(here + '/debtTarget', 'must be current_contract, or supply the goal target date.');
+      next.debtTarget = entry.debtTarget;
+    }
+    return next;
+  });
+  unique(result.goalFundingFacts, 'goalId', path + '/goalFundingFacts');
   if (Object.hasOwn(value, 'spendingLabel')) result.spendingLabel = text(value.spendingLabel, path + '/spendingLabel');
   for (const [key, expected] of [['takeHomeBasis', 'after_personal_pension'], ['spendingBasis', 'regular_costs_including_debt_excluding_tax_and_pensions']]) {
     if (Object.hasOwn(value, key)) {
@@ -212,11 +256,15 @@ export function normalizePlanPack(raw) {
       const fields = change?.type === 'moveGoal'
         ? ['type', 'goalId', ...PLAN_PACK_CONTRACT.goalFields]
         : change?.type === 'useCash' ? ['type', 'goalId', 'amount']
+          : change?.type === 'sellAsset' ? ['type', 'assetId']
           : ['type', 'outgoingId', 'paidFrom'];
       object(change, here, fields);
-      if (!['moveGoal', 'useCash', 'clearOutgoing'].includes(change.type)) fail(here + '/type', 'unsupported route change.');
+      if (!['moveGoal', 'useCash', 'clearOutgoing', 'sellAsset'].includes(change.type)) fail(here + '/type', 'unsupported route change.');
       const result = cloneJson(change);
-      if (change.type === 'clearOutgoing') {
+      if (change.type === 'sellAsset') {
+        const asset = household.assets.find(a => a.assetId === change.assetId);
+        if (!asset || asset.type !== 'investment') fail(here + '/assetId', 'must name an investment holding.');
+      } else if (change.type === 'clearOutgoing') {
         reference(change.outgoingId, new Set(planningInputs.outgoingBindings.map(b => b.id)), here + '/outgoingId');
         if (change.paidFrom !== 'savings') fail(here + '/paidFrom', 'must be savings.');
       } else {
@@ -242,11 +290,11 @@ export function normalizePlanPack(raw) {
         }
       }
       for (const key of Object.keys(result).filter(k => !['type', 'goalId', 'outgoingId', 'paidFrom'].includes(k))) {
-        const token = change.type + ':' + (change.goalId ?? change.outgoingId) + ':' + key;
+        const token = change.type + ':' + (change.goalId ?? change.outgoingId ?? change.assetId) + ':' + key;
         if (touched.has(token)) fail(here, 'duplicates a conflicting route change.');
         touched.add(token);
       }
-      const identity = change.type + ':' + (change.goalId ?? change.outgoingId);
+      const identity = change.type + ':' + (change.goalId ?? change.outgoingId ?? change.assetId);
       if (change.type !== 'moveGoal') {
         if (touched.has(identity)) fail(here, 'duplicates a route change.');
         touched.add(identity);

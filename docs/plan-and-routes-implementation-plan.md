@@ -1,6 +1,6 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 19 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; B0 is now being implemented against its [v1 contract](plan-pack-v1.md).
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 20 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; B0 merged in #80; B1 is implemented for review against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md).
 
 ## 1. Where things stand
 
@@ -140,15 +140,15 @@ Two tracks run side by side. Track A builds the module screens, one Claude Code 
 | A3 | Protection gap and confirmed zero-payment extension merged (#77) | Complete | Protection module |
 | A4 | Goals engine, timeline fields, app wiring and relief footnotes merged (#75/#76) | Complete | Goals module |
 | P | Existing module prompt contracts merged, including cash flow and home trade down (#83) | Complete for current modules | Claude |
-| B0 | Plan pack v1: format, validator, compiler and `check:plan-pack`; implementation in #80 | Current work; supported/deferred builders in the v1 contract | Plan chat |
-| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | B0. Cash flow can now supply left over; a separate stated amount is allowed only without that chapter. | Plan chat |
+| B0 | Plan pack v1: format, validator, compiler and `check:plan-pack`; implementation in #80 | Merged in #80; supported/deferred builders in the v1 contract | Plan chat |
+| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | Implemented for review after #80. Cash flow owns left over; a separate stated amount is allowed only without that chapter. | Plan chat |
 | B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6; central Illness Benefit assumption, shared-engine tax treatment and duration contract | Each module's engine; versioned assumptions and tax support for illness scenarios | Plan chat |
 | D2 | The plan view: the current position and the routes side by side | B1's output shape | Claude Design |
 | B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats | D2, B1, B2 | Plan chat |
 | B4 | The plan playbook (how an author writes a plan pack) and two golden plan packs | B1 | Gerry and Claude |
 | Later | Property chapters as routes, where a sale's proceeds become money now. The consumer questions from section 6. The website version through the API. | B3 | |
 
-B0 is the current step. It compiles complete builders through the existing engines, returns explicit later-stage diagnostics for incomplete builders and makes no resource-ledger conclusions. B1 adds allocation and the balance test; B2 completes the automatic profile and illness-tax contracts.
+B0 merged in #80. B1 adds allocation, the protected reserve, ordinary-CGT sale proceeds and the balance test. Its implementation is ready for review; B2 completes the missing screen/profile adapters and illness-tax contracts.
 
 The module screens stay adviser-only (`consumer: false`) as their briefs say. The plan view starts the same way.
 
@@ -161,7 +161,7 @@ Every new module needs its place in `docs/prompt-pack/`, so an author can write 
 - **The module chats do not touch `docs/prompt-pack/`.** Their briefs already say so.
 - **Consumer routing stays off.** Playbooks carry a `planeir-planning-module` marker that feeds `js/planning/playbook_manifest.generated.js`. A new module's playbook leaves that marker out until the module has a registry entry and an adapter (B2), so the consumer pipeline never routes to a module it cannot run.
 
-Already merged: future cost fund, protection gap and rental keep or sell. Next: household cash flow and home trade down once #71 and #72 are merged, plus the protection-gap zero-payment contract after #77. Goals and resources follows the finished screen integration. Keep documentation updates separate from module-code changes.
+The module prompt contracts above are merged, including cash flow and home trade down in #83 and the protection zero-payment contract. B4 adds the plan-pack authoring playbook. Keep prompt-pack updates separate from module-code changes.
 
 ## 9. The plan pack and the ledger, in outline
 
@@ -202,6 +202,6 @@ The B0 and B1 briefs set these out in full. The shape, for review:
 
 ## 10. Next
 
-1. Complete the remaining module reviews and merges above. Keep the pension-contribution input contract and goals wiring as explicit follow-ups.
-2. Write the B0 brief for plan pack v1: its format, validator, module compiler and `check:plan-pack`. This can proceed in parallel with module integration using the engines already on `main`.
-3. Add prompt-pack entries from final merged module contracts. B1 supplies the resource ledger; B2 adds profile adapters; B3 supplies the route-linked plan view. None is implied to be built by merging this plan.
+1. Review B1 and its resource-ledger examples; its merge is a separate decision from the authorized #80 merge.
+2. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
+3. Design/build the linked plan view (D2/B3), then write B4’s AI authoring playbook and golden plans. Consumer activation remains off until its adapters and questions are complete.

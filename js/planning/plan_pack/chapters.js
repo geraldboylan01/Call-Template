@@ -21,23 +21,40 @@ function amount(value, path) {
   if (!value || value.currency !== 'EUR' || !Number.isFinite(value.amount)) missing(path, 'A stated EUR amount is required; no currency conversion or missing value is inferred.');
   return value.amount;
 }
+const toCents = value => Math.round(value * 100) / 100;
 const retirementTypes = ['retire', 'retire_early', 'improve_pension'];
-export function routeContext(pack, route, index) {
+export function routeContext(pack, route, index, { fundingGoalIds = new Set(), allowGoalMoves = false, saleResult = null } = {}) {
   const profile = cloneJson(pack.household);
   const original = pack.household;
   const inputs = pack.planningInputs;
   const cashByLiability = Object.create(null);
   const changedFacts = [];
   const movedGoals = [];
+  const goalOverrides = Object.create(null);
+  const goalCashReserved = Object.create(null);
   let cashUsed = 0;
+  let reservedCash = 0;
   let spendingRemoved = 0;
   const changes = route.changes;
   const liabilityChanges = new Set();
   const retirementChanges = new Set();
+  let cashAssetId = inputs.cashAssetId;
+  if (saleResult?.sales.length) {
+    const cash = cashAssetId ? profile.assets.find(a => a.assetId === cashAssetId) : profile.assets.filter(a => a.type === 'cash').length === 1 ? profile.assets.find(a => a.type === 'cash') : null;
+    if (!cash) missing('/planningInputs/cashAssetId', 'Name the cash account receiving sale proceeds.');
+    cashAssetId = cash.assetId;
+    cash.currentValue = { amount: amount(cash.currentValue, '/household/assets/' + profile.assets.indexOf(cash) + '/currentValue') + saleResult.netProceeds, currency: 'EUR' };
+    for (const sale of saleResult.sales) profile.assets.find(a => a.assetId === sale.assetId).currentValue.amount = 0;
+  }
   for (const [ci, change] of changes.entries()) {
     const path = '/routes/' + index + '/changes/' + ci;
     const goal = profile.goals.find(g => g.goalId === change.goalId);
     const binding = inputs.goalBindings.find(b => b.goalId === change.goalId);
+    if (change.type === 'sellAsset') {
+      if (!saleResult) throw new LaterStage(path, 'Investment-sale funding requires the B1 ledger.', 'B1', 'requires_resource_ledger');
+      changedFacts.push({ source: path, assetId: change.assetId, sale: saleResult.sales.find(s => s.assetId === change.assetId) });
+      continue;
+    }
     if (change.type === 'moveGoal') {
       if (!movedGoals.includes(goal.goalId)) movedGoals.push(goal.goalId);
       for (const [key, value] of Object.entries(change)) {
@@ -52,12 +69,15 @@ export function routeContext(pack, route, index) {
           retirementChanges.add(person.personId);
           person.intendedRetirementAge = value;
         } else if (key === 'targetIncomeToday' || key === 'targetAmount') {
-          if (!retirementTypes.includes(goal.type)) throw new LaterStage(path + '/' + key, 'Changing this funding target needs its B1 pricing builder.', 'B1', 'requires_resource_ledger');
+          if (!retirementTypes.includes(goal.type) && !allowGoalMoves) throw new LaterStage(path + '/' + key, 'Changing this funding target needs its B1 pricing builder.', 'B1', 'requires_resource_ledger');
           goal.targetAmount = { amount: value, currency: 'EUR' };
         } else {
           // A date/clear-by-age goal needs the resource ledger to price its
           // required repayment/funding path. Do not alter contractual debt terms.
-          throw new LaterStage(path + '/' + key, 'Moving a dated funding or mortgage target requires its B1 funding builder.', 'B1', 'requires_resource_ledger');
+          if (!allowGoalMoves) throw new LaterStage(path + '/' + key, 'Moving a dated funding or mortgage target requires its B1 funding builder.', 'B1', 'requires_resource_ledger');
+          goalOverrides[goal.goalId] ??= {};
+          goalOverrides[goal.goalId][key] = value;
+          if (key === 'targetDate') goal.targetDate = value;
         }
         changedFacts.push({ source: path + '/' + key, goalId: goal.goalId, field: key, value });
       }
@@ -71,6 +91,13 @@ export function routeContext(pack, route, index) {
       cash = amount(loan.currentBalance, '/household/liabilities/' + profile.liabilities.indexOf(loan) + '/currentBalance');
     } else {
       if (typeof change.amount !== 'number') throw new LaterStage(path + '/amount', 'whole and remaining need B1 to resolve a funding amount.', 'B1', 'requires_resource_ledger');
+      if (fundingGoalIds.has(change.goalId)) {
+        goalCashReserved[change.goalId] = change.amount;
+        reservedCash += change.amount;
+        cashUsed += change.amount;
+        changedFacts.push({ source: path, goalId: change.goalId, cashReserved: change.amount });
+        continue;
+      }
       if (!binding?.liabilityId) throw new LaterStage(path + '/goalId', 'Cash funding for this goal needs its B1 resource-ledger builder.', 'B1', 'requires_resource_ledger');
       liabilityId = binding.liabilityId;
       cash = change.amount;
@@ -94,20 +121,21 @@ export function routeContext(pack, route, index) {
   }
   if (cashUsed > 0) {
     const candidates = profile.assets.filter(a => a.type === 'cash');
-    const asset = inputs.cashAssetId
-      ? candidates.find(a => a.assetId === inputs.cashAssetId)
+    const asset = cashAssetId
+      ? candidates.find(a => a.assetId === cashAssetId)
       : candidates.length === 1 ? candidates[0] : null;
     if (!asset) missing('/planningInputs/cashAssetId', 'Choose the cash account funding this route; multiple accounts are never selected by array order.');
     const cash = amount(asset.currentValue, '/household/assets/' + profile.assets.indexOf(asset) + '/currentValue');
     if (cash < cashUsed) fail('/routes/' + index, 'cash used exceeds the named cash account.');
-    asset.currentValue.amount = cash - cashUsed;
+    cashAssetId = asset.assetId;
+    asset.currentValue.amount = cash - (cashUsed - reservedCash);
   }
   if (spendingRemoved > 0) {
     const spending = amount(profile.expenses.annualTotal, '/household/expenses/annualTotal');
     if (spending < spendingRemoved) fail('/household/expenses/annualTotal', 'must include the contractual debt payments being cleared.');
     profile.expenses.annualTotal.amount = spending - spendingRemoved;
   }
-  return { profile, original, route, cashUsed, cashByLiability, spendingRemoved, changedFacts, movedGoals };
+  return { profile, original, route, cashUsed, cashByLiability, spendingRemoved, changedFacts, movedGoals, goalOverrides, goalCashReserved, reservedCash, cashAssetId, saleResult };
 }
 function selectGoalProfile(profile, pack, chapter) {
   const view = cloneJson(profile);
@@ -188,6 +216,11 @@ function cashFlowInput(context, pack) {
     if (entry.ownerIds.some(owner => !people(profile).some(p => p.personId === owner))) missing('/household/incomeSources/' + index + '/ownerIds', 'Name actual people as the owners of this income.');
     return [{ personId: entry.ownerIds.length > 1 ? 'joint' : entry.ownerIds[0], type: incomeTypes[entry.type], amount: amount(entry.grossAnnual, '/household/incomeSources/' + index + '/grossAnnual') }];
   });
+  const rows = outgoings(profile, pack);
+  if (context.ledgerFunding?.goalSaving > 0) {
+    if (!pack.planningInputs.goalFundingLabel) missing('/planningInputs/goalFundingLabel', 'Supply display wording for goal-saving transfers.');
+    rows.push({ id: 'goal_funding', label: pack.planningInputs.goalFundingLabel, amount: context.ledgerFunding.goalSaving });
+  }
   return {
     calculationYear: Number(pack.calculationDate.slice(0, 4)),
     householdTaxStatus: pack.planningInputs.householdTaxStatus,
@@ -198,7 +231,8 @@ function cashFlowInput(context, pack) {
       if (net === 0 && gross > 0) throw new LaterStage('/household/incomeSources', 'The cash-flow engine cannot anchor a stated zero bank income; this is not replaced with an estimate.');
       return { id: person.personId, label: person.displayName ?? '', age: person.age, personalPensionContribution: currentPension(profile, pack, person.personId), ...(net > 0 ? { statedTakeHome: net } : {}) };
     }),
-    income, outgoings: outgoings(profile, pack), scenarios: [{ id: 'today' }]
+    income, outgoings: rows, scenarios: [{ id: 'today' }, ...(context.ledgerFunding?.pensionChanges.length
+      ? [{ id: 'route', title: 'Funding this route', changes: context.ledgerFunding.pensionChanges }] : [])]
   };
 }
 
@@ -207,13 +241,29 @@ const nativeKeys = {
   pension_projection: 'pensionInputs', net_retirement_cashflow: 'netRetirementInputs', college_funding: 'collegeFundingInputs'
 };
 export async function buildChapter(context, pack, chapter) {
+  if (context.usableCashDeductions && ['liquidity_analysis', 'protection_gap'].includes(chapter)) {
+    const profile = cloneJson(context.profile);
+    for (const deduction of context.usableCashDeductions) {
+      const asset = profile.assets.find(a => a.assetId === deduction.assetId);
+      asset.currentValue.amount -= deduction.amount;
+      if (asset.currentValue.amount < -0.005) fail('/planningInputs/assetAssignments', 'Assigned cash is unavailable twice.');
+    }
+    context = { ...context, profile };
+  }
   const year = Number(pack.calculationDate.slice(0, 4));
+  if (context.ledgerFunding && ['net_retirement_cashflow', 'college_funding'].includes(chapter)) {
+    throw new LaterStage('/chapters', chapter === 'net_retirement_cashflow'
+      ? 'The ledger is priced; net retirement still needs a route adapter for unassigned after-tax capital and changed bank pay.'
+      : 'The ledger is priced; the college screen still needs an exact adapter for the bound child and dated funding target.', 'B2', 'requires_profile_adapter');
+  }
   if (chapter === 'net_retirement_cashflow' && context.route.changes.some(c => c.type === 'moveGoal')) {
     throw new LaterStage('/chapters', 'The current net-retirement adapter prices stated spending, not a moved retirement goal. A route-specific goal builder is required.', 'B2', 'requires_profile_adapter');
   }
   if (chapter === 'goals_and_resources') {
     if (!pack.chapters.includes('household_cash_flow') && pack.planningInputs.leftOverEachYear === undefined) missing('/planningInputs/leftOverEachYear', 'State left-over cash or include the cash-flow chapter before compiling goals.');
-    throw new LaterStage('/chapters', 'The goals engine derives its own funding cases. Mapping a plan route requires B1; no nearest or relabelled case is substituted.', 'B1', 'requires_resource_ledger');
+    throw new LaterStage('/chapters', context.ledgerFunding
+      ? 'The ledger is priced, but the native goals screen has no exact unchanged-current case. Its screen adapter is still required; no derived funding case is relabelled.'
+      : 'The goals engine derives its own funding cases. Mapping a plan route requires B1; no nearest or relabelled case is substituted.', context.ledgerFunding ? 'B2' : 'B1', context.ledgerFunding ? 'requires_profile_adapter' : 'requires_resource_ledger');
   }
   if (chapter === 'future_cost_fund') {
     throw new LaterStage('/chapters', 'The existing fund pipeline has no explicit pack calculation-date input. Its dated-cost builder must be added before this chapter can compile.', 'B2', 'requires_profile_adapter');
@@ -225,11 +275,12 @@ export async function buildChapter(context, pack, chapter) {
   if (chapter === 'household_cash_flow') {
     const input = cashFlowInput(context, pack);
     const projection = computeHouseholdCashFlowProjection(input, { calculationYear: year });
-    const summary = projection.summary.cases[0];
+    const summary = projection.summary.cases.at(-1);
     return {
       input, payload: { title: 'Your cash flow', generated: { summaryHtml: '<p>Compare the income and regular costs for this route.</p>', householdCashFlowInputs: input } },
       metrics: { income: summary.income.total, bankTakeHome: summary.takeHome.bankTotal, tax: summary.outgoings.tax, pensions: summary.outgoings.pensionContributions, leftOver: summary.leftOver.amount },
-      builderHousehold: context.profile,
+      builderHousehold: context.profile, cashFlowSummary: projection.summary,
+      nativeCaseId: summary.id,
       assumptionsUsed: Object.entries(projection.debug.assumptionsUsed).map(([key, value]) => ({ key, value })),
       warnings: [...projection.debug.warnings, ...(input.people.some(p => p.statedTakeHome === undefined)
         ? ['Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated.'] : [])],
@@ -241,10 +292,16 @@ export async function buildChapter(context, pack, chapter) {
     if (context.spendingRemoved && pack.planningInputs.protectionCases.some(c => c.event.neededAfter !== undefined)) {
       throw new LaterStage('/planningInputs/protectionCases', 'A changed spending route needs its own confirmed post-death spending basis; the original figure is not silently reused.');
     }
+    // This native illustration takes whole euros. Round only at its boundary;
+    // reserve allocation, tax and the route ledger retain full precision.
+    const protectionAmount = value => context.ledgerFunding ? Math.round(value) : value;
     const input = {
-      people: people(profile).map(p => ({ id: p.personId, label: p.displayName ?? p.personId, takeHome: ownerBankPay(profile, p.personId) })),
-      needed: amount(profile.expenses.annualTotal, '/household/expenses/annualTotal'),
-      savings: cashBalance(profile),
+      people: people(profile).map(p => {
+        const stated = ownerBankPay(profile, p.personId);
+        return { id: p.personId, label: p.displayName ?? p.personId, takeHome: protectionAmount(context.bankTakeHomeByPerson?.[p.personId] ?? stated) };
+      }),
+      needed: protectionAmount(amount(profile.expenses.annualTotal, '/household/expenses/annualTotal')),
+      savings: protectionAmount(cashBalance(profile)),
       scenarios: [{ id: 'today' }, ...cloneJson(pack.planningInputs.protectionCases)]
     };
     const projection = computeProtectionGapProjection(input);
@@ -254,7 +311,9 @@ export async function buildChapter(context, pack, chapter) {
       metrics[scenario.id + '.gap'] = scenario.gap;
       if (Number.isFinite(scenario.months)) metrics[scenario.id + '.months'] = scenario.months;
     }
-    return { input, payload: { title: 'If income stops', generated: { protectionGapInputs: input } }, metrics, builderHousehold: profile, basis: 'stated_bank_pay_and_confirmed_state_payments' };
+    return { input, payload: { title: 'If income stops', generated: { protectionGapInputs: input } }, metrics, builderHousehold: profile,
+      assumptionsUsed: context.ledgerFunding ? [{ key: 'protectionInputRounding', value: 'Route amounts rounded to whole euros for the native protection illustration; ledger amounts retain full precision.' }] : [],
+      basis: 'stated_bank_pay_and_confirmed_state_payments' };
   }
   const definition = getPlanningModuleDefinition(chapter);
   if (!definition?.buildInput || !definition.run) throw new LaterStage('/chapters', 'No complete builder exists for ' + chapter + '.');
@@ -281,8 +340,35 @@ export async function buildChapter(context, pack, chapter) {
     const first = readiness.requiredMissing?.find(r => (r.importance ?? 'required') === 'required');
     missing('/household' + (first?.fieldPath ?? ''), first?.reason ?? 'Chapter is not ready: ' + readiness.status + '.');
   }
-  const input = definition.buildInput(profile);
-  if (['mortgage_analysis', 'loan_analysis'].includes(chapter) && input.oneOffOverpayment > 0) {
+  let input = definition.buildInput(profile);
+  const balanceSheetAssignments = chapter === 'personal_balance_sheet' ? context.usableCashDeductions ?? [] : [];
+  if (balanceSheetAssignments.length) {
+    const committed = new Map();
+    for (const row of balanceSheetAssignments) committed.set(row.assetId, (committed.get(row.assetId) ?? 0) + row.amount);
+    for (const [assetId, cash] of committed) {
+      if (cash <= 0) continue;
+      const position = input.assetPositions.find(p => p.source === 'assets' && p.id === assetId);
+      if (!position || cash > position.amount + 0.005) fail('/planningInputs/assetAssignments', 'Committed cash exceeds its balance-sheet holding.');
+      // The engine reconciles its buckets to gross assets in cents. Split the
+      // holding in cents so both parts add back to it exactly; the ledger keeps
+      // full precision.
+      const holding = toCents(position.amount);
+      const earmarked = Math.min(toCents(cash), holding);
+      position.amount = toCents(holding - earmarked);
+      // Supported assignments are dated spending, so their purpose is Lifestyle.
+      // Keep their value and the author's label; only free cash stays Liquidity.
+      input.assetPositions.push({ ...position, amount: earmarked, bucket: 'lifestyle_assets', source: 'plan_goal_funding' });
+    }
+  }
+  let ledgerDebtInput = false;
+  if (chapter === 'pension_projection' && context.ledgerFunding?.pensionInput) input = cloneJson(context.ledgerFunding.pensionInput);
+  if (['mortgage_analysis', 'loan_analysis'].includes(chapter)) {
+    const key = chapter === 'mortgage_analysis' ? 'mortgage' : 'loan';
+    const id = profile.assumptions.values[key]?.liabilityId ?? profile.liabilities.filter(l => l.type === key)[0]?.liabilityId;
+    const funding = context.ledgerFunding?.debtInputs[id];
+    if (funding) { input = { ...cloneJson(funding), loanKind: key }; ledgerDebtInput = true; }
+  }
+  if (['mortgage_analysis', 'loan_analysis'].includes(chapter) && !ledgerDebtInput && input.oneOffOverpayment > 0) {
     const lump = input.oneOffOverpayment;
     input.oneOffOverpayment = 0;
     input.baseScenarioId = 'current';
@@ -298,7 +384,7 @@ export async function buildChapter(context, pack, chapter) {
   let metrics = {};
   let nativeCaseId = 'base';
   if (chapter === 'personal_balance_sheet') {
-    const published = buildPublishedSessionFromCall({ profile, results: [result], clientName: pack.clientName, createdAt: pack.calculationDate + 'T00:00:00.000Z' });
+    const published = buildPublishedSessionFromCall({ profile, results: [result], moduleInputs: { personal_balance_sheet: input }, clientName: pack.clientName, createdAt: pack.calculationDate + 'T00:00:00.000Z' });
     const module = published.session.modules[0];
     if (!module) fail('/chapters', 'The existing balance-sheet publisher produced no payload.');
     payload = { title: module.title, generated: module.generated };
@@ -310,7 +396,7 @@ export async function buildChapter(context, pack, chapter) {
     metrics = Object.fromEntries(Object.entries(result.semanticResult).filter(([, value]) => Number.isFinite(value)));
     if (['mortgage_analysis', 'loan_analysis'].includes(chapter)) {
       const comparison = computeMortgageComparison(input, { defaultLoanKind: input.loanKind });
-      const selected = comparison.cases.find(c => c.id === 'route') ?? comparison.cases.find(c => c.isBase);
+      const selected = comparison.cases.find(c => c.id === (ledgerDebtInput ? 'clear-by-age' : 'route')) ?? comparison.cases.find(c => c.isBase);
       if (!selected) fail('/chapters', 'The amortisation engine did not provide the selected case.');
       nativeCaseId = selected.id;
       metrics = { monthlyPayment: selected.projection.monthlyPaymentUsed, totalInterest: selected.totalInterestLifetime, interestSaved: selected.interestSaved };
@@ -324,5 +410,8 @@ export async function buildChapter(context, pack, chapter) {
     }
   }
   return { input, payload, metrics, nativeCaseId, basis: 'existing_adviser_adapter', moduleVersion: definition.moduleVersion,
-    builderHousehold: profile, assumptionsUsed: readiness.assumptionsUsed ?? [], warnings: readiness.warnings ?? [] };
+    builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...(balanceSheetAssignments.length ? [{
+      key: 'goalCashClassification', value: { bucket: 'lifestyle_assets', cashAssignments: cloneJson(balanceSheetAssignments) }
+    }, { key: 'balanceSheetCashRounding', value: 'Free and earmarked cash rounded to the cent for the balance sheet; ledger amounts retain full precision.' }] : [])],
+    warnings: readiness.warnings ?? [] };
 }
