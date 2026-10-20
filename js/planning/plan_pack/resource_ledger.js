@@ -97,12 +97,18 @@ function pensionInput(context, pack, goal) {
   return input;
 }
 function quoteGoals(context, pack, cashByGoal = {}) {
+  for (const goal of context.profile.goals.filter(g => !['paused', 'completed'].includes(g.status) && INFORMATIONAL.includes(g.type))) {
+    if (goal.targetAmount || goal.targetDate) throw new LaterStage('/household/goals',
+      'A quantitative informational goal needs an explicit funding contract; its amount or date is not ignored.', 'B2', 'requires_goal_funding_adapter');
+  }
   const active = activeGoals(context.profile);
   if (active.filter(g => RETIREMENT.includes(g.type)).length > 1) throw new LaterStage('/household/goals', 'A combined household retirement target is required so pension pots are not used twice.', 'B2', 'requires_combined_retirement_goal');
   return active.map((goal, index) => {
     const fact = pack.planningInputs.goalFundingFacts.find(f => f.goalId === goal.goalId);
     const common = { goalId: goal.goalId, title: goal.title, sourceIndex: index };
     if (RETIREMENT.includes(goal.type)) {
+      if (goal.targetDate) throw new LaterStage('/household/goals/' + context.profile.goals.indexOf(goal) + '/targetDate',
+        'Represent a retirement timing target with the named person’s retirement age; a retirement goal date needs its date-to-age adapter.', 'B2', 'requires_goal_funding_adapter');
       const input = pensionInput(context, pack, goal);
       const priced = pricePlanRetirement(input, { calculationDate: pack.calculationDate });
       return { ...common, kind: 'retirement', order: 3, startsInYears: 999, input, priced, wholeCash: null,
@@ -110,6 +116,8 @@ function quoteGoals(context, pack, cashByGoal = {}) {
         unreachable: priced.reachedCap && priced.gapLeftOver > 0 };
     }
     if (['optimise_mortgage', 'manage_loan'].includes(goal.type)) {
+      if (goal.targetAmount) throw new LaterStage('/household/goals/' + context.profile.goals.indexOf(goal) + '/targetAmount',
+        'This debt contract prices full clearance by the target date; a partial-balance target needs its own funding adapter.', 'B2', 'requires_goal_funding_adapter');
       const { debt, mortgage, years } = debtData(context, pack, goal, fact);
       const lump = cashByGoal[goal.goalId] ?? context.cashByLiability[debt.liabilityId] ?? 0;
       const priced = pricePlanMortgage(mortgage, lump);

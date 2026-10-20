@@ -49,6 +49,7 @@ await test('B1 joins native chapters, checks every alternative and preserves the
   assert.deepEqual(p,before);assert.deepEqual(r.source.normalizedPlanPack,normalizePlanPack(p));
   assert.equal(r.resourceLedger.status,'priced');assert.match(r.scope,/B1/);
   assert(r.resourceLedger.routes.every(row=>row.balanced));
+  for (const l of r.resourceLedger.routes) close(l.years[0].remaining,entry(r,'household_cash_flow',l.routeId).metrics.leftOver);
   for(const row of r.casePacks) assert(checkCasePack(row.casePack).ok);
 });
 await test('Current retains actual saving, debt payments and pension deductions',async()=>{
@@ -270,5 +271,12 @@ await test('A priced ledger does not pretend incomplete screen adapters are rout
     const p=base();p.routes=[{id:'current'}];p.narration={};p.chapters=['household_cash_flow',chapter];
     const r=await refuses(p,'requires_profile_adapter');assert.equal(r.status,'requires_later_stage');assert.equal(ledger(r).status,'priced');
   }
+});
+await test('Unpriced goal amounts and dates cannot be silently ignored',async()=>{
+  let p=lean(['goal_mortgage']);p.goalFlexibility.goal_mortgage.targetAmount=[10000,50000];
+  p.routes.push({id:'partial',changes:[{type:'moveGoal',goalId:'goal_mortgage',targetAmount:20000}]});await refuses(p,'requires_goal_funding_adapter');
+  p=lean(['goal_retirement']);p.household.goals[0].targetDate='2048-11-01';await refuses(p,'requires_goal_funding_adapter');
+  p=lean();p.household.goals.push({goalId:'buffer',type:'maintain_liquidity',title:'Emergency fund',priority:'medium',status:'active',targetAmount:eur(100000)});await refuses(p,'requires_goal_funding_adapter');
+  delete p.household.goals[0].targetAmount;p.goalFlexibility.buffer={targetAmount:[10000,100000]};p.routes.push({id:'change_buffer',changes:[{type:'moveGoal',goalId:'buffer',targetAmount:80000}]});await refuses(p,'requires_goal_funding_adapter');
 });
 console.info=info;console.log(`Resource-ledger checks: ${total-failures}/${total} passed.`);process.exitCode=failures?1:0;
