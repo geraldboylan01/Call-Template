@@ -647,20 +647,24 @@ function solveContribution(runAt, points, minX, maxX) {
  * The ages, salaries and growth are the pension engine's own, from its
  * normalised inputs, so they cannot drift from it.
  */
+/** The highest share of salary relief allows a member in any working year. */
+function reliefCeilingShare(member, currentYear) {
+  let ceiling = 0;
+  for (let working = currentYear; working < member.retirementYear; working += 1) {
+    const sinceNow = working - currentYear;
+    const salary = member.currentSalary * (1 + member.wageGrowthRate) ** sinceNow;
+    if (salary > 0) {
+      ceiling = Math.max(ceiling, maxRelievablePersonalContribution(member.currentAge + sinceNow, salary) / salary);
+    }
+  }
+  return ceiling;
+}
+
 function reliefCeilingPoints(inputs, target, year, makePayload = pensionEnginePayload) {
   const household = normalizePensionInputs(makePayload(inputs, target, 0, year));
-  return Math.max(0, ...household.pensions.map((member) => {
-    let room = 0;
-    for (let working = household.currentYear; working < member.retirementYear; working += 1) {
-      const sinceNow = working - household.currentYear;
-      const salary = member.currentSalary * (1 + member.wageGrowthRate) ** sinceNow;
-      if (salary > 0) {
-        const share = maxRelievablePersonalContribution(member.currentAge + sinceNow, salary) / salary;
-        room = Math.max(room, share - member.personalPct);
-      }
-    }
-    return room;
-  }));
+  return Math.max(0, ...household.pensions.map((member) => (
+    Math.max(0, reliefCeilingShare(member, household.currentYear) - member.personalPct)
+  )));
 }
 
 /**
@@ -778,10 +782,14 @@ function priceRetirement(inputs, target, year, { includeHeadroom, asOf, makePayl
 /** The same contribution search, retaining each member's own retirement date. */
 export function pricePlanRetirement(raw, { calculationDate } = {}) {
   const normalized = normalizePensionInputs(raw);
+  // The shared points stop at each member's own relief ceiling. The engine
+  // clamps every year at or below it, so the pot and costs are unchanged; the
+  // planned rate just never shows points that are not paid.
+  const ceilings = new Map(normalized.pensions.map(p => [p.id, Math.max(p.personalPct, reliefCeilingShare(p, normalized.currentYear))]));
   const makePayload = (_inputs, _target, extraPoints) => ({
     ...raw,
     pensions: raw.pensions.map(person => ({ ...person,
-      personalPct: Math.max(0, normalized.pensions.find(p => p.id === person.id).personalPct + extraPoints) }))
+      personalPct: Math.max(0, Math.min(normalized.pensions.find(p => p.id === person.id).personalPct + extraPoints, ceilings.get(person.id))) }))
   });
   const target = { id: 'retirement', retirementAge: Math.max(...normalized.pensions.map(p => p.retirementAge)), targetIncomeToday: normalized.targetIncomeToday };
   const priced = priceRetirement({ pensions: normalized.pensions }, target, normalized.currentYear,

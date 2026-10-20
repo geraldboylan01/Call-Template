@@ -151,6 +151,18 @@ await test('Retirement uses native net-income pricing with each person’s age a
   const costs=computePersonalContributionCosts(priced.plannedInput);assert.deepEqual(costs,priced.costsWithExtra);
   if(r.status==='compiled') {const cf=entry(r,'household_cash_flow','fund');assert.equal(cf.input.scenarios[1].changes.length,2);assert.notEqual(cf.input.scenarios[1].changes[0].amount,cf.input.scenarios[1].changes[1].amount);close(l.years[0].remaining,cf.metrics.leftOver);}
 });
+await test('A person already at the relief limit keeps their effective rate while the shared search raises the other person',async()=>{
+  const p=lean(['goal_retirement']);p.chapters.push('pension_projection');
+  p.household.primaryPerson.intendedRetirementAge=49;p.household.pensions[0].employeeContributionRate=0.25;
+  p.household.goals[0].targetAmount.amount=60000;p.household.expenses.annualTotal.amount=40000;p.routes.push({id:'fund'});
+  const r=await compile(p);valid(r);const priced=ledger(r,'fund').pricing[0].priced;assert(priced.extraPoints>0);
+  const shown=entry(r,'pension_projection','fund').input.pensions;
+  assert.equal(shown[0].personalPct,0.25);close(shown[1].personalPct,0.04+priced.extraPoints);
+  const unclamped=structuredClone(priced.plannedInput);unclamped.pensions[0].personalPct=0.25+priced.extraPoints;
+  close(computePensionProjection(priced.plannedInput).debug.projectedPotCurrent,computePensionProjection(unclamped).debug.projectedPotCurrent);
+  assert.deepEqual(computePersonalContributionCosts(unclamped),priced.costsWithExtra);
+  assert.deepEqual(ledger(r,'fund').annualFunding.pensionChanges.map(c=>c.personId),['dara']);
+});
 await test('Relief-capped retirement can balance contributions while clearly retaining an unmet goal',async()=>{
   const p=lean(['goal_retirement']);p.household.goals[0].targetAmount.amount=200000;p.household.expenses.annualTotal.amount=30000;p.routes.push({id:'fund'});
   const r=await compile(p);valid(r);const l=ledger(r,'fund');assert(l.balanced);assert(!l.goalsCovered);assert(l.goals[0].unreachable);assert.equal(l.goals[0].state,'partly');assert(l.pricing[0].priced.disclosures.length>0);
