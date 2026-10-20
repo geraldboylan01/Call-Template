@@ -21,6 +21,7 @@ function amount(value, path) {
   if (!value || value.currency !== 'EUR' || !Number.isFinite(value.amount)) missing(path, 'A stated EUR amount is required; no currency conversion or missing value is inferred.');
   return value.amount;
 }
+const toCents = value => Math.round(value * 100) / 100;
 const retirementTypes = ['retire', 'retire_early', 'improve_pension'];
 export function routeContext(pack, route, index, { fundingGoalIds = new Set(), allowGoalMoves = false, saleResult = null } = {}) {
   const profile = cloneJson(pack.household);
@@ -348,10 +349,15 @@ export async function buildChapter(context, pack, chapter) {
       if (cash <= 0) continue;
       const position = input.assetPositions.find(p => p.source === 'assets' && p.id === assetId);
       if (!position || cash > position.amount + 0.005) fail('/planningInputs/assetAssignments', 'Committed cash exceeds its balance-sheet holding.');
-      position.amount = Math.max(0, position.amount - cash);
+      // The engine reconciles its buckets to gross assets in cents. Split the
+      // holding in cents so both parts add back to it exactly; the ledger keeps
+      // full precision.
+      const holding = toCents(position.amount);
+      const earmarked = Math.min(toCents(cash), holding);
+      position.amount = toCents(holding - earmarked);
       // Supported assignments are dated spending, so their purpose is Lifestyle.
       // Keep their value and the author's label; only free cash stays Liquidity.
-      input.assetPositions.push({ ...position, amount: cash, bucket: 'lifestyle_assets', source: 'plan_goal_funding' });
+      input.assetPositions.push({ ...position, amount: earmarked, bucket: 'lifestyle_assets', source: 'plan_goal_funding' });
     }
   }
   let ledgerDebtInput = false;
@@ -406,5 +412,6 @@ export async function buildChapter(context, pack, chapter) {
   return { input, payload, metrics, nativeCaseId, basis: 'existing_adviser_adapter', moduleVersion: definition.moduleVersion,
     builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...(balanceSheetAssignments.length ? [{
       key: 'goalCashClassification', value: { bucket: 'lifestyle_assets', cashAssignments: cloneJson(balanceSheetAssignments) }
-    }] : [])], warnings: readiness.warnings ?? [] };
+    }, { key: 'balanceSheetCashRounding', value: 'Free and earmarked cash rounded to the cent for the balance sheet; ledger amounts retain full precision.' }] : [])],
+    warnings: readiness.warnings ?? [] };
 }

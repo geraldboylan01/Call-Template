@@ -206,6 +206,16 @@ await test('An explicit sale adds only net proceeds and removes the original hol
   close(entry(r,'personal_balance_sheet','sell').metrics.grossAssets,l.cashRemaining+380000);assert(l.investments.holdings[0].soldInRoute);
   assert(l.investmentSales.disclosures.some(d=>d.code==='CGT_BASE_COST_ASSUMED_ZERO'));
 });
+await test('Sale proceeds with cents can fund a goal; the balance sheet splits cash in cents and the ledger keeps full precision',async()=>{
+  const p=lean(['college']);investment(p,'shares',10000.02);p.routes.push({id:'sell',changes:[{type:'sellAsset',assetId:'shares'},{type:'useCash',goalId:'college',amount:'whole'}]});
+  const r=await compile(p);valid(r);const l=ledger(r,'sell'),sheet=entry(r,'personal_balance_sheet','sell');
+  assert.notEqual(l.cashAllocated,Math.round(l.cashAllocated*100)/100);
+  const rows=sheet.input.assetPositions.filter(row=>row.id==='cash'),cents=v=>Math.round(v*100);
+  assert.equal(rows.length,2);for(const row of rows) assert.equal(row.amount*100,cents(row.amount));
+  assert.equal(cents(rows[0].amount)+cents(rows[1].amount),cents(90000+l.investmentSales.netProceeds));
+  close(sheet.metrics.spendableReserves,l.cashRemaining);close(sheet.metrics.grossAssets,90000+l.investmentSales.netProceeds+380000);
+  assert(sheet.assumptionsUsed.some(row=>row.key==='balanceSheetCashRounding'));
+});
 await test('A sale batch never duplicates the exemption, and unknown/fund treatment never masquerades as CGT',async()=>{
   const p=lean();investment(p,'a',10000);investment(p,'b',10000);p.routes.push({id:'sell',changes:[{type:'sellAsset',assetId:'a'},{type:'sellAsset',assetId:'b'}]});
   const r=await compile(p);valid(r);close(ledger(r,'sell').investmentSales.tax,(20000-1270)*0.31);
