@@ -3,8 +3,9 @@ import { getPlanningModuleDefinition } from '../module_registry.js';
 import { PLANEIR_ASSUMPTIONS } from '../planeir_assumptions.js';
 import { computeLiquidityReserve } from '../../liquidity_reserve.js';
 import { computeFutureCostFundProjection } from '../../future_cost_fund_math.js';
+import { computeAmortizationMonthlySchedule } from '../../mortgage_math.js';
 import { GOAL_STATE_WORDS, pricePlanMortgage, pricePlanRetirement } from '../../goals_and_resources_math.js';
-import { routeContext, buildChapter, missing, people, LaterStage } from './chapters.js';
+import { routeContext, buildChapter, missing, people, ownerBankPay, LaterStage } from './chapters.js';
 import { priceInvestmentSales } from './investment_sales.js';
 import { fail, finiteJson } from './schema.js';
 
@@ -194,6 +195,53 @@ function investmentInventory(pack, sales) {
         : ordinary.includes(asset) && potentialSale ? 'priced_in_potential_batch' : 'requires_sale_facts_or_adapter' })) };
 }
 
+// A repayment comes back once the loan's native schedule has ended, from the
+// first ledger year with no repayment in it. A route that clears a debt has
+// already taken its payment out of spending.
+function loanEnds(pack, context, quotes, current) {
+  const year = Number(pack.calculationDate.slice(0, 4));
+  return pack.household.liabilities.flatMap((opening, index) => {
+    const path = '/household/liabilities/' + index;
+    const monthly = opening.monthlyPayment?.amount ?? 0;
+    if (!(monthly > 0) || context.profile.liabilities.find(d => d.liabilityId === opening.liabilityId).currentBalance.amount === 0) return [];
+    const event = { kind: 'loan_ends', liabilityId: opening.liabilityId, label: opening.label, annualAmount: 12 * monthly };
+    const never = basis => [{ ...event, payoffDateIso: null, fromOffset: null, fromYear: null, basis }];
+    if (!['mortgage', 'loan'].includes(opening.type)) return never('no_contractual_end');
+    const goal = quotes.find(g => g.kind === 'debt' && g.liabilityId === opening.liabilityId);
+    const routeInput = current ? null : context.ledgerFunding.debtInputs[opening.liabilityId];
+    if (!goal && (!Number.isFinite(opening.annualInterestRate) || !(opening.remainingTermMonths > 0))) {
+      missing(path + '/remainingTermMonths', 'State the rate and remaining term so the ledger knows when this repayment ends.');
+    }
+    const input = routeInput ?? goal?.input ?? { loanKind: opening.type, currentBalance: money(opening.currentBalance, path + '/currentBalance'),
+      annualInterestRate: opening.annualInterestRate, startDateIso: pack.calculationDate, remainingTermYears: opening.remainingTermMonths / 12,
+      repaymentType: 'repayment', fixedPaymentAmount: monthly, baseScenarioId: 'today', scenarios: [{ id: 'today', title: 'As it is today' }] };
+    const schedule = computeAmortizationMonthlySchedule(input, { scenarioId: routeInput ? 'clear-by-age' : 'today' });
+    if (!schedule.payoffDateIso) return never('not_repaid_within_term');
+    const fromOffset = Math.ceil(schedule.monthsSimulated / 12);
+    return [{ ...event, payoffDateIso: schedule.payoffDateIso, fromOffset, fromYear: year + fromOffset, basis: routeInput ? 'route_schedule' : 'contract_schedule' }];
+  });
+}
+
+// Each person's share of annual left over follows their bank take-home and
+// stops funding goals from their own retirement year.
+function earners(pack, profile, takeHomeByPerson) {
+  const year = Number(pack.calculationDate.slice(0, 4));
+  const members = people(profile);
+  const pay = Object.fromEntries(members.map(p => [p.personId, members.length === 1 ? null : takeHomeByPerson?.[p.personId] ?? ownerBankPay(profile, p.personId)]));
+  const total = sum(Object.values(pay));
+  return members.map(person => {
+    const share = members.length === 1 ? 1 : total > 0 ? pay[person.personId] / total : 0;
+    const working = share > 0 && person.employmentStatus !== 'retired';
+    if (working && !Number.isInteger(person.intendedRetirementAge)) {
+      missing('/household/' + (person === profile.partner ? 'partner' : 'primaryPerson') + '/intendedRetirementAge',
+        'State when ' + person.personId + ' intends to retire; their share of annual left over stops funding goals from that year.');
+    }
+    // An age already reached describes today's position, which the left over already reflects.
+    const offset = working && person.intendedRetirementAge > person.age ? person.intendedRetirementAge - person.age : null;
+    return { personId: person.personId, takeHome: pay[person.personId], share, stopsFromOffset: offset, stopsFromYear: offset === null ? null : year + offset };
+  });
+}
+
 export async function prepareResourceRoute(pack, route, index) {
   validateFundingFacts(pack);
   const reserve = reserveFor(pack);
@@ -237,7 +285,12 @@ export async function prepareResourceRoute(pack, route, index) {
   const quotes = quoteGoals(context, pack, cashByGoal);
   const current = route.id === 'current';
   let baselineLeftOver = pack.planningInputs.leftOverEachYear;
-  if (pack.chapters.includes('household_cash_flow')) baselineLeftOver = (await buildChapter(context, pack, 'household_cash_flow')).metrics.leftOver;
+  let takeHomeByPerson = null;
+  if (pack.chapters.includes('household_cash_flow')) {
+    const baseline = await buildChapter(context, pack, 'household_cash_flow');
+    baselineLeftOver = baseline.metrics.leftOver;
+    takeHomeByPerson = Object.fromEntries(baseline.cashFlowSummary.cases[0].takeHome.byPerson.map(p => [p.personId, p.bankTakeHome]));
+  }
   else if (baselineLeftOver !== undefined) baselineLeftOver += context.spendingRemoved;
   if (baselineLeftOver === undefined) missing('/planningInputs/leftOverEachYear', 'Include cash flow or state annual left over before goal-saving transfers.');
   const costs = quotes.filter(g => g.kind === 'dated_cost');
@@ -260,6 +313,19 @@ export async function prepareResourceRoute(pack, route, index) {
       context.ledgerFunding.pensionChanges = after.map(member => ({ type: 'extraPension', personId: member.id, amount: member.gross - (before.find(p => p.id === member.id)?.gross ?? 0) })).filter(row => row.amount > 0.005);
     }
   }
+  const loans = loanEnds(pack, context, quotes, current);
+  for (const goal of quotes.filter(g => g.kind === 'debt')) {
+    // A loan cannot need, or free, money after it has ended.
+    const ends = loans.find(e => e.liabilityId === goal.liabilityId)?.fromOffset;
+    if (Number.isInteger(ends)) { goal.needs = goal.needs.slice(0, ends); goal.freed = goal.freed.slice(0, ends); }
+  }
+  const earning = earners(pack, context.profile, takeHomeByPerson);
+  const calendarYear = Number(pack.calculationDate.slice(0, 4));
+  const freedCash = [...loans, ...quotes.filter(g => g.kind === 'dated_cost').flatMap(goal => {
+    const annual = current ? goal.currentAnnualSaving : goal.needs[0] ?? 0;
+    return annual > 0.005 ? [{ kind: 'goal_saving_ends', goalId: goal.goalId, annualAmount: annual, fromOffset: goal.startsInYears,
+      fromYear: calendarYear + goal.startsInYears, basis: 'fund_pays_the_cost_from_its_start' }] : [];
+  })].sort((a, b) => (a.fromOffset ?? Infinity) - (b.fromOffset ?? Infinity));
   // Investment/cost capital remains an asset, but cannot also be emergency cash.
   context.usableCashDeductions = pack.planningInputs.assetAssignments.filter(a => pack.household.assets.find(asset => asset.assetId === a.assetId).type === 'cash')
     .map(a => ({ assetId: a.assetId, amount: money(pack.household.assets.find(asset => asset.assetId === a.assetId).currentValue, '/household/assets/currentValue') }));
@@ -275,8 +341,12 @@ export async function prepareResourceRoute(pack, route, index) {
   }
   const horizon = Math.max(1, ...quotes.map(g => g.needs.length));
   const years = Array.from({ length: horizon }, (_, offset) => {
-    const freed = current ? 0 : sum(quotes.map(g => g.freed?.[offset] ?? 0));
-    const resources = baselineLeftOver + freed;
+    const freed = (current ? 0 : sum(quotes.map(g => g.freed?.[offset] ?? 0)))
+      + sum(loans.filter(e => e.fromOffset !== null && offset >= e.fromOffset).map(e => e.annualAmount));
+    const leftOver = baselineLeftOver + freed;
+    const earningShare = 1 - sum(earning.filter(p => p.stopsFromOffset !== null && offset >= p.stopsFromOffset).map(p => p.share));
+    // Retirement stops a surplus; it never shrinks a deficit.
+    const resources = leftOver > 0 ? leftOver * earningShare : leftOver;
     let available = Math.max(0, resources);
     const goals = quotes.map(goal => {
       const required = goal.needs[offset] ?? 0;
@@ -286,7 +356,7 @@ export async function prepareResourceRoute(pack, route, index) {
       return { goalId: goal.goalId, required, planned, allocated, shortfall: Math.max(0, planned - allocated) };
     });
     const planned = sum(goals.map(g => g.planned));
-    return { offset, year: Number(pack.calculationDate.slice(0, 4)) + offset, available: resources, cashflowDeficit: Math.max(0, -resources), goals,
+    return { offset, year: calendarYear + offset, leftOver, freed, earningShare, available: resources, cashflowDeficit: Math.max(0, -resources), goals,
       required: sum(goals.map(g => g.required)), planned, remaining: resources - planned, shortfall: Math.max(0, planned - resources) };
   });
   const goalStates = quotes.map(goal => {
@@ -306,14 +376,17 @@ export async function prepareResourceRoute(pack, route, index) {
   const ledger = finiteJson({ version: 1, status: 'priced', currentPositionUnchanged: current,
     reserve, openingCash, investments: investmentInventory(pack, sales), investmentSales: sales, cashAvailableAfterReserve: cashAvailable,
     cashAllocated: context.cashUsed, cashRemaining, spareCashRemaining: cashRemaining - reserve.protectedAmount, reserveProtected,
-    baselineLeftOver, goalOrder: quotes.map(g => g.goalId), goals: goalStates, years,
+    baselineLeftOver, freedCash, earners: earning, goalOrder: quotes.map(g => g.goalId), goals: goalStates, years,
     annualFunding: { goalSaving, pensionChanges: context.ledgerFunding.pensionChanges,
       debtPayments: quotes.filter(g => g.kind === 'debt').map(g => ({ liabilityId: g.liabilityId,
         openingMonthlyPayment: pack.household.liabilities.find(d => d.liabilityId === g.liabilityId).monthlyPayment.amount,
         routeMonthlyPayment: context.profile.liabilities.find(d => d.liabilityId === g.liabilityId).monthlyPayment.amount })) },
     balanced: reserveProtected && years.every(row => row.shortfall <= 0.005),
     goalsCovered: goalStates.every(g => g.state === 'covered'),
-    assumptions: ['Dated costs use calendar-year offsets. Annual left over is held constant; no future loan-expiry or salary windfall is credited.', 'Annual left over remains a funding assumption throughout the model, including years between different retirement dates.', 'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.'],
+    assumptions: ['Dated costs use calendar-year offsets. Annual left over is held at today’s figure while people work; no salary rise is credited.',
+      'A loan’s repayment comes back in full from the first ledger year after its last repayment on the native amortisation schedule. Saving for a dated cost stops when the cost starts, because the fund then pays it.',
+      'Each person’s share of annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. Later needs use what remains or are shown short. A deficit is not reduced by retirement.',
+      'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.'],
     pricing: quotes.map(g => ({ goalId: g.goalId, kind: g.kind, input: g.input, priced: g.priced })) });
   return { context, ledger };
 }

@@ -173,7 +173,7 @@ function currentPension(profile, pack, personId) {
   if (hasOwnerConfirmedNone(profile, '/pensions', personId) || profile.assumptions.values.completionFacts?.confirmedNonePaths?.['/pensions'] === true) return 0;
   missing('/planningInputs/personalPensionContributions', 'Confirm the current personal contribution for ' + personId + ', including explicit zero.');
 }
-function ownerBankPay(profile, personId, { optional = false } = {}) {
+export function ownerBankPay(profile, personId, { optional = false } = {}) {
   const owned = profile.incomeSources.filter(i => i.ownerIds.includes(personId));
   if (!owned.length) {
     if (hasOwnerConfirmedNone(profile, '/incomeSources', personId) || profile.assumptions.values.completionFacts?.confirmedNonePaths?.['/incomeSources'] === true) return 0;
