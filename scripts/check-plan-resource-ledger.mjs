@@ -87,11 +87,19 @@ await test('Each person’s share of left over stops funding goals from their ow
   let r=await compile(p);valid(r);const l=ledger(r,'clear_2041'),row=year=>l.years.find(y=>y.year===year);
   const dara=l.earners.find(e=>e.personId==='dara');close(dara.share,45000/95000);
   assert.equal(l.earners[0].stopsFromYear,2036);assert.equal(dara.stopsFromYear,2050);
-  assert.equal(row(2035).earningShare,1);close(row(2036).earningShare,dara.share);close(row(2036).available,row(2036).leftOver*dara.share);
+  assert.equal(row(2035).earningShare,1);close(row(2036).earningShare,dara.share);close(row(2036).available,l.earnedLeftOver*dara.share+row(2036).freed);
   p.household.partner.intendedRetirementAge=50;r=await refuses(p,'unbalanced_route');
   const short=ledger(r,'clear_2041');assert.equal(short.years.find(y=>y.year===2036).available,0);assert.equal(short.goals[0].firstShortYear,10);
   const deficit=lean(['goal_mortgage']);deficit.household.expenses.annualTotal.amount=110000;deficit.household.primaryPerson.intendedRetirementAge=50;
   const d=ledger(await compile(deficit));close(d.years.find(y=>y.year===2031).available,d.years.find(y=>y.year===2030).available);
+});
+await test('A repayment that stops comes back in full while anyone still earns, and nothing funds goals once everyone has retired',async()=>{
+  const p=lean(['goal_mortgage']);p.household.primaryPerson.intendedRetirementAge=47;p.routes.push({id:'clear_2041'},{id:'clear_car_now',changes:[{type:'clearOutgoing',outgoingId:'car',paidFrom:'savings'}]});
+  const r=await compile(p);valid(r);const l=ledger(r,'clear_2041'),row=year=>l.years.find(y=>y.year===year),dara=l.earners.find(e=>e.personId==='dara').share;
+  assert.equal(l.earners[0].stopsFromYear,2028);close(row(2028).available,l.earnedLeftOver*dara);close(row(2029).available,l.earnedLeftOver*dara+6000);
+  const cleared=ledger(r,'clear_car_now');close(cleared.earnedLeftOver,l.earnedLeftOver);close(cleared.years.find(y=>y.year===2028).available,cleared.earnedLeftOver*dara+6000);
+  p.household.partner.intendedRetirementAge=50;p.household.goals[0].targetDate='2046-11-01';p.routes=[{id:'current'}];
+  const both=ledger(await compile(p)),last=both.years.at(-1);assert(last.year>=2033);assert.equal(last.earningShare,0);assert(last.freed>=6000);assert.equal(last.available,0);
 });
 await test('A working person without a retirement age is asked for one rather than funding goals for ever',async()=>{
   const p=lean(['goal_mortgage']);delete p.household.partner.intendedRetirementAge;

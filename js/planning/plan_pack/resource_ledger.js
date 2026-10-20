@@ -340,13 +340,18 @@ export async function prepareResourceRoute(pack, route, index) {
     missing('/chapters', 'Include household_cash_flow so protection uses the changed per-person bank pay after pension contributions.');
   }
   const horizon = Math.max(1, ...quotes.map(g => g.needs.length));
+  // Today's surplus is earned; a repayment the route clears or that ends is spending that stops.
+  const earnedLeftOver = baselineLeftOver - context.spendingRemoved;
   const years = Array.from({ length: horizon }, (_, offset) => {
-    const freed = (current ? 0 : sum(quotes.map(g => g.freed?.[offset] ?? 0)))
+    const freed = context.spendingRemoved + (current ? 0 : sum(quotes.map(g => g.freed?.[offset] ?? 0)))
       + sum(loans.filter(e => e.fromOffset !== null && offset >= e.fromOffset).map(e => e.annualAmount));
-    const leftOver = baselineLeftOver + freed;
+    const leftOver = earnedLeftOver + freed;
     const earningShare = 1 - sum(earning.filter(p => p.stopsFromOffset !== null && offset >= p.stopsFromOffset).map(p => p.share));
-    // Retirement stops a surplus; it never shrinks a deficit.
-    const resources = leftOver > 0 ? leftOver * earningShare : leftOver;
+    // Retirement stops each person's share of the earned surplus, never a
+    // deficit. Stopped repayments come back in full while anyone still has an
+    // income; once everyone has retired there is no yearly money for goals.
+    const stillEarning = earningShare > 1e-9;
+    const resources = (earnedLeftOver > 0 ? earnedLeftOver * (stillEarning ? earningShare : 0) : earnedLeftOver) + (stillEarning ? freed : 0);
     let available = Math.max(0, resources);
     const goals = quotes.map(goal => {
       const required = goal.needs[offset] ?? 0;
@@ -376,7 +381,7 @@ export async function prepareResourceRoute(pack, route, index) {
   const ledger = finiteJson({ version: 1, status: 'priced', currentPositionUnchanged: current,
     reserve, openingCash, investments: investmentInventory(pack, sales), investmentSales: sales, cashAvailableAfterReserve: cashAvailable,
     cashAllocated: context.cashUsed, cashRemaining, spareCashRemaining: cashRemaining - reserve.protectedAmount, reserveProtected,
-    baselineLeftOver, freedCash, earners: earning, goalOrder: quotes.map(g => g.goalId), goals: goalStates, years,
+    baselineLeftOver, earnedLeftOver, freedCash, earners: earning, goalOrder: quotes.map(g => g.goalId), goals: goalStates, years,
     annualFunding: { goalSaving, pensionChanges: context.ledgerFunding.pensionChanges,
       debtPayments: quotes.filter(g => g.kind === 'debt').map(g => ({ liabilityId: g.liabilityId,
         openingMonthlyPayment: pack.household.liabilities.find(d => d.liabilityId === g.liabilityId).monthlyPayment.amount,
@@ -385,7 +390,7 @@ export async function prepareResourceRoute(pack, route, index) {
     goalsCovered: goalStates.every(g => g.state === 'covered'),
     assumptions: ['Dated costs use calendar-year offsets. Annual left over is held at today’s figure while people work; no salary rise is credited.',
       'A loan’s repayment comes back in full from the first ledger year after its last repayment on the native amortisation schedule. Saving for a dated cost stops when the cost starts, because the fund then pays it.',
-      'Each person’s share of annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. Later needs use what remains or are shown short. A deficit is not reduced by retirement.',
+      'Each person’s share of today’s annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. A repayment that stops comes back in full while anyone still has an income. Once everyone has retired there is no yearly money for goals; later needs are shown short. A deficit is not reduced by retirement.',
       'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.'],
     pricing: quotes.map(g => ({ goalId: g.goalId, kind: g.kind, input: g.input, priced: g.priced })) });
   return { context, ledger };
