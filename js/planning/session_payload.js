@@ -20,7 +20,7 @@
  * the table above it.
  */
 
-import { buildPersonalBalanceSheetInput } from './adapters/personal_balance_sheet.js';
+import { buildPersonalBalanceSheetInput, normalizePersonalBalanceSheetInput } from './adapters/personal_balance_sheet.js';
 
 /** Master-prompt bucket sections, in the exact order the app expects. */
 const PBS_SECTIONS = Object.freeze([
@@ -45,8 +45,8 @@ const round = (amount) => Math.round(Number.isFinite(amount) ? amount : 0);
  * "€880,000" in an outputsBucketed cell is a validation failure, not a
  * formatting preference.
  */
-function buildPersonalBalanceSheetModule({ profile, result }) {
-  const input = buildPersonalBalanceSheetInput(profile);
+function buildPersonalBalanceSheetModule({ profile, result, input }) {
+  input = input ? normalizePersonalBalanceSheetInput(input) : buildPersonalBalanceSheetInput(profile);
   const semantic = result?.semanticResult || {};
 
   const sections = PBS_SECTIONS.map((section) => {
@@ -264,7 +264,7 @@ export function canPublishModule(moduleId) {
  * which is worse than an honestly shorter list.
  */
 export function buildPublishedSessionFromCall({
-  profile, results, clientName = 'Client', sessionId, createdAt
+  profile, results, clientName = 'Client', sessionId, createdAt, moduleInputs = {}
 }) {
   const stamp = createdAt || new Date().toISOString();
   const modules = [];
@@ -276,7 +276,7 @@ export function buildPublishedSessionFromCall({
       skipped.push(result?.moduleId);
       return;
     }
-    const built = build({ profile, result });
+    const built = build({ profile, result, input: moduleInputs[result.moduleId] });
     // A builder may decline: a module that ran but produced nothing publishable
     // must be skipped like one with no builder at all, not pushed as an empty
     // card the app would render as a heading over nothing.

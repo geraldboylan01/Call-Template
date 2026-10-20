@@ -112,12 +112,15 @@ await test('Earmarked cash remains on the balance sheet and cannot also protect 
   assert.equal(l.openingCash,90000);assert.equal(entry(r,'liquidity_analysis').input.currentCash,90000);
   assert.equal(entry(r,'protection_gap').input.savings,90000);
   assert.equal(entry(r,'personal_balance_sheet').metrics.grossAssets,480000);
+  assert.equal(entry(r,'personal_balance_sheet').metrics.spendableReserves,90000);
   close(l.pricing[0].priced.cases[0].lumpSumToday,10000);
 });
 await test('New reserved cost capital stays an asset and is removed from protection cash exactly once',async()=>{
   const p=lean(['college']);p.chapters.push('protection_gap');p.routes.push({id:'reserve_cost',changes:[{type:'useCash',goalId:'college',amount:10000}]});
   const r=await compile(p);valid(r);assert.equal(ledger(r,'reserve_cost').cashRemaining,80000);
   assert.equal(entry(r,'personal_balance_sheet','reserve_cost').metrics.grossAssets,470000);
+  assert.equal(entry(r,'personal_balance_sheet','reserve_cost').metrics.spendableReserves,80000);
+  assert.equal(entry(r,'personal_balance_sheet','reserve_cost').payload.generated.outputsBucketed.sections.find(s=>s.key==='liquidity').subtotalValue,80000);
   assert.equal(entry(r,'protection_gap','reserve_cost').input.savings,80000);
 });
 await test('Assignments, duplicate child/debt goals and unknown funding kinds cannot silently consume resources twice',async()=>{
@@ -278,5 +281,10 @@ await test('Unpriced goal amounts and dates cannot be silently ignored',async()=
   p=lean(['goal_retirement']);p.household.goals[0].targetDate='2048-11-01';await refuses(p,'requires_goal_funding_adapter');
   p=lean();p.household.goals.push({goalId:'buffer',type:'maintain_liquidity',title:'Emergency fund',priority:'medium',status:'active',targetAmount:eur(100000)});await refuses(p,'requires_goal_funding_adapter');
   delete p.household.goals[0].targetAmount;p.goalFlexibility.buffer={targetAmount:[10000,100000]};p.routes.push({id:'change_buffer',changes:[{type:'moveGoal',goalId:'buffer',targetAmount:80000}]});await refuses(p,'requires_goal_funding_adapter');
+});
+await test('Narration uses the approved goal-state words and calendar years from the ledger',async()=>{
+  const p=lean(['goal_mortgage']);p.narration.current='{goals.goal_mortgage.state}. Short from {goals.goal_mortgage.firstShortYear}.';
+  const r=await compile(p);valid(r);assert.equal(r.routes[0].narration.text,'Partly covered. Short from 2026.');
+  assert.equal(ledger(r).goals[0].state,'partly');assert.equal(ledger(r).goals[0].stateWord,'Partly covered');
 });
 console.info=info;console.log(`Resource-ledger checks: ${total-failures}/${total} passed.`);process.exitCode=failures?1:0;

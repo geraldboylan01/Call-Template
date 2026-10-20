@@ -98,7 +98,7 @@ function placeholders(pack, context, cases) {
       cashRemaining: ledger.cashRemaining, yearlyRemaining: ledger.years[0].remaining })) values['ledger.' + key] = { value, type: 'money' };
     values['ledger.balanceStatus'] = { value: ledger.balanced ? 'Balances' : 'Does not balance', type: 'text' };
     for (const goal of ledger.goals) {
-      values['goals.' + goal.goalId + '.state'] = { value: goal.state, type: 'text' };
+      values['goals.' + goal.goalId + '.state'] = { value: goal.stateWord, type: 'text' };
       for (const key of ['firstShortYear', 'firstMoneyYear', 'coveredFromYear']) values['goals.' + goal.goalId + '.' + key] = {
         value: goal[key] === null ? null : Number(pack.calculationDate.slice(0, 4)) + goal[key], type: 'year'
       };

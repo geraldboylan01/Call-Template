@@ -38,7 +38,7 @@ try {
       console.log(ledger.routeId + ': ' + (ledger.balanced ? 'funding balances' : 'funding does not balance') + '; reserve ' + ledger.reserve.protectedAmount.toFixed(2)
         + '; cash left ' + ledger.cashRemaining.toFixed(2));
       for (const row of ledger.years) console.log('  ' + row.year + ': available ' + row.available.toFixed(2) + ', planned ' + row.planned.toFixed(2) + ', left ' + row.remaining.toFixed(2));
-      for (const goal of ledger.goals) console.log('  ' + goal.goalId + ': ' + goal.state);
+      for (const goal of ledger.goals) console.log('  ' + goal.goalId + ': ' + goal.stateWord);
       for (const disclosure of ledger.investmentSales.disclosures) console.log('  ' + (disclosure.text ?? disclosure));
       if (ledger.investments.potentialSale) {
         console.log('  Investment sale illustration (not added to cash): ' + ledger.investments.potentialSale.netProceeds.toFixed(2));

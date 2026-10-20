@@ -340,6 +340,20 @@ export async function buildChapter(context, pack, chapter) {
     missing('/household' + (first?.fieldPath ?? ''), first?.reason ?? 'Chapter is not ready: ' + readiness.status + '.');
   }
   let input = definition.buildInput(profile);
+  const balanceSheetAssignments = chapter === 'personal_balance_sheet' ? context.usableCashDeductions ?? [] : [];
+  if (balanceSheetAssignments.length) {
+    const committed = new Map();
+    for (const row of balanceSheetAssignments) committed.set(row.assetId, (committed.get(row.assetId) ?? 0) + row.amount);
+    for (const [assetId, cash] of committed) {
+      if (cash <= 0) continue;
+      const position = input.assetPositions.find(p => p.source === 'assets' && p.id === assetId);
+      if (!position || cash > position.amount + 0.005) fail('/planningInputs/assetAssignments', 'Committed cash exceeds its balance-sheet holding.');
+      position.amount = Math.max(0, position.amount - cash);
+      // Supported assignments are dated spending, so their purpose is Lifestyle.
+      // Keep their value and the author's label; only free cash stays Liquidity.
+      input.assetPositions.push({ ...position, amount: cash, bucket: 'lifestyle_assets', source: 'plan_goal_funding' });
+    }
+  }
   let ledgerDebtInput = false;
   if (chapter === 'pension_projection' && context.ledgerFunding?.pensionInput) input = cloneJson(context.ledgerFunding.pensionInput);
   if (['mortgage_analysis', 'loan_analysis'].includes(chapter)) {
@@ -364,7 +378,7 @@ export async function buildChapter(context, pack, chapter) {
   let metrics = {};
   let nativeCaseId = 'base';
   if (chapter === 'personal_balance_sheet') {
-    const published = buildPublishedSessionFromCall({ profile, results: [result], clientName: pack.clientName, createdAt: pack.calculationDate + 'T00:00:00.000Z' });
+    const published = buildPublishedSessionFromCall({ profile, results: [result], moduleInputs: { personal_balance_sheet: input }, clientName: pack.clientName, createdAt: pack.calculationDate + 'T00:00:00.000Z' });
     const module = published.session.modules[0];
     if (!module) fail('/chapters', 'The existing balance-sheet publisher produced no payload.');
     payload = { title: module.title, generated: module.generated };
@@ -390,5 +404,7 @@ export async function buildChapter(context, pack, chapter) {
     }
   }
   return { input, payload, metrics, nativeCaseId, basis: 'existing_adviser_adapter', moduleVersion: definition.moduleVersion,
-    builderHousehold: profile, assumptionsUsed: readiness.assumptionsUsed ?? [], warnings: readiness.warnings ?? [] };
+    builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...(balanceSheetAssignments.length ? [{
+      key: 'goalCashClassification', value: { bucket: 'lifestyle_assets', cashAssignments: cloneJson(balanceSheetAssignments) }
+    }] : [])], warnings: readiness.warnings ?? [] };
 }

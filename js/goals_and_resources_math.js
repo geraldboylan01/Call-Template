@@ -110,7 +110,7 @@ const USE_LABELS = Object.freeze({
   'part/part': { id: 'cash-split', title: 'Cash split across both' }
 });
 
-const STATE_WORDS = Object.freeze({ covered: 'Covered', partly: 'Partly covered', not: 'Not covered' });
+export const GOAL_STATE_WORDS = Object.freeze({ covered: 'Covered', partly: 'Partly covered', not: 'Not covered' });
 
 // -------------------------------------------------------------- formatting ---
 
@@ -986,7 +986,7 @@ function goalStates(inputs, { college, pension, ledger }) {
       firstMoneyYear: funded ? funded.year : null,
       coveredFromYear: !unreachable && recovered ? recovered.year : null,
       state,
-      stateWord: STATE_WORDS[state]
+      stateWord: GOAL_STATE_WORDS[state]
     };
   });
 }

@@ -3,7 +3,7 @@ import { getPlanningModuleDefinition } from '../module_registry.js';
 import { PLANEIR_ASSUMPTIONS } from '../planeir_assumptions.js';
 import { computeLiquidityReserve } from '../../liquidity_reserve.js';
 import { computeFutureCostFundProjection } from '../../future_cost_fund_math.js';
-import { pricePlanMortgage, pricePlanRetirement } from '../../goals_and_resources_math.js';
+import { GOAL_STATE_WORDS, pricePlanMortgage, pricePlanRetirement } from '../../goals_and_resources_math.js';
 import { routeContext, buildChapter, missing, people, LaterStage } from './chapters.js';
 import { priceInvestmentSales } from './investment_sales.js';
 import { fail, finiteJson } from './schema.js';
@@ -292,7 +292,8 @@ export async function prepareResourceRoute(pack, route, index) {
     const partly = goal.hasCurrentFunding || rows.some(row => row.allocated > 0.005) || (cashByGoal[goal.goalId] ?? 0) > 0;
     const short = years.filter(row => { const g = row.goals.find(g => g.goalId === goal.goalId); return g.allocated < g.required - 0.005; });
     const lastShort = short.at(-1)?.offset;
-    return { goalId: goal.goalId, kind: goal.kind, state: covered ? 'covered' : partly ? 'partly' : 'not',
+    const state = covered ? 'covered' : partly ? 'partly' : 'not';
+    return { goalId: goal.goalId, kind: goal.kind, state, stateWord: GOAL_STATE_WORDS[state],
       unreachable: goal.unreachable ?? false, firstShortYear: short[0]?.offset ?? null,
       firstMoneyYear: years.find(row => row.goals.find(g => g.goalId === goal.goalId).allocated > 0.005)?.offset ?? null,
       coveredFromYear: lastShort === undefined || goal.unreachable ? null : years.find(row => row.offset > lastShort && row.goals.find(g => g.goalId === goal.goalId).required > 0.005)?.offset ?? null };
