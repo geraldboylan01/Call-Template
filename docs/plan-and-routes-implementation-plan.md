@@ -1,6 +1,6 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 20 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; B0 merged in #80; B1 is implemented for review against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md).
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 20 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built. B0 merged in #80 and B1 in #85, against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md). B1.1 (freed cash and retirement) is in #87. The [B1.5 storyteller brief](plan-pack-b15-story-brief.md) is written for review and comes before the plan view design.
 
 ## 1. Where things stand
 
@@ -141,14 +141,16 @@ Two tracks run side by side. Track A builds the module screens, one Claude Code 
 | A4 | Goals engine, timeline fields, app wiring and relief footnotes merged (#75/#76) | Complete | Goals module |
 | P | Existing module prompt contracts merged, including cash flow and home trade down (#83) | Complete for current modules | Claude |
 | B0 | Plan pack v1: format, validator, compiler and `check:plan-pack`; implementation in #80 | Merged in #80; supported/deferred builders in the v1 contract | Plan chat |
-| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | Implemented for review after #80. Cash flow owns left over; a separate stated amount is allowed only without that chapter. | Plan chat |
+| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | Merged in #85. Cash flow owns left over; a separate stated amount is allowed only without that chapter. | Plan chat |
+| B1.1 | Freed cash in every route: a loan's repayment comes back after its native schedule ends. Each person's share of the yearly surplus stops funding goals from their own retirement year | B1; in #87 | Plan chat |
+| B1.5 | The storyteller: story facts, the inefficiency issue list, the nine story sections with the five education-only parts, route recipes, risks from stress runs, and golden plans for B4 ([brief](plan-pack-b15-story-brief.md)) | B1.1, and Gerry's review of the brief | Plan chat |
 | B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6; central Illness Benefit assumption, shared-engine tax treatment and duration contract | Each module's engine; versioned assumptions and tax support for illness scenarios | Plan chat |
-| D2 | The plan view: the current position and the routes side by side | B1's output shape | Claude Design |
+| D2 | The plan view: the current position and the routes side by side, laid out around the B1.5 story sections | B1.5's story sections and B1's output shape | Claude Design |
 | B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats | D2, B1, B2 | Plan chat |
-| B4 | The plan playbook (how an author writes a plan pack) and two golden plan packs | B1 | Gerry and Claude |
+| B4 | The plan playbook (how an author writes a plan pack) and the golden plan packs: Niamh and Dara in public, and the five CFP case studies kept out of the public repository | B1.5 and the case notes | Gerry and Claude |
 | Later | Property chapters as routes, where a sale's proceeds become money now. The consumer questions from section 6. The website version through the API. | B3 | |
 
-B0 merged in #80. B1 adds allocation, the protected reserve, ordinary-CGT sale proceeds and the balance test. Its implementation is ready for review; B2 completes the missing screen/profile adapters and illness-tax contracts.
+B0 merged in #80 and B1 in #85: allocation, the protected reserve, ordinary-CGT sale proceeds and the balance test. B1.1 credits freed cash and stops each person's surplus at retirement. B1.5 tells each route's story in the method's order, and the plan view (D2) is designed around its sections. B2 completes the missing screen/profile adapters and illness-tax contracts.
 
 The module screens stay adviser-only (`consumer: false`) as their briefs say. The plan view starts the same way.
 
@@ -202,6 +204,7 @@ The B0 and B1 briefs set these out in full. The shape, for review:
 
 ## 10. Next
 
-1. Review B1 and its resource-ledger examples; its merge is a separate decision from the authorized #80 merge.
-2. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
-3. Design/build the linked plan view (D2/B3), then write B4’s AI authoring playbook and golden plans. Consumer activation remains off until its adapters and questions are complete.
+1. Review and merge B1.1 (#87).
+2. Review the [B1.5 storyteller brief](plan-pack-b15-story-brief.md) and its four decisions, then build B1.5.
+3. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
+4. Design/build the linked plan view (D2/B3) around the B1.5 story sections, then write B4’s AI authoring playbook against the golden plans. Consumer activation remains off until its adapters and questions are complete.
