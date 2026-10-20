@@ -366,7 +366,8 @@ export async function prepareResourceRoute(pack, route, index) {
   });
   const goalStates = quotes.map(goal => {
     const rows = years.map(row => row.goals.find(g => g.goalId === goal.goalId));
-    const covered = current ? goal.alreadyCovered : !goal.unreachable && rows.every(row => row.shortfall <= 0.005);
+    // Current saving covers a goal only in the years the yearly money can still pay it.
+    const covered = (current ? goal.alreadyCovered : !goal.unreachable) && rows.every(row => row.shortfall <= 0.005);
     const partly = goal.hasCurrentFunding || rows.some(row => row.allocated > 0.005) || (cashByGoal[goal.goalId] ?? 0) > 0;
     const short = years.filter(row => { const g = row.goals.find(g => g.goalId === goal.goalId); return g.allocated < g.required - 0.005; });
     const lastShort = short.at(-1)?.offset;

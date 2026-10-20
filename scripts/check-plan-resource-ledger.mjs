@@ -107,6 +107,12 @@ await test('A working person without a retirement age is asked for one, and one 
   p.household.partner.intendedRetirementAge=43;const l=ledger(await compile(p));
   assert.equal(l.earners.find(e=>e.personId==='dara').stopsFromYear,2026);close(l.years[0].earningShare,l.earners[0].share);
 });
+await test('Current saving that meets a goal is not covered once the yearly money to pay it has stopped',async()=>{
+  const p=lean(['college']);const need=ledger(await compile(p)).pricing[0].priced.cases[0].yearlyAmount;
+  p.planningInputs.goalFundingFacts[0].currentAnnualSaving=Math.ceil(need);let l=ledger(await compile(p));assert.equal(l.goals[0].state,'covered');
+  p.household.primaryPerson.intendedRetirementAge=48;p.household.partner.intendedRetirementAge=46;l=ledger(await compile(p));
+  assert.equal(l.goals[0].state,'partly');assert.equal(l.goals[0].firstShortYear,3);assert.equal(l.years[3].available,0);
+});
 await test('Someone already retired keeps their share, because today’s left over already comes from retirement income',async()=>{
   const p=lean(['goal_mortgage']);p.household.partner.employmentStatus='retired';delete p.household.partner.intendedRetirementAge;
   p.household.primaryPerson.intendedRetirementAge=50;const l=ledger(await compile(p)),dara=l.earners.find(e=>e.personId==='dara');
