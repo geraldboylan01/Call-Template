@@ -181,14 +181,17 @@ function validateFundingFacts(pack) {
 function investmentInventory(pack, sales) {
   const assigned = new Set(pack.planningInputs.assetAssignments.map(a => a.assetId));
   const holdings = pack.household.assets.filter(a => a.type === 'investment' && !assigned.has(a.assetId));
-  const ordinary = holdings.filter(a => a.investmentTaxTreatment === 'ordinary_cgt' && a.currentValue);
+  const sold = new Set(sales.sales.map(s => s.assetId));
+  // Only holdings the route keeps: a sold asset and its exemption are already in the route's own sale.
+  const ordinary = holdings.filter(a => a.investmentTaxTreatment === 'ordinary_cgt' && a.currentValue && !sold.has(a.assetId));
   // This is one hypothetical batch, never additional cash or another allowance.
   const potentialSale = ordinary.length && pack.planningInputs.householdTaxStatus
     ? priceInvestmentSales(pack.household, ordinary.map(a => a.assetId), pack.calculationDate, pack.planningInputs.householdTaxStatus, pack.planningInputs.openingTaxState) : null;
-  return { countedAsCash: false, potentialSaleBasis: 'all_unassigned_ordinary_cgt_holdings_sold_together_from_opening_tax_history', potentialSale,
+  return { countedAsCash: false, potentialSaleBasis: 'unassigned_ordinary_cgt_holdings_kept_by_the_route_sold_together_from_opening_tax_history', potentialSale,
     holdings: holdings.map(asset => ({ assetId: asset.assetId, marketValue: asset.currentValue ?? null,
-      taxTreatment: asset.investmentTaxTreatment ?? 'unknown', soldInRoute: sales.sales.some(s => s.assetId === asset.assetId),
-      valuationStatus: ordinary.includes(asset) && potentialSale ? 'priced_in_potential_batch' : 'requires_sale_facts_or_adapter' })) };
+      taxTreatment: asset.investmentTaxTreatment ?? 'unknown', soldInRoute: sold.has(asset.assetId),
+      valuationStatus: sold.has(asset.assetId) ? 'sold_in_route'
+        : ordinary.includes(asset) && potentialSale ? 'priced_in_potential_batch' : 'requires_sale_facts_or_adapter' })) };
 }
 
 export async function prepareResourceRoute(pack, route, index) {

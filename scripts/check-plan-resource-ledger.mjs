@@ -221,6 +221,17 @@ await test('A sale batch never duplicates the exemption, and unknown/fund treatm
   const r=await compile(p);valid(r);close(ledger(r,'sell').investmentSales.tax,(20000-1270)*0.31);
   for(const treatment of ['fund_exit_tax','unknown']){p.household.assets[1].investmentTaxTreatment=treatment;await refuses(p,'requires_sale_tax_adapter');}
 });
+await test('The hypothetical sale prices only holdings the route keeps, so a sold investment and its exemption are not counted twice',async()=>{
+  const p=lean();investment(p,'a',10000);investment(p,'b',20000,{baseCost:eur(5000)});
+  p.routes.push({id:'sell_a',changes:[{type:'sellAsset',assetId:'a'}]},{id:'sell_both',changes:[{type:'sellAsset',assetId:'a'},{type:'sellAsset',assetId:'b'}]});
+  const r=await compile(p);valid(r);
+  assert.deepEqual(ledger(r).investments.potentialSale.sales.map(s=>s.assetId),['a','b']);
+  const kept=ledger(r,'sell_a').investments;assert.deepEqual(kept.potentialSale.sales.map(s=>s.assetId),['b']);
+  close(kept.potentialSale.netProceeds,priceInvestmentSales(p.household,['b'],'2026-11-01','married_or_civil_partners').netProceeds);
+  assert.equal(kept.holdings.find(h=>h.assetId==='a').valuationStatus,'sold_in_route');
+  assert.equal(kept.holdings.find(h=>h.assetId==='b').valuationStatus,'priced_in_potential_batch');
+  assert.equal(ledger(r,'sell_both').investments.potentialSale,null);
+});
 await test('A–B–A and B–A–B sale routes start from the same tax history and retain exact input hashes',async()=>{
   const p=lean();investment(p,'a',10000);investment(p,'b',20000,{baseCost:eur(7000)});p.planningInputs.openingTaxState={people:{niamh:{cgtLossesCarriedForward:3000}}};
   const route=(id,assetId)=>({id,changes:[{type:'sellAsset',assetId}]});p.routes.push(route('a','a'),route('b','b'),route('again','a'));
