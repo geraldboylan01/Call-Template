@@ -101,9 +101,17 @@ await test('A repayment that stops comes back in full while anyone still earns, 
   p.household.partner.intendedRetirementAge=50;p.household.goals[0].targetDate='2046-11-01';p.routes=[{id:'current'}];
   const both=ledger(await compile(p)),last=both.years.at(-1);assert(last.year>=2033);assert.equal(last.earningShare,0);assert(last.freed>=6000);assert.equal(last.available,0);
 });
-await test('A working person without a retirement age is asked for one rather than funding goals for ever',async()=>{
+await test('A working person without a retirement age is asked for one, and one retiring this year stops now',async()=>{
   const p=lean(['goal_mortgage']);delete p.household.partner.intendedRetirementAge;
   const r=await refuses(p,'missing_information');assert(r.diagnostics.some(d=>d.path==='/household/partner/intendedRetirementAge'));
+  p.household.partner.intendedRetirementAge=43;const l=ledger(await compile(p));
+  assert.equal(l.earners.find(e=>e.personId==='dara').stopsFromYear,2026);close(l.years[0].earningShare,l.earners[0].share);
+});
+await test('Someone already retired keeps their share, because today’s left over already comes from retirement income',async()=>{
+  const p=lean(['goal_mortgage']);p.household.partner.employmentStatus='retired';delete p.household.partner.intendedRetirementAge;
+  p.household.primaryPerson.intendedRetirementAge=50;const l=ledger(await compile(p)),dara=l.earners.find(e=>e.personId==='dara');
+  assert.equal(dara.stopsFromYear,null);const after=l.years.find(y=>y.year===2031);close(after.earningShare,dara.share);
+  close(after.available,l.earnedLeftOver*dara.share+after.freed);assert(l.assumptions.some(a=>a.includes('already retired keeps their share')));
 });
 await test('An overspend of the reserve refuses an alternative atomically and retains its ledger',async()=>{
   const p=lean(['goal_mortgage']);p.routes.push({id:'overspend',changes:[{type:'useCash',goalId:'goal_mortgage',amount:49000}]});

@@ -236,8 +236,8 @@ function earners(pack, profile, takeHomeByPerson) {
       missing('/household/' + (person === profile.partner ? 'partner' : 'primaryPerson') + '/intendedRetirementAge',
         'State when ' + person.personId + ' intends to retire; their share of annual left over stops funding goals from that year.');
     }
-    // An age already reached describes today's position, which the left over already reflects.
-    const offset = working && person.intendedRetirementAge > person.age ? person.intendedRetirementAge - person.age : null;
+    // Someone already retired keeps their share: today's left over already comes from retirement income.
+    const offset = working ? person.intendedRetirementAge - person.age : null;
     return { personId: person.personId, takeHome: pay[person.personId], share, stopsFromOffset: offset, stopsFromYear: offset === null ? null : year + offset };
   });
 }
@@ -347,9 +347,9 @@ export async function prepareResourceRoute(pack, route, index) {
       + sum(loans.filter(e => e.fromOffset !== null && offset >= e.fromOffset).map(e => e.annualAmount));
     const leftOver = earnedLeftOver + freed;
     const earningShare = 1 - sum(earning.filter(p => p.stopsFromOffset !== null && offset >= p.stopsFromOffset).map(p => p.share));
-    // Retirement stops each person's share of the earned surplus, never a
-    // deficit. Stopped repayments come back in full while anyone still has an
-    // income; once everyone has retired there is no yearly money for goals.
+    // Retirement stops each working person's share of the earned surplus,
+    // never a deficit. Stopped repayments come back in full while anyone still
+    // has an income; once no one has, there is no yearly money for goals.
     const stillEarning = earningShare > 1e-9;
     const resources = (earnedLeftOver > 0 ? earnedLeftOver * (stillEarning ? earningShare : 0) : earnedLeftOver) + (stillEarning ? freed : 0);
     let available = Math.max(0, resources);
@@ -390,7 +390,7 @@ export async function prepareResourceRoute(pack, route, index) {
     goalsCovered: goalStates.every(g => g.state === 'covered'),
     assumptions: ['Dated costs use calendar-year offsets. Annual left over is held at today’s figure while people work; no salary rise is credited.',
       'A loan’s repayment comes back in full from the first ledger year after its last repayment on the native amortisation schedule. Saving for a dated cost stops when the cost starts, because the fund then pays it.',
-      'Each person’s share of today’s annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. A repayment that stops comes back in full while anyone still has an income. Once everyone has retired there is no yearly money for goals; later needs are shown short. A deficit is not reduced by retirement.',
+      'Each working person’s share of today’s annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. Someone already retired keeps their share, because today’s left over already comes from their retirement income. A repayment that stops comes back in full while anyone still has an income. When every working person has retired and no one was already retired, there is no yearly money for goals; later needs are shown short. A deficit is not reduced by retirement.',
       'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.'],
     pricing: quotes.map(g => ({ goalId: g.goalId, kind: g.kind, input: g.input, priced: g.priced })) });
   return { context, ledger };
