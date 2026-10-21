@@ -1,13 +1,10 @@
 # Care costs: what nursing home care could cost, what Fair Deal asks, and the ways a family could pay
 
-Status: revised 21 October 2026 after Gerry's two reviews of PR #89. Every decision is settled. **Nothing is built.** No engine, no screen, no wiring. Adviser-only when it is built (`consumer: false`). The screen design is a separate step after this brief is approved.
+Status: third revision in progress, 21 October 2026. Every decision is settled. Still to finish in this revision: the exact Schedule 1 steps in "The model, year by year", the dated-cost contract names (PR #88, 6a to 6c) in `summary` and the plan-layer section, and the open items list. **Nothing is built.** No engine, no screen, no wiring. Adviser-only when it is built (`consumer: false`). The screen design is a separate step after this brief is approved.
 
 ## Still open
 
-No decision is waiting on Gerry. Two things wait on others before the build:
-
-1. **The shared plan pieces in PR #88.** Care plugs into three pieces the storyteller brief is adding: one dated-cost contract that college, the future cost fund and care all hand to the ledger; one projection through retirement to age 100 that every later-life stress changes; and one stress registry with central sizes. The field names in this brief's plan-layer section and `summary` are placeholders until #88 names them, and then they change to match.
-2. **How an approved retirement fund is assessed.** The HSE and Citizens Information need to confirm how an ARF is valued for Fair Deal, and whether its drawdowns also count as income (open item 7). The stress test follows that rule and never counts the same money twice.
+Nothing. No decision waits on Gerry, and nothing waits on the HSE. Where a published source does not settle a point, the brief takes the reading that gives the higher contribution and says so in its own words ("Settled from public sources", near the end).
 
 ## Decisions, settled 21 October 2026
 
@@ -21,7 +18,7 @@ No decision is waiting on Gerry. Two things wait on others before the build:
 | 6 | How much of their income a person keeps when paying privately | **The same personal allowance Fair Deal leaves them**, so cases compare like with like. The course checks set it to zero. |
 | 7 | Whether the person's pension income rises over the years of care | **Yes, with general prices (2%).** Tax bands stay frozen, as the tax engine already does. |
 | 8 | How long a relative's care lasts | **5 years by default, with 3 and 10 years shown beside it.** The course accepts 5 or 10. Whole years only. Life expectancy tables come later as an extra comparison. |
-| 9 | Which State pension rate sets the safeguards | **The maximum personal rate of State Pension (Non-Contributory) for someone aged 66 to 79**: €288 a week from 2 January 2026, €298 from January 2027 once in force. |
+| 9 | Which State pension rate sets the safeguards | **The maximum weekly rate of State Pension (Non-Contributory) at the date of application, at the rate for someone aged 66 to 79**: €288 from 2 January 2026, €298 from January 2027. Schedule 1 of the Act fixes the date; it does not name an age band, so the lower rate, which gives the higher contribution, is used. |
 | 10 | The Nursing Home Loan repayment deadline | **No deadline on screen.** The loan is described as repaid from the estate after death. Revenue says 12 months and the HSE says 18; no figure depends on it. |
 | 11 | How the effect on the estate is shown | **In today's money**, with the home holding its value against prices and the loan growing with prices (the CPI, at the central 2%). |
 | 12 | The CFP course cases | **They stay private** in `private/cfp-cases/`, never in this public brief. |
@@ -30,7 +27,8 @@ No decision is waiting on Gerry. Two things wait on others before the build:
 | 15 | Relief in the course checks (new) | **A flat 40%, injected for the private course checks only**, like the course's rates. Never reachable from a payload. Everywhere else relief comes from the tax engine at the payer's real rate. |
 | 16 | The home's share in the stress test | **Deferred through the Nursing Home Loan in every year Fair Deal applies.** The partner at home keeps the savings, and the stress reports the loan the estate would carry, in today's money. |
 | 17 | Tax relief in the stress test | **Not counted in the first release.** Every stress row carries the review item "Tax relief on nursing home fees may lower this cost", as a plain statement with no figure. |
-| 18 | Where the stress test runs | **Through the shared pieces in PR #88, not a hook of its own.** The care engine supplies a yearly extra outgoing to B1.5's single projection through retirement, and "One of you needs care" is an entry in B1.5's stress registry. |
+| 18 | Where care joins the plan | **Through the shared pieces in PR #88 (commit f0a90b6), not anything of its own.** A relative's care is a producer of the dated-cost contract (6a). The stress test supplies a yearly extra outgoing to B1.5's retirement-years run through that run's options-only hook (6b), and is the registry entry `one_of_you_needs_care` (6c). |
+| 19 | Pension money in the assessment | **An ARF counts as a cash asset, revalued at each yearly review, and what is drawn from it counts as pension income.** That is the scheme's own treatment in Schedule 1 and Citizens Information, not double counting by the module. Labelled: "Based on the published rules: an ARF counts as a cash asset and what is drawn from it counts as income. Not confirmed by the HSE." |
 
 ## Context
 
@@ -118,6 +116,11 @@ Every figure below is checked against the official page named, on 21 October 202
 | `dohBudget2027OlderPeople` | gov.ie, Department of Health, "Minister for Older People Kieran O'Donnell announces Budget 2027 funding increases" | Last updated 9 October 2026 |
 | `hseAgreedPricesList230` | HSE, "Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes", list 230, assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf | Date modified 4 September 2026 |
 | `hsePublicCostOfCare` | HSE, "Nursing Homes Support Scheme, Cost of Care in Public Nursing Homes", assets.hse.ie/media/documents/NHSS_Cost_of_Care_September_2026_Update.pdf | Effective from 1 September 2026 |
+| `actSchedule1` | Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), as revised: revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html. That site was offline for a security update on 21 October 2026, so it was read from the web.archive.org copy captured 11 June 2026, beside the Act as enacted on irishstatutebook.ie. | Revised to its June 2026 state, with amendments to 2024 |
+| `actSection30` | Nursing Homes Support Scheme Act 2009, section 30 (Reviews), same source | As above |
+| `revenueTdmHealthExpenses` | Revenue, Tax and Duty Manual Part 15-01-12, "Health Expenses: Qualifying Expenses", revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-15/15-01-12.pdf | Last updated March 2026 |
+| `revenueUsc` | Revenue, "Universal Social Charge (USC)", revenue.ie/en/jobs-and-pensions/usc/index.aspx | Published 12 December 2025 |
+| `dspBudget2027` | gov.ie, Department of Social Protection, "Budget 2027", gov.ie/en/department-of-social-protection/publications/budget-2027/ | Last updated 9 October 2026 |
 | `igeesNhss2019` | IGEES, Department of Public Expenditure and Reform, "Social Impact Assessment Series: Nursing Home Support Scheme (NHSS)", assets.gov.ie/static/documents/social-impact-assessment-sia-nursing-home-support-scheme-nhss.pdf | August 2019 |
 
 ### The contribution
@@ -144,16 +147,17 @@ Every figure below is checked against the official page named, on 21 October 202
 
 | Rule | Figure | Source |
 |---|---|---|
-| Personal allowance | The person keeps 20% of their income, or 20% of the maximum rate of State Pension (Non-Contributory), whichever is more | `ciFairDeal` |
-| A spouse or partner at home | Left with 50% of the couple's income, or the maximum rate of State Pension (Non-Contributory), whichever is more | `ciFairDeal` |
+| Minimum retained income, single person | 20% of the maximum weekly State Pension (Non-Contributory) "at the date of the application for State support" | `actSchedule1` Part 3 |
+| Minimum retained income, one of a couple with the partner at home | The maximum weekly State Pension (Non-Contributory) together with 20% of it, at the date of application | `actSchedule1` Part 3 |
+| How Citizens Information puts it | The person keeps 20% of their income or 20% of that pension rate, whichever is more; a partner at home is left with 50% of the couple's income or the full rate, whichever is more. The Act's exact steps are in "The model, year by year". | `ciFairDeal` |
 | Maximum State Pension (Non-Contributory), personal rate | €288 a week from 2 January 2026 (aged 66 to 79); €298 a week aged 80 and over | `dspStatePensionNonContributory` |
-| Budget 2027 | Most maximum weekly social welfare rates and pensions rise by €10 from January 2027. Derived: €298 (66 to 79) and €308 (80 and over). Record as `announced` until the commencement date is confirmed. | `ciBudget2027`, `dspStatePensionNonContributory` |
+| From January 2027 | €298 a week aged 66 to 79, €308 aged 80 and over, "from January 2027". The day is not published. | `dspBudget2027` |
 
 ### The 3-year cap
 
 | Rule | Figure | Source |
 |---|---|---|
-| The home | Counted only for the first three years in care, counted from entering care, not from applying | `hseThreeYearCap`, `ciFairDeal` |
+| The home | Stops counting once the person "is receiving or has received" care services, or care in a nursing home, for three years, a period which "need not be continuous". It counts from entering care, not from applying, and whoever paid. For a couple it covers both partners' interest in the home. | `actSchedule1` Part 3, paragraphs 6 and 6A; `hseThreeYearCap`, `ciFairDeal` |
 | Single person | At most 22.5% of the home's value (7.5% a year for three years) | `hseFinancialAssessment` |
 | Couple, one in care | 3.75% a year for three years, at most 11.25% | `ciFairDeal` |
 | Couple, both in care | At most 22.5% in total | `ciFairDeal` |
@@ -198,7 +202,8 @@ Short-term care (respite, convalescent and day care), and extra charges for thin
 
 | Rule | Detail | Source |
 |---|---|---|
-| Rate | Relief at the payer's highest rate of tax, as a deduction from total income. The amount relieved at 40% or 20% depends on how much income was taxed at each rate. | `revenueNursingHome`, `revenueHealthExpenses` |
+| Rate | Relief at the payer's highest rate of tax, as a deduction from total income. The amount relieved at 40% or 20% depends on how much income was taxed at each rate. | `revenueNursingHome`, `revenueHealthExpenses`, `revenueTdmHealthExpenses` section 4 |
+| Income tax only | The manual calls it "income tax relief", given "as a deduction from total income". Revenue's USC page names only capital allowances as deductions before USC is calculated. So USC and PRSI do not change. | `revenueTdmHealthExpenses`, `revenueUsc` |
 | Condition | The nursing home provides 24-hour on-site nursing care | `revenueNursingHome` |
 | Who can claim | Anyone, for their own expenses or another person's, "as long as you paid for them" | `revenueHealthExpenses` |
 | Fair Deal | No relief on the HSE's share. Relief on what the person or family pays themselves, which includes a Fair Deal contribution. | `revenueNursingHome` |
@@ -207,7 +212,7 @@ Short-term care (respite, convalescent and day care), and extra charges for thin
 
 ### Budget 2027
 
-Budget 2027 (6 October 2026) added €97 million for Fair Deal, for cost pressures and 500 more people, and 1.8 million more home support hours (`dohBudget2027OlderPeople`). I found no change to the contribution rules. The €10 rise in State pensions changes the safeguard rate (above).
+Budget 2027 (6 October 2026) added €97 million for Fair Deal, for cost pressures and 500 more people, and 1.8 million more home support hours (`dohBudget2027OlderPeople`). I found no change to the contribution rules. The €10 rise in State pensions changes the minimum retained income (above): €298 a week (66 to 79) from January 2027 (`dspBudget2027`).
 
 ### Prices
 
@@ -450,7 +455,7 @@ The client's own later-life care, shown as a stress test. It needs no new questi
 - With a partner at home, couple rules: 40% of combined assessable income, 3.75% of combined assets above €72,000, the home at 3.75% for three years (at most 11.25%), and the partner at home keeps the larger of half the couple's income or the maximum State Pension (Non-Contributory). Otherwise, single rules.
 - Income: the household's income that year from B1.5's projection through retirement. It is already after tax, so it is the assessable income. It includes ARF drawdowns.
 - Assets: the projection's savings and retirement funds at the end of the year before, counted each year. Approved retirement funds count as cash assets under Fair Deal (`ciFairDeal`), so pension funds are assessed. The home is the household's main home, net of any mortgage, holding its value against prices (decision 11). Other property from the balance sheet counts for as long as care lasts.
-- **Pension money is never counted twice.** An ARF counted as an asset and its drawdown counted as income could charge the same euro twice: 7.5% of the fund, and 80% of the money drawn from it. The build follows whatever the HSE confirms (open item 7) and asserts, in a test, that no euro is counted both ways in one year. The stress test is built to that answer, so the question goes to the HSE before its build starts.
+- **Pension money follows the scheme's own rules (decision 19).** Schedule 1 counts "income from a pension (whether under the social welfare code or otherwise)" as income, and Citizens Information lists approved retirement funds among cash assets; nothing excludes either. So the ARF counts as a cash asset, revalued at each yearly review, and what is drawn from it counts as pension income. That is the scheme's own treatment, not double counting by the module. The assumptions table says: "Based on the published rules: an ARF counts as a cash asset and what is drawn from it counts as income. Not confirmed by the HSE."
 - The home's part: deferred through the Nursing Home Loan in every year Fair Deal applies (decision 16).
 - Tax relief on the household's own care costs: not counted (decision 17). Every stress row carries the review item "Tax relief on nursing home fees may lower this cost".
 
@@ -541,7 +546,7 @@ Two kinds of fixture: public ones, written into the tests, and the course cases,
 12. The default lengths: no `durationYears` gives 5 years with 3 and 10 beside it; no county gives the national average.
 13. **The stress test**, run through B1.5's projection and stress registry: a one-person household; a couple, run once for each person, with the partner's safeguard binding in a low-income case; a household whose savings run out before 100, reporting the year; a person already over 85, starting now; the loan in today's money, with the home part deferred only in Fair Deal years; an ARF in drawdown, proving no euro is counted both as an asset and as income in the same year, under the rule the HSE confirms; the review items present on every stress row; and the projection's own figures unchanged when the care entry is not applied.
 
-**Invariants over every case:** under `lower_of`, what is due is never more than the private fee plus extras in any year; the home part never exceeds the cap and appears only in the first three years from entering care; nothing is due after the last year; due equals HSE share plus contribution plus extras under Fair Deal; family share plus person's income plus savings used equals what is due; savings never go below zero; the lump sum funds every later year to within €0.01; relief never exceeds the tax the payer would otherwise pay.
+**Invariants over every case:** under `lower_of`, what is due is never more than the private fee plus extras in any year; the home part never exceeds the cap and appears only in the first three years from entering care; nothing is due after the last year; and two identities, both checked by the reference calculator every year: (a) in a Fair Deal year, fee + extras = HSE share + contribution + extras; (b) due = contribution + extras − any home part deferred to the loan = person's income used + savings used + family share. In a private year the HSE share is 0 and the contribution is the fee. "Due" is always the person's contribution plus extras, never the fee; savings never go below zero; the lump sum funds every later year to within €0.01; relief never exceeds the tax the payer would otherwise pay.
 
 **Rule sources.** With nothing injected, every rate comes from the catalogue or the central assumptions. Change one rule in a test catalogue and the result follows, which proves the engine holds no copy. Dates either side of 1 January 2027 pick the right State pension rate.
 
