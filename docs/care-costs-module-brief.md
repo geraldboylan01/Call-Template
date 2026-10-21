@@ -1,19 +1,19 @@
 # Care costs: what nursing home care could cost, what Fair Deal asks, and the ways a family could pay
 
-Status: revised 21 October 2026 after Gerry's review of PR #89. Gerry's decisions are settled below; two new questions remain. **Nothing is built.** No engine, no screen, no wiring. Adviser-only when it is built (`consumer: false`). The screen design is a separate step after this brief is approved.
+Status: revised 21 October 2026 after Gerry's two reviews of PR #89. Every decision is settled. **Nothing is built.** No engine, no screen, no wiring. Adviser-only when it is built (`consumer: false`). The screen design is a separate step after this brief is approved.
 
 ## Still open
 
-Two questions came up while writing the "one of you needs care" stress test. Each has a recommended default; if you agree, nothing needs to be said.
+No decision is waiting on Gerry. Two things wait on others before the build:
 
-1. **In the stress test, is the home's share of the contribution paid from savings or put on the Nursing Home Loan?** Recommended: put on the loan in every year Fair Deal applies. The partner at home then keeps the savings, and the stress reports the loan the estate would carry, in today's money. Paying it from savings would take up to 11.25% of the home's value from a couple's savings over three years.
-2. **Does the stress test count the tax relief the household could claim on its own care costs?** Recommended: not in the first release. The stress is meant to be prudent, and the retirement cash flow it runs through works in after-tax income, so it has no tax position to relieve. Counting relief would lower the cost by up to the household's income tax in those years.
+1. **The shared plan pieces in PR #88.** Care plugs into three pieces the storyteller brief is adding: one dated-cost contract that college, the future cost fund and care all hand to the ledger; one projection through retirement to age 100 that every later-life stress changes; and one stress registry with central sizes. The field names in this brief's plan-layer section and `summary` are placeholders until #88 names them, and then they change to match.
+2. **How an approved retirement fund is assessed.** The HSE and Citizens Information need to confirm how an ARF is valued for Fair Deal, and whether its drawdowns also count as income (open item 7). The stress test follows that rule and never counts the same money twice.
 
 ## Decisions, settled 21 October 2026
 
 | # | Decision | Settled |
 |---|---|---|
-| 1 | Whose care | **Two uses, both in the first release.** (a) A parent or relative the household pays for, only when the client picks or mentions it, with a short set of questions asked only then (see "Questions about a relative's care"). (b) The client's own later-life care as a stress test needing no new questions: for each person in the household in turn, care from age 85 to 90, run through the household's retirement cash flow (see "One of you needs care"). It is a stress test, never a goal, and takes no money in the ledger. |
+| 1 | Whose care | **Two uses, both in the first release.** (a) A parent or relative the household pays for, only when the client picks or mentions it, with a short set of questions asked only then (see "Questions about a relative's care"). (b) The client's own later-life care as a stress test needing no new questions: for each person in the household in turn, care from age 85 to 90, run through B1.5's projection through retirement (see "One of you needs care"). It is a stress test, never a goal, and takes no money in the ledger. |
 | 2 | Care at home | **Not in the first release.** The module covers nursing home care, and says so. |
 | 3 | How fast nursing home fees rise | **4% a year: the existing central education and healthcare rate, `inflation.educationRate`.** Its basis already names healthcare costs. One rate for both, so they move together, labelled for care as well. No separate care rate. The plan story's cost stress (2 points higher) then puts care at 6%. |
 | 4 | The default weekly fee | **The county average from the HSE's list of agreed prices (list 230) when the county is known, otherwise the national average (€1,312 a week).** The adviser can type a real home's price instead. |
@@ -28,6 +28,9 @@ Two questions came up while writing the "one of you needs care" stress test. Eac
 | 13 | Name | **"Care costs"**, kind `care-costs`, payload key `careCostInputs`. |
 | 14 | Fair Deal only when it lowers the cost (new) | **A case basis `lower_of`, the default everywhere**, including the stress test. Each year the person pays the lower of their assessed contribution and the private fee, with extras on top of both. The three-year limit on the home counts from entering care, not from applying. See "Why Fair Deal never costs more". |
 | 15 | Relief in the course checks (new) | **A flat 40%, injected for the private course checks only**, like the course's rates. Never reachable from a payload. Everywhere else relief comes from the tax engine at the payer's real rate. |
+| 16 | The home's share in the stress test | **Deferred through the Nursing Home Loan in every year Fair Deal applies.** The partner at home keeps the savings, and the stress reports the loan the estate would carry, in today's money. |
+| 17 | Tax relief in the stress test | **Not counted in the first release.** Every stress row carries the review item "Tax relief on nursing home fees may lower this cost", as a plain statement with no figure. |
+| 18 | Where the stress test runs | **Through the shared pieces in PR #88, not a hook of its own.** The care engine supplies a yearly extra outgoing to B1.5's single projection through retirement, and "One of you needs care" is an entry in B1.5's stress registry. |
 
 ## Context
 
@@ -37,7 +40,7 @@ Nothing in the app answers this. The future cost fund (`js/future_cost_fund_math
 
 The idea the module has to land: **under Fair Deal the parent pays a set share of their income and assets and the HSE pays the rest; the contribution from the home stops after three years; and what the family pays, and when, depends on whose money is used first.**
 
-The same calculator has a second use with no questions of its own: a stress test of the client's own later life, where one person in the household needs care from 85 to 90 and the cost runs through the household's retirement cash flow (see "One of you needs care").
+The same calculator has a second use with no questions of its own: a stress test of the client's own later life, where one person in the household needs care from 85 to 90 and the cost runs through the plan's projection of the household through retirement (see "One of you needs care").
 
 It is used two ways at once, like every module: shared on a call while the adviser clicks between cases, and re-opened later by the client alone. Nothing may depend on spoken context.
 
@@ -257,7 +260,7 @@ Three kinds of figure, kept in three places. **The engine reads all of them and 
    - **Fee growth is not a new figure.** It is the existing `inflation.educationRate` (4%), whose basis already names education and healthcare costs (decision 3). One value for both, so they always move together. Its basis wording is extended to say the rate is used for education **and care** planning, and a second record, `assumptionRecord('careFeeGrowth')` with key `careFeeGrowthRate`, reads the same value and basis so the care footnote names it for care. No separate care rate is added.
    - `agreedPrices`: the list number (230), its date (2026-09-04), the national average and the county averages above, `checkedOn: '2026-10-21'`, and the URL, for the audit trail. The `basis` says "the average of the HSE's maximum agreed prices for private and voluntary nursing homes in the county, or nationally when the county is not known" and names no home.
    - `relativeCare`: `defaultYears: 5` and `compareYears: [3, 10]` (decision 8), with a `basis` ("Care for a relative is shown over 5 years, with 3 and 10 years beside it. These are planning lengths, not a forecast of how long care lasts.").
-   - `ownCareStress`: `startAge: 85`, `years: 5`, `approvedOn: '2026-10-21'`, sources `igeesNhss2019`, and a `basis`: "The stress test assumes care from age 85 to 90. This is deliberately longer than the average stay in the scheme, about 2.6 years for men and 3.4 years for women (IGEES, 2019), and half of residents are over 85. It is a prudent stress, not a forecast." In the same report, about a quarter of people leaving the scheme in 2017 had stayed more than four years.
+   - `ownCareStress`: the central sizes of the "One of you needs care" entry in B1.5's stress registry, kept with the central assumptions as B1.5's stress sizes are. `startAge: 85`, `years: 5`, `approvedOn: '2026-10-21'`, sources `igeesNhss2019`, and a `basis`: "The stress test assumes care from age 85 to 90. This is deliberately longer than the average stay in the scheme, about 2.6 years for men and 3.4 years for women (IGEES, 2019), and half of residents are over 85. It is a prudent stress, not a forecast." In the same report, about a quarter of people leaving the scheme in 2017 had stayed more than four years.
    - The loan's CPI uses the existing `inflation.generalRate`. Money held in cash uses the existing `cash.instantAccessGrossRate` and DIRT from the tax catalogue.
    - Bump `PLANEIR_ASSUMPTIONS_VERSION`, add `assumptionRecord` keys and `ASSUMPTION_LABELS` entries (`careFeeGrowthRate`: "How fast nursing home fees rise (the education and healthcare cost rate)"; `careWeeklyFee`: "Nursing home fee a week"; `ownCareStressAge` and `ownCareStressYears`), update `scripts/fixtures/module-catalogue-authoring-identity.json` because the education basis wording moves, and extend `scripts/check-planeir-assumptions.mjs`.
 3. **Tax relief: the shared tax engine**, `js/planning/tax/`. See "The tax engine change".
@@ -372,7 +375,7 @@ The same shape as the other engine modules: `assumptionsTable`, `outputsTable` (
 - `debug.cases[]`: for each case, `rows[]` of `{ yearIndex, yearInCare, fairDealApplies, assessedContribution, fee, extras, due, incomePart, savingsPart, otherPropertyPart, homePart, deferredToLoan, hsePays, fromIncome, fromSavings, familyBeforeRelief, relief, familyAfterRelief, savingsAtStart, savingsAtEnd }`, and the totals: `fairDealYears` (the years Fair Deal applies), `familyTotalBeforeRelief`, `reliefTotal`, `familyTotalAfterRelief`, `homePartTotal` (never more than the cap), `homePartEndsAfterYear`, `savingsLastYears`, `loanAtEnd`, `loanTodaysMoney`, `estateHomeAfterLoanTodaysMoney`, `lumpSumNow`, `yearlyFromHousehold` (first year and a rising amount), `beforeRetirement` and `afterRetirement` splits, and `retirementCapitalNeeded`.
 - `debug.compareDurations[]`: the selected case's headline figures at each comparison length.
 - `debug.rulesUsed`: `FAIR_DEAL_RULES_VERSION` and every rule's `ruleId`, `PLANEIR_ASSUMPTIONS_VERSION`, `IE_TAX_RULES_VERSION`, the price list number and date, and whether a fee was the county average or stated.
-- `summary` (stable, for the plan adapter): per case, the years Fair Deal applies, the family's yearly amounts before and after relief, the lump sum now, the person's contribution split, the year the home part ends, how long the person's savings last, the loan, and the retirement split.
+- `summary` (stable, for the plan adapter): per case, **the shared dated-cost contract** that B1.5 (PR #88) is defining for college, the future cost fund and care alike (the yearly amounts, the lump sum now, the split before and after retirement, and the relief), plus what only care has: the years Fair Deal applies, the person's contribution split, the year the home part ends, how long the person's savings last, and the loan. The names used in this brief are placeholders; once #88 names the contract's fields, `summary` uses those names exactly and this brief is updated to match.
 - `getCareCostCases(rawInputs)` and `getDefaultCareCostScenarioId(rawInputs)` for the presenter.
 
 ### Validation
@@ -434,7 +437,7 @@ Other module inputs (rent from the home, other property, transfers in the last f
 
 ## One of you needs care: the stress test
 
-The client's own later-life care, shown as a stress test. It needs no new questions: it uses the household facts the plan already holds.
+The client's own later-life care, shown as a stress test. It needs no new questions: it uses the household facts the plan already holds. It is built with B1.5's later-life stories, because it runs on their projection.
 
 **What is run.** For each person in the household in turn, one run: that person goes into nursing home care from age 85 to 90 (the central `care.ownCareStress`, decision 1), while the other person, if there is one, stays at home. A person already 85 or older starts now and still runs five years. A one-person household has one run. Two people in care at once is not run.
 
@@ -445,18 +448,21 @@ The client's own later-life care, shown as a stress test. It needs no new questi
 - Basis `lower_of`: in each year, the lower of the assessed contribution and the private fee. A wealthy household may pay privately in the first years and use Fair Deal once the home stops counting.
 - The fee: the national average (€1,312 a week; the profile holds no county), grown at 4% from today. No extras.
 - With a partner at home, couple rules: 40% of combined assessable income, 3.75% of combined assets above €72,000, the home at 3.75% for three years (at most 11.25%), and the partner at home keeps the larger of half the couple's income or the maximum State Pension (Non-Contributory). Otherwise, single rules.
-- Income: the household's income that year from its retirement cash flow. That cash flow is already after tax, so it is the assessable income.
-- Assets: the retirement cash flow's fund at the end of the year before. Approved retirement funds count as cash assets under Fair Deal (`ciFairDeal`), so pension funds in the fund are assessed. The home is the household's main home, net of any mortgage, holding its value against prices (decision 11). Other property from the balance sheet counts for as long as care lasts.
-- The home's part: [still open, question 1] by default deferred through the loan in every year Fair Deal applies.
-- Relief on the household's own care costs: [still open, question 2] by default not counted.
+- Income: the household's income that year from B1.5's projection through retirement. It is already after tax, so it is the assessable income. It includes ARF drawdowns.
+- Assets: the projection's savings and retirement funds at the end of the year before, counted each year. Approved retirement funds count as cash assets under Fair Deal (`ciFairDeal`), so pension funds are assessed. The home is the household's main home, net of any mortgage, holding its value against prices (decision 11). Other property from the balance sheet counts for as long as care lasts.
+- **Pension money is never counted twice.** An ARF counted as an asset and its drawdown counted as income could charge the same euro twice: 7.5% of the fund, and 80% of the money drawn from it. The build follows whatever the HSE confirms (open item 7) and asserts, in a test, that no euro is counted both ways in one year. The stress test is built to that answer, so the question goes to the HSE before its build starts.
+- The home's part: deferred through the Nursing Home Loan in every year Fair Deal applies (decision 16).
+- Tax relief on the household's own care costs: not counted (decision 17). Every stress row carries the review item "Tax relief on nursing home fees may lower this cost".
 
-**Through the retirement cash flow.** The care cost each year (the contribution or the fee, less any part deferred to the loan) is an **extra outgoing** in the household's retirement cash flow, met from income first and then from the fund, year by year. The household's usual spending is not reduced, which is prudent: a partner at home still runs the home, and a single person's home costs largely continue. This needs one seam in `js/net_retirement_math.js`: an options-only hook, never reachable from a payload, that the care engine supplies. Each year it receives the fund at the start of that year and returns the extra outgoing, which joins that year's shortfall in the fund path. The engine's existing figures are unchanged when no hook is given.
+**Through B1.5's projection, not a module of its own.** B1.5 (PR #88) runs one projection of the household through retirement to age 100, for each investment version it runs, and every later-life stress applies its changes to that same projection. Care does the same: the care engine supplies a **yearly extra outgoing** (the contribution or the fee, less any part deferred to the loan), and the projection meets it from income first and then from savings and retirement funds, year by year. The household's usual spending is not reduced, which is prudent: a partner at home still runs the home, and a single person's home costs largely continue. The Fair Deal assessment each year reads that year's income and the funds left at the end of the year before from the same projection, so the two never drift apart. The care engine adds no hook to `js/net_retirement_math.js` and runs no retirement projection of its own.
+
+**In the stress registry.** "One of you needs care" is an entry in B1.5's stress registry, beside the other stresses, with its central sizes: start age 85 and 5 years (the `care.ownCareStress` record, dated and sourced). The registry runs it once for each person in the household, and the fee stress ("costs rise faster", 2 points higher) applies to care through the same registry.
 
 **What it reports**, for each person's run:
 
 - how many years the household's savings last, and the year they run out, if they do;
 - what the partner at home is left with each year after the contribution, beside the household's planned spending;
-- whether money runs out before the end of the retirement cash flow (age 100 today), and in which year;
+- whether money runs out before 100, the end of B1.5's projection, and in which year;
 - any loan against the estate, in today's money;
 - the years Fair Deal applies, and the contribution split into income, savings and home.
 
@@ -466,6 +472,8 @@ It is a stress test: **never a goal, and it takes no money in the resource ledge
 
 How this module feeds the resource ledger (B1, `js/planning/plan_pack/resource_ledger.js`), the freed cash and retirement rules (B1.1, PR #87) and the storyteller (B1.5, PR #88). **This is the plan adapter's work (B2), not the module's first build.** It is set out here so the engine's `summary` carries what the plan needs.
 
+Care plugs into three shared pieces PR #88 is adding, and builds none of its own: **one dated-cost contract** that college, the future cost fund and care all hand to the ledger; **one projection through retirement to age 100** that every later-life stress changes; and **one stress registry** with central sizes. #88 has not named their fields yet. The names below are placeholders, and this section and `summary` change to #88's names when it sets them.
+
 ### A goal for care
 
 - Add a goal type `fund_care` to `js/planning/goal_catalogue.js`, with who it is for, the start, the number of years and the basis of the yearly cost. Adviser-only: **no consumer route, no manifest entry, consumer activation off.** Today the nearest fit is `assess_decision` with a `dated_cost` funding fact, which cannot hold any of the Fair Deal facts. This goal, or a mention of supporting a relative's care, is what triggers the questions above.
@@ -473,6 +481,7 @@ How this module feeds the resource ledger (B1, `js/planning/plan_pack/resource_l
 
 ### In the resource ledger
 
+- Care hands the ledger the **shared dated-cost contract**, the same shape college and the future cost fund hand it, so the ledger has one way to read every dated cost.
 - Care enters as a dated cost in **start-date order**, like college. A care need starting now (`startsInYears` 0) comes first among dated costs, before the mortgage and retirement. The plan's goal order already lists care for a parent among the dated costs.
 - Its two ways of funding, never added together: **money now** is the module's `lumpSumNow`; **money each year** is the family's yearly amounts after relief (they change from year to year, because the home part stops and the person's savings run down). The ledger's `needs` array takes those amounts year by year rather than one repeated figure.
 - **Care past the payer's retirement.** B1.1 stops each person's share of the surplus at their retirement. The years of care after retirement therefore move from money each year into the retirement goal, as extra capital needed at retirement (`retirementCapitalNeeded`), and the ledger prints them under retirement as "care after retirement". Without this, those years would show as unfunded with no explanation.
@@ -501,9 +510,12 @@ Placeholders, so narration never types a figure. To be added to B1.5's registry 
 
 **Risks for a relative's care**, each a code fact from a stress run of the same engine: care lasting longer (the 10-year comparison), fees rising faster (B1.5's dated-cost stress of 2 points, so care at 6%), the rules or the relief changing (shown as the rules version and its date, never a guess at a future rule), and the loan reducing the estate.
 
-**A new risk row: "One of you needs care".** B1.5's risk list gains this row, from the stress test above: for each person, how long savings last, what the partner at home is left with, whether money runs out before 100, and any loan against the estate in today's money. It also feeds what is left at the end of life, which B1.5 shows through retirement to the age the retirement cash flow plans to (100 today). The B1.5 brief (PR #88) gains the row when the care engine exists; this branch does not edit #88.
+**A new risk row: "One of you needs care".** An entry in B1.5's stress registry (decision 18), with the central sizes 85 and 5 years, run once for each person on B1.5's projection through retirement. Its row in the risk list shows, for each person, how long savings last, what the partner at home is left with, whether money runs out before 100, and any loan against the estate in today's money. It also feeds what is left at 100 in the later-life stories. The B1.5 brief (PR #88) gains the row when the care engine exists; this branch does not edit #88.
 
-**Review items.** The non-financial reasons a family may choose not to use Fair Deal (a charge on the home, wanting a home priced above its agreed price, the waiting list, the five-year look-back on gifts) go to B1.5's `check_next` as plain statements with no figures, for every route with a care goal or the stress row. They never change a figure.
+**Review items**, as plain statements with no figures, in B1.5's `check_next`. They never change a figure:
+
+- For every route with a care goal or the stress row: the non-financial reasons a family may choose not to use Fair Deal (a charge on the home, wanting a home priced above its agreed price, the waiting list, the five-year look-back on gifts).
+- For every stress row: "Tax relief on nursing home fees may lower this cost" (decision 17).
 
 ## Wiring
 
@@ -527,7 +539,7 @@ Two kinds of fixture: public ones, written into the tests, and the course cases,
 10. Care past the payer's retirement.
 11. Relief: a standard-rate payer, a payer straddling the bands, a payer with no income tax.
 12. The default lengths: no `durationYears` gives 5 years with 3 and 10 beside it; no county gives the national average.
-13. **The stress test:** a one-person household; a couple, run once for each person, with the partner's safeguard binding in a low-income case; a household whose savings run out before 100, reporting the year; a person already over 85, starting now; the loan in today's money; and the retirement cash flow giving exactly its present figures when no hook is given.
+13. **The stress test**, run through B1.5's projection and stress registry: a one-person household; a couple, run once for each person, with the partner's safeguard binding in a low-income case; a household whose savings run out before 100, reporting the year; a person already over 85, starting now; the loan in today's money, with the home part deferred only in Fair Deal years; an ARF in drawdown, proving no euro is counted both as an asset and as income in the same year, under the rule the HSE confirms; the review items present on every stress row; and the projection's own figures unchanged when the care entry is not applied.
 
 **Invariants over every case:** under `lower_of`, what is due is never more than the private fee plus extras in any year; the home part never exceeds the cap and appears only in the first three years from entering care; nothing is due after the last year; due equals HSE share plus contribution plus extras under Fair Deal; family share plus person's income plus savings used equals what is due; savings never go below zero; the lump sum funds every later year to within €0.01; relief never exceeds the tax the payer would otherwise pay.
 
@@ -568,6 +580,8 @@ These are checks, not decisions for Gerry.
 4. **The State pension rate from January 2027**: confirm its commencement date and which age band the safeguard uses.
 5. **The loan repayment period** after death: 12 months (Revenue, 2023) or 18 months (HSE). Decision 10 keeps it off the screen until this is settled.
 6. **The home's value.** Confirm with the HSE that the home is valued at the first assessment and not revalued at each yearly review, which is how the brief applies the 22.5% cap.
+7. **An approved retirement fund (ARF).** Citizens Information lists ARFs among cash assets, at the "value of fund at date of application". Confirm with the HSE and Citizens Information how an ARF is assessed after that: at its value at application only, or revalued at each review. Confirm also whether ARF drawdowns count as income as well. The stress test counts the fund as a cash asset each year and takes income, including drawdowns, from B1.5's projection, so the build follows the confirmed rule and never counts the same money twice.
+8. **The shared contracts' names.** Once PR #88 names the dated-cost contract, the projection and the stress registry, rename this brief's placeholders in the plan-layer section and `summary` to match.
 
 ## When you finish
 
