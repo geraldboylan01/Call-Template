@@ -1,6 +1,6 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 20 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; B0 merged in #80; B1 is implemented for review against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md).
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 20 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built. B0 merged in #80 and B1 in #85, against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md). B1.1 (freed cash and retirement) is in #87. The [B1.5 brief](plan-pack-b15-story-brief.md), revised on 22 October to an AI analyst with tools, is written for review and comes before the plan view design.
 
 ## 1. Where things stand
 
@@ -17,10 +17,10 @@ Module briefs accompany the code. The module follow-ups above are merged. #83 in
 
 ## 2. What the first version does, end to end
 
-1. **An author writes one plan pack.** The author is Claude, in a chat or in Claude Code, so no API is spent. The pack holds the household's facts once, how far each goal could move, and up to three routes beside the current position.
+1. **An analyst writes one plan pack.** The analyst is Claude, in a chat or in Claude Code, so no API is spent. It reads the household's facts, decides which routes and what-ifs matter, sets them from those facts, and runs the engines through the same tools the website agent will use; it never does maths. The pack holds the household's facts once, how far each goal could move, and up to three routes beside the current position.
 2. **`npm run check:plan-pack` compiles and prices it.** Every chapter's module payload is built from the household facts and the route's changes, every engine runs, and the resource ledger prices each route, taking goals in the planning method's order. The check prints each route's ledger. It fails a route that does not balance, a change outside a goal's stated flexibility, and narration that types a figure.
 3. **The app loads the pack like a case pack.** The plan view shows the current position first and the routes beside it, each with its money-now and money-each-year picture and the goals it moves. Picking a route selects the matching case in every chapter. Choosing a different case inside a chapter shows a note that the screen no longer follows the route.
-4. **Later, on the website,** an AI analyst writes the same plan pack from the intake, and the same check verifies it before anything runs. The format and the check are the contract, so moving to the API changes who writes the pack, not what the app does with it.
+4. **Later, on the website,** an AI analyst writes the same plan pack from the intake through the same tool catalogue, defined once and offered in the worker as tool definitions, and the same check verifies it before anything runs. The format, the tools and the check are the contract, so moving to the API changes who calls the tools, not what the app does with them.
 
 ## 3. Rules the code carries
 
@@ -33,6 +33,10 @@ Module briefs accompany the code. The module follow-ups above are merged. #83 in
 - **Routes are never ranked.** They are ordered by how much they change from the current position and named neutrally. Each says what it changes, above all a goal that moves.
 - **Money now and money each year are never drawn on one scale or added together.** As in the method's ledger, alternatives are never totalled: a route picks one way of funding each goal and only that is added up.
 - **Narration types no figures.** Every amount in it is a placeholder the ledger fills.
+- **Every dated cost reaches the ledger in one shape.** College, the future cost fund and care all produce the same dated-cost contract: money each year, money now, the split before and after the payers' retirement, and any tax relief with who claims it. The ledger has one path for dated costs, never a branch per module ([B1.5 brief](plan-pack-b15-story-brief.md), section 6a).
+- **There is one retirement-years run.** One projection to age 100, drawing pension, ARF and savings, serves every later-life story. A later-life what-if is a change to that run (an extra outgoing, an income change or a return change), never a model of its own, so two answers cannot disagree (section 6b).
+- **Every what-if is a tool, not a fixed scenario.** Each has a typed parameter schema generated from its engine's normaliser, bounds and central defaults, and returns code facts. Every parameter is a household fact, a central default or a bounded value with a reason that cites a fact; anything else is refused (sections 6c and 6d).
+- **Every engine built from now on is exposed as a tool in the catalogue.**
 - **Education only.** No "you should", "we recommend", "best", or a product or provider name. The words checks the modules already run apply to every plan screen.
 
 ## 4. Decisions, settled 13 October 2026
@@ -98,6 +102,8 @@ Missing, and needed before a plan can run from the profile alone:
 | State payment in a hypothetical illness scenario | Standard personal Illness Benefit rate for an employed person assumed to qualify. | A central, sourced, dated planning assumption; never a question asking the client to predict an entitlement. See the contract below. |
 | Survivor's payment after a death | A separate scenario with different eligibility and tax treatment. | Keep the existing stated-input contract until its own assumption is designed; the illness default does not select a survivor's payment. |
 | Whether the mortgage would be cleared on a death | The protection chapter's need after a death depends on it. | A question |
+| Existing cover and sick pay | The death and income-stops what-ifs count what the household already has: life cover (amount, term, whose life, single or joint), mortgage protection, death-in-service (multiple of salary), income protection (benefit and waiting period) and employer sick pay. A fact not given is never treated as zero. | Optional questions, asked only when protection comes up or the analyst asks for them ([B1.5 brief](plan-pack-b15-story-brief.md), section 8) |
+| Investment preference | Growth stories run only in investment mixes at or below the mix the client says they are comfortable with; without an answer they stay at the base case. | One optional question, recorded as stated, never as a suitability assessment ([B1.5 brief](plan-pack-b15-story-brief.md), section 5) |
 | Property (later) | Rent, running costs, purchase date and price, how it was acquired, whether it was ever a home. | Questions, when property joins the plan |
 
 In the hand-authored version the author writes these straight into the plan pack's household, so B0 and B1 can start now. The profile fields arrive with the adapters (B2), and the consumer questions before the website version.
@@ -139,16 +145,20 @@ Two tracks run side by side. Track A builds the module screens, one Claude Code 
 | A2 | Cash flow, short state and today's pension contributions merged (#71/#82/#83) | Complete | Cash flow module |
 | A3 | Protection gap and confirmed zero-payment extension merged (#77) | Complete | Protection module |
 | A4 | Goals engine, timeline fields, app wiring and relief footnotes merged (#75/#76) | Complete | Goals module |
+| A5 | Care costs: a new adviser-only module for long-term care, including the Fair Deal scheme. Brief in #89. A relative's care reaches the plan through the dated-cost contract, and the household's own care through the what-if catalogue's care entry | Gerry's review of its brief | Care costs module |
 | P | Existing module prompt contracts merged, including cash flow and home trade down (#83) | Complete for current modules | Claude |
 | B0 | Plan pack v1: format, validator, compiler and `check:plan-pack`; implementation in #80 | Merged in #80; supported/deferred builders in the v1 contract | Plan chat |
-| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | Implemented for review after #80. Cash flow owns left over; a separate stated amount is allowed only without that chapter. | Plan chat |
+| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | Merged in #85. Cash flow owns left over; a separate stated amount is allowed only without that chapter. | Plan chat |
+| B1.1 | Freed cash in every route: a loan's repayment comes back after its native schedule ends. Each person's share of the yearly surplus stops funding goals from their own retirement year | B1; in #87 | Plan chat |
+| B1.5 | Story facts, the what-if catalogue, the tool interface and the checker. The issue list, the nine story sections with the five education-only parts, parameter checks, one tool interface for Claude in a chat or Claude Code and for the website agent, the method's floor as the checker, and the dated-cost contract that college, the future cost fund and care all produce ([brief](plan-pack-b15-story-brief.md)) | B1.1, and Gerry's review of the brief | Plan chat |
+| B1.6 | The one retirement-years run to age 100, drawing pension, ARF and savings, with the hook every later-life what-if uses. Stories after the goals: growth inside then outside the pension, gifts to children within the small gift exemption, spending more in retirement, and a spouse's income after a death. Every story runs at each level of risk the client's stated preference allows (4% to 7%), with the storyteller choosing which to tell and a suitability disclosure on each. Adds gift tax rules to the tax engine, the four mixes, separate growth before and after retirement, and the DB assumptions (brief sections 5 and 6) | B1.5; the preference question joins B2's intake | Plan chat |
 | B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6; central Illness Benefit assumption, shared-engine tax treatment and duration contract | Each module's engine; versioned assumptions and tax support for illness scenarios | Plan chat |
-| D2 | The plan view: the current position and the routes side by side | B1's output shape | Claude Design |
-| B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats | D2, B1, B2 | Plan chat |
-| B4 | The plan playbook (how an author writes a plan pack) and two golden plan packs | B1 | Gerry and Claude |
+| D2 | The plan view: the current position and the routes side by side, laid out around the B1.5 story sections. The story shows in the zoomed-out view with Bloomberg-style links: each figure the analyst marks as linked opens its module in that route's case and focuses its chart point, row or holding. Code builds every link from the placeholder's source, so a link cannot point at the wrong module or route | B1.5's story sections and B1's output shape | Claude Design |
+| B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats, and the story's links, built from each placeholder's source and opened through the presenter's existing open, case and focus operations | D2, B1, B2 | Plan chat |
+| B4 | The analyst agent: its prompt, its loop over the tools, and the golden plans it is tested against: Niamh and Dara in public, and the five CFP case studies kept out of the public repository | B1.5 and the case notes | Gerry and Claude |
 | Later | Property chapters as routes, where a sale's proceeds become money now. The consumer questions from section 6. The website version through the API. | B3 | |
 
-B0 merged in #80. B1 adds allocation, the protected reserve, ordinary-CGT sale proceeds and the balance test. Its implementation is ready for review; B2 completes the missing screen/profile adapters and illness-tax contracts.
+B0 merged in #80 and B1 in #85: allocation, the protected reserve, ordinary-CGT sale proceeds and the balance test. B1.1 credits freed cash and stops each person's surplus at retirement. B1.5 gives the analyst its tools and checks each route's story against the method's floor, and the plan view (D2) is designed around the story sections. B1.6 adds the one retirement-years run and the growth, gift and later-life stories. The care costs module joins through the dated-cost contract and the stress registry once its engine is built. B2 completes the missing screen/profile adapters and illness-tax contracts.
 
 The module screens stay adviser-only (`consumer: false`) as their briefs say. The plan view starts the same way.
 
@@ -161,7 +171,7 @@ Every new module needs its place in `docs/prompt-pack/`, so an author can write 
 - **The module chats do not touch `docs/prompt-pack/`.** Their briefs already say so.
 - **Consumer routing stays off.** Playbooks carry a `planeir-planning-module` marker that feeds `js/planning/playbook_manifest.generated.js`. A new module's playbook leaves that marker out until the module has a registry entry and an adapter (B2), so the consumer pipeline never routes to a module it cannot run.
 
-The module prompt contracts above are merged, including cash flow and home trade down in #83 and the protection zero-payment contract. B4 adds the plan-pack authoring playbook. Keep prompt-pack updates separate from module-code changes.
+The module prompt contracts above are merged, including cash flow and home trade down in #83 and the protection zero-payment contract. B4 adds the analyst agent's prompt. Keep prompt-pack updates separate from module-code changes.
 
 ## 9. The plan pack and the ledger, in outline
 
@@ -202,6 +212,7 @@ The B0 and B1 briefs set these out in full. The shape, for review:
 
 ## 10. Next
 
-1. Review B1 and its resource-ledger examples; its merge is a separate decision from the authorized #80 merge.
-2. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
-3. Design/build the linked plan view (D2/B3), then write B4’s AI authoring playbook and golden plans. Consumer activation remains off until its adapters and questions are complete.
+1. Review and merge B1.1 (#87).
+2. Review the [B1.5 brief](plan-pack-b15-story-brief.md) and its decisions, then build B1.5 and B1.6. Review the care costs module brief in its own pull request.
+3. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
+4. Design/build the linked plan view (D2/B3) around the B1.5 story sections, then build B4’s analyst agent and test it against the golden plans. Consumer activation remains off until its adapters and questions are complete.
