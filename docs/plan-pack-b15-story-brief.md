@@ -10,7 +10,7 @@ An AI storyteller writes one story per route. Code works out every fact the stor
 
 Later, several agents can walk the same ledger in different ways (for example one per section, or one per goal). The facts, sections and checks below are the contract they all share, so changing who tells the story never changes what the numbers are.
 
-B1.5 does not draw the plan screen (D2 and B3), write the authoring playbook (B4) or change any engine. It adds facts, checks and recipe expansion around the existing ledger.
+B1.5 does not draw the plan screen (D2 and B3), write the authoring playbook (B4) or change any engine. It adds facts, checks and recipe expansion around the existing ledger. B1.6 (section 5) adds the growth, gift and later-life stories, with the engine and tax-rule changes they need.
 
 ## Rules carried from the plan
 
@@ -58,28 +58,9 @@ One entry per B1.1 event, keyed by the liability or goal: `{freed.<id>.label}`, 
 
 Per person: `{pension.<personId>.grossNow}`, `.costNow`, `.grossRoute`, `.costRoute`, `.extraGross`, `.extraCost` and `.relief`. Gross is what goes into the pension; cost is what leaves the household's money after relief. The relief-limit disclosures already in B1 are carried with them.
 
-### Money left over, and a surplus in retirement
+### Money left over after the goals
 
-B1.1 keeps an already-retired person's share of the surplus, because it comes from retirement income (Gerry confirmed this on 21 October). Whatever a route leaves over each year after funding its goals is shown with two illustrations, worked out by code. Neither is advice, and neither names a product.
-
-| Placeholder | Meaning | Source |
-|---|---|---|
-| `{leftOverAfterGoals.yearly}`, `.monthly` | Money left each year, and each month, after this route funds its goals | Ledger, first year |
-| `{leftOverAfterGoals.cashAfter}` | That yearly amount kept in cash for the illustration period, at the central cash rate after DIRT | Central cash rate and the tax engine |
-| `{leftOverAfterGoals.investedAfter}` | The same amount invested over the same period at the central growth rate for a diversified portfolio, after exit tax, including the deemed disposal every eight years | Central growth rate and the tax engine's fund rules |
-| `{leftOverAfterGoals.years}` | The illustration period (decision 5) | Central assumption |
-
-Both figures are also given in today's money. The invested figure carries the existing disclosures that its value can fall as well as rise, and it reappears under the "lower investment returns" risk.
-
-When the surplus comes from retirement income, the story can also show how much more could be spent:
-
-| Placeholder | Meaning | Source |
-|---|---|---|
-| `{retirementSurplus.spendMoreYearly}`, `.spendMoreMonthly` | The extra a year, and a month, that today's surplus allows without touching savings | Ledger |
-| `{retirementSurplus.spendMoreWithSavings}` | The level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until the age the net-retirement engine plans to (100 today) | Net-retirement engine |
-| `{retirementSurplus.toAge}` | That age | Net-retirement engine |
-
-These sit in the `cash_flow_after` section, and the review items in `check_next` include the illustration period and rates.
+`{leftOverAfterGoals.yearly}` and `{leftOverAfterGoals.monthly}` give what a route leaves each year after funding its goals (ledger, first year). What that money could do is section 5.
 
 ### Differences from the current position
 
@@ -110,10 +91,10 @@ A story is a structured object, not one text field. It sits beside the existing 
 3. `protecting`: the reserve, then the protection gap and the months savings last.
 4. `inefficiencies`: the issue list.
 5. `goals`: one subsection per goal, in the ledger's order (loan goals, then dated costs soonest first, then the mortgage, then retirement).
-6. `cash_flow_after`: yearly money left after funding, the freed-cash events, and each retirement year from which a person's share stops.
-7. `net_worth_after`: net worth after the route's changes, and the difference from current.
-8. `risks`: section 5 below.
-9. `check_next`: section 5's review items.
+6. `cash_flow_after`: yearly money left after funding, the freed-cash events, each retirement year from which a person's share stops, and the section 5 stories that apply.
+7. `net_worth_after`: net worth after the route's changes, the difference from current, and where section 5 applies, assets at retirement and at life expectancy.
+8. `risks`: section 6 below.
+9. `check_next`: section 6's review items.
 
 Each section, and each goal subsection, has the five education-only parts. They are the course's Recommendation, Reason, Benefit, Trade-off and Next step, written without advice:
 
@@ -150,7 +131,49 @@ For `pension_led`, code also lists the retirement moves within the stated flexib
 
 A recipe with nothing to do (for example `inefficiencies_first` with no issues) is not offered.
 
-## 5. Risks and review items
+## 5. After the goals: growth, gifts and later life (B1.6)
+
+These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they are built as B1.6, straight after B1.5, and do not hold up the plan screen. Each appears only when its condition is met, and then the check requires it. Every figure is worked out by code; none is advice or names a product.
+
+**Shared assumptions** (central, sourced, dated and versioned; decisions 5 to 7):
+- Growth after retirement: a slightly lower rate than before retirement, for money drawn from DC pots and ARFs.
+- Life expectancy: from the CSO's Irish Life Tables by age and sex. Retirement figures run to each person's life expectancy, and the risks section also shows living to 95.
+- Retirement income keeps pace with prices: DB pensions are assumed to rise with general inflation, and DC income is drawn from an invested pot. A surplus from retirement income is therefore not shrunk by inflation.
+- A spouse's DB pension is 50% of the member's, unless the scheme states otherwise.
+
+### Growing wealth after the goals
+
+Shown when a route covers every goal, protects the reserve and still leaves money over each year, after the reserve and protection sections. The order is fixed:
+1. Personal pension contributions first, up to each person's relief limit (gross for growth, after relief for cash flow).
+2. What is left is invested outside the pension at the central growth rate, after exit tax, including the deemed disposal every eight years.
+
+Code projects the assets to retirement, then through retirement to each person's life expectancy, drawing income from the pension and ARF at the post-retirement rate. Placeholders: `{growth.pensionExtra}`, `{growth.investedYearly}`, `{growth.atRetirement}` and `{growth.atLifeExpectancy}`, with a year-by-year series for the screen's chart (chart data, not narration). Extra employer contributions for business owners are not modelled in this first version.
+
+### Spending more in retirement
+
+When a surplus comes from retirement income (B1.1 keeps it), the story shows `{retirementSurplus.spendMoreYearly}` and `.spendMoreMonthly`, the extra that surplus allows without touching savings. It also shows `{retirementSurplus.spendMoreWithSavings}`, the level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until `{retirementSurplus.toAge}`, the household's life expectancy, from the net-retirement engine.
+
+### If one of you died
+
+For a couple, code works out the survivor's income rather than assuming it stops:
+- a DC pot not yet drawn is paid to the spouse as cash, tax-free between spouses (Revenue's death-benefit limits to be confirmed at build);
+- an ARF passes to the spouse as an ARF, keeps paying at least the required minimum each year and grows at the post-retirement rate;
+- a DB pension pays the spouse the scheme's spouse's percentage (50% central default);
+- State payments follow the existing stated survivor contract; nothing is assumed.
+
+The story shows the survivor's yearly surplus or shortfall and how long savings would last. For a working couple, the protection chapter's existing cases stay as they are.
+
+### Gifts to children
+
+When there are children and money left over after the goals, each parent gives each child up to the small gift exemption every year: €3,000 per giver per child today, so €6,000 a year from two parents. Code reads the figure from the tax engine; the story never types it. If the money left over does not cover the full amount, code uses what is left, split evenly between the children. The gifts are invested at the central growth rate after exit tax and deemed disposal. The story shows the value at each child's 21st, 25th and 30th birthdays, for example towards a home deposit: `{gifts.<dependantId>.yearly}`, `.at21`, `.at25`, `.at30`.
+
+This needs gift tax (Capital Acquisitions Tax) rules in the shared tax engine, dated and versioned like the other tax rules. Budget 2027 raised the group thresholds to €420,000 (Group A), €44,000 (Group B) and €22,000 (Group C), reported to apply from 7 October 2026, and announced no change to the €3,000 small gift exemption. Confirm both against the Finance Act before use.
+
+### Care costs
+
+Long-term care is its own module, briefed separately. Its costs join these stories once its engine exists.
+
+## 6. Risks and review items
 
 Each risk is a code fact from a stress run of an existing engine, using central, dated, approved stress sizes (decision 1). None is a forecast.
 
@@ -160,11 +183,12 @@ Each risk is a code fact from a stress run of an existing engine, using central,
 | Interest rates rise | The yearly extra repayment on each mortgage and loan at the stress rate, and whether that year's surplus still covers it. The profile does not record fixed-rate periods yet, so every loan is stressed from now |
 | Lower investment returns | The projected pension pot at the lower growth rate, against the required pot |
 | Costs rise faster than prices | Each dated cost's lump sum and yearly amount at the higher cost inflation |
+| Living longer than expected | The retirement and growth figures run to age 95 instead of life expectancy |
 | Anything that relies on a sale | Each sale's net proceeds and tax, whether the base cost was assumed to be zero, and the shortfall if the sale value were lower by the stress size |
 
-Review items for `check_next` are also code facts: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve.
+Review items for `check_next` are also code facts, including the growth rates and life expectancy used: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve.
 
-## 6. Golden plans for B4
+## 7. Golden plans for B4
 
 The five CFP case studies (Doyle, Gallagher, Shannon, Laune and McGowan) become plan packs, each checked against the course solution's figures. Gerry supplies the case notes and solutions.
 
@@ -173,17 +197,19 @@ The five CFP case studies (Doyle, Gallagher, Shannon, Laune and McGowan) become 
 - **Known differences are written down, not hidden.** Where the course uses a different tax year, reserve policy or growth rate, the case file states the course figure, Planeir's figure and the reason. A difference with no recorded reason fails the check.
 - B4's authoring playbook is written against these five cases.
 
-## 7. The plan document
+## 8. The plan document
 
-Update `docs/plan-and-routes-implementation-plan.md` so B1.1 and B1.5 sit after B1 and before D2, and D2 waits for B1.5's sections. Done in the same pull request as this brief.
+Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit after B1, D2 waits for B1.5's sections, and the care costs module joins track A. Done in the same pull request as this brief.
 
 ## Decisions for Gerry
 
 1. **Stress sizes for the risks.** Recommended defaults: interest rates 2 percentage points higher, pension growth 2 points lower, dated-cost inflation 2 points higher, and a sale value 20% lower. Kept with the central assumptions, dated and versioned.
 2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
 3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
-4. **Course material stays private.** Recommended default: as in section 6. The course notes and solutions are not published.
-5. **How long the "keep it or invest it" illustration runs.** Recommended default: 10 years, using the existing central rates (cash at the central rate after DIRT; investing at the central 5% for a medium-risk diversified portfolio, after exit tax).
+4. **Course material stays private.** Recommended default: as in section 7. The course notes and solutions are not published.
+5. **Growth after retirement.** Recommended default: 4% a year for DC pots and ARFs in drawdown, one point below the central 5% used before retirement. Use it in the pension module too, so a chapter and the plan never disagree.
+6. **Life expectancy.** Recommended default: the CSO's Irish Life Tables by age and sex. The latest, for 2015 to 2017, give about 18.3 more years at 65 for a man and 21.0 for a woman. The profile has no sex field, so this needs one new question; without an answer, use the longer figure. The pension module would also move from age 100 to life expectancy, with age 95 shown as the longevity risk.
+7. **DB pensions.** Recommended default: they rise with general inflation (2%) and pay a spouse 50%, unless the scheme states otherwise.
 
 ## Verification when built
 
@@ -192,5 +218,5 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1 and B1.5 sit after 
 - Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss`.
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - Stress runs reuse the native engines and never change the unstressed figures.
-- The cash and invested illustrations reproduce the central rates and the tax engine's DIRT, exit tax and deemed-disposal figures; a retired household's spend-more figures match the net-retirement engine.
+- B1.6: invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
 - Existing B0, B1 and B1.1 checks, the consumer suite, stale exports and build stay green. No prompt-pack changes and no consumer activation.
