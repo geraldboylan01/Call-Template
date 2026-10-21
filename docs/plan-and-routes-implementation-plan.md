@@ -205,6 +205,6 @@ The B0 and B1 briefs set these out in full. The shape, for review:
 ## 10. Next
 
 1. Review and merge B1.1 (#87).
-2. Review the [B1.5 storyteller brief](plan-pack-b15-story-brief.md) and its four decisions, then build B1.5.
+2. Review the [B1.5 storyteller brief](plan-pack-b15-story-brief.md) and its decisions, then build B1.5.
 3. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
 4. Design/build the linked plan view (D2/B3) around the B1.5 story sections, then write B4’s AI authoring playbook against the golden plans. Consumer activation remains off until its adapters and questions are complete.

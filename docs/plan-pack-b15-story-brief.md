@@ -58,6 +58,29 @@ One entry per B1.1 event, keyed by the liability or goal: `{freed.<id>.label}`, 
 
 Per person: `{pension.<personId>.grossNow}`, `.costNow`, `.grossRoute`, `.costRoute`, `.extraGross`, `.extraCost` and `.relief`. Gross is what goes into the pension; cost is what leaves the household's money after relief. The relief-limit disclosures already in B1 are carried with them.
 
+### Money left over, and a surplus in retirement
+
+B1.1 keeps an already-retired person's share of the surplus, because it comes from retirement income (Gerry confirmed this on 21 October). Whatever a route leaves over each year after funding its goals is shown with two illustrations, worked out by code. Neither is advice, and neither names a product.
+
+| Placeholder | Meaning | Source |
+|---|---|---|
+| `{leftOverAfterGoals.yearly}`, `.monthly` | Money left each year, and each month, after this route funds its goals | Ledger, first year |
+| `{leftOverAfterGoals.cashAfter}` | That yearly amount kept in cash for the illustration period, at the central cash rate after DIRT | Central cash rate and the tax engine |
+| `{leftOverAfterGoals.investedAfter}` | The same amount invested over the same period at the central growth rate for a diversified portfolio, after exit tax, including the deemed disposal every eight years | Central growth rate and the tax engine's fund rules |
+| `{leftOverAfterGoals.years}` | The illustration period (decision 5) | Central assumption |
+
+Both figures are also given in today's money. The invested figure carries the existing disclosures that its value can fall as well as rise, and it reappears under the "lower investment returns" risk.
+
+When the surplus comes from retirement income, the story can also show how much more could be spent:
+
+| Placeholder | Meaning | Source |
+|---|---|---|
+| `{retirementSurplus.spendMoreYearly}`, `.spendMoreMonthly` | The extra a year, and a month, that today's surplus allows without touching savings | Ledger |
+| `{retirementSurplus.spendMoreWithSavings}` | The level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until the age the net-retirement engine plans to (100 today) | Net-retirement engine |
+| `{retirementSurplus.toAge}` | That age | Net-retirement engine |
+
+These sit in the `cash_flow_after` section, and the review items in `check_next` include the illustration period and rates.
+
 ### Differences from the current position
 
 For an alternative, `{current.<key>}` repeats any current-position fact and `{vsCurrent.<key>}` gives the difference, worked out by code: cash used, yearly money left in the first year, cash left, net worth after, months savings last, and each goal whose state changes (`{vsCurrent.goalsChanged}` as a list of titles). The sign is carried by a code-chosen word (`{vsCurrent.<key>Word}`: "more" or "less"), so the storyteller never decides a direction.
@@ -160,6 +183,7 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1 and B1.5 sit after 
 2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
 3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
 4. **Course material stays private.** Recommended default: as in section 6. The course notes and solutions are not published.
+5. **How long the "keep it or invest it" illustration runs.** Recommended default: 10 years, using the existing central rates (cash at the central rate after DIRT; investing at the central 5% for a medium-risk diversified portfolio, after exit tax).
 
 ## Verification when built
 
@@ -168,4 +192,5 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1 and B1.5 sit after 
 - Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss`.
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - Stress runs reuse the native engines and never change the unstressed figures.
+- The cash and invested illustrations reproduce the central rates and the tax engine's DIRT, exit tax and deemed-disposal figures; a retired household's spend-more figures match the net-retirement engine.
 - Existing B0, B1 and B1.1 checks, the consumer suite, stale exports and build stay green. No prompt-pack changes and no consumer activation.
