@@ -10,7 +10,7 @@ An AI storyteller writes one story per route. Code works out every fact the stor
 
 Later, several agents can walk the same ledger in different ways (for example one per section, or one per goal). The facts, sections and checks below are the contract they all share, so changing who tells the story never changes what the numbers are.
 
-B1.5 does not draw the plan screen (D2 and B3), write the authoring playbook (B4) or change any engine. It adds facts, checks and recipe expansion around the existing ledger. B1.6 (section 5) adds the growth, gift and later-life stories, with the engine and tax-rule changes they need.
+B1.5 does not draw the plan screen (D2 and B3), write the authoring playbook (B4) or change any engine. It adds facts, checks and recipe expansion around the existing ledger, puts every dated cost behind one contract (section 6a) and starts the stress registry (6c). B1.6 adds the one retirement-years run (6b), the later-life stresses, and the growth, gift and later-life stories (section 5), with the engine and tax-rule changes they need.
 
 ## Rules carried from the plan
 
@@ -24,7 +24,9 @@ B1.5 does not draw the plan screen (D2 and B3), write the authoring playbook (B4
 
 ## 1. Story facts
 
-Code computes these for every route and registers them as placeholders. The storyteller can only use registered keys. A key with no computed value (for example a solvency figure with no assets) fails the check if referenced.
+Code computes these for every route and registers them as placeholders. The storyteller can only use registered keys. A key with no computed value fails the check if referenced.
+
+Some facts cannot be computed for some households: solvency with no assets, the home's share with no home, mortgage repayments as a share of take-home with no mortgage or no take-home. For each, code registers a reason instead, `{<key>.notApplicable}`, a code-chosen plain sentence such as "There are no assets yet to measure against." Wherever a section requires that fact, the check accepts the figure or its reason, never neither, so a valid household can always be told.
 
 ### Current position
 
@@ -74,7 +76,7 @@ Code scans every route for the method's "removing inefficiencies" step and lists
 |---|---|---|
 | `idle_cash_vs_debt` | Spare cash above the reserve while a loan costs more than cash earns after DIRT, using the central cash rate | Spare cash, the cash rate after tax, each such loan and its rate, the yearly interest difference on the smaller of the two amounts |
 | `dear_debt` | A loan or card meeting the dear-debt definition (decision 2) | Each debt, its rate, balance, yearly cost and native end date, dearest first |
-| `investment_at_a_loss` | An ordinary-CGT holding whose market value is below its stated base cost. Never when the base cost is missing or assumed | The holding, its value, its base cost and the loss the tax engine would record on a sale |
+| `investment_at_a_loss` | An ordinary-CGT holding with a stated base cost whose sale the tax engine would record as a loss. Found from the engine's own disposal result, after stated selling costs, never by comparing market value with base cost, so a loss made by selling costs is not missed. Never when the base cost is missing or assumed | The holding, its value, its selling costs, its base cost and the loss the tax engine records |
 | `tax_due` | A stated tax liability (needs the new optional `taxDue` binding below) | The amount and its due date |
 | `mortgage_could_be_shorter` | Spare cash above the reserve and a mortgage costing more than cash earns after tax | The native end date today, and the end date if all spare cash went to the mortgage, from the amortisation engine |
 
@@ -86,15 +88,15 @@ The current position lists every issue it finds. An alternative lists the same i
 
 A story is a structured object, not one text field. It sits beside the existing `narration` (kept for B0 and B1) as a new optional `story` field keyed by route ID. Every section is required, in this order, and the check refuses a story that drops, repeats or reorders one:
 
-1. `current_position`: surplus or deficit, spare cash, net worth, solvency, pressure points.
+1. `current_position`: surplus or deficit, spare cash, net worth, solvency (or its reason when there are no assets), pressure points.
 2. `ledger`: resources available against resources required, one way of funding each goal, what is crossed off, and the running surplus after each step.
 3. `protecting`: the reserve, then the protection gap and the months savings last.
 4. `inefficiencies`: the issue list.
 5. `goals`: one subsection per goal, in the ledger's order (loan goals, then dated costs soonest first, then the mortgage, then retirement).
 6. `cash_flow_after`: yearly money left after funding, the freed-cash events, each retirement year from which a person's share stops, and the section 5 stories that apply.
 7. `net_worth_after`: net worth after the route's changes, the difference from current, and where section 5 applies, assets at retirement and what is left at 100, or the age money runs out.
-8. `risks`: section 6 below.
-9. `check_next`: section 6's review items.
+8. `risks`: section 7 below.
+9. `check_next`: section 7's review items.
 
 Each section, and each goal subsection, has the five education-only parts. They are the course's Recommendation, Reason, Benefit, Trade-off and Next step, written without advice:
 
@@ -167,11 +169,11 @@ Shown when a route covers every goal, protects the reserve and still leaves mone
 1. Personal pension contributions first, up to each person's relief limit (gross for growth, after relief for cash flow).
 2. What is left is invested outside the pension, after exit tax, including the deemed disposal every eight years.
 
-Code projects the assets to retirement, then through retirement to age 100, drawing income from the pension and ARF, for each allowed investment version. Placeholders, under each version: `{growth.<mix>.pensionExtra}`, `.investedYearly`, `.atRetirement`, and either `.runsOutAtAge` or `.at100`, with a year-by-year series for the screen's chart (chart data, not narration). Extra employer contributions for business owners are not modelled in this first version.
+Code projects the assets to retirement, then through retirement to age 100 in the retirement-years run (6b), for each allowed investment version. Placeholders, under each version: `{growth.<mix>.pensionExtra}`, `.investedYearly`, `.atRetirement`, and either `.runsOutAtAge` or `.at100`, with a year-by-year series for the screen's chart (chart data, not narration). Extra employer contributions for business owners are not modelled in this first version.
 
 ### Spending more in retirement
 
-When a surplus comes from retirement income (B1.1 keeps it), the story shows `{retirementSurplus.spendMoreYearly}` and `.spendMoreMonthly`, the extra that surplus allows without touching savings. It also shows `{retirementSurplus.spendMoreWithSavings}`, the level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until age 100, from the net-retirement engine, for each allowed investment version.
+When a surplus comes from retirement income (B1.1 keeps it), the story shows `{retirementSurplus.spendMoreYearly}` and `.spendMoreMonthly`, the extra that surplus allows without touching savings. It also shows `{retirementSurplus.spendMoreWithSavings}`, the level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until age 100. Code finds it as the largest extra yearly outgoing the retirement-years run (6b) can carry to 100, for each allowed investment version.
 
 ### If one of you died
 
@@ -181,7 +183,7 @@ For a couple, code works out the survivor's income rather than assuming it stops
 - a DB pension pays the spouse the scheme's spouse's percentage (50% central default);
 - State payments follow the existing stated survivor contract; nothing is assumed.
 
-The story shows the survivor's yearly surplus or shortfall and how long savings would last. For a working couple, the protection chapter's existing cases stay as they are.
+The story shows the survivor's yearly surplus or shortfall and how long savings would last. This is the registry's `one_of_you_dies` entry (6c): an income change to the retirement-years run (6b), never a separate model. For a working couple, the protection chapter's existing cases stay as they are.
 
 ### Gifts to children
 
@@ -193,24 +195,91 @@ This needs gift tax (Capital Acquisitions Tax) rules in the shared tax engine, d
 
 ### Care costs
 
-Long-term care is its own module, briefed separately. Its costs join these stories once its engine exists.
+Long-term care is its own module (PR #89). It joins the plan in two ways: a relative's care the household pays for is a dated cost through the contract (6a), and the household's own later-life care is the registry's `one_of_you_needs_care` stress (6c).
 
-## 6. Risks and review items
+## 6. Shared pieces every module plugs into
 
-Each risk is a code fact from a stress run of an existing engine, using central, dated, approved stress sizes (decision 1). None is a forecast.
+Three pieces, so every module joins the plan the same way and two answers to the same question can never disagree. No module adds its own branch to the ledger or its own model of the later years.
 
-| Risk | Fact |
+### 6a. The dated-cost contract
+
+Every dated cost reaches the ledger in one shape, whichever module produces it: college, the future cost fund, and the care costs module (PR #89) for a relative's care. `resource_ledger.js` has one path for dated costs instead of a branch per module.
+
+A producer is one function. It takes the cost's facts, the calculation date, the cash a route puts towards it today, and each payer's retirement year from B1.1, and returns:
+
+| Field | Meaning |
 |---|---|
-| An income stops | The protection gap and months savings last for each person, using the cash this route leaves |
-| Interest rates rise | The yearly extra repayment on each mortgage and loan at the stress rate, and whether that year's surplus still covers it. The profile does not record fixed-rate periods yet, so every loan is stressed from now |
-| Lower investment returns | The projected pension pot at the lower growth rate, against the required pot, and the lower-risk investment versions in section 5 |
-| Costs rise faster than prices | Each dated cost's lump sum and yearly amount at the higher cost inflation |
-| Money running out | The age the pension, ARF and savings run out before 100, if they do |
-| Anything that relies on a sale | Each sale's net proceeds and tax, whether the base cost was assumed to be zero, and the shortfall if the sale value were lower by the stress size |
+| `costId`, `goalId`, `producer` | Which cost and goal, and the module and version that produced it |
+| `payerIds` | The people who pay it |
+| `costByYear[]` | For each calendar year it falls due: the amount due before relief, any tax relief with the person who claims it (`claimantId`) and the rules version, and the amount after relief |
+| `moneyNow` | The lump sum that would meet it in full today, at the central cash rate after DIRT, less the cash the route already puts towards it |
+| `moneyEachYear[]` | For each calendar year, what the household pays that year instead (saving before the cost starts, or paying as it falls due), after relief |
+| `retirementSplit` | The years of `moneyEachYear` before and after the year every payer's working share of the surplus has stopped (B1.1's rule; a payer already retired never splits them), and `capitalNeededAtRetirement`, the lump sum at that year that would meet the later years |
+| `assumptions`, `provenance` | The central rates, rules versions and inputs used |
 
-Review items for `check_next` are also code facts, including the investment mixes and growth rates used and the client's stated preference: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve.
+How the ledger uses it:
+- **Money now and money each year are two ways of funding the same cost and are never added together.** A route's `useCash` (`whole`, `remaining` or an amount) sets the cash towards it, and the producer works out `moneyEachYear` again for that cash. A part lump sum therefore works the same way for every module.
+- **Each year's need is the producer's own figure.** It can change from year to year (a care cost falls when the home part stops), so the ledger never repeats one figure.
+- **Years after retirement move to retirement.** The ledger funds the years before the split from the yearly surplus, and adds `capitalNeededAtRetirement` to the retirement goal, shown under retirement as the cost's name followed by "after retirement". Without this, those years would show as unfunded with no explanation.
+- **Relief is counted once**, inside the producer's after-relief figures, from the shared tax engine at the claimant's real rate: gross for the cost, after relief for the household's money, as with pensions.
+- College and the future cost fund move behind the contract with no change to their figures. A test pins today's sample results to the cent.
 
-## 7. Golden plans for B4
+### 6b. One retirement-years run
+
+There is one projection of the retirement years for each route and each allowed investment version. It runs from the first person's retirement (or from now, for a household already retired) until the youngest person in the household turns 100, as the pension and net-retirement engines already plan. Each year it records:
+- **income:** State Pension, DB pensions (rising with prices), other stated retirement income, and ARF withdrawals (at least the required minimum);
+- **outgoings:** retirement spending (the retirement goal's net income target, rising with prices), any loan still running, and the later years of any dated cost from 6a;
+- **drawing to meet a shortfall,** in a fixed order (decision 6): ARF beyond the minimum, then savings above the reserve, then investments outside the pension, then the reserve last;
+- **balances** at the end of the year: each pension or ARF, savings, and investments outside the pension. It also records the age money runs out, if it does, otherwise what is left at 100, in money of the day and in today's money.
+
+The starting balances come from the route: pension pots projected to retirement with the route's contributions, the cash the route leaves, and any investments a section 5 story makes. The yearly surplus before retirement is not assumed saved unless a story saves it, as in B1. Growth uses the version's after-retirement rate. The run is built from the existing engines (the pension engine's drawdown and ARF rules, and the net-retirement engine's shortfall path), not a new formula.
+
+Everything about the later years reads this run: "Money running out", "Growing wealth after the goals", "Spending more in retirement" and "If one of you died".
+
+**A stress is a change to the run, never a new model.** A later-life stress applies one change and runs it again. There are three kinds:
+- an extra outgoing in given years (for example care fees);
+- an income change from a given year (for example a death: that person's own pensions stop and the survivor receives what section 5 lists);
+- a return change (for example a lower growth rate).
+
+The change goes through one options-only hook that receives the run's state at the start of each year (incomes, balances, ages) and returns that year's change. It is never reachable from a payload. It generalises the hook the care brief (PR #89) describes for `js/net_retirement_math.js`. With no change, the run's figures are exactly the base run's.
+
+### 6c. The stress registry
+
+Every stress is one registry entry, kept with the central assumptions. The risks section, the storyteller and the screen all read the same list.
+
+| Field | Meaning |
+|---|---|
+| `id`, `name` | A stable ID and the plain name shown |
+| `size` | The central size, with its unit, source, checked date, version and approval status |
+| `appliesTo` | `ledger` (the years before retirement), `retirementRun` (6b), `datedCost` (worked out again through 6a) or `sale` |
+| `change` | `extraOutgoing`, `incomeChange`, `returnChange`, `rateChange`, `costInflationChange` or `saleValueChange` |
+| `who` | `household`, or `eachPersonInTurn` |
+| `reports` | The facts it registers for the story |
+| `status` | `live`, `waitingForApproval` (its size is not approved yet) or `waitingForEngine` |
+
+The entries:
+
+| ID | Name | Size | What it changes | What it reports | Status |
+|---|---|---|---|---|---|
+| `income_stops` | An income stops | The protection chapter's stated cases | `ledger`: the protection chapter's own cases | The gap and the months savings last, for each person | Live |
+| `rates_rise` | Interest rates rise | 2 points higher (decision 1) | `ledger` and `retirementRun`: `rateChange` on every mortgage and loan from now | The extra yearly repayment, and whether that year's surplus or retirement income still covers it | Waiting for approval |
+| `lower_returns` | Lower investment returns | 2 points lower (decision 1) | `retirementRun` and the pension projection: `returnChange` on the version shown | The pot against the required pot, and the age money runs out or what is left at 100 | Waiting for approval |
+| `costs_rise_faster` | Costs rise faster than prices | Dated-cost inflation 2 points higher (decision 1) | `datedCost`: `costInflationChange`, worked out again through 6a | Each dated cost's money now and money each year | Waiting for approval |
+| `sale_value_lower` | A sale fetches less | 20% lower (decision 1) | `sale`: `saleValueChange` | The net proceeds, the tax, and the shortfall against what the route uses | Waiting for approval |
+| `one_of_you_dies` | If one of you died | Each person in turn (decision 5) | `retirementRun`: `incomeChange`, as section 5 lists | The survivor's yearly surplus or shortfall, how long savings last, and whether money runs out before 100 | Waiting for its engine (B1.6) |
+| `one_of_you_needs_care` | One of you needs care | Each person in turn, in care from age 85 to 90 (the care brief's `care.ownCareStress`) | `retirementRun`: `extraOutgoing` each year, supplied by the care engine from the run's state that year | How long savings last, what the partner at home is left with each year, whether money runs out before 100, and any Nursing Home Loan in today's money | Waiting for its engine: live once the care engine (PR #89) exists |
+
+The care entry follows the care brief's rules: a person already 85 or older starts now and still runs five years, a one-person household has one run, two people in care at the same time is not run, and the home part and the relief follow that brief's settings.
+
+"Money running out" is not a stress. It is the base run's own fact, shown in the risks section beside the stresses.
+
+## 7. Risks and review items
+
+Each risk is a live entry in the stress registry (6c), run through the change it names. None is a forecast. The risks section reports every live entry that applies to the route, plus the retirement-years run's own "Money running out": the age the pension, ARF and savings run out before 100, if they do. The check refuses a story that leaves one out. An entry waiting for approval or for its engine is not shown.
+
+Review items for `check_next` are also code facts, including the investment mixes and growth rates used and the client's stated preference: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve. Where the care stress is shown, the review items also carry the care brief's plain statements about Fair Deal, with no figures.
+
+## 8. Golden plans for B4
 
 The five CFP case studies (Doyle, Gallagher, Shannon, Laune and McGowan) become plan packs, each checked against the course solution's figures. Gerry supplies the case notes and solutions.
 
@@ -219,24 +288,31 @@ The five CFP case studies (Doyle, Gallagher, Shannon, Laune and McGowan) become 
 - **Known differences are written down, not hidden.** Where the course uses a different tax year, reserve policy or growth rate, the case file states the course figure, Planeir's figure and the reason. A difference with no recorded reason fails the check.
 - B4's authoring playbook is written against these five cases.
 
-## 8. The plan document
+## 9. The plan document
 
-Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit after B1, D2 waits for B1.5's sections, and the care costs module joins track A. Done in the same pull request as this brief.
+Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit after B1, D2 waits for B1.5's sections, the care costs module joins track A, and the rules list carries the dated-cost contract, the one retirement-years run and the stress registry. Done in the same pull request as this brief.
 
 ## Decisions for Gerry
 
 1. **Stress sizes for the risks.** Recommended defaults: interest rates 2 percentage points higher, pension growth 2 points lower, dated-cost inflation 2 points higher, and a sale value 20% lower. Kept with the central assumptions, dated and versioned.
 2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
 3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
-4. **Course material stays private.** Recommended default: as in section 7. The course notes and solutions are not published.
+4. **Course material stays private.** Recommended default: as in section 8. The course notes and solutions are not published.
+5. **When "If one of you died" happens.** Recommended default: each person in turn, at the start of the retirement-years run. It is the most demanding case for the survivor, because the survivor's income has to last longest.
+6. **The order money is drawn in retirement.** Recommended default: ARF beyond the required minimum, then savings above the reserve, then investments outside the pension, then the reserve last. The run reports money as running out only when all of them are used.
+
 Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% and 7%), medium risk before retirement and lower risk after as the base case, plans to age 100, gift and inheritance tax on today's wealth, DB pensions rising with inflation and paying a spouse 50%, and the investment-preference question as drafted in section 5 (four levels of risk, each with what a very bad year could do to €10,000, asked once and optionally in B2's intake). The bad-year figures still need a confirmed source before any client sees them.
 
 ## Verification when built
 
 - Every placeholder resolves from code for every route of the sample and the golden plans; a reference to another alternative fails.
 - A story missing any section, part, goal, issue, risk or review item is refused, with the path.
-- Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss`.
+- Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss` and a loss that only selling costs create (value €100, base cost €95, selling costs €10).
+- A household with no assets, no home or no mortgage can still pass the check, with the code's reason in place of each missing figure.
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - Stress runs reuse the native engines and never change the unstressed figures.
+- 6a: college and future-cost-fund figures through the contract equal today's to the cent; a part lump sum is worked out the same way for every producer; years after retirement move to the retirement goal exactly once, and relief is counted once.
+- 6b: with no change, a stressed run equals the base run to the cent; "Money running out", growth, spend-more, survivor and care figures for the same route and version all come from one run and agree.
+- 6c: every risk shown comes from a live registry entry; an entry waiting for approval or for its engine is never shown; each entry's change is the only difference from the base run.
 - B1.6: no version above the stated preference, or above the base case when none is stated, is ever run or registered; a story using a growth version without the disclosure is refused; invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
 - Existing B0, B1 and B1.1 checks, the consumer suite, stale exports and build stay green. No prompt-pack changes and no consumer activation.
