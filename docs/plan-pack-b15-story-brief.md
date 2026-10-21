@@ -136,19 +136,30 @@ A recipe with nothing to do (for example `inefficiencies_first` with no issues) 
 These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they are built as B1.6, straight after B1.5, and do not hold up the plan screen. Each appears only when its condition is met, and then the check requires it. Every figure is worked out by code; none is advice or names a product.
 
 **Shared assumptions**, settled by Gerry on 21 October 2026 and kept as central, dated, versioned values:
-- Four investment mixes, each with a long-run growth rate: cautious (25% shares, 75% bonds) 4%; balanced (50/50) 5%, the existing central rate; growth (75/25) 6%; all shares 7%.
-- The base case is balanced before retirement and cautious after it, for DC pots and ARFs in drawdown. The pension module uses the same rates, so a chapter and the plan never disagree.
+- Four investment mixes, each with a long-run growth rate. Clients see them as levels of risk, not as shares and bonds: lower risk (about 25% shares, 75% bonds) 4%; medium risk (50/50) 5%, the existing central rate; higher risk (75/25) 6%; highest risk (all shares) 7%. The shares-and-bonds split is available as a detail line for anyone who wants it.
+- The base case is medium risk before retirement and lower risk after it, for DC pots and ARFs in drawdown. The pension module uses the same rates, so a chapter and the plan never disagree.
 - Plans run to age 100, as the pension and net-retirement engines already do. The story shows the age money runs out, if it does; otherwise what is left at 100.
 - Retirement income keeps pace with prices: DB pensions are assumed to rise with general inflation (2%), and DC income is drawn from an invested pot. A surplus from retirement income is therefore not shrunk by inflation.
 - A spouse's DB pension is 50% of the member's, unless the scheme states otherwise.
 
 ### Investment versions and how the storyteller chooses
 
-The engines do not run one answer. For each route and each story in this section, code runs every investment mix the client's stated preference allows, before and after retirement, and registers each version's figures under its mix, for example `{growth.balanced.atRetirement}` or `{growth.growth.at100}`. The storyteller's job is to pick the versions that are feasible and realistic for this household and tell their story clearly, for example how much further a growth mix would go than the base case, and what it would cost in a bad year.
+The engines do not run one answer. For each route and each story in this section, code runs every investment mix the client's stated preference allows, before and after retirement, and registers each version's figures under its mix, for example `{growth.medium.atRetirement}` or `{growth.higher.at100}`. The storyteller's job is to pick the versions that are feasible and realistic for this household and tell their story clearly, for example how much further a higher-risk mix would go than the base case, and what it would cost in a bad year.
 
-- **Never above the stated preference.** The profile gains one optional fact, the client's stated investment preference (one of the four mixes, or "not sure"). Code only runs and registers the mixes at or below it. With no answer, or "not sure", the ceiling is the base case: balanced before retirement and cautious after. Nothing assumes a client is comfortable with high risk.
-- **The question.** B2's intake asks it in plain words, recorded as stated, not as an assessment. Draft: "When you invest for the long term, which mix sounds closest to what you would be comfortable with? Mostly bonds, with about a quarter in shares. Half shares, half bonds. Mostly shares, with about a quarter in bonds. All shares. I'm not sure." The line beneath it: "Shares can rise and fall more sharply than bonds. This question is not an assessment of what is suitable for you."
-- **Saying what was done.** Every screen and story that uses a growth rate shows this, with the mix and rate filled in by code: "These illustrations assume a [mix] mix of investments growing at [rate] a year. Growth rates are assumptions, not predictions, and investments can fall as well as rise. No assessment of your attitude to risk, your capacity for loss or the suitability of any investment has been carried out, so this mix may not be suitable for you. Before making any investment decision, you may wish to get advice from a regulated financial adviser." The check refuses a story that uses a growth version without it.
+- **Never above the stated preference.** The profile gains one optional fact, the client's stated investment preference (one of the four risk levels, or "not sure"). Code only runs and registers the mixes at or below it. With no answer, or "not sure", the ceiling is the base case: medium risk before retirement and lower risk after. Nothing assumes a client is comfortable with high risk.
+- **The question.** B2's intake asks it in plain words, with no investment terms, recorded as stated, not as an assessment. Each option describes the trade-off and what a very bad year could do to €10,000:
+
+  > To get more growth over the long term, investments have to go up and down more along the way. Which sounds most like you?
+  > - **Lower risk.** I want steadier growth. In a very bad year, €10,000 might fall by about [fall].
+  > - **Medium risk.** A balance between growth and steadiness. In a very bad year, €10,000 might fall by about [fall].
+  > - **Higher risk.** More growth over time, with bigger falls. In a very bad year, €10,000 might fall by about [fall].
+  > - **Highest risk.** The most growth over time, with the biggest falls. In a very bad year, €10,000 might fall by about [fall].
+  > - **I'm not sure.**
+  >
+  > This question is not an assessment of what is suitable for you.
+
+  Code fills each [fall] from a central, sourced, dated figure per mix, rounded to the nearest €500. The indicative source is Vanguard's worst calendar year for each stock and bond mix since 1926: about 10% to 14% at 20% shares, 18% at 40%, 27% at 60%, 35% at 80% and 43% at 100%. Interpolated to the four mixes, that is roughly €1,000, €2,000, €3,500 and €4,500 per €10,000. Confirm against Vanguard's own table, and a European or global series, before use.
+- **Saying what was done.** Every screen and story that uses a growth rate shows this, with the risk level and rate filled in by code: "These illustrations assume a [lower/medium/higher/highest]-risk mix of investments growing at [rate] a year. Growth rates are assumptions, not predictions, and investments can fall as well as rise. No assessment of your attitude to risk, your capacity for loss or the suitability of any investment has been carried out, so this mix may not be suitable for you. Before making any investment decision, you may wish to get advice from a regulated financial adviser." The check refuses a story that uses a growth version without it.
 
 ### Growing wealth after the goals
 
@@ -192,7 +203,7 @@ Each risk is a code fact from a stress run of an existing engine, using central,
 |---|---|
 | An income stops | The protection gap and months savings last for each person, using the cash this route leaves |
 | Interest rates rise | The yearly extra repayment on each mortgage and loan at the stress rate, and whether that year's surplus still covers it. The profile does not record fixed-rate periods yet, so every loan is stressed from now |
-| Lower investment returns | The projected pension pot at the lower growth rate, against the required pot, and the more cautious investment versions in section 5 |
+| Lower investment returns | The projected pension pot at the lower growth rate, against the required pot, and the lower-risk investment versions in section 5 |
 | Costs rise faster than prices | Each dated cost's lump sum and yearly amount at the higher cost inflation |
 | Money running out | The age the pension, ARF and savings run out before 100, if they do |
 | Anything that relies on a sale | Each sale's net proceeds and tax, whether the base cost was assumed to be zero, and the shortfall if the sale value were lower by the stress size |
@@ -218,9 +229,9 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit 
 2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
 3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
 4. **Course material stays private.** Recommended default: as in section 7. The course notes and solutions are not published.
-5. **The investment-preference question.** Recommended default: ask it as drafted in section 5, as one optional question in B2's intake. Wording is Gerry's to adjust.
+5. **The investment-preference question.** Recommended default: ask it as drafted in section 5, as one optional question in B2's intake, framed as four levels of risk with the bad-year euro figure on each. The bad-year figures need a confirmed source before they are shown. Wording is Gerry's to adjust.
 
-Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% and 7%), balanced before retirement and cautious after as the base case, plans to age 100, gift and inheritance tax on today's wealth, and DB pensions rising with inflation and paying a spouse 50%.
+Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% and 7%), medium risk before retirement and lower risk after as the base case, plans to age 100, gift and inheritance tax on today's wealth, and DB pensions rising with inflation and paying a spouse 50%.
 
 ## Verification when built
 
