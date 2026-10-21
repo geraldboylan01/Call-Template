@@ -229,9 +229,7 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit 
 2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
 3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
 4. **Course material stays private.** Recommended default: as in section 7. The course notes and solutions are not published.
-5. **The investment-preference question.** Recommended default: ask it as drafted in section 5, as one optional question in B2's intake, framed as four levels of risk with the bad-year euro figure on each. The bad-year figures need a confirmed source before they are shown. Wording is Gerry's to adjust.
-
-Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% and 7%), medium risk before retirement and lower risk after as the base case, plans to age 100, gift and inheritance tax on today's wealth, and DB pensions rising with inflation and paying a spouse 50%.
+Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% and 7%), medium risk before retirement and lower risk after as the base case, plans to age 100, gift and inheritance tax on today's wealth, DB pensions rising with inflation and paying a spouse 50%, and the investment-preference question as drafted in section 5 (four levels of risk, each with what a very bad year could do to €10,000, asked once and optionally in B2's intake). The bad-year figures still need a confirmed source before any client sees them.
 
 ## Verification when built
 
