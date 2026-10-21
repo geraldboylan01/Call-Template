@@ -240,7 +240,7 @@ How the ledger uses it:
 ### 6b. One retirement-years run
 
 There is one projection of the retirement years for each route and each allowed investment version. It runs from the first person's retirement (or from now, for a household already retired) until the youngest person in the household turns 100, as the pension and net-retirement engines already plan. Each year it records:
-- **income:** State Pension, DB pensions (rising with prices), other stated retirement income, and ARF withdrawals (at least the required minimum);
+- **income:** State Pension, DB pensions (rising with prices), other stated retirement income, ARF withdrawals (at least the required minimum), and, for a person still working while the other has retired, their own bank take-home until their own retirement year, as B1.1 stops each person's share separately;
 - **outgoings:** retirement spending (the retirement goal's net income target, rising with prices), any loan still running, and the later years of any dated cost from 6a;
 - **drawing to meet a shortfall,** in a fixed order that is an engine default, not a choice: ARF beyond the minimum, then savings above the reserve, then investments outside the pension, then the reserve last;
 - **balances** at the end of the year: each pension or ARF, savings, and investments outside the pension. It also records the age money runs out, if it does, otherwise what is left at 100, in money of the day and in today's money.
@@ -376,7 +376,7 @@ Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% 
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - What-if runs reuse the native engines and never change the base figures.
 - 6a: college and future-cost-fund figures through the contract equal today's to the cent; a part lump sum is worked out the same way for every producer; years after retirement move to the retirement goal exactly once, and relief is counted once.
-- 6b: a what-if with no change equals the base run to the cent; "Money running out", growth, spend-more, survivor and care figures for the same route and version all come from one run and agree.
+- 6b: a what-if with no change equals the base run to the cent; a couple retiring in different years keeps the working partner's take-home until that partner's own retirement year; "Money running out", growth, spend-more, survivor and care figures for the same route and version all come from one run and agree.
 - 6c and 6d: every what-if's parameters validate against the schema generated from its engine's normaliser; a value outside its bounds, or without a fact, a default or a reasoned bounded value, is refused with its path; a refusal is an ordinary tool result; an entry waiting for its engine or its bounds cannot be called; each what-if's change is the only difference from the base run.
 - Section 7: the command-line tool and the worker give identical results for the same calls in any order; an unknown or unavailable tool is refused before its arguments are read; a call past the run budget is refused.
 - Section 8: an unstated cover fact is never treated as zero; a what-if run without it says so, and the review section carries it; stated payouts pass the protection module's wording checks.
