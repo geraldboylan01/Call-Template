@@ -92,7 +92,7 @@ A story is a structured object, not one text field. It sits beside the existing 
 4. `inefficiencies`: the issue list.
 5. `goals`: one subsection per goal, in the ledger's order (loan goals, then dated costs soonest first, then the mortgage, then retirement).
 6. `cash_flow_after`: yearly money left after funding, the freed-cash events, each retirement year from which a person's share stops, and the section 5 stories that apply.
-7. `net_worth_after`: net worth after the route's changes, the difference from current, and where section 5 applies, assets at retirement and at life expectancy.
+7. `net_worth_after`: net worth after the route's changes, the difference from current, and where section 5 applies, assets at retirement and what is left at 100, or the age money runs out.
 8. `risks`: section 6 below.
 9. `check_next`: section 6's review items.
 
@@ -135,29 +135,38 @@ A recipe with nothing to do (for example `inefficiencies_first` with no issues) 
 
 These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they are built as B1.6, straight after B1.5, and do not hold up the plan screen. Each appears only when its condition is met, and then the check requires it. Every figure is worked out by code; none is advice or names a product.
 
-**Shared assumptions** (central, sourced, dated and versioned; decisions 5 to 7):
-- Growth after retirement: a slightly lower rate than before retirement, for money drawn from DC pots and ARFs.
-- Life expectancy: from the CSO's Irish Life Tables by age and sex. Retirement figures run to each person's life expectancy, and the risks section also shows living to 95.
-- Retirement income keeps pace with prices: DB pensions are assumed to rise with general inflation, and DC income is drawn from an invested pot. A surplus from retirement income is therefore not shrunk by inflation.
+**Shared assumptions**, settled by Gerry on 21 October 2026 and kept as central, dated, versioned values:
+- Four investment mixes, each with a long-run growth rate: cautious (25% shares, 75% bonds) 4%; balanced (50/50) 5%, the existing central rate; growth (75/25) 6%; all shares 7%.
+- The base case is balanced before retirement and cautious after it, for DC pots and ARFs in drawdown. The pension module uses the same rates, so a chapter and the plan never disagree.
+- Plans run to age 100, as the pension and net-retirement engines already do. The story shows the age money runs out, if it does; otherwise what is left at 100.
+- Retirement income keeps pace with prices: DB pensions are assumed to rise with general inflation (2%), and DC income is drawn from an invested pot. A surplus from retirement income is therefore not shrunk by inflation.
 - A spouse's DB pension is 50% of the member's, unless the scheme states otherwise.
+
+### Investment versions and how the storyteller chooses
+
+The engines do not run one answer. For each route and each story in this section, code runs every investment mix the client's stated preference allows, before and after retirement, and registers each version's figures under its mix, for example `{growth.balanced.atRetirement}` or `{growth.growth.at100}`. The storyteller's job is to pick the versions that are feasible and realistic for this household and tell their story clearly, for example how much further a growth mix would go than the base case, and what it would cost in a bad year.
+
+- **Never above the stated preference.** The profile gains one optional fact, the client's stated investment preference (one of the four mixes, or "not sure"). Code only runs and registers the mixes at or below it. With no answer, or "not sure", the ceiling is the base case: balanced before retirement and cautious after. Nothing assumes a client is comfortable with high risk.
+- **The question.** B2's intake asks it in plain words, recorded as stated, not as an assessment. Draft: "When you invest for the long term, which mix sounds closest to what you would be comfortable with? Mostly bonds, with about a quarter in shares. Half shares, half bonds. Mostly shares, with about a quarter in bonds. All shares. I'm not sure." The line beneath it: "Shares can rise and fall more sharply than bonds. This question is not an assessment of what is suitable for you."
+- **Saying what was done.** Every screen and story that uses a growth rate shows this, with the mix and rate filled in by code: "These illustrations assume a [mix] mix of investments growing at [rate] a year. Growth rates are assumptions, not predictions, and investments can fall as well as rise. No assessment of your attitude to risk, your capacity for loss or the suitability of any investment has been carried out, so this mix may not be suitable for you. Before making any investment decision, you may wish to get advice from a regulated financial adviser." The check refuses a story that uses a growth version without it.
 
 ### Growing wealth after the goals
 
 Shown when a route covers every goal, protects the reserve and still leaves money over each year, after the reserve and protection sections. The order is fixed:
 1. Personal pension contributions first, up to each person's relief limit (gross for growth, after relief for cash flow).
-2. What is left is invested outside the pension at the central growth rate, after exit tax, including the deemed disposal every eight years.
+2. What is left is invested outside the pension, after exit tax, including the deemed disposal every eight years.
 
-Code projects the assets to retirement, then through retirement to each person's life expectancy, drawing income from the pension and ARF at the post-retirement rate. Placeholders: `{growth.pensionExtra}`, `{growth.investedYearly}`, `{growth.atRetirement}` and `{growth.atLifeExpectancy}`, with a year-by-year series for the screen's chart (chart data, not narration). Extra employer contributions for business owners are not modelled in this first version.
+Code projects the assets to retirement, then through retirement to age 100, drawing income from the pension and ARF, for each allowed investment version. Placeholders, under each version: `{growth.<mix>.pensionExtra}`, `.investedYearly`, `.atRetirement`, and either `.runsOutAtAge` or `.at100`, with a year-by-year series for the screen's chart (chart data, not narration). Extra employer contributions for business owners are not modelled in this first version.
 
 ### Spending more in retirement
 
-When a surplus comes from retirement income (B1.1 keeps it), the story shows `{retirementSurplus.spendMoreYearly}` and `.spendMoreMonthly`, the extra that surplus allows without touching savings. It also shows `{retirementSurplus.spendMoreWithSavings}`, the level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until `{retirementSurplus.toAge}`, the household's life expectancy, from the net-retirement engine.
+When a surplus comes from retirement income (B1.1 keeps it), the story shows `{retirementSurplus.spendMoreYearly}` and `.spendMoreMonthly`, the extra that surplus allows without touching savings. It also shows `{retirementSurplus.spendMoreWithSavings}`, the level extra a year, rising with prices, that the surplus plus the spare cash this route leaves above the reserve could fund until age 100, from the net-retirement engine, for each allowed investment version.
 
 ### If one of you died
 
 For a couple, code works out the survivor's income rather than assuming it stops:
 - a DC pot not yet drawn is paid to the spouse as cash, tax-free between spouses (Revenue's death-benefit limits to be confirmed at build);
-- an ARF passes to the spouse as an ARF, keeps paying at least the required minimum each year and grows at the post-retirement rate;
+- an ARF passes to the spouse as an ARF, keeps paying at least the required minimum each year and grows at the after-retirement rate of the version shown;
 - a DB pension pays the spouse the scheme's spouse's percentage (50% central default);
 - State payments follow the existing stated survivor contract; nothing is assumed.
 
@@ -165,7 +174,9 @@ The story shows the survivor's yearly surplus or shortfall and how long savings 
 
 ### Gifts to children
 
-When there are children and money left over after the goals, each parent gives each child up to the small gift exemption every year: €3,000 per giver per child today, so €6,000 a year from two parents. Code reads the figure from the tax engine; the story never types it. If the money left over does not cover the full amount, code uses what is left, split evenly between the children. The gifts are invested at the central growth rate after exit tax and deemed disposal. The story shows the value at each child's 21st, 25th and 30th birthdays, for example towards a home deposit: `{gifts.<dependantId>.yearly}`, `.at21`, `.at25`, `.at30`.
+When there are children and money left over after the goals, each parent gives each child up to the small gift exemption every year: €3,000 per giver per child today, so €6,000 a year from two parents. Code reads the figure from the tax engine; the story never types it. If the money left over does not cover the full amount, code uses what is left, split evenly between the children. The gifts are invested after exit tax and deemed disposal, under each allowed investment version. The story shows the value at each child's 21st, 25th and 30th birthdays, for example towards a home deposit: `{gifts.<dependantId>.yearly}`, `.at21`, `.at25`, `.at30`.
+
+Gift and inheritance tax figures use the household's wealth as it is today. A projection is never treated as the wealth that will be passed on. A gift planned for a year or two ahead can use the same engine with the rules dated for that year, applied to today's figures.
 
 This needs gift tax (Capital Acquisitions Tax) rules in the shared tax engine, dated and versioned like the other tax rules. Budget 2027 raised the group thresholds to €420,000 (Group A), €44,000 (Group B) and €22,000 (Group C), reported to apply from 7 October 2026, and announced no change to the €3,000 small gift exemption. Confirm both against the Finance Act before use.
 
@@ -181,12 +192,12 @@ Each risk is a code fact from a stress run of an existing engine, using central,
 |---|---|
 | An income stops | The protection gap and months savings last for each person, using the cash this route leaves |
 | Interest rates rise | The yearly extra repayment on each mortgage and loan at the stress rate, and whether that year's surplus still covers it. The profile does not record fixed-rate periods yet, so every loan is stressed from now |
-| Lower investment returns | The projected pension pot at the lower growth rate, against the required pot |
+| Lower investment returns | The projected pension pot at the lower growth rate, against the required pot, and the more cautious investment versions in section 5 |
 | Costs rise faster than prices | Each dated cost's lump sum and yearly amount at the higher cost inflation |
-| Living longer than expected | The retirement and growth figures run to age 95 instead of life expectancy |
+| Money running out | The age the pension, ARF and savings run out before 100, if they do |
 | Anything that relies on a sale | Each sale's net proceeds and tax, whether the base cost was assumed to be zero, and the shortfall if the sale value were lower by the stress size |
 
-Review items for `check_next` are also code facts, including the growth rates and life expectancy used: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve.
+Review items for `check_next` are also code facts, including the investment mixes and growth rates used and the client's stated preference: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve.
 
 ## 7. Golden plans for B4
 
@@ -207,9 +218,9 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit 
 2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
 3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
 4. **Course material stays private.** Recommended default: as in section 7. The course notes and solutions are not published.
-5. **Growth after retirement.** Recommended default: 4% a year for DC pots and ARFs in drawdown, one point below the central 5% used before retirement. Use it in the pension module too, so a chapter and the plan never disagree.
-6. **Life expectancy.** Recommended default: the CSO's Irish Life Tables by age and sex. The latest, for 2015 to 2017, give about 18.3 more years at 65 for a man and 21.0 for a woman. The profile has no sex field, so this needs one new question; without an answer, use the longer figure. The pension module would also move from age 100 to life expectancy, with age 95 shown as the longevity risk.
-7. **DB pensions.** Recommended default: they rise with general inflation (2%) and pay a spouse 50%, unless the scheme states otherwise.
+5. **The investment-preference question.** Recommended default: ask it as drafted in section 5, as one optional question in B2's intake. Wording is Gerry's to adjust.
+
+Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% and 7%), balanced before retirement and cautious after as the base case, plans to age 100, gift and inheritance tax on today's wealth, and DB pensions rising with inflation and paying a spouse 50%.
 
 ## Verification when built
 
@@ -218,5 +229,5 @@ Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit 
 - Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss`.
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - Stress runs reuse the native engines and never change the unstressed figures.
-- B1.6: invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
+- B1.6: no version above the stated preference, or above the base case when none is stated, is ever run or registered; a story using a growth version without the disclosure is refused; invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
 - Existing B0, B1 and B1.1 checks, the consumer suite, stale exports and build stay green. No prompt-pack changes and no consumer activation.
