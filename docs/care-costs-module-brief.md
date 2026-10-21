@@ -1,26 +1,33 @@
 # Care costs: what nursing home care could cost, what Fair Deal asks, and the ways a family could pay
 
-Status: brief for Gerry's review, 21 October 2026. **Nothing is built.** No engine, no screen, no wiring. Adviser-only when it is built (`consumer: false`). The screen design is a separate step after this brief is approved.
+Status: revised 21 October 2026 after Gerry's review of PR #89. Gerry's decisions are settled below; two new questions remain. **Nothing is built.** No engine, no screen, no wiring. Adviser-only when it is built (`consumer: false`). The screen design is a separate step after this brief is approved.
 
-## Decisions for Gerry
+## Still open
 
-Each has a recommended default. If you agree with a default, nothing needs to be said.
+Two questions came up while writing the "one of you needs care" stress test. Each has a recommended default; if you agree, nothing needs to be said.
 
-| # | Decision | Recommended default | Why |
-|---|---|---|---|
-| 1 | Whose care the first release covers | **A parent or other relative, paid for by your client's household.** The client's own care in later life uses the same Fair Deal calculator, but only in the plan story, as a risk (see "The plan layer"). It gets no screen of its own until you ask for one. | This is the course's nursing home objective, and the plan story needs the client's own case as a risk, not a goal. |
-| 2 | Care at home | **Not calculated in the first release.** The module covers nursing home care, and says so. | There is no statutory home care scheme yet, the HSE service is free but its hours are set each year in the Budget, and there is no official price for private home care to use as a default. |
-| 3 | How fast nursing home fees rise | **2% a year**, the course rate, held as a central assumption with its own name. Each new HSE price list is recorded with its date, so you can approve a sourced figure later. | The course uses it, and it matches central general inflation. Note that the central education rate's own wording already says healthcare costs tend to rise faster than prices; the plan story's "fees rise faster" risk covers that gap until you decide. |
-| 4 | The default weekly fee | **The average of the HSE's agreed prices for private and voluntary homes in the person's county** (national average €1,312 a week, Dublin €1,414, Westmeath €1,241, from the list of 4 September 2026). The adviser can type the real home's price instead. | Under Fair Deal the person pays the same in any approved home. Public homes cost more (about €1,970 a week on average) but that difference falls on the HSE, not the family. |
-| 5 | Whether the assessment is redone each year | **Yes, each year**, from the person's money at the start of that year. | The HSE allows a review every 12 months. Without it, a person spending their savings would be shown paying 7.5% on money they no longer have. |
-| 6 | How much of their income a person keeps when paying a private fee (no Fair Deal) | **The same personal allowance Fair Deal leaves them**, so the cases compare like with like. | The course applies the whole pension. The course check sets this to zero (see Tests). |
-| 7 | Whether the person's pension income rises over the years of care | **Yes, with general prices (2%)**, as the course treats it. Tax bands stay frozen, as the tax engine already does. | Holding a pension flat while fees rise 2% would widen the gap every year for no stated reason. |
-| 8 | How long care lasts | **Whole years, chosen by the adviser.** Up to two other lengths can be shown beside it, also chosen by the adviser. **No default lengths.** | Any default length would read as a forecast. Life expectancy tables (CSO) can become a central assumption later. One course case uses a part year; part years are not in the first release. |
-| 9 | Which State pension rate sets the safeguards | **The maximum personal rate of State Pension (Non-Contributory) for someone aged 66 to 79**: €288 a week from 2 January 2026, and €298 from January 2027 once that is in force. | The over-80 rate is €10 higher. The difference to the allowance is €2 a week, and it only matters when income is below the State pension. The Act's wording is to be checked at build. |
-| 10 | The Nursing Home Loan repayment deadline | **Show no deadline.** Say the loan is repaid from the estate after death. | The official sources disagree: Revenue says 12 months after death, the HSE says 18 months. Neither changes a figure. Ask the HSE which is current before any deadline appears. |
-| 11 | How the effect on the estate is shown | **In today's money**, with the home holding its value against prices and the loan growing with prices (the CPI, at the central 2%). | No central house price assumption exists, and the loan's CPI rule then reads simply: the deferred amounts in today's money. |
-| 12 | The CFP course cases | **They stay private.** Their figures go in the git-ignored folder the plan story brief proposes (`private/cfp-cases/`), not in this public brief. | Same as decision 4 of the plan story brief (PR #88). The method is described here; the solutions are not. |
-| 13 | Name | **"Care costs"**, kind `care-costs`, payload key `careCostInputs`. | Plain, and distinct from the future cost fund. |
+1. **In the stress test, is the home's share of the contribution paid from savings or put on the Nursing Home Loan?** Recommended: put on the loan in every year Fair Deal applies. The partner at home then keeps the savings, and the stress reports the loan the estate would carry, in today's money. Paying it from savings would take up to 11.25% of the home's value from a couple's savings over three years.
+2. **Does the stress test count the tax relief the household could claim on its own care costs?** Recommended: not in the first release. The stress is meant to be prudent, and the retirement cash flow it runs through works in after-tax income, so it has no tax position to relieve. Counting relief would lower the cost by up to the household's income tax in those years.
+
+## Decisions, settled 21 October 2026
+
+| # | Decision | Settled |
+|---|---|---|
+| 1 | Whose care | **Two uses, both in the first release.** (a) A parent or relative the household pays for, only when the client picks or mentions it, with a short set of questions asked only then (see "Questions about a relative's care"). (b) The client's own later-life care as a stress test needing no new questions: for each person in the household in turn, care from age 85 to 90, run through the household's retirement cash flow (see "One of you needs care"). It is a stress test, never a goal, and takes no money in the ledger. |
+| 2 | Care at home | **Not in the first release.** The module covers nursing home care, and says so. |
+| 3 | How fast nursing home fees rise | **4% a year: the existing central education and healthcare rate, `inflation.educationRate`.** Its basis already names healthcare costs. One rate for both, so they move together, labelled for care as well. No separate care rate. The plan story's cost stress (2 points higher) then puts care at 6%. |
+| 4 | The default weekly fee | **The county average from the HSE's list of agreed prices (list 230) when the county is known, otherwise the national average (€1,312 a week).** The adviser can type a real home's price instead. |
+| 5 | Whether the assessment is redone each year | **Yes.** Each year is assessed on the savings left at the end of the year before, and the footnote says a review is assumed each year. |
+| 6 | How much of their income a person keeps when paying privately | **The same personal allowance Fair Deal leaves them**, so cases compare like with like. The course checks set it to zero. |
+| 7 | Whether the person's pension income rises over the years of care | **Yes, with general prices (2%).** Tax bands stay frozen, as the tax engine already does. |
+| 8 | How long a relative's care lasts | **5 years by default, with 3 and 10 years shown beside it.** The course accepts 5 or 10. Whole years only. Life expectancy tables come later as an extra comparison. |
+| 9 | Which State pension rate sets the safeguards | **The maximum personal rate of State Pension (Non-Contributory) for someone aged 66 to 79**: €288 a week from 2 January 2026, €298 from January 2027 once in force. |
+| 10 | The Nursing Home Loan repayment deadline | **No deadline on screen.** The loan is described as repaid from the estate after death. Revenue says 12 months and the HSE says 18; no figure depends on it. |
+| 11 | How the effect on the estate is shown | **In today's money**, with the home holding its value against prices and the loan growing with prices (the CPI, at the central 2%). |
+| 12 | The CFP course cases | **They stay private** in `private/cfp-cases/`, never in this public brief. |
+| 13 | Name | **"Care costs"**, kind `care-costs`, payload key `careCostInputs`. |
+| 14 | Fair Deal only when it lowers the cost (new) | **A case basis `lower_of`, the default everywhere**, including the stress test. Each year the person pays the lower of their assessed contribution and the private fee, with extras on top of both. The three-year limit on the home counts from entering care, not from applying. See "Why Fair Deal never costs more". |
+| 15 | Relief in the course checks (new) | **A flat 40%, injected for the private course checks only**, like the course's rates. Never reachable from a payload. Everywhere else relief comes from the tax engine at the payer's real rate. |
 
 ## Context
 
@@ -30,22 +37,43 @@ Nothing in the app answers this. The future cost fund (`js/future_cost_fund_math
 
 The idea the module has to land: **under Fair Deal the parent pays a set share of their income and assets and the HSE pays the rest; the contribution from the home stops after three years; and what the family pays, and when, depends on whose money is used first.**
 
+The same calculator has a second use with no questions of its own: a stress test of the client's own later life, where one person in the household needs care from 85 to 90 and the cost runs through the household's retirement cash flow (see "One of you needs care").
+
 It is used two ways at once, like every module: shared on a call while the adviser clicks between cases, and re-opened later by the client alone. Nothing may depend on spoken context.
 
 ## What the client is shown
 
 The picture is not designed yet. This section sets what the screen must say. The design step draws it.
 
-1. **The likely cost.** The weekly fee and what it comes to in a year. By default the county average (decision 4), named as an average of the HSE's agreed prices, with the list's date.
+1. **The likely cost.** The weekly fee and what it comes to in a year. By default the county average, or the national average when no county is given (decision 4), named as an average of the HSE's agreed prices, with the list's date.
 2. **What Fair Deal asks of the person**, in three parts that add up to their contribution:
    - from income: usually 80% of their income after tax, because they keep a personal allowance;
    - from savings and other assets: 7.5% a year of their value above the first €36,000;
    - from the home: 7.5% of its value a year, **for three years only**, so never more than 22.5% of its value. This cap is the single most important fact on the screen.
    - The HSE pays the rest of the fee.
+   - Fair Deal is used only in the years it lowers the cost. In a year where the contribution would reach the fee, the person is shown paying privately and the HSE paying nothing, with the words "Fair Deal would not lower the cost this year". The screen says which years Fair Deal applies.
 3. **What is left for the family** in each case, before and after the tax relief the payer can claim.
 4. **The ways to meet it**: from the household's money each year, a lump sum set aside now, or (when care starts later) saving each year until it starts.
 5. **What it leaves**: how many years the parent's own money lasts, and what the Nursing Home Loan would take from the estate.
 6. A footnote with every rule and assumption in use, its source date and version.
+
+### Why Fair Deal never costs more than paying privately
+
+In money terms, using Fair Deal in the years it lowers the cost is never dearer than paying privately throughout. Two rules make sure of it:
+
+- **The contribution can never be more than the cost of care.** In any year, the person pays the lower of the two. A year where the assessed contribution would reach the fee is simply a private year.
+- **The three-year limit on the home counts from the day care starts, not from the day of applying.** Someone who has "already been in a nursing home for 3 years" when they apply pays nothing on the home (`ciFairDeal`). So paying privately in the early years never adds years of contribution from the home later. A wealthy person who pays privately for three years, while the home still counts, and then applies, pays nothing on the home from year four.
+
+The Nursing Home Loan does not change this: the deferred amount grows only with prices, so in today's money it is the same as paying when due.
+
+A family may still choose not to use Fair Deal for reasons that are not about money. These never enter the calculation. They go to the plan story's review items (`check_next`) as plain statements, with no figures:
+
+- the loan places a charge on the home;
+- wanting a home that charges more than its agreed price;
+- the waiting list for Fair Deal funding;
+- the five-year look-back on gifts and transfers.
+
+The `private_fee` case remains for a family that chooses not to use the scheme.
 
 ### A worked example: the sample, year one
 
@@ -62,7 +90,7 @@ Mam is 84, widowed, lives alone in Co. Meath and needs nursing home care now. Sh
 | Her contribution | | **€40,530** (about €779 a week) |
 | The HSE pays | Fee less contribution | €27,746 |
 
-From year four the home part stops, so she pays about €16,500 a year if her savings are unchanged. Over three years the home part comes to €72,000, which is the 22.5% cap. With the Nursing Home Loan, that €72,000 is not paid during her life: it is repaid from her estate, increased by the change in prices.
+Her contribution never reaches the fee, so Fair Deal lowers the cost in every year. From year four the home part stops, so she pays about €16,500 a year if her savings are unchanged. Over three years the home part comes to €72,000, which is the 22.5% cap. With the Nursing Home Loan, that €72,000 is not paid during her life: it is repaid from her estate, increased by the change in prices.
 
 Without Fair Deal (a private fee), the same year costs €68,276, her income less her allowance pays €12,480, and €55,796 is left. Her savings would cover that for under two years; after that the family pays.
 
@@ -87,6 +115,7 @@ Every figure below is checked against the official page named, on 21 October 202
 | `dohBudget2027OlderPeople` | gov.ie, Department of Health, "Minister for Older People Kieran O'Donnell announces Budget 2027 funding increases" | Last updated 9 October 2026 |
 | `hseAgreedPricesList230` | HSE, "Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes", list 230, assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf | Date modified 4 September 2026 |
 | `hsePublicCostOfCare` | HSE, "Nursing Homes Support Scheme, Cost of Care in Public Nursing Homes", assets.hse.ie/media/documents/NHSS_Cost_of_Care_September_2026_Update.pdf | Effective from 1 September 2026 |
+| `igeesNhss2019` | IGEES, Department of Public Expenditure and Reform, "Social Impact Assessment Series: Nursing Home Support Scheme (NHSS)", assets.gov.ie/static/documents/social-impact-assessment-sia-nursing-home-support-scheme-nhss.pdf | August 2019 |
 
 ### The contribution
 
@@ -121,7 +150,7 @@ Every figure below is checked against the official page named, on 21 October 202
 
 | Rule | Figure | Source |
 |---|---|---|
-| The home | Counted only for the first three years in care. "We won't count your home as an asset after you have been in care for 3 years." | `hseThreeYearCap`, `ciFairDeal` |
+| The home | Counted only for the first three years in care, counted from entering care, not from applying | `hseThreeYearCap`, `ciFairDeal` |
 | Single person | At most 22.5% of the home's value (7.5% a year for three years) | `hseFinancialAssessment` |
 | Couple, one in care | 3.75% a year for three years, at most 11.25% | `ciFairDeal` |
 | Couple, both in care | At most 22.5% in total | `ciFairDeal` |
@@ -215,7 +244,9 @@ Leitrim, Longford and Laois have two or three homes each, so their averages move
 
 **Public homes** (`hsePublicCostOfCare`, effective 1 September 2026) list about 114 units from €1,193 to €2,902 a week, a simple average of about €1,970. They are not a default (decision 4).
 
-Re-read both lists before the module ships, and each time the HSE publishes a new one. Keep each list's number and date, so the history can support a sourced growth rate (decision 3).
+**The default fee** (decision 4): the county average above when the county is known, otherwise the national average, €1,312. A stated `weeklyFee` replaces either. The stress test always uses the national average, because the household profile holds no location.
+
+Re-read both lists before the module ships, and each time the HSE publishes a new one. Keep each list's number and date, so the history can be set against the 4% growth rate (decision 3).
 
 ## Where the rules live
 
@@ -223,10 +254,12 @@ Three kinds of figure, kept in three places. **The engine reads all of them and 
 
 1. **Fair Deal rules: a new rules catalogue,** `js/planning/care/fair_deal_rules_ie.js`, built like the tax catalogue (`js/planning/tax/rules_ie.js`). Data only. Blocks by effective date, each with a `ruleId`, `status` (`enacted` or `announced`), `verifiedOn` and its `sources` (the keys above, with their URLs and page dates). `FAIR_DEAL_RULES_VERSION` starts at `ie-fair-deal-2026.1`. A resolver, `resolveFairDealRules(date)`, returns the block in force on a date and holds the latest block for later dates, exactly as `resolveTaxRules` holds Budget figures. It holds: the income shares, the asset rates, the disregards and their order, the cap years, the personal allowance and spouse safeguards, the State Pension (Non-Contributory) reference rates by effective date, the rent rule, the five-year transfer rule, and the loan's terms (CPI, the two conflicting repayment periods with both sources). Never edit a past block: add a new one, bump the version, rerun the tests.
 2. **Planning assumptions: a new `care` entry in `js/planning/planeir_assumptions.js`.**
-   - `feeGrowthRate: 0.02`, with a `basis` ("Nursing home fees are assumed to rise 2% a year, in line with general prices. This is the rate used in the CFP course method and is held until a sourced rate is approved.") and a `disclosure` ("This is a planning assumption, not a forecast. Nursing home prices are agreed home by home and have risen faster than general prices in some years.").
-   - `agreedPrices`: the list number (230), its date (2026-09-04), the national average and the county averages above, `checkedOn: '2026-10-21'`, and the URL, for the audit trail. The `basis` says "the average of the HSE's maximum agreed prices for private and voluntary nursing homes in the county" and names no home.
+   - **Fee growth is not a new figure.** It is the existing `inflation.educationRate` (4%), whose basis already names education and healthcare costs (decision 3). One value for both, so they always move together. Its basis wording is extended to say the rate is used for education **and care** planning, and a second record, `assumptionRecord('careFeeGrowth')` with key `careFeeGrowthRate`, reads the same value and basis so the care footnote names it for care. No separate care rate is added.
+   - `agreedPrices`: the list number (230), its date (2026-09-04), the national average and the county averages above, `checkedOn: '2026-10-21'`, and the URL, for the audit trail. The `basis` says "the average of the HSE's maximum agreed prices for private and voluntary nursing homes in the county, or nationally when the county is not known" and names no home.
+   - `relativeCare`: `defaultYears: 5` and `compareYears: [3, 10]` (decision 8), with a `basis` ("Care for a relative is shown over 5 years, with 3 and 10 years beside it. These are planning lengths, not a forecast of how long care lasts.").
+   - `ownCareStress`: `startAge: 85`, `years: 5`, `approvedOn: '2026-10-21'`, sources `igeesNhss2019`, and a `basis`: "The stress test assumes care from age 85 to 90. This is deliberately longer than the average stay in the scheme, about 2.6 years for men and 3.4 years for women (IGEES, 2019), and half of residents are over 85. It is a prudent stress, not a forecast." In the same report, about a quarter of people leaving the scheme in 2017 had stayed more than four years.
    - The loan's CPI uses the existing `inflation.generalRate`. Money held in cash uses the existing `cash.instantAccessGrossRate` and DIRT from the tax catalogue.
-   - Bump `PLANEIR_ASSUMPTIONS_VERSION`, add `assumptionRecord` keys and `ASSUMPTION_LABELS` entries (`careFeeGrowthRate`: "How fast nursing home fees rise"; `careWeeklyFee`: "Nursing home fee a week"), and extend `scripts/check-planeir-assumptions.mjs`.
+   - Bump `PLANEIR_ASSUMPTIONS_VERSION`, add `assumptionRecord` keys and `ASSUMPTION_LABELS` entries (`careFeeGrowthRate`: "How fast nursing home fees rise (the education and healthcare cost rate)"; `careWeeklyFee`: "Nursing home fee a week"; `ownCareStressAge` and `ownCareStressYears`), update `scripts/fixtures/module-catalogue-authoring-identity.json` because the education basis wording moves, and extend `scripts/check-planeir-assumptions.mjs`.
 3. **Tax relief: the shared tax engine**, `js/planning/tax/`. See "The tax engine change".
 
 No figure is fetched from a website during a calculation. A saved result keeps the rules version, the assumptions version and the tax rules version it used, so a later update never silently rewrites an earlier illustration (the same rule as the Illness Benefit assumption in the plan document).
@@ -259,8 +292,8 @@ The person cared for:
 |---|---|---|
 | `personLabel` | string, required | How they are named on screen, for example "Mam". 1 to 24 characters. |
 | `age` | integer, required | 18 to 115. Sets the over-65 tax exemption and which State pension rate applies. |
-| `county` | string, required unless `weeklyFee` is given | One of the 26 counties. Picks the default fee. |
-| `weeklyFee` | number, optional | The real home's weekly price, which replaces the county average. |
+| `county` | string, optional | One of the 26 counties. Picks the county average fee; without it, the national average (decision 4). A county name only, never an address or Eircode. |
+| `weeklyFee` | number, optional | The real home's weekly price, which replaces either average. |
 | `weeklyExtras` | number, optional | Extra charges not covered by Fair Deal. Default 0, and the footnote says extras are not included. |
 | `couple` | object, optional | Present when the person is one of a couple and the partner stays at home: `{ partnerIncomes }`. Assets are then entered as the couple's combined assets. |
 | `incomes` | array, required | `{ type, grossAnnual }` using the tax engine's income types (`statePension`, `occupationalPension`, `rentalProfit` and so on). Tax on them comes from the tax engine, never typed. |
@@ -277,8 +310,8 @@ The care and who pays:
 | Field | Type | Rule |
 |---|---|---|
 | `startsInYears` | integer, required | 0 (now) to 40. |
-| `durationYears` | integer, required | 1 to 30, whole years (decision 8). |
-| `compareDurations` | array, optional | Up to two other whole-year lengths shown beside the main one. None by default. |
+| `durationYears` | integer, optional | 1 to 30, whole years. Default 5, from the central `care.relativeCare.defaultYears` (decision 8). |
+| `compareDurations` | array, optional | Up to two other whole-year lengths shown beside the main one. Default 3 and 10, from `care.relativeCare.compareYears`. |
 | `payer` | object, required | The household paying: `{ taxStatus, people: [{ id, age, incomes, retiresInYears, incomesAfterRetirement }] }`. Tax and relief come from the tax engine. `retiresInYears` is optional; when present, `incomesAfterRetirement` is required for that person. |
 | `baseScenarioId` | string, optional | Must match a case. Default the first. |
 | `scenarios` | array, required | 1 to 4 cases (`MAX_MODULE_SCENARIO_CASES`). |
@@ -289,28 +322,36 @@ Each case states **how**, never **how much**. The engine solves the amounts.
 |---|---|---|
 | `id` | string, required | Unique and stable. |
 | `title` | string, optional | Button name, checked against the banned wording on the way in. Absent: derived. |
-| `basis` | `'fair_deal'`, `'fair_deal_with_loan'` or `'private_fee'`, required | What is due each year. |
+| `basis` | `'lower_of'`, `'fair_deal_with_loan'` or `'private_fee'`, optional | What is due each year. Default `lower_of`, "Fair Deal when it lowers the cost" (decision 14). |
 | `personMoney` | `'first'`, `'alongside'` or `'kept'`, required | How the person's own savings are used (below). |
 | `familyFunding` | `'each_year'`, `'lump_sum_now'` or `'save_then_pay'`, required | How the family meets its share. `save_then_pay` only when `startsInYears` is 1 or more. |
 
-The four sample cases, matching the course's options: Fair Deal with Mam's money first, paid by the family each year; Fair Deal with Mam's money alongside the family's; a lump sum set aside now; Fair Deal with the home deferred through the loan.
+The three bases:
+
+- `lower_of`: each year, the lower of the assessed Fair Deal contribution and the private fee, with extras on top of both.
+- `fair_deal_with_loan`: the same, and in the years Fair Deal applies the home part is deferred through the loan. In a private year nothing is deferred.
+- `private_fee`: the family chooses not to use the scheme. The fee every year.
+
+There is no separate "Fair Deal always" basis. It would give exactly the figures `lower_of` gives, because the contribution can never exceed the fee.
+
+The four sample cases, matching the course's options, all on `lower_of` unless named: Mam's money first, the family paying each year; Mam's money alongside the family's; a lump sum set aside now; and the home deferred through the loan (`fair_deal_with_loan`).
 
 ### The model, year by year
 
 For each year of care `k` (0-based), at the start of the year:
 
-1. **The fee.** `weeklyFee × 52`, grown by the central fee growth rate from today, plus extras grown the same way. 52 weeks a year, stated in the assumptions.
+1. **The fee.** `weeklyFee × 52`, grown from today at the central education and healthcare rate (4%), plus extras grown the same way. 52 weeks a year, stated in the assumptions.
 2. **What is due.**
    - `private_fee`: the fee and extras.
-   - `fair_deal`: the contribution (below), never more than the fee, plus extras. If the assessed contribution is at or above the fee, the person is shown as paying the fee, and the case says the HSE would pay nothing that year.
-   - `fair_deal_with_loan`: as `fair_deal`, but the home part is not due. It is added to the loan.
-3. **The Fair Deal contribution**, assessed afresh each year (decision 5) from the rules in force that year:
+   - `lower_of`: the lower of the assessed contribution (below) and the fee, plus extras. **Fair Deal applies** in a year where the contribution is below the fee: the person pays the contribution and the HSE pays the rest. In any other year the person pays the fee, the HSE pays nothing, and the year is marked "Fair Deal would not lower the cost this year".
+   - `fair_deal_with_loan`: as `lower_of`, but in the years Fair Deal applies the home part is not due; it is added to the loan. In a private year the loan takes nothing.
+3. **The Fair Deal contribution**, assessed afresh each year (decision 5) from the rules in force that year, whether or not Fair Deal applied the year before:
    - **Assessable income**: gross income less the tax the tax engine works out, less `otherDeductions`, plus rent that counts. For a couple, the combined figure, halved.
    - **Income part**: assessable income less the larger of 20% of it or 20% of the yearly maximum State Pension (Non-Contributory) (decision 9), never below zero. For a couple, also never so much that the partner at home is left with less than the larger of half the couple's income or that maximum rate.
-   - **Assets**: cash at the start of the year, other property net of borrowings, transferred assets, and the home net of borrowings while in its first three years of care (counting `yearsInCareSoFar`). Take off the disregard, cash first and then non-cash. Within non-cash, take it off other property before the home (an open item to confirm with the HSE; it changes only how the contribution is split between the parts, and so how much the loan can defer).
+   - **Assets**: the savings left at the end of the year before (in the first year of care, the savings then), other property net of borrowings, transferred assets, and the home net of borrowings while the person is in their first three years of care. Those years count from entering care, including `yearsInCareSoFar` and including any years paid privately, never from the year Fair Deal first applies. The home is valued once, when care starts, and held at that value for the three years, so the home part is exactly 7.5% of it a year and the cap is exactly 22.5%. Take off the disregard, cash first and then non-cash. Within non-cash, take it off other property before the home (an open item to confirm with the HSE; it changes only how the contribution is split between the parts, and so how much the loan can defer).
    - **Asset part**: 7.5% (3.75% for a couple) of what is left, split into the savings part, the other property part and the home part.
    - Income given away in the last five years is not modelled in the first release (see Out of scope).
-4. **The person's own income** pays the income part (or, with a private fee, their income less the allowance of decision 6).
+4. **The person's own income** pays the income part in a Fair Deal year, or, in a private year, their income less the allowance of decision 6.
 5. **The person's savings** pay what remains, as the case says:
    - `first`: savings pay all of what remains until they run out; then the family pays.
    - `alongside`: the savings are spread over the years of care as an amount rising with the fee, at the start of each year, at the central cash rate after DIRT, so they last exactly as long as the care (the course's "annuity stream"). The family pays the rest from year one, so its relief applies from year one. If a year's spread amount is more than what remains, the excess stays in the savings.
@@ -328,10 +369,10 @@ After the last year: the person's savings left, the loan (the deferred home part
 
 The same shape as the other engine modules: `assumptionsTable`, `outputsTable` (one row per case), `tables` (the year-by-year rows for each case), `charts` (one chart, for the video summary), `debug`.
 
-- `debug.cases[]`: for each case, `rows[]` of `{ yearIndex, fee, extras, due, incomePart, savingsPart, otherPropertyPart, homePart, deferredToLoan, hsePays, fromIncome, fromSavings, familyBeforeRelief, relief, familyAfterRelief, savingsAtStart, savingsAtEnd }`, and the totals: `familyTotalBeforeRelief`, `reliefTotal`, `familyTotalAfterRelief`, `homePartTotal` (never more than the cap), `homePartEndsAfterYear`, `savingsLastYears`, `loanAtEnd`, `loanTodaysMoney`, `estateHomeAfterLoanTodaysMoney`, `lumpSumNow`, `yearlyFromHousehold` (first year and a rising amount), `beforeRetirement` and `afterRetirement` splits, and `retirementCapitalNeeded`.
+- `debug.cases[]`: for each case, `rows[]` of `{ yearIndex, yearInCare, fairDealApplies, assessedContribution, fee, extras, due, incomePart, savingsPart, otherPropertyPart, homePart, deferredToLoan, hsePays, fromIncome, fromSavings, familyBeforeRelief, relief, familyAfterRelief, savingsAtStart, savingsAtEnd }`, and the totals: `fairDealYears` (the years Fair Deal applies), `familyTotalBeforeRelief`, `reliefTotal`, `familyTotalAfterRelief`, `homePartTotal` (never more than the cap), `homePartEndsAfterYear`, `savingsLastYears`, `loanAtEnd`, `loanTodaysMoney`, `estateHomeAfterLoanTodaysMoney`, `lumpSumNow`, `yearlyFromHousehold` (first year and a rising amount), `beforeRetirement` and `afterRetirement` splits, and `retirementCapitalNeeded`.
 - `debug.compareDurations[]`: the selected case's headline figures at each comparison length.
 - `debug.rulesUsed`: `FAIR_DEAL_RULES_VERSION` and every rule's `ruleId`, `PLANEIR_ASSUMPTIONS_VERSION`, `IE_TAX_RULES_VERSION`, the price list number and date, and whether a fee was the county average or stated.
-- `summary` (stable, for the plan adapter): per case, the family's yearly amounts before and after relief, the lump sum now, the person's contribution split, the year the home part ends, how long the person's savings last, the loan, and the retirement split.
+- `summary` (stable, for the plan adapter): per case, the years Fair Deal applies, the family's yearly amounts before and after relief, the lump sum now, the person's contribution split, the year the home part ends, how long the person's savings last, the loan, and the retirement split.
 - `getCareCostCases(rawInputs)` and `getDefaultCareCostScenarioId(rawInputs)` for the presenter.
 
 ### Validation
@@ -339,7 +380,8 @@ The same shape as the other engine modules: `assumptionsTable`, `outputsTable` (
 Messages name the field and the case, in the existing style:
 
 - `generated.careCostInputs.scenarios[2] (Lump sum now): save_then_pay needs care to start in a later year.`
-- `generated.careCostInputs.county must be one of the 26 counties, or give weeklyFee.`
+- `generated.careCostInputs.county must be one of the 26 counties.`
+- `generated.careCostInputs.scenarios[0] (Paid privately): basis must be "lower_of", "fair_deal_with_loan" or "private_fee".`
 - `generated.careCostInputs.feeGrowthRate is not accepted. Fair Deal rules and rates are set centrally.`
 - `generated.careCostInputs.payer.people[0].incomesAfterRetirement is required when retiresInYears is given.`
 - Also: a fifth case, a duplicate id, an unknown key, `yearsInCareSoFar` with a later start, `fair_deal_with_loan` with no home, a `couple` with no partner incomes, and banned wording in a title or description.
@@ -354,6 +396,8 @@ Relief must be the payer's real top rate, never a flat 40%. The tax engine has n
 - Add the source to `IE_TAX_SOURCES`, bump `IE_TAX_RULES_VERSION`, remove medical expenses from the "not modelled" disclosure only for nursing home fees, and add tests: a standard-rate payer gets 20%; a payer just over the standard-rate band gets 40% on the part above it and 20% on the rest (the Revenue manual's own example shape); a payer under the exemption gets nothing; USC and PRSI do not change; the golden tax cases still pass unchanged.
 - The care engine calls `computeTaxYear` twice per payer year (with and without the expense), from the same opening state, never carrying one alternative's state into another (the rule in the plan document).
 
+The private course checks inject a flat 40% relief through the options argument (decision 15), as they inject the course's rates. It is never reachable from a payload, and nothing else uses it.
+
 Later, not in this change: the over-65 DIRT exemption on the person's savings, and relief the person themselves can claim on their own contribution when they pay income tax.
 
 ## On screen
@@ -364,8 +408,59 @@ The picture waits for a design step. The rules it must keep:
 - **The answer is a description, never an instruction.** For example: "Under Fair Deal, Mam pays €40,530 in the first year and the HSE pays the rest." "Her home counts for three years only: €72,000 in total." "With Mam's savings used first, you pay nothing for the first two years." "Set aside today, €61,200 covers your share for all five years." (Figures illustrative.)
 - **Tone.** Calm and factual. No alarm styling, no imagery of illness or old age.
 - **Rounding.** Yearly amounts to the nearest €100 on screen, weekly amounts to the nearest euro, from unrounded values. A shown total is the rounded sum of unrounded years.
-- **The footnote**, from the model and never typed: the fee and where it came from ("the average of the HSE's agreed prices for private and voluntary homes in Co. Meath, list of 4 September 2026"), fee growth, the cash rate before and after DIRT, the State pension rate behind the safeguards, that extras are not included unless stated, that relief needs a nursing home with 24-hour on-site nursing care, that care at home is not shown, and the rules version.
+- **Private years.** A year where Fair Deal would not lower the cost says so in those words, "Fair Deal would not lower the cost this year", and shows the HSE paying nothing. Never "not eligible" or "refused".
+- **The footnote**, from the model and never typed: the fee and where it came from ("the average of the HSE's agreed prices for private and voluntary homes in Co. Meath, list of 4 September 2026", or "nationally" when no county is given), that fees rise 4% a year (the rate used for education and healthcare costs), that a review of the Fair Deal assessment is assumed each year, the cash rate before and after DIRT, the State pension rate behind the safeguards, that extras are not included unless stated, that relief needs a nursing home with 24-hour on-site nursing care, that care at home is not shown, and the rules version.
 - **Accessibility** as in the other modules: real buttons with `aria-pressed`, a chart with an `aria-label` that says the answer, 44px touch targets, contrast at 4.5:1, colour never alone.
+
+## Questions about a relative's care
+
+Asked **only** when the household has a `fund_care` goal, or the client mentions supporting a relative's care. Nothing is asked otherwise, and no question is compulsory to continue the rest of the plan. These are planning inputs for the plan pack and the adviser now; the consumer intake can add them later, with consumer activation still off.
+
+| Question | Fact | Notes |
+|---|---|---|
+| Who is the care for? | `caredForPeople[].label`, `.relationship` | A first name or "Mam". |
+| How old are they? | `.age` | |
+| Has their care started? If so, how long ago? If not, roughly when might it start? | `.careStarted`, `.yearsInCareSoFar`, the goal's date | Sets `startsInYears` and the years already counted toward the three-year limit on the home. |
+| What income do they have? | `.incomes[]` | Each source and its yearly amount before tax. |
+| What savings do they have? | `.cash` | Savings, deposits, shares and any approved retirement fund. |
+| Do they own a home? What is it worth, and is anything borrowed against it? | `.home.value`, `.home.borrowings` | |
+| Are they one of a couple, with a partner still at home? If so, the partner's income. | `.couple.partnerIncomes` | Couple rules apply. |
+| Which county is the nursing home likely to be in? (optional) | `.county` | Picks the county average fee. Without it, the national average. |
+| Who in your household would pay? | `payer.people[]` | Their tax position comes from the household facts already held. |
+
+**Never** ask for an address or an Eircode. The household profile deliberately holds no location, and the county is the only place-related fact here. It is kept in the relative's own block, never in the household profile.
+
+Other module inputs (rent from the home, other property, transfers in the last five years, extras) stay available for the adviser to enter, but are not asked.
+
+## One of you needs care: the stress test
+
+The client's own later-life care, shown as a stress test. It needs no new questions: it uses the household facts the plan already holds.
+
+**What is run.** For each person in the household in turn, one run: that person goes into nursing home care from age 85 to 90 (the central `care.ownCareStress`, decision 1), while the other person, if there is one, stays at home. A person already 85 or older starts now and still runs five years. A one-person household has one run. Two people in care at once is not run.
+
+**Why 85 to 90.** It is deliberately longer than the average stay: about 2.6 years for men and 3.4 for women in the IGEES review of the scheme (2019), where half of residents are over 85. It is a prudent stress, not a forecast, and the assumptions table says so in those words.
+
+**The rules applied.**
+
+- Basis `lower_of`: in each year, the lower of the assessed contribution and the private fee. A wealthy household may pay privately in the first years and use Fair Deal once the home stops counting.
+- The fee: the national average (€1,312 a week; the profile holds no county), grown at 4% from today. No extras.
+- With a partner at home, couple rules: 40% of combined assessable income, 3.75% of combined assets above €72,000, the home at 3.75% for three years (at most 11.25%), and the partner at home keeps the larger of half the couple's income or the maximum State Pension (Non-Contributory). Otherwise, single rules.
+- Income: the household's income that year from its retirement cash flow. That cash flow is already after tax, so it is the assessable income.
+- Assets: the retirement cash flow's fund at the end of the year before. Approved retirement funds count as cash assets under Fair Deal (`ciFairDeal`), so pension funds in the fund are assessed. The home is the household's main home, net of any mortgage, holding its value against prices (decision 11). Other property from the balance sheet counts for as long as care lasts.
+- The home's part: [still open, question 1] by default deferred through the loan in every year Fair Deal applies.
+- Relief on the household's own care costs: [still open, question 2] by default not counted.
+
+**Through the retirement cash flow.** The care cost each year (the contribution or the fee, less any part deferred to the loan) is an **extra outgoing** in the household's retirement cash flow, met from income first and then from the fund, year by year. The household's usual spending is not reduced, which is prudent: a partner at home still runs the home, and a single person's home costs largely continue. This needs one seam in `js/net_retirement_math.js`: an options-only hook, never reachable from a payload, that the care engine supplies. Each year it receives the fund at the start of that year and returns the extra outgoing, which joins that year's shortfall in the fund path. The engine's existing figures are unchanged when no hook is given.
+
+**What it reports**, for each person's run:
+
+- how many years the household's savings last, and the year they run out, if they do;
+- what the partner at home is left with each year after the contribution, beside the household's planned spending;
+- whether money runs out before the end of the retirement cash flow (age 100 today), and in which year;
+- any loan against the estate, in today's money;
+- the years Fair Deal applies, and the contribution split into income, savings and home.
+
+It is a stress test: **never a goal, and it takes no money in the resource ledger.**
 
 ## The plan layer
 
@@ -373,7 +468,7 @@ How this module feeds the resource ledger (B1, `js/planning/plan_pack/resource_l
 
 ### A goal for care
 
-- Add a goal type `fund_care` to `js/planning/goal_catalogue.js`, with who it is for, the start, the number of years and the basis of the yearly cost. Adviser-only: **no consumer route, no manifest entry, consumer activation off.** Today the nearest fit is `assess_decision` with a `dated_cost` funding fact, which cannot hold any of the Fair Deal facts.
+- Add a goal type `fund_care` to `js/planning/goal_catalogue.js`, with who it is for, the start, the number of years and the basis of the yearly cost. Adviser-only: **no consumer route, no manifest entry, consumer activation off.** Today the nearest fit is `assess_decision` with a `dated_cost` funding fact, which cannot hold any of the Fair Deal facts. This goal, or a mention of supporting a relative's care, is what triggers the questions above.
 - **The person cared for is not in the household's net worth**, unless the client is that person. Their facts sit in their own block in the plan pack (`planningInputs.caredForPeople[]`), referenced by the goal. Their savings and home never become household resources, and the ledger never spends them on any other goal ("never double count").
 
 ### In the resource ledger
@@ -402,10 +497,13 @@ Placeholders, so narration never types a figure. To be added to B1.5's registry 
 | `{care.<goalId>.lumpSumNow}` | The lump sum that would meet the family's share today |
 | `{care.<goalId>.afterRetirementCapital}` | Extra retirement capital if care runs past the payer's retirement |
 | `{care.<goalId>.loanTodaysMoney}` | The loan repaid from the estate, in today's money |
+| `{care.<goalId>.fairDealYears}` | The years Fair Deal applies |
 
-**Risks**, each a code fact from a stress run of the same engine: care lasting longer (each comparison length), fees rising faster (the B1.5 stress size for cost inflation), the rules or the relief changing (shown as the rules version and its date, never a guess at a future rule), and the loan reducing the estate.
+**Risks for a relative's care**, each a code fact from a stress run of the same engine: care lasting longer (the 10-year comparison), fees rising faster (B1.5's dated-cost stress of 2 points, so care at 6%), the rules or the relief changing (shown as the rules version and its date, never a guess at a future rule), and the loan reducing the estate.
 
-**The client's own later-life care** (decision 1): the same builder, run on the household's own facts at an age and length the adviser states, gives the contribution from income, savings and home, the cap on the home, and what the estate would be after the loan. It appears in the story's risks and in what is left at the end of life, which B1.5 shows through retirement to the age the net retirement engine plans to (100 today). It is never a goal and never takes money in the ledger.
+**A new risk row: "One of you needs care".** B1.5's risk list gains this row, from the stress test above: for each person, how long savings last, what the partner at home is left with, whether money runs out before 100, and any loan against the estate in today's money. It also feeds what is left at the end of life, which B1.5 shows through retirement to the age the retirement cash flow plans to (100 today). The B1.5 brief (PR #88) gains the row when the care engine exists; this branch does not edit #88.
+
+**Review items.** The non-financial reasons a family may choose not to use Fair Deal (a charge on the home, wanting a home priced above its agreed price, the waiting list, the five-year look-back on gifts) go to B1.5's `check_next` as plain statements with no figures, for every route with a care goal or the stress row. They never change a figure.
 
 ## Wiring
 
@@ -417,25 +515,30 @@ Two kinds of fixture: public ones, written into the tests, and the course cases,
 
 **Public fixtures, each proved against a reference calculator** in `scripts/check-care-costs.mjs` that imports nothing from the engine or the rules catalogue's resolver and rebuilds each case year by year from first principles:
 
-1. The sample above: every figure in the year-one table, and the cap (€72,000 over three years, nothing on the home from year four).
-2. A couple with the partner at home, including a low-income couple where the partner's safeguard bites.
-3. Income below the State pension, so 20% of the State pension rate sets the allowance.
+1. **The sample above, whose contribution never reaches the fee:** every figure in the year-one table, Fair Deal in every year, and the cap (€72,000 over three years, nothing on the home from year four).
+2. **A wealthy single person who pays privately in years 1 to 3 and uses Fair Deal from year 4.** Single, 85, the national average fee, a State pension of €16,000 and an occupational pension of €20,000 a year, savings of €500,000 and a home worth €900,000. In years 1 to 3 the home alone adds €67,500 a year to the assessed contribution, which is well above the fee, so each of those years is private and marked "Fair Deal would not lower the cost this year". From year 4 the home no longer counts, because the three years count from entering care, and the contribution falls well below the fee, so Fair Deal applies. This holds for every `personMoney` setting. **The test that matters:** an engine that counted the three years from the first Fair Deal year would put the home back in year 4 and keep the person private; the test asserts no home part in year 4 or later.
+3. **Applying after three years in care:** `yearsInCareSoFar` 3, so nothing is paid on the home in any year.
 4. `yearsInCareSoFar` 2: one year of the home part left.
-5. Transferred assets counted though not spendable.
-6. An assessed contribution above the fee: the person pays the fee, the HSE nothing.
-7. Each `personMoney` setting, showing that "alongside" keeps relief from year one and the savings last exactly the length of care.
-8. The loan: the deferred home parts, grown with prices, in nominal terms and in today's money.
-9. Care past the payer's retirement.
-10. Relief: a standard-rate payer, a payer straddling the bands, a payer with no income tax.
+5. A couple with the partner at home, including a low-income couple where the partner's safeguard bites.
+6. Income below the State pension, so 20% of the State pension rate sets the allowance.
+7. Transferred assets counted though not spendable.
+8. Each `personMoney` setting, showing that "alongside" keeps relief from year one and the savings last exactly the length of care.
+9. The loan: the deferred home parts, grown with prices, in nominal terms and in today's money, and nothing deferred in a private year.
+10. Care past the payer's retirement.
+11. Relief: a standard-rate payer, a payer straddling the bands, a payer with no income tax.
+12. The default lengths: no `durationYears` gives 5 years with 3 and 10 beside it; no county gives the national average.
+13. **The stress test:** a one-person household; a couple, run once for each person, with the partner's safeguard binding in a low-income case; a household whose savings run out before 100, reporting the year; a person already over 85, starting now; the loan in today's money; and the retirement cash flow giving exactly its present figures when no hook is given.
 
-**Invariants over every case:** the home part never exceeds the cap; nothing is due after the last year; due equals HSE share plus contribution plus extras under Fair Deal; family share plus person's income plus savings used equals what is due; savings never go below zero; the lump sum funds every later year to within €0.01; relief never exceeds the tax the payer would otherwise pay.
+**Invariants over every case:** under `lower_of`, what is due is never more than the private fee plus extras in any year; the home part never exceeds the cap and appears only in the first three years from entering care; nothing is due after the last year; due equals HSE share plus contribution plus extras under Fair Deal; family share plus person's income plus savings used equals what is due; savings never go below zero; the lump sum funds every later year to within €0.01; relief never exceeds the tax the payer would otherwise pay.
 
 **Rule sources.** With nothing injected, every rate comes from the catalogue or the central assumptions. Change one rule in a test catalogue and the result follows, which proves the engine holds no copy. Dates either side of 1 January 2027 pick the right State pension rate.
 
-**The course cases, private.** The Doyle and Shannon cases are rebuilt through the engine with the course's own rates, injected through the options argument and never reachable from a payload: a 1% deposit with no DIRT for the parent (the course treats the parent as DIRT-free by age and income), 0.67% after DIRT for the children, 2% inflation, every flow at the start of the year, the private-fee basis and no personal allowance (decision 6). Their expected figures live in `private/cfp-cases/`, and `npm run check:golden-plans` runs them when the folder is present and reports "not present" otherwise, as the plan story brief proposes. Two things found on 21 October 2026 from a summary of the cases, to settle with the case notes:
+**The course cases, private.** The Doyle and Shannon cases are rebuilt through the engine with the course's own rates and a flat 40% relief (decision 15), all injected through the options argument and never reachable from a payload: the course's deposit rates, DIRT treatment and 2% inflation, every flow at the start of the year, the private-fee basis and no personal allowance (decision 6). Their expected figures live in `private/cfp-cases/`, and `npm run check:golden-plans` runs them when the folder is present and reports "not present" otherwise, as the plan story brief proposes. Two known differences, found on 21 October 2026 and written in the private case file as the plan story brief requires:
 
-- In one case, the parent's annuity and the children's yearly cost reproduce to the euro, but the lump sum only reproduces when the course's own rounded yearly cost is fed in. From unrounded values the engine is €11 higher. That is a rounding difference, to be written down in the case file as the plan story brief requires, not hidden.
-- The other case's lump sum did not reproduce from the summary's inputs at the start of each year. The case notes are needed to see which rate, length or timing the course used.
+- **Rounding.** In one case the lump sum reproduces only when the course's own rounded yearly cost is fed in; from unrounded values the engine is €11 higher. Every other figure in that case reproduces to the euro.
+- **A part year.** The other case uses a life expectancy with a half year in it, from tables. Its figure reproduces exactly at that part year, but the first release uses whole years only, so the engine gives the figures for the whole years either side. Recorded, not chased with another rate.
+
+The private case file exists on Gerry's Mac only, excluded from git by a local setting. `private/cfp-cases/` is not yet in `.gitignore` on `main`; add it when the golden checks are built (B1.5), before any course file is placed in another checkout.
 
 **Words.** Render every case and scan the visible text and `aria-label`s for the banned phrases, any provider or product name, "p.a.", and any amount without a thousands separator.
 
@@ -446,13 +549,13 @@ Before finishing: `npm run build`, `check:care-costs`, `check:future-cost-fund` 
 - **Care at home** (decision 2): HSE home support (free and not means-tested, with hours set each year in the Budget), the Health (Amendment) (Home Support Providers) Bill 2025, which Citizens Information says was passed in June 2026 and is not yet enacted, relief for employing a carer, Carer's Allowance and the Home Carer Tax Credit.
 - **The farm and business cap**, which needs a family successor's six-year commitment.
 - **Selling the home during care.** The proceeds fall under the cap, but the engine does not model a sale in the first release.
-- **Both partners in care.**
+- **Both partners in care at once**, in the module or the stress test.
 - **Income given away in the last five years.**
 - **Capital acquisitions tax** on gifts or on the estate, and the course's point that a gift from parent to child "so the child gets the relief" is complicated by the five-year rule. The module shows the rule; it does not model the gift.
 - **The over-65 DIRT exemption** and the person's own relief on their contribution (later tax engine changes).
 - **The funding waiting list**, Transitional Care Funding, respite and short stays.
 - **Long-term care insurance.** Never.
-- **Part years of care** and life expectancy tables (decision 8).
+- **Part years of care**, and life expectancy tables as an extra comparison (decision 8).
 - Consumer routing, voice, planner facts, manifest, playbook and goal catalogue routing.
 
 ## Open items to confirm at build
@@ -464,6 +567,7 @@ These are checks, not decisions for Gerry.
 3. **The disregard within non-cash assets.** Confirm with the HSE whether the part of the disregard left after cash comes off the home or other property first.
 4. **The State pension rate from January 2027**: confirm its commencement date and which age band the safeguard uses.
 5. **The loan repayment period** after death: 12 months (Revenue, 2023) or 18 months (HSE). Decision 10 keeps it off the screen until this is settled.
+6. **The home's value.** Confirm with the HSE that the home is valued at the first assessment and not revalued at each yearly review, which is how the brief applies the 22.5% cap.
 
 ## When you finish
 
