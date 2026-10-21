@@ -28,6 +28,17 @@ Code computes these for every route and registers them as placeholders. The anal
 
 Some facts cannot be computed for some households: solvency with no assets, the home's share with no home, mortgage repayments as a share of take-home with no mortgage or no take-home. For each, code registers a reason instead, `{<key>.notApplicable}`, a code-chosen plain sentence such as "There are no assets yet to measure against." Wherever a section requires that fact, the check accepts the figure or its reason, never neither, so a valid household can always be told.
 
+### Every placeholder carries its source
+
+Each registered placeholder carries its source as a link target, worked out by code:
+- `chapter`: the module the figure comes from;
+- `caseId`: that module's case for this route, from the route's `chapterCases` (and `nativeCaseId` inside the module where it has its own cases);
+- `focusTargetId`: where the presenter catalogue has one (`buildPresentationCatalogue` in `js/presenter_catalogue.js`), the exact chart point, table row, holding, timeline event or disclosure that shows the figure.
+
+A figure the plan works out itself, with no module behind it (a ledger total, the retirement-years run), points at the plan view's own panel instead.
+
+The analyst marks which placeholders are links, by writing `{@key}` instead of `{key}`; code builds every link from the registry, never from the analyst's text. A link therefore opens the module in this route's case (or the current position's case, for `{@current.<key>}`) and focuses that target, and can never point at the wrong module or route. A link marked on a placeholder with no linkable source is refused with its path.
+
 ### Current position
 
 | Placeholder | Meaning | Source |
@@ -361,6 +372,7 @@ Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% 
 - A story below the method's floor (section 3) is refused, with the path. A story that goes beyond the floor in any way the analyst chooses passes.
 - Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss` and a loss that only selling costs create (value €100, base cost €95, selling costs €10).
 - A household with no assets, no home or no mortgage can still pass the check, with the code's reason in place of each missing figure.
+- Every linked placeholder resolves to a module and case of its own route (or the current position's), and to a focus target that exists in the presenter catalogue for that case; a link marked on a figure with no linkable source is refused with its path.
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - What-if runs reuse the native engines and never change the base figures.
 - 6a: college and future-cost-fund figures through the contract equal today's to the cent; a part lump sum is worked out the same way for every producer; years after retirement move to the retirement goal exactly once, and relief is counted once.
