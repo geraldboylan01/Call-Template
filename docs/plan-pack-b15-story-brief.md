@@ -35,9 +35,9 @@ Each registered placeholder carries its source as a link target, worked out by c
 - `caseId`: that module's case for this route, from the route's `chapterCases` (and `nativeCaseId` inside the module where it has its own cases);
 - `focusTargetId`: where the presenter catalogue has one (`buildPresentationCatalogue` in `js/presenter_catalogue.js`), the exact chart point, table row, holding, timeline event or disclosure that shows the figure.
 
-A figure the plan works out itself, with no module behind it (a ledger total, the retirement-years run), points at the plan view's own panel instead.
+A figure the plan works out itself, with no module behind it (a ledger total, the retirement-years run, a difference from the current position), points at the plan view's own panel instead.
 
-The analyst marks which placeholders are links, by writing `{@key}` instead of `{key}`; code builds every link from the registry, never from the analyst's text. A link therefore opens the module in this route's case (or the current position's case, for `{@current.<key>}`) and focuses that target, and can never point at the wrong module or route. A link marked on a placeholder with no linkable source is refused with its path.
+The analyst marks which placeholders are links, by writing `{@key}` instead of `{key}` (the placeholder syntax accepts this one marker and nothing else); code builds every link from the registry, never from the analyst's text. A link therefore opens the module in this route's case (or the current position's case, for `{@current.<key>}`) and focuses that target, and can never point at the wrong module or route. A link marked on a placeholder with no linkable source is refused with its path.
 
 ### Current position
 
@@ -123,7 +123,7 @@ Beyond the sections, the floor is:
 - for every earner, an `incomeStops` what-if;
 - for a couple, or a household with dependants, a `death` what-if;
 - the emergency fund, in `protecting`;
-- at least one risk tied to each route's main change, citing that change;
+- at least one risk tied to each alternative route's main change, citing that change (the current position changes nothing, so it needs none);
 - every what-if the analyst chooses cites the fact that makes it relevant to this household;
 - every issue the code found (section 2), every goal, and every freed-cash event inside the ledger years appears.
 
@@ -148,7 +148,7 @@ For `pension_led`, code also lists the retirement moves within the stated flexib
 
 ## 5. After the goals: growth, gifts and later life (B1.6)
 
-These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they are built as B1.6, straight after B1.5, and do not hold up the plan screen. Each appears only when its condition is met, and then the check requires it. Every figure is worked out by code; none is advice or names a product.
+These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they are built as B1.6, straight after B1.5, and do not hold up the plan screen. Each is a what-if the analyst may run when its condition is met (6c); beyond section 3's floor, none is required. Every figure is worked out by code; none is advice or names a product.
 
 **Shared assumptions**, settled by Gerry on 21 October 2026 and kept as central, dated, versioned values:
 - Four investment mixes, each with a long-run growth rate. Clients see them as levels of risk, not as shares and bonds: lower risk (about 25% shares, 75% bonds) 4%; medium risk (50/50) 5%, the existing central rate; higher risk (75/25) 6%; highest risk (all shares) 7%. The shares-and-bonds split is available as a detail line for anyone who wants it.
@@ -156,6 +156,14 @@ These stories follow Gerry's direction of 21 October 2026. They need new central
 - Plans run to age 100, as the pension and net-retirement engines already do. The story shows the age money runs out, if it does; otherwise what is left at 100.
 - Retirement income keeps pace with prices: DB pensions are assumed to rise with general inflation (2%), and DC income is drawn from an invested pot. A surplus from retirement income is therefore not shrunk by inflation.
 - A spouse's DB pension is 50% of the member's, unless the scheme states otherwise.
+
+### One pot, counted once
+
+Growth, gifts and spending more all draw on the same money left over after the goals. On a route, the analyst either:
+- runs them as **alternatives**, each using the money left over, which the story presents as alternatives and never adds together; or
+- runs them as **one split**, setting how much of the money left over goes to each use, as parameters with their sources (6d). Code refuses a split that uses more than is left over in any year, gifts above the small gift exemption, or pension contributions above the relief limit.
+
+Within growth, pension contributions still come before investing outside the pension.
 
 ### Investment versions and how the analyst chooses
 
@@ -380,5 +388,5 @@ Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% 
 - 6c and 6d: every what-if's parameters validate against the schema generated from its engine's normaliser; a value outside its bounds, or without a fact, a default or a reasoned bounded value, is refused with its path; a refusal is an ordinary tool result; an entry waiting for its engine or its bounds cannot be called; each what-if's change is the only difference from the base run.
 - Section 7: the command-line tool and the worker give identical results for the same calls in any order; an unknown or unavailable tool is refused before its arguments are read; a call past the run budget is refused.
 - Section 8: an unstated cover fact is never treated as zero; a what-if run without it says so, and the review section carries it; stated payouts pass the protection module's wording checks.
-- B1.6: no version above the stated preference, or above the base case when none is stated, is ever run or registered; a story using a growth version without the disclosure is refused; invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more figures never draw on the reserve in any year; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
+- B1.6: growth, gift and spend-more what-ifs on one route never use more than the money left over, run as alternatives that are never added or as one split that fits; no version above the stated preference, or above the base case when none is stated, is ever run or registered; a story using a growth version without the disclosure is refused; invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more figures never draw on the reserve in any year; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
 - Existing B0, B1 and B1.1 checks, the consumer suite, stale exports and build stay green. No prompt-pack changes and no consumer activation.
