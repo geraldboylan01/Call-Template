@@ -2143,7 +2143,8 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
-    ]
+    ],
+    "note": "Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend."
   },
   {
     "id": "ie.income_tax.employee_credit.2027.amount",

@@ -383,6 +383,10 @@ const TAX_YEAR_2027 = Object.freeze({
       maxShareOfQualifyingIncome: 0.20
     }),
     ageCredit: TAX_YEAR_2026.incomeTax.ageCredit,
+    /** Said alongside the figure wherever it is shown, so a derived amount is never presented as printed. */
+    notes: Object.freeze({
+      widowedCredit: 'Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend.'
+    }),
     sources: Object.freeze([S.budget2027TaxPolicyChanges, S.financeNo2Bill2026, S.financeNo2Bill2026Memo, S.section461A])
   }),
 

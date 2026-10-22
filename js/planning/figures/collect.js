@@ -142,7 +142,8 @@ function collectTaxRules(out) {
       row('standard_rate_band.second_income_increase_max', 'Most a second income can add to the standard-rate band of a married couple or civil partners', income.standardRateBand.secondIncomeIncreaseMax, 'eur');
       row('personal_credit.single', 'Personal tax credit, single person', income.personalCredit.single, 'eur');
       row('personal_credit.married', 'Personal tax credit, married couple or civil partners', income.personalCredit.married, 'eur');
-      row('personal_credit.widowed', 'Personal tax credit, widowed person without dependent children', income.personalCredit.widowed, 'eur');
+      row('personal_credit.widowed', 'Personal tax credit, widowed person without dependent children', income.personalCredit.widowed, 'eur',
+        income.notes?.widowedCredit ? { extra: { note: income.notes.widowedCredit } } : {});
     }
     const employee = income.employeeCredit;
     if (isNew(employee)) {

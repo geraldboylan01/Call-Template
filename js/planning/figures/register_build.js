@@ -93,7 +93,7 @@ function table(rows) {
   return [
     '| Figure | Value | From | Status | Source | Checked | Used by | Id |',
     '|---|---|---|---|---|---|---|---|',
-    ...rows.map((figure) => `| ${escapeCell(figure.label)} | ${escapeCell(figure.valueShown)} | ${figure.effectiveFrom ?? '—'} | ${figure.kind === 'announced_law' ? '**announced**' : figure.status.replace(/_/g, ' ')} | ${sourceCell(figure)} | ${checkedCell(figure)} | ${figure.usedBy.join(', ')} | \`${figure.id}\` |`)
+    ...rows.map((figure) => `| ${escapeCell(figure.label)}${figure.note ? `<br>*${escapeCell(figure.note)}*` : ''} | ${escapeCell(figure.valueShown)} | ${figure.effectiveFrom ?? '—'} | ${figure.kind === 'announced_law' ? '**announced**' : figure.status.replace(/_/g, ' ')} | ${sourceCell(figure)} | ${checkedCell(figure)} | ${figure.usedBy.join(', ')} | \`${figure.id}\` |`)
   ].join('\n');
 }
 

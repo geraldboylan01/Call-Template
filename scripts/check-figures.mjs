@@ -805,6 +805,9 @@ check('the 2027 tax year is in the register as announced law, with its changed r
   assert.equal(byId.get('ie.income_tax.2026.standard_rate_band.single').value, 44_000, '2026 is still there, as it was');
   assert.equal(byId.get('ie.usc.2027.standard.band_2.upper_limit').value, 30_300);
   assert.equal(byId.get('ie.income_tax.2027.personal_credit.widowed').value, 2_665);
+  assert.match(byId.get('ie.income_tax.2027.personal_credit.widowed').note, /^Derived, not printed in the sources/, 'a derived figure says it is derived');
+  assert.equal(getFigures({ ids: ['ie.income_tax.2027.personal_credit.widowed'] })[0].note, byId.get('ie.income_tax.2027.personal_credit.widowed').note, 'and the reader carries the note');
+  assert.ok(collected.filter((figure) => figure.note).length === 1, 'only the one figure is derived');
   assert.equal(byId.get('ie.exit_tax.rate.2027').valueShown, '35%');
   assert.equal(byId.get('ie.cgt.rate.2026-10').valueShown, '31%');
   for (const unchanged of ['ie.dirt.2027.rate', 'ie.lump_sum.2027.lifetime_tax_free', 'ie.income_tax.age_exemption.2027.from_age', 'ie.prsi.liability.2027.liable_under_age']) {

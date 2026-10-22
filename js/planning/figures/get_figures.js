@@ -37,6 +37,7 @@ function frozenCopy(figure) {
     catalogueVersion: figure.catalogue.version,
     usedBy: Object.freeze([...figure.usedBy]),
     ...(figure.appliesTo ? { appliesTo: figure.appliesTo } : {}),
+    ...(figure.note ? { note: figure.note } : {}),
     ...(figure.aliases ? { aliases: Object.freeze([...figure.aliases]) } : {})
   });
 }
