@@ -21,7 +21,7 @@
  * bump `IE_TAX_RULES_VERSION` and rerun the golden cases.
  */
 
-export const IE_TAX_RULES_VERSION = 'ie-tax-2026.5';
+export const IE_TAX_RULES_VERSION = 'ie-tax-2026.6';
 
 /** The first tax year the catalogue covers. Earlier years are refused. */
 export const IE_TAX_FIRST_YEAR = 2026;
@@ -54,6 +54,14 @@ export const IE_TAX_SOURCES = Object.freeze({
   revenueOlderPersonsPrsiUsc: Object.freeze({
     title: 'Revenue, PRSI and USC for older persons',
     url: 'https://www.revenue.ie/en/life-events-and-personal-circumstances/older-persons/prsi-usc.aspx'
+  }),
+  revenueNursingHome: Object.freeze({
+    title: 'Revenue, nursing home and additional nursing care expenses (published 8 September 2026)',
+    url: 'https://www.revenue.ie/en/personal-tax-credits-reliefs-and-exemptions/health-and-age/health-expenses/nursing-home-and-additional-nursing-care-expenses.aspx'
+  }),
+  revenueTdmHealthExpenses: Object.freeze({
+    title: 'Revenue, Tax and Duty Manual Part 15-01-12, Health Expenses, section 4 (nursing home care)',
+    url: 'https://www.revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-15/15-01-12.pdf'
   }),
   govPrsiChanges: Object.freeze({
     title: 'gov.ie, changes to PRSI from 2024',
@@ -151,7 +159,7 @@ export const IE_TAX_RULES_BY_YEAR = Object.freeze({
   2026: Object.freeze({
     status: 'enacted',
     enactedBy: 'Finance Act 2025',
-    verifiedOn: '2026-09-22',
+    verifiedOn: '2026-10-22',
 
     incomeTax: Object.freeze({
       ruleId: 'ie.income_tax.2026',
@@ -184,6 +192,15 @@ export const IE_TAX_RULES_BY_YEAR = Object.freeze({
         single: 245,
         widowed: 245,
         married: 490
+      }),
+      /**
+       * Nursing home fees the person pays themselves, in a home with 24-hour
+       * on-site nursing care, are a deduction from total income: worth the
+       * payer's marginal rate. Income tax only. The HSE's share gets no relief.
+       */
+      nursingHomeExpenses: Object.freeze({
+        ruleId: 'ie.income_tax.nursing_home_expenses.2026',
+        sources: Object.freeze([S.revenueNursingHome, S.revenueTdmHealthExpenses])
       }),
       sources: Object.freeze([S.revenueTaxReliefCharts, S.revenueEmployeeCredit, S.arfEmolumentsNoteForGuidance])
     }),
