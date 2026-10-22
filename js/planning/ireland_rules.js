@@ -19,6 +19,48 @@ export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
 });
 
 /**
+ * The Revenue limits on personal pension contributions that qualify for tax
+ * relief: a share of earnings that rises with age, applied to earnings up to a
+ * cap. These are the numbers behind "I pay the max".
+ *
+ * The age limit is s.774(7)(c) TCA for occupational schemes, with the same bands
+ * in s.787 (retirement annuity contracts), s.787E (PRSAs) and s.787Z (PEPPs).
+ * The earnings cap is s.790A TCA, and has been 115,000 since 2011. Neither is
+ * indexed. A change to either arrives in a Finance Act, so a change goes in as
+ * a new dated block with its source, never as an edit to this one.
+ *
+ * Certain professional sportspersons have a 30% limit below age 50. That is not
+ * modelled.
+ */
+export const IRISH_PENSION_RELIEF_LIMITS = Object.freeze({
+  ruleId: 'ie.pension_relief.limits',
+  jurisdiction: 'IE',
+  status: 'enacted',
+  verifiedOn: '2026-10-22',
+  /** The share of earnings relievable, from the age each band starts at. */
+  ageBands: Object.freeze([
+    Object.freeze({ fromAge: 0, rate: 0.15 }),
+    Object.freeze({ fromAge: 30, rate: 0.20 }),
+    Object.freeze({ fromAge: 40, rate: 0.25 }),
+    Object.freeze({ fromAge: 50, rate: 0.30 }),
+    Object.freeze({ fromAge: 55, rate: 0.35 }),
+    Object.freeze({ fromAge: 60, rate: 0.40 })
+  ]),
+  /** Earnings above this do not attract relief, whatever the age band allows. */
+  earningsCap: Object.freeze({ amountEur: 115_000, effectiveFrom: '2011-01-01' }),
+  sources: Object.freeze([
+    Object.freeze({
+      title: 'Revenue, tax relief limits on pension contributions',
+      url: 'https://www.revenue.ie/en/jobs-and-pensions/pension/relief/tax-relief-limits.aspx'
+    }),
+    Object.freeze({
+      title: 'Revenue Pensions Manual, Chapter 26 (earnings limit, s.790A)',
+      url: 'https://www.revenue.ie/en/tax-professionals/tdm/pensions/chapter-26.pdf'
+    })
+  ])
+});
+
+/**
  * Approved Retirement Fund imputed distributions (s.790D TCA).
  *
  * The statute tests age "for the whole of the tax year": the charge applies

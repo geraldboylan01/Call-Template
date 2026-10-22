@@ -592,7 +592,7 @@ export function getNetRetirementReadiness(profile) {
     assumptionsUsed.push(assumptionRecord('generalInflation'));
   }
   if (!Number.isFinite(getAssumption(profile, 'retirement.presentValueRate'))) {
-    assumptionsUsed.push({ key: 'presentValueRate', value: 0.04, reason: 'Existing net retirement engine default.' });
+    assumptionsUsed.push(assumptionRecord('presentValueRate'));
   }
   const grossOnly = profile.incomeSources.filter((income) => income.grossAnnual && !income.netAnnual);
   const warnings = [
@@ -628,7 +628,9 @@ export function buildNetRetirementInput(profile) {
     horizonEndAge: Number.isInteger(settings.horizonEndAge) ? settings.horizonEndAge : 100,
     annualExpenditureToday: annualExpenses(profile),
     expenditureInflationRate: PLANEIR_ASSUMPTIONS.inflation.generalRate,
-    presentValueRate: Number.isFinite(settings.presentValueRate) ? settings.presentValueRate : 0.04,
+    presentValueRate: Number.isFinite(settings.presentValueRate)
+      ? settings.presentValueRate
+      : PLANEIR_ASSUMPTIONS.netRetirement.presentValueRate,
     availableInvestmentFundToday: availableInvestmentAmount(profile),
     incomeSources,
     scenarios: [{ id: 'base', title: 'Current position' }]

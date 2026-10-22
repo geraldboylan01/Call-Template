@@ -1,6 +1,7 @@
 import {
   IRELAND_RULES_CATALOGUE_VERSION,
   IRISH_ARF_MINIMUM_DRAWDOWN,
+  IRISH_PENSION_RELIEF_LIMITS,
   IRISH_STATE_PENSION_CONTRIBUTORY,
   irishArfFirstAttainedAge,
   irishArfMinimumRate,
@@ -24,11 +25,13 @@ import {
   renderTaxDisclosures,
   taxNotIncludedLine
 } from './planning/tax/disclosures.js';
-import { assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
+import { PLANEIR_ASSUMPTIONS, assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
 
-const DEFAULT_INFLATION_RATE = 0.02;
-const DEFAULT_WAGE_GROWTH_RATE = 0.02;
-const DEFAULT_GROWTH_RATE = 0.05;
+// Defaults come from the central assumptions, never a copy. Pay is assumed to
+// grow with general prices, which is how the retirement adapter has always set it.
+const DEFAULT_INFLATION_RATE = PLANEIR_ASSUMPTIONS.inflation.generalRate;
+const DEFAULT_WAGE_GROWTH_RATE = PLANEIR_ASSUMPTIONS.inflation.generalRate;
+const DEFAULT_GROWTH_RATE = PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate;
 const DEFAULT_HORIZON_END_AGE = 100;
 const DEFAULT_INCOME_MODE = 'target';
 const DEFAULT_AFFORDABLE_END_AGES = Object.freeze([100]);
@@ -236,17 +239,22 @@ function sum(values) {
  * can resolve "the maximum" into a rate, rather than either of them carrying a
  * second copy of a rule that changes by statute.
  */
-const PENSION_AGE_BANDS = Object.freeze([
-  Object.freeze({ maxAge: 29, rate: 0.15 }),
-  Object.freeze({ maxAge: 39, rate: 0.20 }),
-  Object.freeze({ maxAge: 49, rate: 0.25 }),
-  Object.freeze({ maxAge: 54, rate: 0.30 }),
-  Object.freeze({ maxAge: 59, rate: 0.35 }),
-  Object.freeze({ maxAge: Infinity, rate: 0.40 })
-]);
+
+// The limits live in the Irish rules catalogue with their sources. This is the
+// same table with each band's last age spelled out, for the wording below.
+const PENSION_AGE_BANDS = Object.freeze(IRISH_PENSION_RELIEF_LIMITS.ageBands.map((band, index, bands) => Object.freeze({
+  maxAge: index + 1 < bands.length ? bands[index + 1].fromAge - 1 : Infinity,
+  rate: band.rate
+})));
 
 /** Earnings above this do not attract relief, whatever the age band allows. */
-export const PENSION_EARNINGS_CAP = 115_000;
+export const PENSION_EARNINGS_CAP = IRISH_PENSION_RELIEF_LIMITS.earningsCap.amountEur;
+
+/** The share of earnings relievable at an age: the last band that has started. */
+function reliefRateForAge(age) {
+  const bands = IRISH_PENSION_RELIEF_LIMITS.ageBands;
+  return (bands.filter((band) => age >= band.fromAge).pop() ?? bands[0]).rate;
+}
 
 /**
  * The maximum relievable personal contribution rate for an age, as a
@@ -255,8 +263,7 @@ export const PENSION_EARNINGS_CAP = 115_000;
 export function maxRelievableContributionRatePercent(age) {
   const years = Number(age);
   if (!Number.isFinite(years) || years < 0) return null;
-  const band = PENSION_AGE_BANDS.find((entry) => years <= entry.maxAge);
-  return band ? Math.round(band.rate * 100) : null;
+  return Math.round(reliefRateForAge(years) * 100);
 }
 
 /**
@@ -291,27 +298,8 @@ export function pensionConversationGuidance() {
   ]);
 }
 
-function ageBandPct(age) {
-  if (age < 30) {
-    return 0.15;
-  }
-  if (age <= 39) {
-    return 0.20;
-  }
-  if (age <= 49) {
-    return 0.25;
-  }
-  if (age <= 54) {
-    return 0.30;
-  }
-  if (age <= 59) {
-    return 0.35;
-  }
-  return 0.40;
-}
-
 export function maxRelievablePersonalContribution(age, salaryAtAge) {
-  return ageBandPct(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
+  return reliefRateForAge(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
 }
 
 /**
@@ -3615,7 +3603,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       isAffordableMode
         ? ['Affordable income mode', 'Goal-seek (see outputs)']
         : ['Target retirement income', toEuroText(inputs.targetIncomeToday)],
-      ['Earnings cap for max-relief maths', toEuroText(115000)],
+      ['Earnings cap for max-relief maths', toEuroText(PENSION_EARNINGS_CAP)],
       ['ARF minimum withdrawals', describeArfMinimumRule()],
       ...(currentPersonalWasCapped && Number.isInteger(firstCappedAge)
         ? [[

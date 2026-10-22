@@ -4,8 +4,11 @@
 // This grows with the register. Market figures first: the arithmetic that works
 // a value out of its quotes, the soundness of every catalogue entry, and the
 // proof that the modules read the register instead of carrying their own copy.
+// Then the law the modules used to type in for themselves, now in a catalogue.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { MARKET_FIGURES, MARKET_FIGURES_VERSION } from '../js/planning/figures/market_ie.js';
 import {
@@ -19,6 +22,18 @@ import {
 import { PROVIDER_NAMES, namesAProvider } from '../js/planning/figures/kinds.js';
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../js/planning/planeir_assumptions.js';
 import { HOUSE_PURCHASE_RULES } from '../js/house_purchase/config.js';
+import { IRISH_PENSION_RELIEF_LIMITS } from '../js/planning/ireland_rules.js';
+import { IE_TAX_RULES_BY_YEAR } from '../js/planning/tax/rules_ie.js';
+import {
+  PENSION_EARNINGS_CAP,
+  maxRelievableContributionRatePercent,
+  maxRelievablePersonalContribution,
+  normalizePensionInputs,
+  pensionConversationGuidance
+} from '../js/pension_math.js';
+import { normalizeNetRetirementInputs } from '../js/net_retirement_math.js';
+import { normalizeCollegeFundingInputs } from '../js/college_funding_math.js';
+import { assumptionLabel } from '../js/planning/planeir_assumptions.js';
 
 let failures = 0;
 
@@ -183,6 +198,135 @@ check('House Purchase reads the regular-saver and mortgage-illustration rates fr
   assert.equal(HOUSE_PURCHASE_RULES.depositSavings.grossAerDefault, saver);
   assert.equal(HOUSE_PURCHASE_RULES.mortgageRateIllustrationDefault, mortgage);
   assert.equal(HOUSE_PURCHASE_RULES.mortgage.illustrationRateDefault, mortgage);
+});
+
+// ---------------------------------------------------------------------------
+// Law the modules used to carry for themselves: pension relief limits
+// ---------------------------------------------------------------------------
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const repoFile = (path) => readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8');
+
+check('the pension relief limits are a sound catalogue entry: bands ascend from age 0, rates rise, sources are https, verified on a date', () => {
+  const limits = IRISH_PENSION_RELIEF_LIMITS;
+  assert.ok(ISO.test(limits.verifiedOn), 'verifiedOn is a date');
+  assert.equal(limits.ageBands[0].fromAge, 0, 'the first band starts at birth');
+  limits.ageBands.forEach((band, index) => {
+    assert.ok(band.rate > 0 && band.rate < 1, `band ${index} rate is a share`);
+    if (index > 0) {
+      assert.ok(band.fromAge > limits.ageBands[index - 1].fromAge, `band ${index} starts later than the one before`);
+      assert.ok(band.rate > limits.ageBands[index - 1].rate, `band ${index} allows more than the one before`);
+    }
+  });
+  assert.ok(limits.earningsCap.amountEur > 0 && ISO.test(limits.earningsCap.effectiveFrom), 'the cap has an amount and a date');
+  assert.ok(limits.sources.length >= 1 && limits.sources.every((source) => /^https:\/\//.test(source.url) && source.title), 'every source has a title and an https url');
+});
+
+check('the pension engine applies the catalogue at every whole age and salary, against an independent reference', () => {
+  const { ageBands, earningsCap } = IRISH_PENSION_RELIEF_LIMITS;
+  const reference = (age) => {
+    let rate = ageBands[0].rate;
+    for (const band of ageBands) if (age >= band.fromAge) rate = band.rate;
+    return rate;
+  };
+  for (let age = 0; age <= 110; age += 1) {
+    assert.equal(maxRelievableContributionRatePercent(age), Math.round(reference(age) * 100), `rate at ${age}`);
+    for (const salary of [0, 30_000, earningsCap.amountEur, 200_000]) {
+      assert.equal(
+        maxRelievablePersonalContribution(age, salary),
+        reference(age) * Math.min(salary, earningsCap.amountEur),
+        `limit at ${age} on ${salary}`
+      );
+    }
+  }
+  assert.equal(PENSION_EARNINGS_CAP, earningsCap.amountEur);
+  assert.equal(maxRelievableContributionRatePercent(-1), null);
+  assert.equal(maxRelievableContributionRatePercent(Number.NaN), null);
+});
+
+check('the wording the conversation uses states every band and the cap from the catalogue', () => {
+  const text = pensionConversationGuidance().join(' ');
+  IRISH_PENSION_RELIEF_LIMITS.ageBands.forEach((band) => {
+    assert.ok(text.includes(`${Math.round(band.rate * 100)}%`), `${band.rate} is stated`);
+  });
+  assert.ok(text.includes(IRISH_PENSION_RELIEF_LIMITS.earningsCap.amountEur.toLocaleString('en-IE')), 'the cap is stated');
+});
+
+// ---------------------------------------------------------------------------
+// Central assumptions: nothing keeps a copy of its own
+// ---------------------------------------------------------------------------
+
+check('the pension engine defaults to the central growth, inflation and pay-growth assumptions', () => {
+  const inputs = normalizePensionInputs({
+    currentYear: 2026,
+    targetIncomePctOfSalary: 0.5,
+    pensions: [{ id: 'a', title: 'A', currentAge: 42, retirementAge: 67, currentSalary: 85_000, currentPot: 180_000, personalPct: 0.08, employerPct: 0.06 }]
+  });
+  assert.equal(inputs.growthRate, PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate);
+  assert.equal(inputs.inflationRate, PLANEIR_ASSUMPTIONS.inflation.generalRate);
+  assert.equal(inputs.wageGrowthRate, PLANEIR_ASSUMPTIONS.inflation.generalRate);
+});
+
+check('the net retirement engine defaults to the central inflation and present-value assumptions', () => {
+  const inputs = normalizeNetRetirementInputs({
+    annualExpenditureToday: 50_000,
+    incomeSources: [{ id: 'a', title: 'A', annualAmountToday: 1_000, startAge: 66 }]
+  });
+  assert.equal(inputs.expenditureInflationRate, PLANEIR_ASSUMPTIONS.inflation.generalRate);
+  assert.equal(inputs.presentValueRate, PLANEIR_ASSUMPTIONS.netRetirement.presentValueRate);
+});
+
+check('the college engine defaults to the central general inflation assumption', () => {
+  const inputs = normalizeCollegeFundingInputs({
+    currentYear: 2026,
+    children: [{ id: 'c', title: 'C', currentAge: 10, collegeStartAge: 18, collegeDurationYears: 4 }],
+    scenarios: [{ id: 's', title: 'S', annualCostTodayPerChild: 5_000 }]
+  });
+  assert.equal(inputs.inflationRate, PLANEIR_ASSUMPTIONS.inflation.generalRate);
+});
+
+check('the present-value rate is a named central assumption with a plain basis, a label, and no provider', () => {
+  const rule = PLANEIR_ASSUMPTIONS.netRetirement;
+  assert.ok(rule.presentValueRate > 0 && rule.presentValueRate < 1);
+  assert.ok(rule.basis.length > 40 && rule.disclosure.length > 20);
+  const record = assumptionRecord('presentValueRate');
+  assert.equal(record.key, 'presentValueRate');
+  assert.equal(record.value, rule.presentValueRate);
+  assert.ok(record.reason.includes(rule.basis) && record.reason.includes(PLANEIR_ASSUMPTIONS.version));
+  assert.equal(assumptionLabel('presentValueRate'), 'Present-value discount rate');
+  assert.equal(namesAProvider(`${rule.basis} ${rule.disclosure}`), null);
+});
+
+check('House Purchase reads DIRT from the tax catalogue and the reserve months from the central assumptions', () => {
+  const years = Object.keys(IE_TAX_RULES_BY_YEAR).map(Number);
+  const dirt = IE_TAX_RULES_BY_YEAR[Math.max(...years)].dirt.rate;
+  assert.equal(HOUSE_PURCHASE_RULES.dirtRate, dirt);
+  assert.equal(HOUSE_PURCHASE_RULES.depositSavings.dirtRateDefault, dirt);
+  const saver = marketFigureValue('ie.market.cash.regular_saver_gross_rate');
+  const net = Number((saver * (1 - dirt)).toFixed(4));
+  assert.equal(HOUSE_PURCHASE_RULES.depositSavingsNetAerDefault, net);
+  assert.equal(HOUSE_PURCHASE_RULES.depositSavings.netAerDefault, net);
+  assert.equal(HOUSE_PURCHASE_RULES.reserve.recommendedMonths, PLANEIR_ASSUMPTIONS.liquidity.working.targetBufferMonths);
+  assert.equal(HOUSE_PURCHASE_RULES.reserve.liquiditySafetyFloorMonths, PLANEIR_ASSUMPTIONS.liquidity.working.minimumBufferMonths);
+});
+
+check('the copies stay removed: no module types in a figure the register or a catalogue already owns', () => {
+  const forbidden = [
+    ['js/pension_math.js', /const DEFAULT_(INFLATION|WAGE_GROWTH|GROWTH)_RATE = 0\.\d/, 'a default rate typed in'],
+    ['js/pension_math.js', /115_?000/, 'the earnings cap typed in'],
+    ['js/pension_math.js', /maxAge: \d/, 'an age band typed in'],
+    ['js/pension_math.js', /return 0\.(15|20|25|30|35|40);/, 'a relief rate typed in'],
+    ['js/net_retirement_math.js', /const DEFAULT_(EXPENDITURE_INFLATION|PRESENT_VALUE)_RATE = 0\.\d/, 'a default rate typed in'],
+    ['js/college_funding_math.js', /const DEFAULT_INFLATION_RATE = 0\.\d/, 'a default rate typed in'],
+    ['js/planning/adapters/retirement.js', /\b0\.04\b/, 'the present-value rate typed in'],
+    ['js/house_purchase/config.js', /dirtRate(Default)?: 0\.\d/, 'DIRT typed in'],
+    ['js/house_purchase/config.js', /0\.0134/, 'the net saver rate typed in'],
+    ['js/house_purchase/config.js', /(recommendedMonths|liquiditySafetyFloorMonths): \d/, 'reserve months typed in'],
+    ['js/house_purchase/config.js', /(illustrationRateDefault|IllustrationDefault|grossAerDefault|GrossAerDefault): 0\.\d/, 'a market rate typed in']
+  ];
+  for (const [file, pattern, what] of forbidden) {
+    assert.ok(!pattern.test(repoFile(file)), `${file} has ${what}`);
+  }
 });
 
 if (failures > 0) {

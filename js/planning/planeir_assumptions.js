@@ -15,7 +15,7 @@
 
 import { marketFigure, marketFigureValue } from './figures/market_math.js';
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.3.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.4.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-13';
 
 const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
@@ -38,6 +38,19 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
     /** Education costs, deliberately higher than general inflation. */
     educationRate: 0.04,
     educationBasis: 'Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education planning.'
+  }),
+
+  /**
+   * The growth rate the net retirement cash-flow module uses. It is after tax
+   * and held on its own: it is not worked out from the 5% investment growth
+   * assumption. It was an unnamed default inside the engine and the adapter,
+   * with the note "existing net retirement engine default", until it was given
+   * a name and a basis here.
+   */
+  netRetirement: Object.freeze({
+    presentValueRate: 0.04,
+    basis: 'A 4% a year after-tax growth rate is used to work out the fund needed today to pay for each year of retirement spending that other income does not cover.',
+    disclosure: 'This is a planning assumption, not a guaranteed return. It is held separately from the long-term growth assumption used for pension pots.'
   }),
 
   cash: Object.freeze({
@@ -161,6 +174,11 @@ export function assumptionRecord(key) {
       key: 'collegeDurationYears',
       value: collegeFunding.durationYears,
       reason: `Four years of college for each child (${version}).`
+    },
+    presentValueRate: {
+      key: 'presentValueRate',
+      value: PLANEIR_ASSUMPTIONS.netRetirement.presentValueRate,
+      reason: `${PLANEIR_ASSUMPTIONS.netRetirement.basis} ${PLANEIR_ASSUMPTIONS.netRetirement.disclosure} (${version})`
     },
     taxProjection: {
       key: 'taxProjectionPolicy',

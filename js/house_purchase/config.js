@@ -1,4 +1,6 @@
 import { marketFigureValue } from '../planning/figures/market_math.js';
+import { PLANEIR_ASSUMPTIONS } from '../planning/planeir_assumptions.js';
+import { IE_TAX_RULES_BY_YEAR } from '../planning/tax/rules_ie.js';
 
 const CENTRAL_BANK_SOURCE = 'https://www.centralbank.ie/financial-system/financial-stability/macro-prudential-policy/mortgage-measures';
 const REVENUE_HTB_SOURCE = 'https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx';
@@ -15,9 +17,14 @@ const FHS_CHARGES_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/serv
 const FHS_LENDERS_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/switching-your-mortgage/';
 
 // Rates that move with the market come from the figures register, which keeps the
-// quotes behind them. Nothing here types one in.
+// quotes behind them. DIRT comes from the tax catalogue, and the reserve months
+// from the central assumptions. Nothing here types one in.
 const REGULAR_SAVER_GROSS_RATE = marketFigureValue('ie.market.cash.regular_saver_gross_rate');
 const MORTGAGE_ILLUSTRATION_RATE = marketFigureValue('ie.market.mortgage.illustration_rate');
+const LATEST_TAX_YEAR = Math.max(...Object.keys(IE_TAX_RULES_BY_YEAR).map(Number));
+const DIRT_RATE = IE_TAX_RULES_BY_YEAR[LATEST_TAX_YEAR].dirt.rate;
+// What the saver keeps after DIRT, to the nearest hundredth of a percentage point.
+const REGULAR_SAVER_NET_RATE = Number((REGULAR_SAVER_GROSS_RATE * (1 - DIRT_RATE)).toFixed(4));
 
 export const HOUSE_PURCHASE_SOURCE_METADATA = Object.freeze({
   centralBankMortgageMeasures: Object.freeze({
@@ -155,9 +162,9 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
   secondSubsequentBuyerIncomeMultiple: 3.5,
   principalHomeMaxLtv: 0.9,
   minimumDepositRate: 0.1,
-  dirtRate: 0.33,
+  dirtRate: DIRT_RATE,
   depositSavingsGrossAerDefault: REGULAR_SAVER_GROSS_RATE,
-  depositSavingsNetAerDefault: 0.0134,
+  depositSavingsNetAerDefault: REGULAR_SAVER_NET_RATE,
   mortgageRateIllustrationDefault: MORTGAGE_ILLUSTRATION_RATE,
   maximumMortgageTermYearsDefault: 35,
 
@@ -174,13 +181,13 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     sources: Object.freeze([CENTRAL_BANK_SOURCE])
   }),
   reserve: Object.freeze({
-    recommendedMonths: 6,
-    liquiditySafetyFloorMonths: 3
+    recommendedMonths: PLANEIR_ASSUMPTIONS.liquidity.working.targetBufferMonths,
+    liquiditySafetyFloorMonths: PLANEIR_ASSUMPTIONS.liquidity.working.minimumBufferMonths
   }),
   depositSavings: Object.freeze({
     grossAerDefault: REGULAR_SAVER_GROSS_RATE,
-    dirtRateDefault: 0.33,
-    netAerDefault: 0.0134,
+    dirtRateDefault: DIRT_RATE,
+    netAerDefault: REGULAR_SAVER_NET_RATE,
     projectionHorizonMonths: 600,
     asOfDate: '2026-07-11',
     sources: Object.freeze([
