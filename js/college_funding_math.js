@@ -1,7 +1,8 @@
 import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
+import { PLANEIR_ASSUMPTIONS } from './planning/planeir_assumptions.js';
 
 const DEFAULT_CURRENT_YEAR = new Date().getFullYear();
-const DEFAULT_INFLATION_RATE = 0.02;
+const DEFAULT_INFLATION_RATE = PLANEIR_ASSUMPTIONS.inflation.generalRate;
 const DEFAULT_CHILDREN_COUNT = 1;
 const DEFAULT_CHILD_CURRENT_AGE = 13;
 const DEFAULT_COLLEGE_START_AGE = 18;

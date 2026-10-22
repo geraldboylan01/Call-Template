@@ -6,6 +6,7 @@ import { cloneJson, sha256Json } from '../utils.js';
 import { PLANEIR_ASSUMPTIONS_VERSION } from '../planeir_assumptions.js';
 import { IE_TAX_RULES_VERSION } from '../tax/rules_ie.js';
 import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
+import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
 const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.1.0';
@@ -13,7 +14,8 @@ const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
   taxRules: IE_TAX_RULES_VERSION,
-  irelandRules: IRELAND_RULES_CATALOGUE_VERSION
+  irelandRules: IRELAND_RULES_CATALOGUE_VERSION,
+  figures: figuresVersionLabel()
 });
 function frozen(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(frozen); Object.freeze(value); }
@@ -37,7 +39,17 @@ function derivedOutputs(module) {
     tables: g.tables, charts: (g.charts ?? []).map(({ id: _id, ...chart }) => chart)
   });
 }
-const placeholderPattern = /\{([a-z][a-z0-9_-]*(?:\.[a-zA-Z][a-zA-Z0-9_-]*)+)\}/g;
+// A figure id can carry a year or a date (ie.income_tax.2026.standard_rate), so a part may start with a digit.
+const placeholderPattern = /\{([a-z][a-z0-9_-]*(?:\.[a-zA-Z0-9][a-zA-Z0-9_-]*)+)\}/g;
+/**
+ * Every figure in the register, as a placeholder: {figure.<id>}. Narration never
+ * types a rate, a band or a limit. It names the figure, and the register's value
+ * is shown as the register shows it (20%, €44,000, age 65), so a figure reads the
+ * same wherever it is used.
+ */
+const FIGURE_PLACEHOLDERS = Object.freeze(Object.fromEntries(
+  getFigures().map(figure => ['figure.' + figure.id, Object.freeze({ value: figure.valueShown, type: 'text' })])
+));
 const euro = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
 const count = new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 });
 const year = new Intl.NumberFormat('en-IE', { useGrouping: false, maximumFractionDigits: 0 });
@@ -72,7 +84,7 @@ const PLAN_PACK_METRIC_TYPES = frozen({
   college_funding: { firstCollegeYear: 'year', finalCollegeYear: 'year', fundingPeriodYears: 'number' }
 });
 function registeredPlaceholders(pack, resourceLedger) {
-  const keys = new Set(['route.cashUsed', 'route.goalsMoved', 'route.goalChangeCount', 'plan.calculationDate']);
+  const keys = new Set(['route.cashUsed', 'route.goalsMoved', 'route.goalChangeCount', 'plan.calculationDate', ...Object.keys(FIGURE_PLACEHOLDERS)]);
   if (resourceLedger) {
     for (const key of ['cashAvailable', 'reserve', 'cashRemaining', 'yearlyRemaining', 'balanceStatus']) keys.add('ledger.' + key);
     for (const goal of pack.household.goals) for (const key of ['state', 'firstShortYear', 'firstMoneyYear', 'coveredFromYear']) keys.add('goals.' + goal.goalId + '.' + key);
@@ -90,7 +102,8 @@ function placeholders(pack, context, cases) {
     'route.cashUsed': { value: context.cashUsed, type: 'money' },
     'route.goalsMoved': { value: context.movedGoals.map(id => pack.household.goals.find(g => g.goalId === id).title).join(', '), type: 'text' },
     'route.goalChangeCount': { value: context.movedGoals.length, type: 'number' },
-    'plan.calculationDate': { value: pack.calculationDate, type: 'text' }
+    'plan.calculationDate': { value: pack.calculationDate, type: 'text' },
+    ...FIGURE_PLACEHOLDERS
   };
   if (context.resourceLedger) {
     const ledger = context.resourceLedger;
