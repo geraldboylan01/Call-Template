@@ -4,7 +4,8 @@
 // This grows with the register. Market figures first: the arithmetic that works
 // a value out of its quotes, the soundness of every catalogue entry, and the
 // proof that the modules read the register instead of carrying their own copy.
-// Then the law the modules used to type in for themselves, now in a catalogue.
+// Then the law the modules used to type in for themselves, now in a catalogue,
+// and the social welfare rates the protection gap needs.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -34,6 +35,14 @@ import {
 import { normalizeNetRetirementInputs } from '../js/net_retirement_math.js';
 import { normalizeCollegeFundingInputs } from '../js/college_funding_math.js';
 import { assumptionLabel } from '../js/planning/planeir_assumptions.js';
+import { IRISH_STATE_PENSION_CONTRIBUTORY } from '../js/planning/ireland_rules.js';
+import { SOCIAL_WELFARE_RATES_VERSION, SOCIAL_WELFARE_SERIES } from '../js/planning/social_welfare_ie.js';
+import {
+  socialWelfareAnnualEur,
+  socialWelfareRateOn,
+  socialWelfareSeries,
+  socialWelfareSeriesProblems
+} from '../js/planning/social_welfare_rates.js';
 
 let failures = 0;
 
@@ -327,6 +336,80 @@ check('the copies stay removed: no module types in a figure the register or a ca
   for (const [file, pattern, what] of forbidden) {
     assert.ok(!pattern.test(repoFile(file)), `${file} has ${what}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Social welfare rates, by effective date
+// ---------------------------------------------------------------------------
+
+check('every social welfare series is sound: dated rows rising, positive weekly rates, gov.ie or Citizens Information sources, no tracking parameters', () => {
+  assert.match(SOCIAL_WELFARE_RATES_VERSION, /^ie-social-welfare-\d{4}\.\d+$/);
+  const problems = SOCIAL_WELFARE_SERIES.flatMap((series) => socialWelfareSeriesProblems(series));
+  assert.deepEqual(problems, []);
+  const ids = SOCIAL_WELFARE_SERIES.map((series) => series.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+});
+
+check('the shape check refuses what a hand edit could get wrong', () => {
+  const sound = socialWelfareSeries('ie.social_welfare.illness_benefit.personal_highest');
+  const row = sound.rates[0];
+  const refused = [
+    ['a source that is not gov.ie', { rates: [{ ...row, sources: [{ title: 'x', url: 'https://example.ie/rates' }] }] }, /not a gov\.ie or Citizens Information page/],
+    ['a tracking parameter in a url', { rates: [{ ...row, sources: [{ title: 'x', url: 'https://www.gov.ie/en/x/?utm_source=chatgpt.com' }] }] }, /tracking parameters/],
+    ['rows out of order', { rates: [row, { ...row, effectiveFrom: '2025-01-01' }] }, /must start after/],
+    ['a zero rate', { rates: [{ ...row, weeklyEur: 0 }] }, /positive number/],
+    ['an announced row with no Budget named', { rates: [{ ...row, effectiveFrom: '2027-01-01', status: 'announced' }] }, /announcedBy and announcedOn/],
+    ['a rate with no date it was checked', { rates: [{ ...row, verifiedOn: undefined }] }, /verifiedOn/]
+  ];
+  for (const [what, patch, expected] of refused) {
+    const problems = socialWelfareSeriesProblems({ ...sound, ...patch });
+    assert.ok(problems.some((problem) => expected.test(problem)), `${what} should be refused; got ${JSON.stringify(problems)}`);
+  }
+});
+
+check('the rate in force on a date is the last row on or before it, and a date before the first row is refused', () => {
+  const id = 'ie.social_welfare.illness_benefit.personal_highest';
+  const base = socialWelfareSeries(id);
+  const first = base.rates[0];
+  assert.equal(socialWelfareRateOn(id, first.effectiveFrom).weeklyEur, first.weeklyEur);
+  assert.equal(socialWelfareRateOn(id, '2026-12-31').weeklyEur, base.rates.filter((row) => row.effectiveFrom <= '2026-12-31').pop().weeklyEur);
+  assert.throws(() => socialWelfareRateOn(id, '2025-12-31'), /no rate recorded on or before/);
+  assert.throws(() => socialWelfareRateOn(id, '31/12/2026'), /YYYY-MM-DD/);
+  assert.throws(() => socialWelfareRateOn('ie.social_welfare.nope', '2026-06-01'), /No social welfare rate has the id/);
+});
+
+check('every row is the rate the Department printed, as read from its pages on 22 October 2026', () => {
+  // Typed here on purpose, from the Budget 2026 table and the scheme pages, so a
+  // slip in the catalogue cannot agree with itself. Rows from later Budgets are
+  // checked in the same way when they are recorded.
+  const printed2026 = {
+    'ie.social_welfare.state_pension_contributory.personal_under_80': 299.30,
+    'ie.social_welfare.state_pension_contributory.personal_80_and_over': 309.30,
+    'ie.social_welfare.bereaved_partners_contributory.personal_under_66': 259.50,
+    'ie.social_welfare.bereaved_partners_contributory.personal_66_to_79': 299.30,
+    'ie.social_welfare.bereaved_partners_contributory.personal_80_and_over': 309.30,
+    'ie.social_welfare.invalidity_pension.personal': 259.50,
+    'ie.social_welfare.illness_benefit.personal_highest': 254.00
+  };
+  assert.deepEqual(SOCIAL_WELFARE_SERIES.map((series) => series.id).sort(), Object.keys(printed2026).sort());
+  for (const [id, weekly] of Object.entries(printed2026)) {
+    assert.equal(socialWelfareRateOn(id, '2026-06-01').weeklyEur, weekly, id);
+  }
+});
+
+check('a weekly rate comes to its 52-week reference to the cent', () => {
+  assert.equal(socialWelfareAnnualEur(254), 13_208);
+  assert.equal(socialWelfareAnnualEur(259.50), 13_494);
+  assert.equal(socialWelfareAnnualEur(299.30), 15_563.60);
+});
+
+check('the State Pension rule reads the social welfare catalogue and keeps no rate of its own', () => {
+  const rate = socialWelfareRateOn('ie.social_welfare.state_pension_contributory.personal_under_80', '2026-01-01');
+  assert.equal(IRISH_STATE_PENSION_CONTRIBUTORY.weeklyMaximumEur, rate.weeklyEur);
+  assert.equal(IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur, socialWelfareAnnualEur(rate.weeklyEur));
+  assert.equal(IRISH_STATE_PENSION_CONTRIBUTORY.effectiveFrom, rate.effectiveFrom);
+  const source = repoFile('js/planning/ireland_rules.js');
+  assert.ok(!/weeklyMaximumEur: \d|annualMaximumEur: [\d_]/.test(source), 'ireland_rules.js types a State Pension rate in');
 });
 
 if (failures > 0) {

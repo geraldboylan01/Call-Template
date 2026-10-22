@@ -1,11 +1,23 @@
+import { socialWelfareAnnualEur, socialWelfareRateOn } from './social_welfare_rates.js';
+
 export const IRELAND_RULES_CATALOGUE_VERSION = 'ie-planning-rules-2026.01';
+
+/**
+ * The State Pension (Contributory) rate is held in the social welfare catalogue
+ * (`social_welfare_ie.js`), where every payment's weekly rate sits by effective
+ * date with its source. This reads the rate in force on the date below.
+ */
+const STATE_PENSION_RATE = socialWelfareRateOn(
+  'ie.social_welfare.state_pension_contributory.personal_under_80',
+  '2026-01-01'
+);
 
 export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
   ruleId: 'ie.state_pension_contributory.maximum',
   jurisdiction: 'IE',
-  effectiveFrom: '2026-01-01',
-  weeklyMaximumEur: 299.30,
-  annualMaximumEur: 15_563.60,
+  effectiveFrom: STATE_PENSION_RATE.effectiveFrom,
+  weeklyMaximumEur: STATE_PENSION_RATE.weeklyEur,
+  annualMaximumEur: socialWelfareAnnualEur(STATE_PENSION_RATE.weeklyEur),
   defaultStartAge: 66,
   defaultEscalationRate: 0.02,
   source: Object.freeze({
