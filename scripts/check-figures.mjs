@@ -5,7 +5,8 @@
 // a value out of its quotes, the soundness of every catalogue entry, and the
 // proof that the modules read the register instead of carrying their own copy.
 // Then the law the modules used to type in for themselves, now in a catalogue,
-// and the social welfare rates the protection gap needs.
+// and the social welfare rates the protection gap needs. Then the index and the
+// register that collect every figure from every catalogue.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -20,7 +21,26 @@ import {
   resolveMarketFigureValue,
   roundToStep
 } from '../js/planning/figures/market_math.js';
-import { PROVIDER_NAMES, namesAProvider } from '../js/planning/figures/kinds.js';
+import {
+  FIGURE_KINDS,
+  FIGURE_MODULES,
+  FIGURE_UNITS,
+  PROVIDER_NAMES,
+  namesAProvider
+} from '../js/planning/figures/kinds.js';
+import { collectFigures } from '../js/planning/figures/collect.js';
+import { formatFigureValue } from '../js/planning/figures/format.js';
+import {
+  FIGURES_INDEX_VERSION,
+  renderIndexSource,
+  renderRegisterMarkdown,
+  summariseCatalogues
+} from '../js/planning/figures/register_build.js';
+import {
+  FIGURES_CATALOGUES,
+  FIGURES_INDEX,
+  FIGURES_INDEX_VERSION as GENERATED_INDEX_VERSION
+} from '../js/planning/figures/figures_index.generated.js';
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../js/planning/planeir_assumptions.js';
 import { HOUSE_PURCHASE_RULES } from '../js/house_purchase/config.js';
 import { IRISH_PENSION_RELIEF_LIMITS } from '../js/planning/ireland_rules.js';
@@ -177,6 +197,8 @@ check('provider names are never in a label, and the name check matches whole wor
   MARKET_FIGURES.forEach((figure) => assert.equal(namesAProvider(figure.label), null, figure.id));
   assert.equal(namesAProvider('Published by AIB'), 'AIB');
   assert.equal(namesAProvider('A said that'), null, 'a word containing a name is not a name');
+  assert.equal(namesAProvider('Central Bank of Ireland mortgage measures'), null, 'the regulator is not a lender');
+  assert.equal(namesAProvider('Bank of Ireland and the Central Bank of Ireland'), 'Bank of Ireland', 'a lender beside the regulator is still caught');
   assert.ok(PROVIDER_NAMES.includes('PTSB'));
 });
 
@@ -410,6 +432,93 @@ check('the State Pension rule reads the social welfare catalogue and keeps no ra
   assert.equal(IRISH_STATE_PENSION_CONTRIBUTORY.effectiveFrom, rate.effectiveFrom);
   const source = repoFile('js/planning/ireland_rules.js');
   assert.ok(!/weeklyMaximumEur: \d|annualMaximumEur: [\d_]/.test(source), 'ireland_rules.js types a State Pension rate in');
+});
+
+// ---------------------------------------------------------------------------
+// The index and the register
+// ---------------------------------------------------------------------------
+
+const collected = collectFigures();
+
+check('how values are shown: money, rates, ages, dates and weekly amounts read as a person would say them', () => {
+  const shown = [
+    [0.002, 'rate_a_year', '0.2% a year'],
+    [0.0175, 'rate', '1.75%'],
+    [0.0435, 'rate', '4.35%'],
+    [44_000, 'eur', '€44,000'],
+    [2_200_000, 'eur', '€2,200,000'],
+    [299.3, 'eur_a_week', '€299.30 a week'],
+    [15_563.6, 'eur_a_year', '€15,563.60 a year'],
+    [65, 'age', 'age 65'],
+    ['2029-12-31', 'date', '31 December 2029'],
+    [3.5, 'multiple', '3.5 times'],
+    [1, 'years', '1 year'],
+    [8, 'years', '8 years']
+  ];
+  for (const [value, unit, expected] of shown) assert.equal(formatFigureValue(value, unit), expected, `${value} as ${unit}`);
+  assert.throws(() => formatFigureValue(1, 'furlongs'), /Unknown figure unit/);
+});
+
+check('every collected figure is well formed: a plain label, a known kind, unit and modules, and a value shown as the unit says', () => {
+  assert.ok(collected.length > 200, 'the register is not empty');
+  const ids = collected.map((figure) => figure.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+  for (const figure of collected) {
+    assert.ok(/^[a-z][a-z0-9_-]*(\.[a-zA-Z0-9][a-zA-Z0-9_-]*)+$/.test(figure.id), `${figure.id} is an id a placeholder can carry`);
+    assert.ok(figure.label && figure.label.trim() === figure.label, `${figure.id} has a label`);
+    assert.ok(FIGURE_KINDS.includes(figure.kind), `${figure.id} kind`);
+    assert.ok(FIGURE_UNITS.includes(figure.unit), `${figure.id} unit`);
+    assert.equal(figure.valueShown, formatFigureValue(figure.value, figure.unit), `${figure.id} is shown as its unit says`);
+    assert.ok(figure.usedBy.length > 0 && figure.usedBy.every((name) => FIGURE_MODULES.includes(name)), `${figure.id} usedBy`);
+  }
+});
+
+check('no label, source title or listed provenance a client could hear names a bank or lender, outside a market figure\'s own quotes', () => {
+  for (const figure of collected) {
+    for (const text of [figure.label, figure.valueShown, ...figure.sources.map((source) => source.title)]) {
+      assert.equal(namesAProvider(text), null, `${figure.id}: ${text}`);
+    }
+  }
+});
+
+check('the generated index is exactly what the catalogues collect now', () => {
+  assert.equal(GENERATED_INDEX_VERSION, FIGURES_INDEX_VERSION);
+  assert.deepEqual(JSON.parse(JSON.stringify(FIGURES_INDEX)), JSON.parse(JSON.stringify(collected)));
+  assert.deepEqual(JSON.parse(JSON.stringify(FIGURES_CATALOGUES)), summariseCatalogues(collected));
+  assert.equal(readFileSync(fileURLToPath(new URL('../js/planning/figures/figures_index.generated.js', import.meta.url)), 'utf8'), renderIndexSource(collected, summariseCatalogues(collected)));
+});
+
+check('the readable register is exactly what the catalogues render to now', () => {
+  const written = readFileSync(fileURLToPath(new URL('../docs/figures-register.md', import.meta.url)), 'utf8');
+  assert.equal(written, renderRegisterMarkdown(collected, summariseCatalogues(collected)));
+  assert.ok(written.includes('Do not edit by hand'));
+});
+
+check('the staleness check bites: change one catalogue value and the index and register no longer match', () => {
+  const tampered = collected.map((figure, index) => (index === 0 ? { ...figure, value: figure.value + 1, valueShown: 'changed' } : figure));
+  const catalogues = summariseCatalogues(tampered);
+  assert.notEqual(renderIndexSource(tampered, catalogues), renderIndexSource(collected, summariseCatalogues(collected)));
+  assert.notEqual(renderRegisterMarkdown(tampered, catalogues), renderRegisterMarkdown(collected, summariseCatalogues(collected)));
+});
+
+check('every catalogue reaches the register, with its version', () => {
+  const ids = FIGURES_CATALOGUES.map((catalogue) => catalogue.id).sort();
+  assert.deepEqual(ids, ['house_purchase_rules', 'ie_market', 'ie_planning_rules', 'ie_social_welfare', 'ie_tax_rules', 'planeir_assumptions']);
+  FIGURES_CATALOGUES.forEach((catalogue) => assert.ok(catalogue.version && catalogue.count > 0, catalogue.id));
+  assert.equal(FIGURES_CATALOGUES.reduce((total, catalogue) => total + catalogue.count, 0), FIGURES_INDEX.length);
+});
+
+check('figures read from catalogues are the catalogues\' own values, not retyped: a sample from each', () => {
+  const byId = new Map(collected.map((figure) => [figure.id, figure]));
+  const years = Object.keys(IE_TAX_RULES_BY_YEAR).map(Number);
+  const first = IE_TAX_RULES_BY_YEAR[Math.min(...years)];
+  assert.equal(byId.get(`${first.incomeTax.ruleId}.standard_rate_band.single`).value, first.incomeTax.standardRateBand.single);
+  assert.equal(byId.get(`${first.dirt.ruleId}.rate`).value, first.dirt.rate);
+  assert.equal(byId.get('ie.pension_relief.limits.earnings_cap').value, PENSION_EARNINGS_CAP);
+  assert.equal(byId.get('ie.market.cash.instant_access_gross_rate').value, marketFigureValue('ie.market.cash.instant_access_gross_rate'));
+  assert.equal(byId.get('planeir.assumption.investment_growth').value, PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate);
+  assert.equal(byId.get('ie.house_purchase.help_to_buy.maximum_relief').value, HOUSE_PURCHASE_RULES.helpToBuy.maximumRelief);
+  assert.equal(byId.get('ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01').value, socialWelfareRateOn('ie.social_welfare.illness_benefit.personal_highest', '2026-06-01').weeklyEur);
 });
 
 if (failures > 0) {

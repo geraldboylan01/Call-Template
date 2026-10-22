@@ -87,6 +87,9 @@ export const IRISH_PENSION_RELIEF_LIMITS = Object.freeze({
 export const IRISH_ARF_MINIMUM_DRAWDOWN = Object.freeze({
   ruleId: 'ie.arf.imputed_distribution',
   jurisdiction: 'IE',
+  status: 'enacted',
+  /** Rates and ages read against Revenue's Pensions Manual chapter 28 (last updated May 2026). */
+  verifiedOn: '2026-10-22',
   effectiveFrom: '2026-01-01',
   /** The holder must be at least this age for the whole of the year. */
   minimumWholeYearAge: 60,

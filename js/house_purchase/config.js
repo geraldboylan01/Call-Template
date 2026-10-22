@@ -152,6 +152,9 @@ export const FHS_PRICE_CEILING_ROWS = Object.freeze(FHS_PRICE_CEILINGS.flatMap((
   })
 ]));
 
+/** Changes whenever a figure in these rules is re-checked and moves. */
+export const HOUSE_PURCHASE_RULES_VERSION = 'house-purchase-rules-2026.07';
+
 export const HOUSE_PURCHASE_RULES = Object.freeze({
   schemaVersion: 1,
   asOfDate: '2026-07-11',
