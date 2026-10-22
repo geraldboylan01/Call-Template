@@ -44,7 +44,21 @@ import {
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../js/planning/planeir_assumptions.js';
 import { HOUSE_PURCHASE_RULES } from '../js/house_purchase/config.js';
 import { IRISH_PENSION_RELIEF_LIMITS } from '../js/planning/ireland_rules.js';
-import { IE_TAX_RULES_BY_YEAR } from '../js/planning/tax/rules_ie.js';
+import {
+  IE_CGT_FIXED_RULES,
+  IE_INVESTMENT_RULES,
+  IE_LEGISLATED_SCHEDULES,
+  IE_TAX_RULES_BY_YEAR
+} from '../js/planning/tax/rules_ie.js';
+import {
+  blockProblems,
+  budgetGaps,
+  budgetReferences,
+  daysBetween,
+  duplicateQuantities,
+  figureFailures,
+  figureWarnings
+} from '../js/planning/figures/checks.js';
 import {
   PENSION_EARNINGS_CAP,
   maxRelievableContributionRatePercent,
@@ -65,6 +79,8 @@ import {
 } from '../js/planning/social_welfare_rates.js';
 
 let failures = 0;
+/** Today, or the day a test says it is: warnings about age depend on it. */
+const TODAY = process.env.FIGURES_TODAY ?? new Date().toISOString().slice(0, 10);
 
 function check(name, fn) {
   try {
@@ -520,6 +536,107 @@ check('figures read from catalogues are the catalogues\' own values, not retyped
   assert.equal(byId.get('ie.house_purchase.help_to_buy.maximum_relief').value, HOUSE_PURCHASE_RULES.helpToBuy.maximumRelief);
   assert.equal(byId.get('ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01').value, socialWelfareRateOn('ie.social_welfare.illness_benefit.personal_highest', '2026-06-01').weeklyEur);
 });
+
+// ---------------------------------------------------------------------------
+// The rules the register is held to
+// ---------------------------------------------------------------------------
+
+/**
+ * Budgets recorded for a tax year that has no block yet. A ratchet, like the
+ * stale-exports baseline: a gap not listed here fails, and so does an entry here
+ * that is no longer a gap, so the list can only shrink. Budget 2027 is recorded
+ * for the CGT rate, exit tax and the Investment Account, and its block is added
+ * in the catch-up commit that follows.
+ */
+const KNOWN_BUDGET_GAPS = [{ budget: 'Budget 2027', year: 2027 }];
+
+const BUDGET_CATALOGUES = {
+  taxRules: IE_TAX_RULES_BY_YEAR,
+  schedules: IE_LEGISLATED_SCHEDULES,
+  investmentRules: IE_INVESTMENT_RULES,
+  cgtFixedRules: IE_CGT_FIXED_RULES,
+  socialWelfare: SOCIAL_WELFARE_SERIES
+};
+
+check('every figure has a source and a check date that is not in the future', () => {
+  assert.deepEqual(figureFailures(collected, TODAY), []);
+});
+
+check('the rule refuses a figure with no source, no check date, a future date, or law with no https source', () => {
+  const sound = collected.find((figure) => figure.kind === 'law');
+  const refused = [
+    ['no source', { source: undefined }, /has no source/],
+    ['a blank source title', { source: { title: ' ', url: null } }, /has no source/],
+    ['no check date', { checkedOn: undefined }, /no checkedOn/],
+    ['a check date in the future', { checkedOn: '2999-01-01' }, /in the future/],
+    ['law with no https url', { sources: [{ title: 'x', url: null }] }, /needs a source with an https url/],
+    ['a tracking parameter', { sources: [{ title: 'x', url: 'https://www.gov.ie/x/?utm_source=chatgpt.com' }] }, /tracking parameters/],
+    ['an unknown module', { usedBy: ['nowhere'] }, /usedBy/],
+    ['an unknown kind', { kind: 'rumour' }, /unknown kind/]
+  ];
+  for (const [what, patch, expected] of refused) {
+    const failuresFound = figureFailures([{ ...sound, ...patch }], TODAY);
+    assert.ok(failuresFound.some((failure) => expected.test(failure)), `${what} should be refused; got ${JSON.stringify(failuresFound)}`);
+  }
+  const market = collected.find((figure) => figure.kind === 'market');
+  assert.ok(figureFailures([{ ...market, observations: [] }], TODAY).some((failure) => /every quote needs an https url/.test(failure)));
+});
+
+check('no quantity is defined twice: each has one owning catalogue and one value for each effective date', () => {
+  assert.deepEqual(duplicateQuantities(collected), []);
+  const first = collected[0];
+  const other = collected.find((figure) => figure.catalogue.id !== first.catalogue.id);
+  assert.ok(duplicateQuantities([first, { ...other, quantity: first.quantity }]).some((problem) => /defined in both/.test(problem)), 'two catalogues, one quantity');
+  assert.ok(duplicateQuantities([first, { ...first, id: `${first.id}.again` }]).some((problem) => /same effective date/.test(problem)), 'one catalogue, one date, two values');
+  assert.deepEqual(duplicateQuantities([first, { ...first, id: `${first.id}.later`, effectiveFrom: '2099-01-01' }]), [], 'a later date is a new value, not a duplicate');
+});
+
+check('the tax blocks are sound: an announced block says which Budget, an enacted block says which Act, each has a check date', () => {
+  assert.deepEqual(blockProblems(IE_TAX_RULES_BY_YEAR), []);
+  assert.ok(blockProblems({ 2027: { status: 'announced', verifiedOn: '2026-10-22' } }).some((problem) => /announcedBy and announcedOn/.test(problem)));
+  assert.ok(blockProblems({ 2027: { status: 'enacted', verifiedOn: '2026-10-22' } }).some((problem) => /enactedBy/.test(problem)));
+  assert.ok(blockProblems({ 2027: { status: 'rumoured', verifiedOn: '2026-10-22' } }).some((problem) => /status/.test(problem)));
+  assert.ok(blockProblems({ 2027: { status: 'announced', announcedBy: 'Budget 2027', announcedOn: '2026-10-06' } }).some((problem) => /verifiedOn/.test(problem)));
+});
+
+check('a Budget recorded for a year with no announced block for that year is a failure, apart from the named known gap', () => {
+  const found = budgetGaps(IE_TAX_RULES_BY_YEAR, BUDGET_CATALOGUES);
+  const unexpected = found.filter((gap) => !KNOWN_BUDGET_GAPS.some((known) => known.budget === gap.budget && known.year === gap.year));
+  assert.deepEqual(unexpected.map((gap) => `${gap.budget}: ${gap.where.join(', ')}`), [], 'a Budget is recorded with no block for its year');
+  const resolved = KNOWN_BUDGET_GAPS.filter((known) => !found.some((gap) => gap.budget === known.budget && gap.year === known.year));
+  assert.deepEqual(resolved, [], 'a known gap is closed, so remove it from KNOWN_BUDGET_GAPS');
+  found.forEach((gap) => console.warn(`[Figures] KNOWN GAP: ${gap.budget} is recorded in ${gap.where.length} places (${gap.where.slice(0, 3).join(', ')}) but tax year ${gap.year} has no block yet.`));
+});
+
+check('the Budget rule bites: a Budget with no block fails, an announced or enacted block closes it, a draft does not', () => {
+  const catalogues = { x: { rate: { announcedBy: 'Budget 2031', value: 1 } } };
+  assert.equal(budgetGaps({}, catalogues).length, 1);
+  assert.equal(budgetGaps({ 2031: { status: 'announced' } }, catalogues).length, 0);
+  assert.equal(budgetGaps({ 2031: { status: 'enacted' } }, catalogues).length, 0);
+  assert.equal(budgetGaps({ 2030: { status: 'enacted' } }, catalogues).length, 1, 'the wrong year does not close it');
+  assert.equal(budgetGaps({ 2031: { status: 'draft' } }, catalogues).length, 1);
+  assert.deepEqual(budgetReferences({ a: [{ announcedBy: 'Budget 2027' }, { announcedBy: 'Finance Act 2025' }] }).map((found) => found.year), [2027], 'only Budgets count');
+  assert.ok(budgetReferences(IE_LEGISLATED_SCHEDULES).length >= 2, 'the real schedules record Budget 2027');
+});
+
+check('warnings: a market figure past its review interval, a reviewed rate its quotes have left, an announced rule gone quiet', () => {
+  const market = collected.filter((figure) => figure.kind === 'market');
+  const stale = market[0];
+  const later = new Date(Date.parse(`${stale.checkedOn}T00:00:00Z`) + (stale.reviewEveryDays + 1) * 86_400_000).toISOString().slice(0, 10);
+  assert.ok(figureWarnings([stale], later).some((warning) => /last checked \d+ days ago/.test(warning)), 'one day over the interval warns');
+  const onTime = new Date(Date.parse(`${stale.checkedOn}T00:00:00Z`) + stale.reviewEveryDays * 86_400_000).toISOString().slice(0, 10);
+  assert.equal(figureWarnings([{ ...stale, evidence: undefined }], onTime).length, 0, 'on the last day it does not');
+  const drifted = market.find((figure) => figure.evidence);
+  assert.ok(figureWarnings([drifted], drifted.checkedOn).some((warning) => /quotes now point to/.test(warning)), 'a reviewed rate the evidence has left warns');
+  const announced = collected.find((figure) => figure.kind === 'announced_law');
+  assert.equal(figureWarnings([announced], announced.checkedOn).length, 0);
+  assert.ok(figureWarnings([announced], '2999-01-01').some((warning) => /whether it has been enacted/.test(warning)));
+  assert.equal(daysBetween('2026-10-22', '2026-10-29'), 7);
+});
+
+for (const warning of figureWarnings(collected, TODAY)) {
+  console.warn(`[Figures] WARN: ${warning}`);
+}
 
 if (failures > 0) {
   console.error(`[Figures] ${failures} check${failures === 1 ? '' : 's'} failed.`);
