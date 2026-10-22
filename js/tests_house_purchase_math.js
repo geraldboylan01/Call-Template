@@ -259,6 +259,20 @@ export function runHousePurchaseMathTests() {
     assertEqual(screen.maximumAmount, 25000, 'HTB tax-paid cap');
   }));
 
+  cases.push(runCase('Help to Buy is the lesser of 35,000, 10% of the price and the tax paid, from 7 October 2026', () => {
+    // Revenue: the lesser of 35,000, 10% of a new home's price, and the income tax and DIRT paid in the prior four years.
+    const potential = (price, taxPaid) => screenHelpToBuy(makeInputs({
+      targetPropertyPrice: price,
+      helpToBuy: { expectedIncomeTaxAndDirtPaidPriorFourYears: taxPaid }
+    }), { mortgageAmount: price * 0.8 }).maximumAmount;
+    assertEqual(potential(450000, 50000), 35000, 'the cap binds: 10% of 450,000 is 45,000 and 50,000 was paid');
+    assertEqual(potential(400000, 50000), 35000, 'the cap still binds at 400,000: 10% is 40,000');
+    assertEqual(potential(340000, 50000), 34000, 'ten per cent of the price binds below the cap');
+    assertEqual(potential(450000, 28000), 28000, 'the tax paid binds');
+    assertEqual(DEFAULT_HOUSE_PURCHASE_RULES.helpToBuy.maximumRelief, 35000, 'the rule');
+    assertEqual(DEFAULT_HOUSE_PURCHASE_RULES.helpToBuy.maximumReliefFrom, '2026-10-07', 'from the day after the Budget');
+  }));
+
   cases.push(runCase('Second-hand property does not receive HTB', () => {
     const inputs = makeInputs({ acquisitionType: 'second_hand' });
     const screen = screenHelpToBuy(inputs, { mortgageAmount: 320000 });
@@ -271,7 +285,7 @@ export function runHousePurchaseMathTests() {
       helpToBuy: { expectedIncomeTaxAndDirtPaidPriorFourYears: null }
     }), { mortgageAmount: 320000 });
     assertEqual(screen.maximumAmount, null, 'Unknown tax should not produce exact amount');
-    assertEqual(screen.amountRange.maximum, 30000, 'HTB range cap');
+    assertEqual(screen.amountRange.maximum, 35000, 'HTB range cap (30,000 for contracts before 7 October 2026)');
     assertEqual(screen.taxPaidVerificationRequired, true, 'Tax verification flag');
   }));
 

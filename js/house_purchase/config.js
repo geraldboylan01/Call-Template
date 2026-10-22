@@ -45,7 +45,7 @@ export const HOUSE_PURCHASE_SOURCE_METADATA = Object.freeze({
       REVENUE_HTB_PROPERTY_SOURCE,
       REVENUE_HTB_AMOUNT_SOURCE
     ]),
-    asOfDate: '2026-07-11'
+    asOfDate: '2026-10-22'
   }),
   firstHomeScheme: Object.freeze({
     label: 'First Home Scheme',
@@ -153,7 +153,7 @@ export const FHS_PRICE_CEILING_ROWS = Object.freeze(FHS_PRICE_CEILINGS.flatMap((
 ]));
 
 /** Changes whenever a figure in these rules is re-checked and moves. */
-export const HOUSE_PURCHASE_RULES_VERSION = 'house-purchase-rules-2026.07';
+export const HOUSE_PURCHASE_RULES_VERSION = 'house-purchase-rules-2026.10';
 
 export const HOUSE_PURCHASE_RULES = Object.freeze({
   schemaVersion: 1,
@@ -223,12 +223,19 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     contingency: 2500
   }),
   helpToBuy: Object.freeze({
-    maximumRelief: 30000,
+    /**
+     * 35,000 for contracts signed, or a self-build's first drawdown, from 7 October
+     * 2026 to the end of 2029; 30,000 before that. Budget 2027 raised it by 5,000
+     * with immediate effect, and Revenue's page now states both. Every other
+     * parameter here is unchanged (the Department's tax policy book, 3.3).
+     */
+    maximumRelief: 35000,
+    maximumReliefFrom: '2026-10-07',
     maximumPrice: 500000,
     priceShare: 0.1,
     minimumQualifyingMortgageShare: 0.7,
     schemeEndDateIso: '2029-12-31',
-    asOfDate: '2026-07-11',
+    asOfDate: '2026-10-22',
     sources: Object.freeze([
       REVENUE_HTB_SOURCE,
       REVENUE_HTB_BUYER_SOURCE,

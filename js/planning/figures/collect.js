@@ -540,7 +540,7 @@ function collectHousePurchase(out) {
     value,
     unit,
     status: 'in_force',
-    effectiveFrom: null,
+    effectiveFrom: extra.effectiveFrom ?? null,
     sources: [source, ...(source.supporting ?? [])],
     checkedOn,
     usedBy: ['house_purchase'],
@@ -573,7 +573,7 @@ function collectHousePurchase(out) {
 
   const htb = asSource(meta.helpToBuy);
   const htbChecked = meta.helpToBuy.asOfDate;
-  law('help_to_buy', 'maximum_relief', 'Most Help to Buy can refund a first-time buyer', rules.helpToBuy.maximumRelief, 'eur', htb, htbChecked);
+  law('help_to_buy', 'maximum_relief', 'Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026', rules.helpToBuy.maximumRelief, 'eur', htb, htbChecked, { effectiveFrom: rules.helpToBuy.maximumReliefFrom });
   law('help_to_buy', 'maximum_price', 'Highest price of a home that qualifies for Help to Buy', rules.helpToBuy.maximumPrice, 'eur', htb, htbChecked);
   law('help_to_buy', 'price_share', 'Help to Buy refund as a share of the home’s price, at most', rules.helpToBuy.priceShare, 'rate', htb, htbChecked);
   law('help_to_buy', 'minimum_qualifying_mortgage_share', 'Smallest share of the price that must be a mortgage for Help to Buy', rules.helpToBuy.minimumQualifyingMortgageShare, 'rate', htb, htbChecked);

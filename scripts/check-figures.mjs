@@ -813,6 +813,19 @@ check('the 2027 tax year is in the register as announced law, with its changed r
   assert.ok(figureWarnings(collected, '2026-10-22').every((warning) => !/income_tax\.2027/.test(warning)));
 });
 
+check('Help to Buy is 35,000 from 7 October 2026, as Revenue prints it, with the scheme\'s other parameters unchanged', () => {
+  const byId = new Map(collected.map((figure) => [figure.id, figure]));
+  const relief = byId.get('ie.house_purchase.help_to_buy.maximum_relief');
+  assert.equal(relief.value, 35_000);
+  assert.equal(relief.effectiveFrom, '2026-10-07');
+  assert.equal(relief.kind, 'law');
+  assert.equal(relief.checkedOn, '2026-10-22');
+  assert.ok(relief.sources.some((source) => /revenue\.ie\/en\/property\/help-to-buy-incentive\/how-much-can-you-claim/.test(source.url)), 'the page that prints both amounts is a source');
+  assert.equal(byId.get('ie.house_purchase.help_to_buy.price_share').value, 0.1);
+  assert.equal(byId.get('ie.house_purchase.help_to_buy.maximum_price').value, 500_000);
+  assert.equal(byId.get('ie.house_purchase.help_to_buy.scheme_end_date').value, '2029-12-31');
+});
+
 check('every 2027 figure the Budget announced names its source documents: the Department\'s book, and the Bill where it legislates', () => {
   const bill = collected.filter((figure) => /^ie\.(income_tax|usc)\.2027\./.test(figure.id) || /^ie\.income_tax\.employee_credit\.2027\./.test(figure.id));
   assert.equal(bill.length, 19, 'nine income tax figures, two employee credit figures and eight USC figures');

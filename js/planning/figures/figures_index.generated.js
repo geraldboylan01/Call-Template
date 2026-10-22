@@ -19,7 +19,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "house_purchase_rules",
-    "version": "house-purchase-rules-2026.07",
+    "version": "house-purchase-rules-2026.10",
     "count": 130
   },
   {
@@ -5405,7 +5405,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5435,7 +5435,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5465,7 +5465,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5495,7 +5495,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5525,7 +5525,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5555,7 +5555,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5585,7 +5585,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5615,7 +5615,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5645,7 +5645,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5654,13 +5654,13 @@ export const FIGURES_INDEX = Object.freeze([
   {
     "id": "ie.house_purchase.help_to_buy.maximum_relief",
     "quantity": "ie.house_purchase.help_to_buy.maximum_relief",
-    "label": "Most Help to Buy can refund a first-time buyer",
-    "value": 30000,
-    "valueShown": "€30,000",
+    "label": "Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026",
+    "value": 35000,
+    "valueShown": "€35,000",
     "unit": "eur",
     "kind": "law",
     "status": "in_force",
-    "effectiveFrom": null,
+    "effectiveFrom": "2026-10-07",
     "source": {
       "title": "Revenue Help to Buy",
       "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx"
@@ -5683,11 +5683,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/how-much-can-you-claim.aspx"
       }
     ],
-    "checkedOn": "2026-07-11",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5725,11 +5725,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/how-much-can-you-claim.aspx"
       }
     ],
-    "checkedOn": "2026-07-11",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5767,11 +5767,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/how-much-can-you-claim.aspx"
       }
     ],
-    "checkedOn": "2026-07-11",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5809,11 +5809,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/how-much-can-you-claim.aspx"
       }
     ],
-    "checkedOn": "2026-07-11",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5851,11 +5851,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/how-much-can-you-claim.aspx"
       }
     ],
-    "checkedOn": "2026-07-11",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5905,7 +5905,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -5955,7 +5955,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6005,7 +6005,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6055,7 +6055,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6105,7 +6105,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6155,7 +6155,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6205,7 +6205,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6255,7 +6255,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6305,7 +6305,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6355,7 +6355,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6385,7 +6385,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6415,7 +6415,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6445,7 +6445,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6475,7 +6475,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6505,7 +6505,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6535,7 +6535,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6565,7 +6565,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6595,7 +6595,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6625,7 +6625,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6655,7 +6655,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6685,7 +6685,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6715,7 +6715,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6745,7 +6745,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6775,7 +6775,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6805,7 +6805,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6835,7 +6835,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6865,7 +6865,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6895,7 +6895,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6925,7 +6925,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6955,7 +6955,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -6985,7 +6985,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7015,7 +7015,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7045,7 +7045,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7075,7 +7075,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7105,7 +7105,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7135,7 +7135,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7165,7 +7165,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7195,7 +7195,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7225,7 +7225,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7255,7 +7255,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7285,7 +7285,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7315,7 +7315,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7345,7 +7345,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7375,7 +7375,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7405,7 +7405,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7435,7 +7435,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7465,7 +7465,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7495,7 +7495,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7525,7 +7525,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7555,7 +7555,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7585,7 +7585,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7615,7 +7615,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7645,7 +7645,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7675,7 +7675,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7705,7 +7705,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7735,7 +7735,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7765,7 +7765,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7795,7 +7795,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7825,7 +7825,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7855,7 +7855,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7885,7 +7885,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7915,7 +7915,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7945,7 +7945,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -7975,7 +7975,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8005,7 +8005,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8035,7 +8035,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8065,7 +8065,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8095,7 +8095,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8125,7 +8125,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8155,7 +8155,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8185,7 +8185,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8215,7 +8215,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8245,7 +8245,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8275,7 +8275,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8305,7 +8305,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8335,7 +8335,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8365,7 +8365,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8395,7 +8395,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8425,7 +8425,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8455,7 +8455,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8485,7 +8485,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8515,7 +8515,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8545,7 +8545,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8575,7 +8575,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8605,7 +8605,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8635,7 +8635,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8665,7 +8665,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8695,7 +8695,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8725,7 +8725,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8755,7 +8755,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8785,7 +8785,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8815,7 +8815,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8845,7 +8845,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8875,7 +8875,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8905,7 +8905,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8935,7 +8935,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8965,7 +8965,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -8995,7 +8995,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9025,7 +9025,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9055,7 +9055,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9085,7 +9085,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9115,7 +9115,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9145,7 +9145,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9175,7 +9175,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9205,7 +9205,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9235,7 +9235,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9265,7 +9265,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9295,7 +9295,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9325,7 +9325,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9355,7 +9355,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9385,7 +9385,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9415,7 +9415,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9445,7 +9445,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9475,7 +9475,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9505,7 +9505,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
@@ -9535,7 +9535,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "house_purchase_rules",
-      "version": "house-purchase-rules-2026.07"
+      "version": "house-purchase-rules-2026.10"
     },
     "usedBy": [
       "house_purchase"
