@@ -4,9 +4,11 @@ import { computeNetRetirementProjection } from '../../net_retirement_math.js';
 import {
   IRELAND_RULES_CATALOGUE_VERSION,
   IRISH_STATE_PENSION_CONTRIBUTORY,
+  statePensionRuleForYear,
   normalizeStatePensionFraction
 } from '../ireland_rules.js';
 import { NON_CONTRIBUTORY_PENSION_TYPES, hasOwnerConfirmedNone } from '../profile.js';
+import { monthYearText } from '../utils.js';
 import {
   annualExpenses,
   availableInvestmentAmount,
@@ -268,10 +270,11 @@ export function getPensionProjectionReadiness(profile) {
     assumptionRecord('investmentGrowth'),
     assumptionRecord('generalInflation')
   ];
+  const statePension = statePensionRuleForYear(Number(profile.assumptions.calculationDateIso.slice(0, 4)));
   assumptionsUsed.push({
     key: 'statePensionContributory',
-    value: IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur,
-    reason: `${IRELAND_RULES_CATALOGUE_VERSION}, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record.`
+    value: statePension.annualMaximumEur,
+    reason: `${IRELAND_RULES_CATALOGUE_VERSION}, effective ${monthYearText(statePension.effectiveFrom)}${statePension.status === 'announced' ? `, announced in ${statePension.announcedBy}` : ''}. Maximum gross rate only; actual entitlement depends on each person’s PRSI record.`
   });
   const warnings = [
     'Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review.',
@@ -415,7 +418,7 @@ export function buildPensionProjectionInput(profile) {
     otherIncomeSources,
     statePensionRule: {
       catalogueVersion: IRELAND_RULES_CATALOGUE_VERSION,
-      effectiveFrom: IRISH_STATE_PENSION_CONTRIBUTORY.effectiveFrom,
+      effectiveFrom: statePensionRuleForYear(Number(profile.assumptions.calculationDateIso.slice(0, 4))).effectiveFrom,
       source: IRISH_STATE_PENSION_CONTRIBUTORY.source.url
     }
   };

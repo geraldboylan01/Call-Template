@@ -4,18 +4,18 @@ export const FIGURES_INDEX_VERSION = "planeir-figures-index-1.0.0";
 export const FIGURES_CATALOGUES = Object.freeze([
   {
     "id": "ie_tax_rules",
-    "version": "ie-tax-2026.5",
-    "count": 94
+    "version": "ie-tax-2026.6",
+    "count": 113
   },
   {
     "id": "ie_planning_rules",
-    "version": "ie-planning-rules-2026.01",
+    "version": "ie-planning-rules-2026.02",
     "count": 15
   },
   {
     "id": "ie_social_welfare",
-    "version": "ie-social-welfare-2026.1",
-    "count": 7
+    "version": "ie-social-welfare-2026.2",
+    "count": 14
   },
   {
     "id": "house_purchase_rules",
@@ -24,7 +24,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "planeir_assumptions",
-    "version": "planeir-assumptions-1.4.0",
+    "version": "planeir-assumptions-1.5.0",
     "count": 12
   },
   {
@@ -67,7 +67,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -107,7 +107,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -147,7 +147,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -187,7 +187,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -227,7 +227,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -267,7 +267,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -307,7 +307,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -347,7 +347,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -387,7 +387,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -427,7 +427,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -467,7 +467,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -507,7 +507,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -547,7 +547,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -587,7 +587,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -627,7 +627,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -659,7 +659,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -691,7 +691,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -723,7 +723,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -755,7 +755,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -787,7 +787,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -819,7 +819,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -859,7 +859,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -899,7 +899,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -939,7 +939,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -979,7 +979,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1019,7 +1019,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1059,7 +1059,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1099,7 +1099,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1139,7 +1139,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1179,7 +1179,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1219,7 +1219,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1259,7 +1259,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1299,7 +1299,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1339,7 +1339,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1379,7 +1379,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1419,7 +1419,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1459,7 +1459,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1499,7 +1499,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1539,7 +1539,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1575,7 +1575,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1609,7 +1609,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1643,7 +1643,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1677,7 +1677,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1711,7 +1711,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -1741,12 +1741,816 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "future_cost_fund",
       "goals_and_resources",
       "house_purchase"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.standard_rate",
+    "quantity": "ie.income_tax.standard_rate",
+    "label": "Income tax standard rate",
+    "value": 0.2,
+    "valueShown": "20%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.higher_rate",
+    "quantity": "ie.income_tax.higher_rate",
+    "label": "Income tax higher rate",
+    "value": 0.4,
+    "valueShown": "40%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.standard_rate_band.single",
+    "quantity": "ie.income_tax.standard_rate_band.single",
+    "label": "Income tax standard-rate band, single or widowed person without qualifying children",
+    "value": 46500,
+    "valueShown": "€46,500",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.standard_rate_band.widowed",
+    "quantity": "ie.income_tax.standard_rate_band.widowed",
+    "label": "Income tax standard-rate band, widowed person or surviving civil partner without qualifying children",
+    "value": 46500,
+    "valueShown": "€46,500",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.standard_rate_band.married_one_income",
+    "quantity": "ie.income_tax.standard_rate_band.married_one_income",
+    "label": "Income tax standard-rate band, married couple or civil partners with one income",
+    "value": 55500,
+    "valueShown": "€55,500",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.standard_rate_band.second_income_increase_max",
+    "quantity": "ie.income_tax.standard_rate_band.second_income_increase_max",
+    "label": "Most a second income can add to the standard-rate band of a married couple or civil partners",
+    "value": 37500,
+    "valueShown": "€37,500",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.personal_credit.single",
+    "quantity": "ie.income_tax.personal_credit.single",
+    "label": "Personal tax credit, single person",
+    "value": 2125,
+    "valueShown": "€2,125",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.personal_credit.married",
+    "quantity": "ie.income_tax.personal_credit.married",
+    "label": "Personal tax credit, married couple or civil partners",
+    "value": 4250,
+    "valueShown": "€4,250",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.2027.personal_credit.widowed",
+    "quantity": "ie.income_tax.personal_credit.widowed",
+    "label": "Personal tax credit, widowed person without dependent children",
+    "value": 2665,
+    "valueShown": "€2,665",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.employee_credit.2027.amount",
+    "quantity": "ie.income_tax.employee_credit.amount",
+    "label": "Employee tax credit",
+    "value": 2125,
+    "valueShown": "€2,125",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.income_tax.employee_credit.2027.max_share_of_qualifying_income",
+    "quantity": "ie.income_tax.employee_credit.max_share_of_qualifying_income",
+    "label": "Most the employee tax credit can be, as a share of the person’s qualifying income",
+    "value": 0.2,
+    "valueShown": "20%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      },
+      {
+        "title": "TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)",
+        "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.exemption_threshold",
+    "quantity": "ie.usc.exemption_threshold",
+    "label": "Income at or below which no USC is paid",
+    "value": 13000,
+    "valueShown": "€13,000",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_1.rate",
+    "quantity": "ie.usc.standard.band_1.rate",
+    "label": "USC rate on the first €12,012 of income",
+    "value": 0.005,
+    "valueShown": "0.5%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_1.upper_limit",
+    "quantity": "ie.usc.standard.band_1.upper_limit",
+    "label": "USC, upper limit of band 1",
+    "value": 12012,
+    "valueShown": "€12,012",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_2.rate",
+    "quantity": "ie.usc.standard.band_2.rate",
+    "label": "USC rate on income between €12,012 and €30,300",
+    "value": 0.02,
+    "valueShown": "2%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_2.upper_limit",
+    "quantity": "ie.usc.standard.band_2.upper_limit",
+    "label": "USC, upper limit of band 2",
+    "value": 30300,
+    "valueShown": "€30,300",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_3.rate",
+    "quantity": "ie.usc.standard.band_3.rate",
+    "label": "USC rate on income between €30,300 and €70,044",
+    "value": 0.03,
+    "valueShown": "3%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_3.upper_limit",
+    "quantity": "ie.usc.standard.band_3.upper_limit",
+    "label": "USC, upper limit of band 3",
+    "value": 70044,
+    "valueShown": "€70,044",
+    "unit": "eur",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "ie.usc.2027.standard.band_4.rate",
+    "quantity": "ie.usc.standard.band_4.rate",
+    "label": "USC rate on income above €70,044",
+    "value": 0.08,
+    "valueShown": "8%",
+    "unit": "rate",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+    },
+    "sources": [
+      {
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf"
+      },
+      {
+        "title": "Explanatory Memorandum to the Finance (No. 2) Bill 2026",
+        "url": "https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_tax_rules",
+      "version": "ie-tax-2026.6"
+    },
+    "usedBy": [
+      "household_cash_flow",
+      "pension_projection",
+      "plan_pack"
     ]
   },
   {
@@ -1769,11 +2573,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.irishstatutebook.ie/eli/2024/si/534/made/en/pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1801,11 +2605,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.irishstatutebook.ie/eli/2024/si/534/made/en/pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1833,11 +2637,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.irishstatutebook.ie/eli/2024/si/534/made/en/pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1865,11 +2669,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.irishstatutebook.ie/eli/2024/si/534/made/en/pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "household_cash_flow",
@@ -1897,11 +2701,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0787O.html"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1927,11 +2731,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0787O.html"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1957,11 +2761,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0787O.html"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -1987,11 +2791,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0787O.html"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "pension_projection"
@@ -2017,11 +2821,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/how-to-calculate-cgt.aspx"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2038,20 +2842,20 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "announced",
     "effectiveFrom": "2026-10-07",
     "source": {
-      "title": "Revenue, how to calculate CGT (rates, the annual exemption and allowable costs)",
-      "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/how-to-calculate-cgt.aspx"
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
     },
     "sources": [
       {
-        "title": "Revenue, how to calculate CGT (rates, the annual exemption and allowable costs)",
-        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/how-to-calculate-cgt.aspx"
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
       }
     ],
-    "checkedOn": "2026-10-11",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2077,11 +2881,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-27/27-01a-02.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2108,11 +2912,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-27/27-01a-02.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2130,20 +2934,20 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "announced",
     "effectiveFrom": "2027-01-01",
     "source": {
-      "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-      "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
     },
     "sources": [
       {
-        "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-        "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
       }
     ],
-    "checkedOn": "2026-10-14",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2170,11 +2974,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-27/27-01a-02.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2192,20 +2996,24 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "announced",
     "effectiveFrom": "2027-07-01",
     "source": {
-      "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-      "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
     },
     "sources": [
       {
-        "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-        "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Department of Finance, Statement by the Minister for Finance on Budget 2027",
+        "url": "https://www.gov.ie/en/department-of-finance/speeches/statement-by-minister-harris-on-budget-2027/"
       }
     ],
-    "checkedOn": "2026-10-14",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2223,20 +3031,24 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "announced",
     "effectiveFrom": "2027-07-01",
     "source": {
-      "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-      "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
     },
     "sources": [
       {
-        "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-        "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Department of Finance, Statement by the Minister for Finance on Budget 2027",
+        "url": "https://www.gov.ie/en/department-of-finance/speeches/statement-by-minister-harris-on-budget-2027/"
       }
     ],
-    "checkedOn": "2026-10-14",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2254,20 +3066,24 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "announced",
     "effectiveFrom": "2027-07-01",
     "source": {
-      "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-      "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
     },
     "sources": [
       {
-        "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-        "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Department of Finance, Statement by the Minister for Finance on Budget 2027",
+        "url": "https://www.gov.ie/en/department-of-finance/speeches/statement-by-minister-harris-on-budget-2027/"
       }
     ],
-    "checkedOn": "2026-10-14",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2285,20 +3101,24 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "announced",
     "effectiveFrom": "2027-07-01",
     "source": {
-      "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-      "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+      "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+      "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
     },
     "sources": [
       {
-        "title": "Department of Finance, Budget 2027 Tax Policy Changes",
-        "url": "https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf"
+        "title": "Department of Finance, Budget 2027: Tax Policy Changes",
+        "url": "https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf"
+      },
+      {
+        "title": "Department of Finance, Statement by the Minister for Finance on Budget 2027",
+        "url": "https://www.gov.ie/en/department-of-finance/speeches/statement-by-minister-harris-on-budget-2027/"
       }
     ],
-    "checkedOn": "2026-10-14",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "goals_and_resources",
@@ -2329,11 +3149,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-07-03a.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2363,11 +3183,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-07-03a.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2405,11 +3225,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2447,11 +3267,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2489,11 +3309,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2531,11 +3351,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2573,11 +3393,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2615,11 +3435,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2657,11 +3477,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2699,11 +3519,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2741,11 +3561,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2783,11 +3603,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2825,11 +3645,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2867,11 +3687,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2909,11 +3729,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2951,11 +3771,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -2993,11 +3813,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3035,11 +3855,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3077,11 +3897,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3119,11 +3939,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3161,11 +3981,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3203,11 +4023,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3245,11 +4065,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3287,11 +4107,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3329,11 +4149,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3371,11 +4191,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3413,11 +4233,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3455,11 +4275,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3497,11 +4317,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3539,11 +4359,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3581,11 +4401,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": "https://www.revenue.ie/en/tax-professionals/tdm-wm/income-tax-capital-gains-tax-corporation-tax/part-19/19-02-13.pdf"
       }
     ],
-    "checkedOn": "2026-09-22",
+    "checkedOn": "2026-10-22",
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "ie_tax_rules",
-      "version": "ie-tax-2026.5"
+      "version": "ie-tax-2026.6"
     },
     "usedBy": [
       "plan_pack"
@@ -3619,7 +4439,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3655,7 +4475,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3691,7 +4511,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3727,7 +4547,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3763,7 +4583,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3799,7 +4619,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3835,7 +4655,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -3867,7 +4687,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection"
@@ -3897,7 +4717,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection"
@@ -3927,7 +4747,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection"
@@ -3957,7 +4777,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection"
@@ -3987,7 +4807,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection"
@@ -4017,7 +4837,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection"
@@ -4047,7 +4867,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "history",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -4078,7 +4898,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "history",
     "catalogue": {
       "id": "ie_planning_rules",
-      "version": "ie-planning-rules-2026.01"
+      "version": "ie-planning-rules-2026.02"
     },
     "usedBy": [
       "pension_projection",
@@ -4113,7 +4933,39 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
+    "quantity": "ie.social_welfare.state_pension_contributory.personal_under_80",
+    "label": "State Pension (Contributory), highest weekly personal rate, under 80",
+    "value": 309.3,
+    "valueShown": "€309.30 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "pension_projection",
@@ -4145,7 +4997,39 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
+    "quantity": "ie.social_welfare.state_pension_contributory.personal_80_and_over",
+    "label": "State Pension (Contributory), highest weekly personal rate, aged 80 and over",
+    "value": 319.3,
+    "valueShown": "€319.30 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "pension_projection",
@@ -4181,7 +5065,41 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "protection_gap"
+    ],
+    "appliesTo": "A bereaved partner under 66 with 48 or more contributions. Taxable; not means tested.",
+    "aliases": [
+      "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2027_01_01",
+    "quantity": "ie.social_welfare.bereaved_partners_contributory.personal_under_66",
+    "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, under 66",
+    "value": 269.5,
+    "valueShown": "€269.50 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "protection_gap"
@@ -4219,7 +5137,41 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "protection_gap"
+    ],
+    "appliesTo": "A bereaved partner aged 66 to 79 with 48 or more contributions. Taxable; not means tested.",
+    "aliases": [
+      "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2027_01_01",
+    "quantity": "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79",
+    "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, aged 66 to 79",
+    "value": 309.3,
+    "valueShown": "€309.30 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "protection_gap"
@@ -4253,7 +5205,41 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "protection_gap"
+    ],
+    "appliesTo": "A bereaved partner aged 80 or over with 48 or more contributions. Taxable; not means tested.",
+    "aliases": [
+      "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2027_01_01",
+    "quantity": "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over",
+    "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, aged 80 and over",
+    "value": 319.3,
+    "valueShown": "€319.30 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "protection_gap"
@@ -4291,7 +5277,38 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "protection_gap"
+    ],
+    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI."
+  },
+  {
+    "id": "ie.social_welfare.invalidity_pension.personal.from_2027_01_01",
+    "quantity": "ie.social_welfare.invalidity_pension.personal",
+    "label": "Invalidity Pension, weekly personal rate",
+    "value": 269.5,
+    "valueShown": "€269.50 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "protection_gap"
@@ -4326,7 +5343,38 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.1"
+      "version": "ie-social-welfare-2026.2"
+    },
+    "usedBy": [
+      "protection_gap"
+    ],
+    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI."
+  },
+  {
+    "id": "ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01",
+    "quantity": "ie.social_welfare.illness_benefit.personal_highest",
+    "label": "Illness Benefit, highest weekly personal rate",
+    "value": 264,
+    "valueShown": "€264 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.2"
     },
     "usedBy": [
       "protection_gap"
@@ -8517,7 +9565,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "pension_projection"
@@ -8547,7 +9595,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "pension_projection",
@@ -8580,7 +9628,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "college_funding",
@@ -8612,7 +9660,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "net_retirement_cashflow"
@@ -8642,7 +9690,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "college_funding",
@@ -8673,7 +9721,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "college_funding",
@@ -8704,7 +9752,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "college_funding",
@@ -8735,7 +9783,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "college_funding",
@@ -8766,7 +9814,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -8797,7 +9845,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -8828,7 +9876,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -8858,7 +9906,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.4.0"
+      "version": "planeir-assumptions-1.5.0"
     },
     "usedBy": [
       "liquidity_analysis"

@@ -19,9 +19,15 @@
  * passes, never edit a past year's block, and record each SFT Revenue publishes
  * as a fixed amount with its source. After any change, update `verifiedOn`,
  * bump `IE_TAX_RULES_VERSION` and rerun the golden cases.
+ *
+ * A rule a later year carries over unchanged is the SAME OBJECT as the earlier
+ * year's, not an equal copy. That is how the block says "Budget 2027 left this
+ * alone", and how the figures register lists it once, for the year it first took
+ * effect. `check:figures` fails if a Budget is recorded anywhere with no block
+ * for its year.
  */
 
-export const IE_TAX_RULES_VERSION = 'ie-tax-2026.5';
+export const IE_TAX_RULES_VERSION = 'ie-tax-2026.6';
 
 /** The first tax year the catalogue covers. Earlier years are refused. */
 export const IE_TAX_FIRST_YEAR = 2026;
@@ -139,16 +145,35 @@ export const IE_TAX_SOURCES = Object.freeze({
     title: 'Revenue, Tax and Duty Manual Part 27-01a-02 (investment undertakings: exit tax rates and the eight-year deemed disposal)',
     url: 'https://www.revenue.ie/en/tax-professionals/tdm/income-tax-capital-gains-tax-corporation-tax/part-27/27-01a-02.pdf'
   }),
+  /**
+   * The Department's publication page lists this file. The earlier link,
+   * `.../c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf`, no longer opens.
+   */
   budget2027TaxPolicyChanges: Object.freeze({
-    title: 'Department of Finance, Budget 2027 Tax Policy Changes',
-    url: 'https://assets.gov.ie/static/documents/c6792805/Budget_2027_Tax_Policy_Changes_v2.pdf'
+    title: 'Department of Finance, Budget 2027: Tax Policy Changes',
+    url: 'https://assets.gov.ie/static/documents/c6792805/20261012_Budget_2027_Tax_Policy_Changes_Book.pdf'
+  }),
+  budget2027Statement: Object.freeze({
+    title: 'Department of Finance, Statement by the Minister for Finance on Budget 2027',
+    url: 'https://www.gov.ie/en/department-of-finance/speeches/statement-by-minister-harris-on-budget-2027/'
+  }),
+  financeNo2Bill2026: Object.freeze({
+    title: 'Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), as initiated on 19 October 2026',
+    url: 'https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/initiated/b9826d.pdf'
+  }),
+  financeNo2Bill2026Memo: Object.freeze({
+    title: 'Explanatory Memorandum to the Finance (No. 2) Bill 2026',
+    url: 'https://data.oireachtas.ie/ie/oireachtas/bill/2026/98/eng/memo/b9826d-memo.pdf'
+  }),
+  section461A: Object.freeze({
+    title: 'TCA 1997 s.461A, additional tax credit for certain widowed persons (TaxSource Total)',
+    url: 'https://www.charteredaccountants.ie/taxsourcetotal/1997/en/act/pub/0039/sec0461A.html'
   })
 });
 
 const S = IE_TAX_SOURCES;
 
-export const IE_TAX_RULES_BY_YEAR = Object.freeze({
-  2026: Object.freeze({
+const TAX_YEAR_2026 = Object.freeze({
     status: 'enacted',
     enactedBy: 'Finance Act 2025',
     verifiedOn: '2026-09-22',
@@ -299,7 +324,95 @@ export const IE_TAX_RULES_BY_YEAR = Object.freeze({
       rate: 0.33,
       sources: Object.freeze([S.revenueDirt])
     })
-  })
+  });
+
+/**
+ * Budget 2027, announced on 6 October 2026 and published as the Finance (No. 2)
+ * Bill 2026 on 19 October 2026. Not yet law: switch `status` to `'enacted'` and
+ * add `enactedBy` when the Bill passes, correcting any figure the Oireachtas
+ * changes. Every figure below is read from the Department of Finance's Tax
+ * Policy Changes book (chapter 2) and checked against the Bill as initiated
+ * (ss.2, 3, 29 and 36) and its Explanatory Memorandum. The book's worked
+ * tables for single PAYE earners and the self-employed (Tables 2 and 4) are
+ * reproduced by the engine from this block, to the euro.
+ *
+ * Changed for 2027: the standard-rate band, the personal, employee and earned
+ * income credits, the home carer credit, and the USC 2% band's ceiling. Nothing
+ * else in the book or the Bill touches a figure this catalogue holds, so every
+ * other rule is the 2026 object itself.
+ */
+const TAX_YEAR_2027 = Object.freeze({
+  status: 'announced',
+  announcedBy: 'Budget 2027',
+  announcedOn: '2026-10-06',
+  legislation: 'Finance (No. 2) Bill 2026 (Bill No. 98 of 2026), published 19 October 2026',
+  verifiedOn: '2026-10-22',
+
+  incomeTax: Object.freeze({
+    ruleId: 'ie.income_tax.2027',
+    standardRate: 0.20,
+    higherRate: 0.40,
+    standardRateBand: Object.freeze({
+      /** Up 2,500 from 44,000 (book 2.1.1; Bill s.3(a), s.15 TCA). */
+      single: 46_500,
+      widowed: 46_500,
+      /** Up 2,500 from 53,000. */
+      marriedOneIncome: 55_500,
+      /** Up from 35,000: the most a second income can add, capped at that income. */
+      secondIncomeIncreaseMax: 37_500
+    }),
+    personalCredit: Object.freeze({
+      /** Up 125 from 2,000 (s.461(c), as the Bill amends it). */
+      single: 2_125,
+      /** Up 250 from 4,000 (s.461(a) and (b)). */
+      married: 4_250,
+      /**
+       * Widowed without dependent children. Neither the book nor the Bill states
+       * this total. It is the basic personal credit in s.461(c), 2,125, plus the
+       * separate widowed person tax credit of 540 in s.461A, which the Bill does
+       * not amend: 2,125 + 540. Revenue's 2022 to 2026 table has the widowed
+       * credit exactly 540 above the single credit in every year.
+       */
+      widowed: 2_665
+    }),
+    employeeCredit: Object.freeze({
+      ruleId: 'ie.income_tax.employee_credit.2027',
+      /** Up 125 from 2,000 (s.472). The earned income credit (s.472AB) rises the same; together they cannot exceed this. */
+      amount: 2_125,
+      /** Not changed by the Budget. */
+      maxShareOfQualifyingIncome: 0.20
+    }),
+    ageCredit: TAX_YEAR_2026.incomeTax.ageCredit,
+    sources: Object.freeze([S.budget2027TaxPolicyChanges, S.financeNo2Bill2026, S.financeNo2Bill2026Memo, S.section461A])
+  }),
+
+  ageExemption: TAX_YEAR_2026.ageExemption,
+
+  usc: Object.freeze({
+    ruleId: 'ie.usc.2027',
+    exemptionThreshold: 13_000,
+    bands: Object.freeze([
+      Object.freeze({ upTo: 12_012, rate: 0.005 }),
+      /** The 2% ceiling is up 1,600 from 28,700 (book 2.1.2; Bill s.2, s.531AN). */
+      Object.freeze({ upTo: 30_300, rate: 0.02 }),
+      Object.freeze({ upTo: 70_044, rate: 0.03 }),
+      Object.freeze({ upTo: null, rate: 0.08 })
+    ]),
+    reduced: TAX_YEAR_2026.usc.reduced,
+    surcharge: TAX_YEAR_2026.usc.surcharge,
+    sources: Object.freeze([S.budget2027TaxPolicyChanges, S.financeNo2Bill2026, S.financeNo2Bill2026Memo])
+  }),
+
+  prsi: TAX_YEAR_2026.prsi,
+  lumpSum: TAX_YEAR_2026.lumpSum,
+  chargeableExcessTax: TAX_YEAR_2026.chargeableExcessTax,
+  capitalGainsTax: TAX_YEAR_2026.capitalGainsTax,
+  dirt: TAX_YEAR_2026.dirt
+});
+
+export const IE_TAX_RULES_BY_YEAR = Object.freeze({
+  2026: TAX_YEAR_2026,
+  2027: TAX_YEAR_2027
 });
 
 export const IE_LEGISLATED_SCHEDULES = Object.freeze({
@@ -358,8 +471,10 @@ export const IE_LEGISLATED_SCHEDULES = Object.freeze({
       rate: 0.31,
       status: 'announced',
       announcedBy: 'Budget 2027',
-      verifiedOn: '2026-10-11',
-      source: S.revenueCgtCalculate
+      announcedOn: '2026-10-06',
+      /** Read against the Department's book (4.1) and the Bill (s.36(2): disposals on or after 7 October 2026). */
+      verifiedOn: '2026-10-22',
+      source: S.budget2027TaxPolicyChanges
     })
   ]),
 
@@ -373,9 +488,9 @@ export const IE_LEGISLATED_SCHEDULES = Object.freeze({
    * 41% and 38% are transcribed from Revenue's Tax and Duty Manual Part
    * 27-01a-02 (updated January 2026). 35% was announced in Budget 2027 on
    * 6 October 2026, from 1 January 2027, for funds and life policies; checked
-   * on 14 October 2026 against Budget-day coverage, as the Department's own
-   * publication could not be opened here. Switch it to `enacted` when the
-   * Finance Act passes.
+   * on 22 October 2026 against the Department's tax policy book (2.2) and the
+   * Finance (No. 2) Bill 2026 (s.29: chargeable events, payments and disposals
+   * on or after 1 January 2027). Switch it to `enacted` when the Bill passes.
    */
   investmentFundExitTaxRate: Object.freeze([
     Object.freeze({
@@ -400,7 +515,7 @@ export const IE_LEGISLATED_SCHEDULES = Object.freeze({
       status: 'announced',
       announcedBy: 'Budget 2027',
       announcedOn: '2026-10-06',
-      verifiedOn: '2026-10-14',
+      verifiedOn: '2026-10-22',
       source: S.budget2027TaxPolicyChanges
     })
   ])
@@ -517,13 +632,14 @@ export const IE_INVESTMENT_RULES = Object.freeze({
     status: 'announced',
     announcedBy: 'Budget 2027',
     announcedOn: '2026-10-06',
-    verifiedOn: '2026-10-14',
+    /** Read against the Department's book (2.3) and the Minister's statement: the terms below, and no CGT, exit tax or deemed disposal. */
+    verifiedOn: '2026-10-22',
     opensOn: '2027-07-01',
     annualContributionCap: 12_000,
     taxFreeValue: 50_000,
     annualChargeRate: 0.01,
     exitTax: false,
     deemedDisposal: false,
-    sources: Object.freeze([S.budget2027TaxPolicyChanges])
+    sources: Object.freeze([S.budget2027TaxPolicyChanges, S.budget2027Statement])
   })
 });

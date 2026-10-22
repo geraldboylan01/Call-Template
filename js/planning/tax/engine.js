@@ -700,6 +700,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
     heldForward: rules.heldForward,
     rulesStatus: rules.status,
     enactedBy: rules.enactedBy,
+    announcedBy: rules.announcedBy,
     sftBasis: rules.sftBasis,
     prsiRate: rules.prsi.rate,
     assumptionsVersion: assumptions?.version || PLANEIR_ASSUMPTIONS_VERSION,

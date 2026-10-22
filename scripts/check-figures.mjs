@@ -9,7 +9,7 @@
 // register that collect every figure from every catalogue.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { MARKET_FIGURES, MARKET_FIGURES_VERSION } from '../js/planning/figures/market_ie.js';
@@ -43,6 +43,7 @@ import {
 } from '../js/planning/figures/figures_index.generated.js';
 import { figuresVersionLabel, getFigures } from '../js/planning/figures/get_figures.js';
 import { compilePlanPack, resolvePlanNarration } from '../js/planning/plan_pack/compiler.js';
+import { DEFAULT_IE_TAX_CATALOGUE, resolveTaxRules, withTaxCatalogue } from '../js/planning/tax/resolve.js';
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../js/planning/planeir_assumptions.js';
 import { HOUSE_PURCHASE_RULES } from '../js/house_purchase/config.js';
 import { IRISH_PENSION_RELIEF_LIMITS } from '../js/planning/ireland_rules.js';
@@ -63,6 +64,7 @@ import {
 } from '../js/planning/figures/checks.js';
 import {
   PENSION_EARNINGS_CAP,
+  computePensionProjection,
   maxRelievableContributionRatePercent,
   maxRelievablePersonalContribution,
   normalizePensionInputs,
@@ -71,7 +73,7 @@ import {
 import { normalizeNetRetirementInputs } from '../js/net_retirement_math.js';
 import { normalizeCollegeFundingInputs } from '../js/college_funding_math.js';
 import { assumptionLabel } from '../js/planning/planeir_assumptions.js';
-import { IRISH_STATE_PENSION_CONTRIBUTORY } from '../js/planning/ireland_rules.js';
+import { IRISH_STATE_PENSION_CONTRIBUTORY, statePensionRuleForYear } from '../js/planning/ireland_rules.js';
 import { SOCIAL_WELFARE_RATES_VERSION, SOCIAL_WELFARE_SERIES } from '../js/planning/social_welfare_ie.js';
 import {
   socialWelfareAnnualEur,
@@ -463,6 +465,24 @@ check('every row is the rate the Department printed, as read from its pages on 2
   for (const [id, weekly] of Object.entries(printed2026)) {
     assert.equal(socialWelfareRateOn(id, '2026-06-01').weeklyEur, weekly, id);
   }
+  // The Department's Budget 2027 table, "maximum weekly rate (from January 2027)".
+  const printed2027 = {
+    'ie.social_welfare.state_pension_contributory.personal_under_80': 309.30,
+    'ie.social_welfare.state_pension_contributory.personal_80_and_over': 319.30,
+    'ie.social_welfare.bereaved_partners_contributory.personal_under_66': 269.50,
+    'ie.social_welfare.bereaved_partners_contributory.personal_66_to_79': 309.30,
+    'ie.social_welfare.bereaved_partners_contributory.personal_80_and_over': 319.30,
+    'ie.social_welfare.invalidity_pension.personal': 269.50,
+    'ie.social_welfare.illness_benefit.personal_highest': 264.00
+  };
+  for (const [id, weekly] of Object.entries(printed2027)) {
+    const rate = socialWelfareRateOn(id, '2027-01-01');
+    assert.equal(rate.weeklyEur, weekly, id);
+    assert.equal(rate.status, 'announced', `${id} is announced until it is payable`);
+    assert.equal(rate.announcedBy, 'Budget 2027', id);
+    assert.equal(socialWelfareRateOn(id, '2026-12-31').weeklyEur, printed2026[id], `${id} is still the 2026 rate on 31 December 2026`);
+    assert.equal(weekly - printed2026[id], 10, `${id} rises by the 10 euro the Budget announced`);
+  }
 });
 
 check('a weekly rate comes to its 52-week reference to the cent', () => {
@@ -574,11 +594,11 @@ check('figures read from catalogues are the catalogues\' own values, not retyped
 /**
  * Budgets recorded for a tax year that has no block yet. A ratchet, like the
  * stale-exports baseline: a gap not listed here fails, and so does an entry here
- * that is no longer a gap, so the list can only shrink. Budget 2027 is recorded
- * for the CGT rate, exit tax and the Investment Account, and its block is added
- * in the catch-up commit that follows.
+ * that is no longer a gap, so the list can only shrink. It is empty: the 2027
+ * block, announced in Budget 2027, closed the only one. A new Budget recorded
+ * without its block fails the check until the block is added.
  */
-const KNOWN_BUDGET_GAPS = [{ budget: 'Budget 2027', year: 2027 }];
+const KNOWN_BUDGET_GAPS = [];
 
 const BUDGET_CATALOGUES = {
   taxRules: IE_TAX_RULES_BY_YEAR,
@@ -770,6 +790,101 @@ checkAsync('the compiled plan names the register version, with the market figure
 });
 
 await runAsyncChecks();
+
+// ---------------------------------------------------------------------------
+// The catch-up: Budget 2027 in the register and in the engines
+// ---------------------------------------------------------------------------
+
+check('the 2027 tax year is in the register as announced law, with its changed rules listed once and the unchanged ones not repeated', () => {
+  const byId = new Map(collected.map((figure) => [figure.id, figure]));
+  const band = byId.get('ie.income_tax.2027.standard_rate_band.single');
+  assert.equal(band.value, 46_500);
+  assert.equal(band.valueShown, '€46,500');
+  assert.equal(band.kind, 'announced_law');
+  assert.equal(band.effectiveFrom, '2027-01-01');
+  assert.equal(byId.get('ie.income_tax.2026.standard_rate_band.single').value, 44_000, '2026 is still there, as it was');
+  assert.equal(byId.get('ie.usc.2027.standard.band_2.upper_limit').value, 30_300);
+  assert.equal(byId.get('ie.income_tax.2027.personal_credit.widowed').value, 2_665);
+  assert.equal(byId.get('ie.exit_tax.rate.2027').valueShown, '35%');
+  assert.equal(byId.get('ie.cgt.rate.2026-10').valueShown, '31%');
+  for (const unchanged of ['ie.dirt.2027.rate', 'ie.lump_sum.2027.lifetime_tax_free', 'ie.income_tax.age_exemption.2027.from_age', 'ie.prsi.liability.2027.liable_under_age']) {
+    assert.ok(!byId.has(unchanged), `${unchanged} is the 2026 rule carried over, not listed again`);
+  }
+  assert.ok(figureWarnings(collected, '2026-10-22').every((warning) => !/income_tax\.2027/.test(warning)));
+});
+
+check('every 2027 figure the Budget announced names its source documents: the Department\'s book, and the Bill where it legislates', () => {
+  const bill = collected.filter((figure) => /^ie\.(income_tax|usc)\.2027\./.test(figure.id) || /^ie\.income_tax\.employee_credit\.2027\./.test(figure.id));
+  assert.equal(bill.length, 19, 'nine income tax figures, two employee credit figures and eight USC figures');
+  for (const figure of bill) {
+    const urls = figure.sources.map((source) => source.url);
+    assert.ok(urls.some((url) => /Tax_Policy_Changes_Book\.pdf$/.test(url)), `${figure.id} cites the Department's book`);
+    assert.ok(urls.some((url) => /data\.oireachtas\.ie\/ie\/oireachtas\/bill\/2026\/98\//.test(url)), `${figure.id} cites the Finance (No. 2) Bill 2026`);
+    assert.equal(figure.checkedOn, '2026-10-22');
+  }
+});
+
+check('the State Pension in the engines is the rate for the plan\'s own year, with the year, the rate and the Budget it came from stated', () => {
+  assert.equal(statePensionRuleForYear(2026).weeklyMaximumEur, 299.30);
+  assert.equal(statePensionRuleForYear(2026).status, 'in_force');
+  assert.equal(statePensionRuleForYear(2027).weeklyMaximumEur, 309.30);
+  assert.equal(statePensionRuleForYear(2027).annualMaximumEur, 16_083.60);
+  assert.equal(statePensionRuleForYear(2027).status, 'announced');
+  assert.equal(statePensionRuleForYear(2035).weeklyMaximumEur, 309.30, 'later years hold the last rate known');
+  assert.equal(statePensionRuleForYear(2019).weeklyMaximumEur, 299.30, 'a year before the first rate uses the first, as the engines always have');
+  const plan = (currentYear) => computePensionProjection({
+    currentYear, growthRate: 0.05, inflationRate: 0.02, wageGrowthRate: 0.02, incomeMode: 'target', targetIncomeToday: 42_000, horizonEndAge: 92,
+    pensions: [{ id: 'a', title: 'A', currentAge: 62, retirementAge: 66, currentSalary: 70_000, currentPot: 300_000, personalPct: 0.08, employerPct: 0.06 }]
+  });
+  const row = (projection) => projection.assumptionsTable.rows.find((entry) => entry[0] === 'Maximum Irish State Pension (gross)')[1];
+  const rule = (projection) => projection.assumptionsTable.rows.find((entry) => entry[0] === 'State Pension rule')[1];
+  const now = plan(2026);
+  const next = plan(2027);
+  assert.equal(row(now), '€15,563.60 a year (€299.30 a week)');
+  assert.match(rule(now), /effective January 2026; default start age 66$/);
+  assert.equal(row(next), '€16,083.60 a year (€309.30 a week)');
+  assert.match(rule(next), /effective January 2027, announced in Budget 2027; default start age 66$/);
+});
+
+checkAsync('the pinned design catalogue holds across an async run until it settles, and is put back whether it resolves or rejects', async () => {
+  const pinned = { ...DEFAULT_IE_TAX_CATALOGUE, rulesByYear: { 2026: DEFAULT_IE_TAX_CATALOGUE.rulesByYear[2026] } };
+  const yearInside = await withTaxCatalogue(pinned, async () => {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return resolveTaxRules(2031).rulesYear;
+  });
+  assert.equal(yearInside, 2026, 'still pinned after an await');
+  assert.equal(resolveTaxRules(2031).rulesYear, 2027, 'restored once it resolved');
+  await assert.rejects(() => withTaxCatalogue(pinned, async () => { throw new Error('async boom'); }), /async boom/);
+  assert.equal(resolveTaxRules(2031).rulesYear, 2027, 'restored once it rejected');
+});
+
+/**
+ * Where the State Pension rate is still typed into wording instead of read from the
+ * catalogue. They are all the Worker's spoken and prompt text for the live lane, which
+ * says the 2026 rate whatever the date. A ratchet like the others: a new copy fails,
+ * and so does a listed file once it no longer has one.
+ */
+const KNOWN_STATE_PENSION_COPIES = [
+  'worker/src/consumer/live/compliance.js',
+  'worker/src/consumer/realtime_completion.js',
+  'worker/src/consumer/realtime_planner.js',
+  'worker/src/consumer/realtime_provider.js'
+];
+
+check('the State Pension rate is typed in nowhere outside the catalogue, apart from the named wording that still says the 2026 rate', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const skip = /(^|\/)(tests_[^/]*|figures_index\.generated|social_welfare_ie|playbook_manifest\.generated)\.js$|node_modules/;
+  const found = [];
+  const walk = (directory) => {
+    for (const name of readdirSync(`${root}${directory}`)) {
+      const path = `${directory}/${name}`;
+      if (statSync(`${root}${path}`).isDirectory()) walk(path);
+      else if (name.endsWith('.js') && !skip.test(path) && /299\.30?(?!\d)|15[,_]?563\.6|309\.30?(?!\d)|16[,_]?083\.6/.test(repoFile(path))) found.push(path);
+    }
+  };
+  ['js', 'worker/src'].forEach(walk);
+  assert.deepEqual(found.sort(), [...KNOWN_STATE_PENSION_COPIES].sort());
+});
 
 if (failures > 0) {
   console.error(`[Figures] ${failures} check${failures === 1 ? '' : 's'} failed.`);

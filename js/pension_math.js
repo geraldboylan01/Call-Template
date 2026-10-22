@@ -5,7 +5,8 @@ import {
   IRISH_STATE_PENSION_CONTRIBUTORY,
   irishArfFirstAttainedAge,
   irishArfMinimumRate,
-  normalizeStatePensionFraction
+  normalizeStatePensionFraction,
+  statePensionRuleForYear
 } from './planning/ireland_rules.js';
 import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
 import {
@@ -26,6 +27,7 @@ import {
   taxNotIncludedLine
 } from './planning/tax/disclosures.js';
 import { PLANEIR_ASSUMPTIONS, assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
+import { monthYearText } from './planning/utils.js';
 
 // Defaults come from the central assumptions, never a copy. Pay is assumed to
 // grow with general prices, which is how the retirement adapter has always set it.
@@ -35,7 +37,12 @@ const DEFAULT_GROWTH_RATE = PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate;
 const DEFAULT_HORIZON_END_AGE = 100;
 const DEFAULT_INCOME_MODE = 'target';
 const DEFAULT_AFFORDABLE_END_AGES = Object.freeze([100]);
-const STATE_PENSION_ANNUAL_TODAY = IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur;
+/**
+ * "Today's" State Pension is the maximum rate in force in the plan's own year:
+ * 2026 for a plan starting in 2026, the announced Budget 2027 rate for one starting
+ * in 2027. The rates are in the social welfare catalogue, never typed in here.
+ */
+const statePensionAnnualToday = (inputs) => statePensionRuleForYear(inputs.currentYear).annualMaximumEur;
 const STATE_PENSION_START_AGE = IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge;
 const REQUIRED_POT_TOLERANCE_EUR = 25;
 const HOUSEHOLD_OWNER_IDS = new Set(['household', 'joint', 'family']);
@@ -926,7 +933,7 @@ function buildIncomeBreakdownAtYear(inputs, year) {
       return total;
     }
     return total + (
-      STATE_PENSION_ANNUAL_TODAY
+      statePensionAnnualToday(inputs)
       * member.statePensionFraction
       * Math.pow(1 + member.statePensionEscalationRate, year - inputs.currentYear)
     );
@@ -1165,7 +1172,7 @@ function statePensionForMemberAtYear(inputs, member, year) {
   if (!member.includeStatePension || age < member.statePensionStartAge) {
     return 0;
   }
-  const amount = STATE_PENSION_ANNUAL_TODAY
+  const amount = statePensionAnnualToday(inputs)
     * member.statePensionFraction
     * Math.pow(1 + member.statePensionEscalationRate, year - inputs.currentYear);
   return Number.isFinite(amount) ? amount : 0;
@@ -1648,7 +1655,7 @@ function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEn
   };
 
   let low = 0;
-  let high = Math.max(sum(inputs.pensions.map((member) => member.currentSalary)), STATE_PENSION_ANNUAL_TODAY, 1000);
+  let high = Math.max(sum(inputs.pensions.map((member) => member.currentSalary)), statePensionAnnualToday(inputs), 1000);
   while (isSustainable(high) && high < 5000000) {
     low = high;
     high *= 1.5;
@@ -3571,6 +3578,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     memberHasPot
   });
 
+  const statePensionRule = statePensionRuleForYear(inputs.currentYear);
   const assumptionsTable = {
     columns: ['Assumption', 'Value'],
     rows: [
@@ -3578,8 +3586,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Growth rate', toPercentText(inputs.growthRate)],
       ['Wage growth', toPercentText(inputs.wageGrowthRate)],
       ['Inflation', toPercentText(inputs.inflationRate)],
-      ['Maximum Irish State Pension (gross)', `${toEuroText(STATE_PENSION_ANNUAL_TODAY, 2)} a year (€299.30 a week)`],
-      ['State Pension rule', `${IRELAND_RULES_CATALOGUE_VERSION}; effective January 2026; default start age 66`],
+      ['Maximum Irish State Pension (gross)', `${toEuroText(statePensionRule.annualMaximumEur, 2)} a year (${toEuroText(statePensionRule.weeklyMaximumEur, 2)} a week)`],
+      ['State Pension rule', `${IRELAND_RULES_CATALOGUE_VERSION}; effective ${monthYearText(statePensionRule.effectiveFrom)}${statePensionRule.status === 'announced' ? `, announced in ${statePensionRule.announcedBy}` : ''}; default start age ${STATE_PENSION_START_AGE}`],
       ['State Pension escalation', toPercentText(IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate)],
       ['State Pension entitlement', IRISH_STATE_PENSION_CONTRIBUTORY.entitlementNotice],
       ['State Pension guidance source', IRISH_STATE_PENSION_CONTRIBUTORY.source.url],

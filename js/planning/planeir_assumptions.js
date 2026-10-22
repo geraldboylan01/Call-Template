@@ -15,7 +15,7 @@
 
 import { marketFigure, marketFigureValue } from './figures/market_math.js';
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.4.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.5.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-13';
 
 const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
@@ -115,7 +115,7 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
    */
   taxProjection: Object.freeze({
     policy: 'freeze_budget_parameters_apply_fixed_law_hold_unknowns',
-    basis: 'Tax bands, credits and thresholds that each Budget sets are kept at their latest enacted values in euro terms and never increased with inflation, because Budgets often leave them unchanged. Changes the law has already fixed by date and amount, such as the scheduled PRSI rises and the Standard Fund Threshold steps, are applied on their dates. Where the law ties a future figure to data that does not exist yet, such as the Standard Fund Threshold from 2030, the last known figure is held rather than forecast.',
+    basis: 'Tax bands, credits and thresholds that each Budget sets are kept at their latest enacted or announced values in euro terms and never increased with inflation, because Budgets often leave them unchanged. Changes the law has already fixed by date and amount, such as the scheduled PRSI rises and the Standard Fund Threshold steps, are applied on their dates. Where the law ties a future figure to data that does not exist yet, such as the Standard Fund Threshold from 2030, the last known figure is held rather than forecast.',
     disclosure: 'If future Budgets raise bands and credits, tax in later years would be lower than shown. A held Standard Fund Threshold is its lowest possible level, so any tax shown on a fund above it may be overstated.'
   })
 });

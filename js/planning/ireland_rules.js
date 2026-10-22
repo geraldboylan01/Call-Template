@@ -1,16 +1,35 @@
 import { socialWelfareAnnualEur, socialWelfareRateOn } from './social_welfare_rates.js';
 
-export const IRELAND_RULES_CATALOGUE_VERSION = 'ie-planning-rules-2026.01';
+export const IRELAND_RULES_CATALOGUE_VERSION = 'ie-planning-rules-2026.02';
 
 /**
  * The State Pension (Contributory) rate is held in the social welfare catalogue
  * (`social_welfare_ie.js`), where every payment's weekly rate sits by effective
- * date with its source. This reads the rate in force on the date below.
+ * date with its source. `IRISH_STATE_PENSION_CONTRIBUTORY` below is the rate
+ * payable from January 2026; `statePensionRuleForYear` is the rate for any year.
  */
-const STATE_PENSION_RATE = socialWelfareRateOn(
-  'ie.social_welfare.state_pension_contributory.personal_under_80',
-  '2026-01-01'
-);
+const STATE_PENSION_SERIES = 'ie.social_welfare.state_pension_contributory.personal_under_80';
+const STATE_PENSION_RATE = socialWelfareRateOn(STATE_PENSION_SERIES, '2026-01-01');
+
+/**
+ * The maximum State Pension (Contributory) personal rate in force in a calendar
+ * year, from the first of January: what "today's" State Pension means for a plan
+ * that starts that year. A year before the first rate recorded uses that first
+ * rate, as the engines always have. A rate announced in a Budget is used from the
+ * year it takes effect, with `status: 'announced'` saying so.
+ */
+export function statePensionRuleForYear(year) {
+  const date = `${Math.max(year, Number(STATE_PENSION_RATE.effectiveFrom.slice(0, 4)))}-01-01`;
+  const rate = socialWelfareRateOn(STATE_PENSION_SERIES, date);
+  return Object.freeze({
+    year,
+    weeklyMaximumEur: rate.weeklyEur,
+    annualMaximumEur: socialWelfareAnnualEur(rate.weeklyEur),
+    effectiveFrom: rate.effectiveFrom,
+    status: rate.status,
+    announcedBy: rate.announcedBy ?? null
+  });
+}
 
 export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
   ruleId: 'ie.state_pension_contributory.maximum',

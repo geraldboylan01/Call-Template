@@ -41,6 +41,7 @@ export function socialWelfareRateOn(id, dateIso) {
     weeklyEur: row.weeklyEur,
     effectiveFrom: row.effectiveFrom,
     status: row.status,
+    announcedBy: row.announcedBy ?? null,
     sources: row.sources,
     latest: row === series.rates[series.rates.length - 1]
   });

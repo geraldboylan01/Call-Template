@@ -23,7 +23,7 @@
  * first claim year.
  */
 
-export const SOCIAL_WELFARE_RATES_VERSION = 'ie-social-welfare-2026.1';
+export const SOCIAL_WELFARE_RATES_VERSION = 'ie-social-welfare-2026.2';
 
 const SOCIAL_WELFARE_SOURCES = Object.freeze({
   dspBudget2026: Object.freeze({
@@ -59,6 +59,24 @@ const S = SOCIAL_WELFARE_SOURCES;
 /** The Department prints "from January" without a day; the first of the month is used. */
 const FROM_JANUARY_2026 = 'from January 2026; the Department does not print the day';
 
+/**
+ * Budget 2027, announced on 6 October 2026: "€10 weekly increase across most
+ * social welfare payments from January 2027", with the new maximum rates in the
+ * Department's Budget 2027 table. The scheme pages still print the 2026 rates, so
+ * only the Budget table is cited. Switch `status` to `in_force` once the rates are
+ * payable and the scheme pages show them.
+ */
+const rate2027 = (weeklyEur) => Object.freeze({
+  effectiveFrom: '2027-01-01',
+  effectiveFromNote: 'from January 2027; the Department does not print the day',
+  weeklyEur,
+  status: 'announced',
+  announcedBy: 'Budget 2027',
+  announcedOn: '2026-10-06',
+  verifiedOn: '2026-10-22',
+  sources: Object.freeze([S.dspBudget2027])
+});
+
 const rate2026 = (weeklyEur, ...sources) => Object.freeze({
   effectiveFrom: '2026-01-01',
   effectiveFromNote: FROM_JANUARY_2026,
@@ -75,7 +93,7 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     scheme: 'State Pension (Contributory)',
     label: 'State Pension (Contributory), highest weekly personal rate, under 80',
     appliesTo: 'A person under 80 with a full social insurance record. Gross: it is taxable.',
-    rates: Object.freeze([rate2026(299.30, S.statePensionContributory)])
+    rates: Object.freeze([rate2026(299.30, S.statePensionContributory), rate2027(309.30)])
   }),
   Object.freeze({
     id: 'ie.social_welfare.state_pension_contributory.personal_80_and_over',
@@ -83,7 +101,7 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     scheme: 'State Pension (Contributory)',
     label: 'State Pension (Contributory), highest weekly personal rate, aged 80 and over',
     appliesTo: 'A person aged 80 or over with a full social insurance record. Gross: it is taxable.',
-    rates: Object.freeze([rate2026(309.30)])
+    rates: Object.freeze([rate2026(309.30), rate2027(319.30)])
   }),
   Object.freeze({
     id: 'ie.social_welfare.bereaved_partners_contributory.personal_under_66',
@@ -93,7 +111,7 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     aliases: Object.freeze(['Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension']),
     label: 'Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, under 66',
     appliesTo: 'A bereaved partner under 66 with 48 or more contributions. Taxable; not means tested.',
-    rates: Object.freeze([rate2026(259.50, S.bereavedPartnersContributory)])
+    rates: Object.freeze([rate2026(259.50, S.bereavedPartnersContributory), rate2027(269.50)])
   }),
   Object.freeze({
     id: 'ie.social_welfare.bereaved_partners_contributory.personal_66_to_79',
@@ -102,7 +120,7 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     aliases: Object.freeze(['Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension']),
     label: 'Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, aged 66 to 79',
     appliesTo: 'A bereaved partner aged 66 to 79 with 48 or more contributions. Taxable; not means tested.',
-    rates: Object.freeze([rate2026(299.30, S.bereavedPartnersContributory)])
+    rates: Object.freeze([rate2026(299.30, S.bereavedPartnersContributory), rate2027(309.30)])
   }),
   Object.freeze({
     id: 'ie.social_welfare.bereaved_partners_contributory.personal_80_and_over',
@@ -111,7 +129,7 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     aliases: Object.freeze(['Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension']),
     label: 'Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, aged 80 and over',
     appliesTo: 'A bereaved partner aged 80 or over with 48 or more contributions. Taxable; not means tested.',
-    rates: Object.freeze([rate2026(309.30)])
+    rates: Object.freeze([rate2026(309.30), rate2027(319.30)])
   }),
   Object.freeze({
     id: 'ie.social_welfare.invalidity_pension.personal',
@@ -119,7 +137,7 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     scheme: 'Invalidity Pension',
     label: 'Invalidity Pension, weekly personal rate',
     appliesTo: 'A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI.',
-    rates: Object.freeze([rate2026(259.50, S.invalidityPension)])
+    rates: Object.freeze([rate2026(259.50, S.invalidityPension), rate2027(269.50)])
   }),
   Object.freeze({
     id: 'ie.social_welfare.illness_benefit.personal_highest',
@@ -127,6 +145,6 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     scheme: 'Illness Benefit',
     label: 'Illness Benefit, highest weekly personal rate',
     appliesTo: 'A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI.',
-    rates: Object.freeze([rate2026(254.00, S.illnessBenefit)])
+    rates: Object.freeze([rate2026(254.00, S.illnessBenefit), rate2027(264.00)])
   })
 ]);
