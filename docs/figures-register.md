@@ -454,7 +454,7 @@ Internal provenance. The provider names below are for the audit trail and are ne
 
 ### Interest rate used to illustrate mortgage repayments
 
-`ie.market.mortgage.illustration_rate` is **3.5% a year**. Reviewed: a person chose 3.5% a year on 2026-07-11. The quotes below are the evidence. Checked 2026-10-22, last changed 2026-07-12, reviewed every 35 days. Figure version `1.0.0`.
+`ie.market.mortgage.illustration_rate` is **3.5% a year**. Held as a standard planning assumption, 3.5% a year, as of 2026-07-11; not worked out from the quotes. The quotes below are the evidence for it. Checked 2026-10-22, last changed 2026-07-12, reviewed every 35 days. Figure version `1.0.0`.
 
 Evidence median 3.75%, 0.25 points above the chosen value (past the drift limit, so the check warns).
 

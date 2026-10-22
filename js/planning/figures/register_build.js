@@ -151,7 +151,7 @@ export function renderRegisterMarkdown(figures, catalogues) {
       lines.push('');
       const method = figure.method;
       const how = method.kind === 'reviewed'
-        ? `Reviewed: a person chose ${figure.valueShown} on ${method.reviewedOn}. The quotes below are the evidence.`
+        ? `Held as a standard planning assumption, ${figure.valueShown}, as of ${method.reviewedOn}; not worked out from the quotes. The quotes below are the evidence for it.`
         : `${method.kind === 'single' ? 'Single source' : method.kind[0].toUpperCase() + method.kind.slice(1)} of the quotes below${method.roundTo ? `, rounded to the nearest ${method.roundTo}` : ''}.`;
       lines.push(`\`${figure.id}\` is **${figure.valueShown}**. ${how} Checked ${figure.checkedOn}, last changed ${figure.changedOn}, reviewed every ${figure.reviewEveryDays} days. Figure version \`${figure.figureVersion}\`.`);
       if (figure.evidence) {

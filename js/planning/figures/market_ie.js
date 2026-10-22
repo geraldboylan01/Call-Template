@@ -105,8 +105,9 @@ export const MARKET_FIGURES = Object.freeze([
     label: 'Interest rate used to illustrate mortgage repayments',
     unit: 'rate_a_year',
     /**
-     * An illustration, not a quote: a person chose 3.5% on 11 July 2026 and the
-     * rate has not moved since. The observations are today's published
+     * An illustration, not a quote: 3.5% is the House Purchase standard planning
+     * assumption, in place since the module was built (as of 11 July 2026) and not
+     * moved since. The observations are today's published
      * three-year fixed rates up to 80% of the home's value. Their median is
      * 3.75%, which is 0.25 points above the chosen rate, so `check:figures`
      * warns. Moving to the median is a decision for Gerry because it moves
