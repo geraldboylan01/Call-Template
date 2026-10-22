@@ -1,3 +1,5 @@
+import { marketFigureValue } from '../planning/figures/market_math.js';
+
 const CENTRAL_BANK_SOURCE = 'https://www.centralbank.ie/financial-system/financial-stability/macro-prudential-policy/mortgage-measures';
 const REVENUE_HTB_SOURCE = 'https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx';
 const REVENUE_HTB_BUYER_SOURCE = 'https://www.revenue.ie/en/property/help-to-buy-incentive/who-can-claim-htb.aspx';
@@ -11,6 +13,11 @@ const FHS_RULES_SOURCE = 'https://www.firsthomescheme.ie/faqs/rules-and-eligibil
 const FHS_CEILINGS_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/property-price-ceilings/';
 const FHS_CHARGES_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/service-charges/';
 const FHS_LENDERS_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/switching-your-mortgage/';
+
+// Rates that move with the market come from the figures register, which keeps the
+// quotes behind them. Nothing here types one in.
+const REGULAR_SAVER_GROSS_RATE = marketFigureValue('ie.market.cash.regular_saver_gross_rate');
+const MORTGAGE_ILLUSTRATION_RATE = marketFigureValue('ie.market.mortgage.illustration_rate');
 
 export const HOUSE_PURCHASE_SOURCE_METADATA = Object.freeze({
   centralBankMortgageMeasures: Object.freeze({
@@ -149,9 +156,9 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
   principalHomeMaxLtv: 0.9,
   minimumDepositRate: 0.1,
   dirtRate: 0.33,
-  depositSavingsGrossAerDefault: 0.02,
+  depositSavingsGrossAerDefault: REGULAR_SAVER_GROSS_RATE,
   depositSavingsNetAerDefault: 0.0134,
-  mortgageRateIllustrationDefault: 0.035,
+  mortgageRateIllustrationDefault: MORTGAGE_ILLUSTRATION_RATE,
   maximumMortgageTermYearsDefault: 35,
 
   mortgage: Object.freeze({
@@ -159,7 +166,7 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     secondSubsequentBuyerIncomeMultiple: 3.5,
     principalHomeMaxLtv: 0.9,
     minimumDepositRate: 0.1,
-    illustrationRateDefault: 0.035,
+    illustrationRateDefault: MORTGAGE_ILLUSTRATION_RATE,
     termYearsDefault: 35,
     sensitivityTermsYears: Object.freeze([25, 30, 35]),
     sensitivityRateDelta: 0.01,
@@ -171,7 +178,7 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     liquiditySafetyFloorMonths: 3
   }),
   depositSavings: Object.freeze({
-    grossAerDefault: 0.02,
+    grossAerDefault: REGULAR_SAVER_GROSS_RATE,
     dirtRateDefault: 0.33,
     netAerDefault: 0.0134,
     projectionHorizonMonths: 600,

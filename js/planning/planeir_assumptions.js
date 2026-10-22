@@ -13,8 +13,12 @@
  * rebuilding the calculation engines.
  */
 
+import { marketFigure, marketFigureValue } from './figures/market_math.js';
+
 export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.3.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-13';
+
+const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
 
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
   version: PLANEIR_ASSUMPTIONS_VERSION,
@@ -37,34 +41,18 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
   }),
 
   cash: Object.freeze({
-    /** Gross, before DIRT. DIRT itself lives in the tax catalogue, not here. */
-    instantAccessGrossRate: 0.002,
+    /**
+     * Gross, before DIRT. DIRT itself lives in the tax catalogue, not here. The
+     * rate is a market figure worked out from the quotes in the figures
+     * register (`figures/market_ie.js`), which keeps them as the audit trail.
+     * Nothing from there reaches a client-facing string, which is why `basis`
+     * does not name the banks.
+     */
+    instantAccessGrossRate: marketFigureValue(CASH_RATE_FIGURE_ID),
     basis: 'A 0.2% interest rate is used for money held in instant-access cash. It is the rounded average of the standard instant-access rates two large Irish retail banks quoted in October 2026, before DIRT.',
     disclosure: 'This is a planning assumption, not a quoted rate. Banks can change instant-access rates at any time, and regular-saver and notice accounts pay more.',
-    /**
-     * The two rates the figure was averaged from, for the audit trail only.
-     * Nothing here reaches a client-facing string, which is why `basis` does
-     * not name the banks.
-     */
-    observed: Object.freeze([
-      Object.freeze({
-        provider: 'Bank of Ireland',
-        product: 'Instant Access Demand / Demand Deposit',
-        quotedRate: 0.001,
-        quotedAs: 'AER, variable, gross of DIRT',
-        effective: '2026-09-14',
-        url: 'https://personalbanking.bankofireland.com/save-and-invest/savings/bank-of-ireland-deposit-rates/'
-      }),
-      Object.freeze({
-        provider: 'AIB',
-        product: 'Personal Demand Deposit Account',
-        quotedRate: 0.0025,
-        quotedAs: 'AER and gross annual interest rate',
-        effective: '2025-05-13',
-        url: 'https://aib.ie/our-products/savings-and-deposits/Deposit-Rates'
-      })
-    ]),
-    checkedOn: '2026-10-13'
+    figureId: CASH_RATE_FIGURE_ID,
+    checkedOn: marketFigure(CASH_RATE_FIGURE_ID).checkedOn
   }),
 
   collegeFunding: Object.freeze({

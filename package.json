@@ -161,7 +161,8 @@
     "check:demo-browser": "node ./scripts/check-demo-browser.mjs",
     "check:plan-pack": "node ./scripts/check-plan-pack.mjs",
     "check:plan-pack-fixtures": "node ./scripts/check-plan-pack-fixtures.mjs",
-    "check:plan-resource-ledger": "node ./scripts/check-plan-resource-ledger.mjs"
+    "check:plan-resource-ledger": "node ./scripts/check-plan-resource-ledger.mjs",
+    "check:figures": "node ./scripts/check-figures.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
