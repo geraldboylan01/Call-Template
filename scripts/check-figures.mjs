@@ -41,6 +41,8 @@ import {
   FIGURES_INDEX,
   FIGURES_INDEX_VERSION as GENERATED_INDEX_VERSION
 } from '../js/planning/figures/figures_index.generated.js';
+import { figuresVersionLabel, getFigures } from '../js/planning/figures/get_figures.js';
+import { compilePlanPack, resolvePlanNarration } from '../js/planning/plan_pack/compiler.js';
 import { PLANEIR_ASSUMPTIONS, assumptionRecord } from '../js/planning/planeir_assumptions.js';
 import { HOUSE_PURCHASE_RULES } from '../js/house_purchase/config.js';
 import { IRISH_PENSION_RELIEF_LIMITS } from '../js/planning/ireland_rules.js';
@@ -79,6 +81,7 @@ import {
 } from '../js/planning/social_welfare_rates.js';
 
 let failures = 0;
+const asyncChecks = [];
 /** Today, or the day a test says it is: warnings about age depend on it. */
 const TODAY = process.env.FIGURES_TODAY ?? new Date().toISOString().slice(0, 10);
 
@@ -89,6 +92,33 @@ function check(name, fn) {
   } catch (error) {
     failures += 1;
     console.error(`[Figures] FAIL: ${name}\n    ${error.message}`);
+  }
+}
+
+/**
+ * A check that awaits. They run one after another at the end, with the engines'
+ * own progress logging muted, since a plan compile prints every case it builds.
+ */
+function checkAsync(name, fn) {
+  asyncChecks.push([name, fn]);
+}
+
+async function runAsyncChecks() {
+  for (const [name, fn] of asyncChecks) {
+    const { info, log } = console;
+    console.info = () => {};
+    console.log = () => {};
+    try {
+      await fn();
+      console.info = info;
+      console.log = log;
+      console.info(`[Figures] PASS: ${name}`);
+    } catch (error) {
+      console.info = info;
+      console.log = log;
+      failures += 1;
+      console.error(`[Figures] FAIL: ${name}\n    ${error.message}`);
+    }
   }
 }
 
@@ -637,6 +667,109 @@ check('warnings: a market figure past its review interval, a reviewed rate its q
 for (const warning of figureWarnings(collected, TODAY)) {
   console.warn(`[Figures] WARN: ${warning}`);
 }
+
+// ---------------------------------------------------------------------------
+// Reading the register: getFigures, and the plan pack's {figure.<id>} placeholders
+// ---------------------------------------------------------------------------
+
+check('getFigures returns every figure with its value and source, and nothing a client must not hear', () => {
+  const all = getFigures();
+  assert.equal(all.length, FIGURES_INDEX.length);
+  for (const figure of all) {
+    assert.ok('value' in figure && figure.valueShown && figure.source.title && figure.checkedOn && figure.catalogueVersion, `${figure.id} carries value, source, check date and version`);
+    assert.ok(!('observations' in figure) && !('method' in figure) && !('evidence' in figure), `${figure.id} carries no quotes`);
+    assert.equal(namesAProvider(JSON.stringify(figure)), null, `${figure.id} names no provider`);
+  }
+});
+
+check('getFigures filters by ids, kind and module, and combines them', () => {
+  const ids = ['ie.dirt.2026.rate', 'ie.pension_relief.limits.earnings_cap'];
+  assert.deepEqual(getFigures({ ids }).map((figure) => figure.id), ids);
+  const market = getFigures({ kinds: ['market'] });
+  assert.ok(market.length === 3 && market.every((figure) => figure.kind === 'market'));
+  assert.ok(getFigures({ kinds: 'announced_law' }).every((figure) => figure.kind === 'announced_law'));
+  const protection = getFigures({ module: 'protection_gap' });
+  assert.ok(protection.length >= 5 && protection.every((figure) => figure.usedBy.includes('protection_gap')));
+  assert.ok(protection.some((figure) => figure.id.startsWith('ie.social_welfare.illness_benefit')), 'Illness Benefit is there for the protection gap');
+  assert.deepEqual(getFigures({ module: 'protection_gap', kinds: ['market'] }), []);
+  assert.deepEqual(getFigures({ ids, module: 'house_purchase' }).map((figure) => figure.id), ['ie.dirt.2026.rate']);
+});
+
+check('getFigures refuses what it cannot answer, rather than leaving a figure out of an answer', () => {
+  assert.throws(() => getFigures({ ids: ['ie.dirt.2026.rate', 'ie.dirt.2031.rate'] }), /holds no figure with the id "ie\.dirt\.2031\.rate"/);
+  assert.throws(() => getFigures({ kinds: ['rumour'] }), /Unknown figure kind/);
+  assert.throws(() => getFigures({ module: 'nowhere' }), /Unknown module/);
+  assert.throws(() => getFigures({ onDate: '22/10/2026' }), /YYYY-MM-DD/);
+  assert.throws(() => getFigures({ ids: 'ie.dirt.2026.rate' }), /array of figure ids/);
+});
+
+check('getFigures is read-only: what it returns cannot be changed, and cannot change the register', () => {
+  const [figure] = getFigures({ ids: ['ie.dirt.2026.rate'] });
+  assert.ok(Object.isFrozen(figure) && Object.isFrozen(figure.source) && Object.isFrozen(figure.sources) && Object.isFrozen(figure.usedBy));
+  assert.throws(() => { figure.value = 0.5; }, TypeError);
+  assert.throws(() => { figure.usedBy.push('anywhere'); }, TypeError);
+  assert.ok(Object.isFrozen(getFigures()));
+  assert.equal(getFigures({ ids: ['ie.dirt.2026.rate'] })[0].value, FIGURES_INDEX.find((entry) => entry.id === 'ie.dirt.2026.rate').value);
+});
+
+check('onDate gives the value in force on that date: the latest to have taken effect, never a later announced one', () => {
+  const rate = (onDate) => getFigures({ onDate, ids: ['ie.cgt.rate.2012-12', 'ie.cgt.rate.2026-10'] }).map((figure) => figure.valueShown);
+  assert.deepEqual(rate('2026-10-06'), ['33%'], 'the day before the Budget cut');
+  assert.deepEqual(rate('2026-10-07'), ['31%'], 'the day the cut takes effect');
+  assert.deepEqual(rate('2030-01-01'), ['31%'], 'later years hold the last rate');
+  assert.deepEqual(rate('2012-12-05'), [], 'before the first rate nothing is in force');
+  const all = getFigures({ onDate: '2026-06-01' });
+  const quantities = all.map((figure) => FIGURES_INDEX.find((entry) => entry.id === figure.id).quantity);
+  assert.equal(new Set(quantities).size, quantities.length, 'one value for each quantity');
+});
+
+check('the register version label names the index and every catalogue behind it', () => {
+  const label = figuresVersionLabel();
+  assert.ok(label.startsWith(FIGURES_INDEX_VERSION));
+  FIGURES_CATALOGUES.forEach((catalogue) => assert.ok(label.includes(catalogue.version), catalogue.id));
+});
+
+check('every figure id can be a placeholder: the plan pack pattern carries all of them', () => {
+  for (const figure of FIGURES_INDEX) {
+    const values = { [`figure.${figure.id}`]: { value: figure.valueShown, type: 'text' } };
+    const { text } = resolvePlanNarration(`Shown as {figure.${figure.id}}.`, values);
+    assert.equal(text, `Shown as ${figure.valueShown}.`, figure.id);
+  }
+});
+
+const readPack = () => JSON.parse(readFileSync(fileURLToPath(new URL('../scripts/fixtures/plan-packs/valid-small.json', import.meta.url)), 'utf8'));
+const narrationOf = (result, routeId) => result.routes.find((route) => route.id === routeId);
+
+checkAsync('narration states a rate from the register: the pack compiles and shows the register\'s value', async () => {
+  const pack = readPack();
+  pack.narration.clear_car = 'This route uses {route.cashUsed}. The standard rate is {figure.ie.income_tax.2026.standard_rate} and the earnings cap is {figure.ie.pension_relief.limits.earnings_cap}.';
+  const result = await compilePlanPack(pack);
+  const route = narrationOf(result, 'clear_car');
+  assert.equal(route.status, 'compiled', JSON.stringify(result.diagnostics));
+  assert.match(route.narration.text, /The standard rate is 20% and the earnings cap is €115,000\./);
+  assert.ok(result.versions.figures.startsWith(FIGURES_INDEX_VERSION), 'the saved plan names the register it was written from');
+});
+
+checkAsync('narration still cannot type a figure, and cannot name one the register does not hold', async () => {
+  const typed = readPack();
+  typed.narration.clear_car = 'The standard rate is 20%.';
+  const typedResult = await compilePlanPack(typed);
+  assert.equal(typedResult.status, 'invalid');
+  assert.match(JSON.stringify(typedResult.diagnostics), /must use registered placeholders/);
+  const unknown = readPack();
+  unknown.narration.clear_car = 'The standard rate is {figure.ie.income_tax.2031.standard_rate}.';
+  const unknownResult = await compilePlanPack(unknown);
+  assert.equal(unknownResult.status, 'invalid');
+  assert.match(JSON.stringify(unknownResult.diagnostics), /unknown placeholder \{figure\.ie\.income_tax\.2031\.standard_rate\}/);
+});
+
+checkAsync('the compiled plan names the register version, with the market figures\' version in it, so a saved plan says which figures it was written from', async () => {
+  const first = await compilePlanPack(readPack());
+  assert.equal(first.status, 'compiled', JSON.stringify(first.diagnostics));
+  assert.ok(first.versions.figures.includes('ie-market-'), 'market figures are named in the version');
+});
+
+await runAsyncChecks();
 
 if (failures > 0) {
   console.error(`[Figures] ${failures} check${failures === 1 ? '' : 's'} failed.`);
