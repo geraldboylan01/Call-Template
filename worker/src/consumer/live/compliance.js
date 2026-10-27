@@ -102,8 +102,8 @@ export function prohibitedAct(actId) {
  * deterministic works; LLM where it does not.
  * ------------------------------------------------------------------------ */
 
-// Rounding tolerance. "about €300 a week" against a sourced €299.30 is a
-// paraphrase of a sourced figure, not an invention. 1% is wide enough for
+// Rounding tolerance. "about €300 a week" against a sourced weekly rate a few
+// cents under it is a paraphrase of a sourced figure, not an invention. 1% is wide enough for
 // natural rounding and far too narrow to launder a made-up number.
 const FIGURE_TOLERANCE_RATIO = 0.01;
 
@@ -179,7 +179,7 @@ function magnitudeMultiplier(suffix) {
 
 /**
  * Extract the financial figures from a piece of text as canonical numbers.
- * Returns numbers, not strings, so "€299.30", "299.3" and "EUR 299.30" all
+ * Returns numbers, not strings, so "€1,250.50", "1250.5" and "EUR 1,250.50" all
  * collapse to the same value.
  */
 export function extractFinancialFigures(value) {
@@ -214,17 +214,37 @@ export function extractFinancialFigures(value) {
  * The per-session set of figures the model is allowed to voice. Kept as a
  * plain array of numbers behind a small API so the caller cannot accidentally
  * add strings of differing formats.
+ *
+ * This one starts empty. A session builds it before it knows whose plan it is
+ * for, then adds the State Pension rule with `sourceStatePensionRule` once it
+ * does; `createSourcedFigureSet` does both for a caller that already knows.
  */
-export function createSourcedFigureSet() {
-  const rule = publicIrishStatePensionRule();
-  return {
-    values: [
-      rule.weeklyMaximumEur,
-      rule.annualMaximumEur,
-      rule.defaultStartAge,
-      rule.defaultEscalationRate * 100
-    ]
-  };
+export function createEmptySourcedFigureSet() {
+  return { values: [] };
+}
+
+/**
+ * Add the State Pension rule in force for the plan's year, and nothing from any
+ * other year: a figure from the year before or after a plan is not one the
+ * server supplied for it. The year is the plan's, as a year or a date, and is
+ * required. Adding it twice leaves the set as it was.
+ */
+export function sourceStatePensionRule(set, planYearOrDate) {
+  const rule = publicIrishStatePensionRule(planYearOrDate);
+  if (!set || !Array.isArray(set.values)) return set;
+  for (const value of [
+    rule.weeklyMaximumEur,
+    rule.annualMaximumEur,
+    rule.defaultStartAge,
+    rule.defaultEscalationRate * 100
+  ]) {
+    if (!set.values.includes(value)) set.values.push(value);
+  }
+  return set;
+}
+
+export function createSourcedFigureSet(planYearOrDate) {
+  return sourceStatePensionRule(createEmptySourcedFigureSet(), planYearOrDate);
 }
 
 /** Add every financial figure found in free text — a client turn, or tool output. */

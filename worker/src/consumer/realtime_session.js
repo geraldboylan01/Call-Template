@@ -2903,7 +2903,9 @@ export class ConsumerRealtimeSession {
       return {
         ok: true,
         topic: boundaryTopic,
-        explanation: intakeExplanation(boundaryTopic, context.state.meetingBrief),
+        explanation: intakeExplanation(boundaryTopic, context.state.meetingBrief, {
+          planDateIso: context.profile?.assumptions?.calculationDateIso
+        }),
         instruction: 'Answer in one to three sentences, then bridge naturally to nextObjective. Do not add advice, eligibility claims, projections or calculations.'
       };
     }

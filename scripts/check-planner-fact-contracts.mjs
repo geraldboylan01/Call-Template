@@ -48,6 +48,9 @@ import {
 } from '../worker/src/consumer/planner_reconciliation.js';
 import { RELEASED_MODULE_IDS } from './agent-harness/transports.mjs';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 const NOW = '2026-08-16T09:00:00.000Z';
 const pass = (message) => console.info(`[PlannerFactContracts] PASS: ${message}`);
 
@@ -566,7 +569,7 @@ console.info('[PlannerFactContracts] PASS: the planner contract matches what the
  */
 {
   const collectionFields = canonicalCollectionFields();
-  const livePrompt = buildLiveCataloguePrompt();
+  const livePrompt = buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE });
 
   assert.deepEqual(collectionFields.incomeSources, ['grossAnnual', 'netAnnual'],
     'income_sources must expose exactly its two canonical money fields');

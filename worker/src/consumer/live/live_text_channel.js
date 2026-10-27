@@ -173,6 +173,8 @@ export async function renderLiveAssistantText({
   recentTurns = [],
   fallbackQuestion = '',
   dispatchTool,
+  // The plan's own date, which fixes the State Pension rate the prompt states.
+  planDateIso,
   // The operation this reply belongs to. The renderer is a blocking stage of the
   // same typed turn, so it shares that turn's clock and cancellation rather than
   // holding a private twenty seconds beyond it.
@@ -182,7 +184,8 @@ export async function renderLiveAssistantText({
     || 'Could you tell me a little more about that?';
   const instructions = buildLiveCataloguePrompt({
     directModulePlanning: config.modulePlannerMode === 'apply',
-    channel: 'text'
+    channel: 'text',
+    planDateIso
   });
   const tools = liveToolsForConfig(config);
   const controller = new AbortController();

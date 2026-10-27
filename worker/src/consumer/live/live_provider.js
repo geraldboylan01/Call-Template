@@ -71,12 +71,17 @@ function toolsForDirectModulePlanning() {
     });
 }
 
-export function buildLiveSessionConfig(config) {
+/**
+ * `planDateIso` is the plan's own date, `profile.assumptions.calculationDateIso`.
+ * The prompt states the State Pension rate for that plan's year, so a caller that
+ * cannot say whose plan this is cannot build one.
+ */
+export function buildLiveSessionConfig(config, { planDateIso } = {}) {
   const directModulePlanning = config.modulePlannerMode === 'apply';
   return {
     type: 'realtime',
     model: config.realtimeModel,
-    instructions: buildLiveCataloguePrompt({ directModulePlanning }),
+    instructions: buildLiveCataloguePrompt({ directModulePlanning, planDateIso }),
     reasoning: { effort: 'low' },
     output_modalities: ['audio'],
     audio: {

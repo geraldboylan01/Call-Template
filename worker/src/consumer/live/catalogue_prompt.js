@@ -29,7 +29,8 @@ import {
   getSemanticFactDefinition,
   listSemanticFactDefinitions
 } from '../../../../js/planning/semantic_facts.js';
-import { publicIrishStatePensionRule } from '../../../../js/planning/ireland_rules.js';
+import { planYearOf, publicIrishStatePensionRule } from '../../../../js/planning/ireland_rules.js';
+import { statePensionWording } from '../state_pension_wording.js';
 import { realtimeFactValueVocabulary } from '../realtime_fact_mapper.js';
 import { PROHIBITED_ACTS } from './compliance.js';
 
@@ -692,8 +693,9 @@ function toneSection({ channel = 'voice' } = {}) {
   ].join('\n');
 }
 
-function irelandSection() {
-  const rule = publicIrishStatePensionRule();
+function irelandSection(planYear) {
+  const rule = publicIrishStatePensionRule(planYear);
+  const wording = statePensionWording(rule);
   return [
     '## IRELAND',
     '',
@@ -702,9 +704,9 @@ function irelandSection() {
     'If they mention a foreign holding, describe it generically with its country.',
     '',
     'The ONE rate you may quote, because the server supplies it:',
-    `State Pension (Contributory), maximum rate effective ${rule.effectiveFrom}: `
-      + `EUR ${rule.weeklyMaximumEur} a week, EUR ${rule.annualMaximumEur} gross a year, `
-      + `normally from age ${rule.defaultStartAge}, escalating ${rule.defaultEscalationRate * 100}% a year.`,
+    `State Pension (Contributory), maximum rate ${wording.effective}: `
+      + `EUR ${wording.weeklyAmount} a week, EUR ${wording.annualAmount} gross a year, `
+      + `normally from age ${wording.startAge}, escalating ${wording.escalation} a year.`,
     `Always add: ${rule.entitlementNotice}`,
     '',
     'Every other rate, threshold, band or tax rule is off limits — see SAFETY.'
@@ -828,13 +830,21 @@ function directModuleToolsSection({ channel = 'voice' } = {}) {
 const cachedPrompts = new Map();
 
 /**
- * The stable, cacheable system prompt. Identical for every session, so the
- * provider caches the prefix and only the short volatile item varies.
+ * The stable, cacheable system prompt. Identical for every session of the same
+ * plan year, so the provider caches the prefix and only the short volatile item
+ * varies.
+ *
+ * `planDateIso` is the plan's own date (`profile.assumptions.calculationDateIso`),
+ * required, because the one rate this prompt lets the model quote is the State
+ * Pension rate for the plan's year. It is handed in and never read from the
+ * clock, so the prompt for a given plan year is the same whenever it is built.
  */
-export function buildLiveCataloguePrompt({ directModulePlanning = false, channel = 'voice' } = {}) {
-  // Still byte-stable PER CHANNEL, which is what the provider prefix cache
-  // needs. A channel is a different stable prompt, not a per-turn rewrite.
-  const cacheKey = `${directModulePlanning ? 'direct' : 'facts'}:${channel === 'text' ? 'text' : 'voice'}`;
+export function buildLiveCataloguePrompt({ directModulePlanning = false, channel = 'voice', planDateIso } = {}) {
+  // Still byte-stable PER CHANNEL AND PLAN YEAR, which is what the provider
+  // prefix cache needs. A channel is a different stable prompt, not a
+  // per-turn rewrite, and so is a plan year: there are only ever a few.
+  const planYear = planYearOf(planDateIso);
+  const cacheKey = `${directModulePlanning ? 'direct' : 'facts'}:${channel === 'text' ? 'text' : 'voice'}:${planYear}`;
   if (cachedPrompts.has(cacheKey)) return cachedPrompts.get(cacheKey);
 
   const modules = liveConsumerModules();
@@ -870,7 +880,7 @@ export function buildLiveCataloguePrompt({ directModulePlanning = false, channel
     '',
     safetySection(),
     '',
-    irelandSection(),
+    irelandSection(planYear),
     '',
     directModulePlanning ? directModuleToolsSection({ channel }) : toolsSection(),
     '',

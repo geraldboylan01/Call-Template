@@ -27,8 +27,25 @@ export function statePensionRuleForYear(year) {
     annualMaximumEur: socialWelfareAnnualEur(rate.weeklyEur),
     effectiveFrom: rate.effectiveFrom,
     status: rate.status,
-    announcedBy: rate.announcedBy ?? null
+    announcedBy: rate.announcedBy ?? null,
+    sources: rate.sources
   });
+}
+
+/**
+ * The calendar year of a plan, read from the year itself (2027) or from a date
+ * ("2027-03-14", or a full ISO timestamp). It never reads the clock: a plan's
+ * year is part of the plan, so whatever builds wording for a plan has to be
+ * handed it, and a missing one is an error rather than "this year".
+ */
+export function planYearOf(planYearOrDate) {
+  const year = typeof planYearOrDate === 'number'
+    ? planYearOrDate
+    : Number(/^(\d{4})(?:-\d{2}-\d{2}(?:T.*)?)?$/.exec(String(planYearOrDate ?? ''))?.[1]);
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+    throw new Error(`A plan year or an ISO date is required; received ${JSON.stringify(planYearOrDate ?? null)}.`);
+  }
+  return year;
 }
 
 export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
@@ -169,10 +186,31 @@ export function statePensionAnnualAmount(fraction = 1) {
     * normalizeStatePensionFraction(fraction);
 }
 
-export function publicIrishStatePensionRule() {
+/**
+ * The State Pension rule as the consumer lanes state it, for the plan's own
+ * year: the rate in force that year, or the one the Budget has announced for it.
+ *
+ * The year is required, as a year or a date, and is never defaulted from the
+ * clock, so a test never changes its answer on 1 January. The rate, its
+ * effective date and, while it is only announced, the Budget that announced it
+ * all come from `statePensionRuleForYear`; nothing here is typed.
+ */
+export function publicIrishStatePensionRule(planYearOrDate) {
+  const rule = statePensionRuleForYear(planYearOf(planYearOrDate));
+  const [rateSource] = rule.sources;
   return Object.freeze({
     catalogueVersion: IRELAND_RULES_CATALOGUE_VERSION,
     ...IRISH_STATE_PENSION_CONTRIBUTORY,
-    source: { ...IRISH_STATE_PENSION_CONTRIBUTORY.source }
+    year: rule.year,
+    effectiveFrom: rule.effectiveFrom,
+    weeklyMaximumEur: rule.weeklyMaximumEur,
+    annualMaximumEur: rule.annualMaximumEur,
+    status: rule.status,
+    announcedBy: rule.announcedBy,
+    source: {
+      ...IRISH_STATE_PENSION_CONTRIBUTORY.source,
+      ratesTitle: rateSource.title,
+      ratesUrl: rateSource.url
+    }
   });
 }
