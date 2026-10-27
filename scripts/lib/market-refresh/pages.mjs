@@ -16,7 +16,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-export const USER_AGENT = 'PlaneirFiguresJob/1.0 (+https://github.com/geraldboylan01/Call-Template; weekly read of published rates)';
+const USER_AGENT = 'PlaneirFiguresJob/1.0 (+https://github.com/geraldboylan01/Call-Template; weekly read of published rates)';
 
 /** A page that could not be read. The message is for the PR, so it says why in plain words. */
 export class ReadError extends Error {}
@@ -39,7 +39,7 @@ export function decodeEntities(text) {
 }
 
 /** One cell's text: no zero-width marks, non-breaking spaces as spaces, runs of space as one. */
-export function tidyCell(text) {
+function tidyCell(text) {
   return text.replace(/[​‌‍﻿]/g, '').replace(/[   ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -66,7 +66,7 @@ export function pageFromText(url, text, how = 'saved browser text') {
  * A PDF as cells, read with pdf.js (a dev dependency, loaded only when a PDF is
  * read). Text pieces on the same line, within two points, are one line.
  */
-export async function pageFromPdf(url, bytes, how = 'network PDF') {
+async function pageFromPdf(url, bytes, how = 'network PDF') {
   let pdfjs;
   try {
     pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');

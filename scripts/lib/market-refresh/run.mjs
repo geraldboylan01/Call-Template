@@ -57,7 +57,7 @@ function git(run, args, { allowFail = false } = {}) {
 }
 
 /** Things that must be true before the job writes anything it will commit. */
-export function preflightForPullRequest(run, { base, today }) {
+function preflightForPullRequest(run, { base, today }) {
   if (git(run, ['status', '--porcelain']).stdout.trim() !== '') {
     throw new Error('The working tree has changes. Run the job from a clean checkout (a fresh worktree of main is best).');
   }
