@@ -45,6 +45,8 @@ import {
   touchRealtimeLease
 } from '../realtime_repository.js';
 import {
+  getCurrentProfile,
+  getSessionRow,
   releaseConsumerProviderCostNotSent,
   settleConsumerProviderCostKnown,
   settleConsumerProviderCostUnknown
@@ -83,9 +85,10 @@ import {
   addSourcedFigures,
   addSourcedFiguresFromText,
   correctionInstruction,
-  createSourcedFigureSet,
+  createEmptySourcedFigureSet,
   reviewAssistantTurn,
   scanAssistantSpeech,
+  sourceStatePensionRule,
   supervisorVerdictIsActionable
 } from './compliance.js';
 
@@ -484,8 +487,11 @@ export class ConsumerLiveSession {
     this.lastTouchAt = 0;
     this.activeToolCalls = 0;
     this.violationCount = 0;
-    this.sourcedFigures = createSourcedFigureSet();
-    this.currentResponseSourcedFigures = createSourcedFigureSet();
+    // Empty until the meeting knows whose plan it is: the State Pension rate the
+    // model may state is the one for the plan's year, so it is added from the
+    // plan's date at activation, and again on a rebuild. See `planDateIso`.
+    this.sourcedFigures = createEmptySourcedFigureSet();
+    this.currentResponseSourcedFigures = createEmptySourcedFigureSet();
     this.pendingClientTranscription = false;
     this.pendingClientTranscriptionUnavailable = false;
     this.currentResponseAwaitingClientTranscription = false;
@@ -658,7 +664,38 @@ export class ConsumerLiveSession {
       }
       const figures = await this.state.storage.get('sourcedFigures');
       if (Array.isArray(figures)) this.sourcedFigures = { values: figures };
+      // The stored list keeps only its last entries, and the rule is the first
+      // thing in it, so the rule for the plan's year is put back rather than
+      // trusted to have survived.
+      if (this.meta?.planDateIso) this.sourceStatePensionRuleForPlan(this.meta.planDateIso);
     });
+  }
+
+  sourceStatePensionRuleForPlan(planDateIso) {
+    sourceStatePensionRule(this.sourcedFigures, planDateIso);
+    sourceStatePensionRule(this.currentResponseSourcedFigures, planDateIso);
+  }
+
+  /**
+   * The date of the plan this meeting is for: `calculationDateIso` on the
+   * profile, set when the plan began and not the day the meeting is held. It is
+   * what fixes the State Pension rate the meeting states and checks against, so
+   * it is read from the plan, never from the clock.
+   *
+   * Kept on the lease from activation. A meeting that began before that was kept
+   * reads it from the profile once and keeps it from then on.
+   */
+  async planDateIso() {
+    if (!this.meta) throw new ConsumerError(409, 'live_lease_unavailable', 'The live meeting is not active.');
+    if (!this.meta.planDateIso) {
+      const sessionRow = await getSessionRow(this.env, this.meta.sessionId);
+      if (!sessionRow) throw new ConsumerError(404, 'session_not_found', 'That planning session no longer exists.');
+      const profile = await getCurrentProfile(this.env, sessionRow);
+      this.meta = { ...this.meta, planDateIso: profile.assumptions.calculationDateIso };
+      await this.state.storage.put('lease', this.meta);
+      this.sourceStatePensionRuleForPlan(this.meta.planDateIso);
+    }
+    return this.meta.planDateIso;
   }
 
   async fetch(request) {
@@ -757,6 +794,7 @@ export class ConsumerLiveSession {
     };
     this.textChannel = textChannel;
     await this.state.storage.put('lease', this.meta);
+    await this.planDateIso();
     // A typed meeting has no sideband to connect and nothing to keep alive
     // between turns: each turn is its own request. The alarm is still armed,
     // because the hard expiry still has to be able to close an abandoned one.
@@ -805,6 +843,7 @@ export class ConsumerLiveSession {
     const rendered = await renderLiveAssistantText({
       env: this.env,
       config,
+      planDateIso: await this.planDateIso(),
       recentTurns: [],
       fallbackQuestion: TYPED_OPENING_FALLBACK,
       // An opening turn has nothing to look up. Refusing the call outright is
@@ -2427,6 +2466,7 @@ export class ConsumerLiveSession {
     const rendered = await renderLiveAssistantText({
       env: this.env,
       config,
+      planDateIso: await this.planDateIso(),
       // Same operation as the planner stage above: one clock and one
       // cancellation signal for the whole typed turn.
       operation: this.directModulePlanningOperation,

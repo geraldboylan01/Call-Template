@@ -1,3 +1,5 @@
+> Historical reference: conversational AI intake was retired on 27 October 2026. The active product goes from forms to completed analysis. These are records of the earlier beta, not current activation instructions. See [retirement and lessons](archive/conversational-intake/README.md).
+
 # Planeir Consumer Journey Operations
 
 This runbook covers the separately feature-flagged consumer planning journey at

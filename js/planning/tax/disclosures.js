@@ -113,10 +113,13 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
   TAX_RULES_HELD: {
     kind: 'standing',
     label: 'Tax rules used',
-    render: ({ params, rules }) => (
-      `They use Irish tax rules for ${params?.rulesYear ?? rules.rulesYear} (${params?.enactedBy ?? rules.enactedBy}). `
-      + 'Later years keep the same bands, credits and thresholds in euro terms, so if future Budgets raise them your tax would be lower than shown.'
-    )
+    render: ({ params, rules }) => {
+      // A year's rules are law once an Act has passed. Before that they are the Budget's, and the text says so.
+      const enactedBy = params?.enactedBy ?? rules.enactedBy;
+      const basis = enactedBy ?? `announced in ${params?.announcedBy ?? rules.announcedBy}, not yet law`;
+      return `They use Irish tax rules for ${params?.rulesYear ?? rules.rulesYear} (${basis}). `
+        + 'Later years keep the same bands, credits and thresholds in euro terms, so if future Budgets raise them your tax would be lower than shown.';
+    }
   },
   TAX_LEGISLATED_CHANGES: {
     kind: 'standing',
@@ -206,6 +209,14 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
     label: 'Age marginal relief',
     render: ({ params, rules }) => (
       `In ${formatTaxYears(params?.years)}, marginal relief for people over ${rules.ageExemption.fromAge} lowers the income tax due.`
+    )
+  },
+  IT_NURSING_HOME_RELIEF: {
+    kind: 'applied',
+    label: 'Nursing home fees',
+    render: ({ params }) => (
+      `In ${formatTaxYears(params?.years)}, nursing home fees paid by the household are taken off income for income tax, `
+      + 'so they are relieved at the highest rate of tax paid. USC and PRSI are not reduced, and the HSE’s share gets no relief.'
     )
   },
   PRSI_UNTIL_SPC: {
@@ -507,7 +518,7 @@ export const TAX_NOT_INCLUDED = Object.freeze([
   Object.freeze({
     id: 'other_credits',
     short: 'other tax credits and reliefs',
-    text: 'Other tax credits and reliefs, including medical expenses, rent, mortgage interest, home carer, dependent relative, blind person and single person child carer credits, and higher exemption limits for dependent children.'
+    text: 'Other tax credits and reliefs, including health expenses other than nursing home fees, rent, mortgage interest, home carer, dependent relative, blind person and single person child carer credits, and higher exemption limits for dependent children.'
   }),
   Object.freeze({
     id: 'medical_card_usc',

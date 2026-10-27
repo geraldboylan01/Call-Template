@@ -36,7 +36,8 @@ const TAX_ITEM_TYPES = Object.freeze([
   'arfDistribution',
   'employment',
   'employmentPensionContribution',
-  'rentalProfit'
+  'rentalProfit',
+  'nursingHomeExpenses'
 ]);
 
 /** Events a caller may enter: a pension crystallisation, or the sale of a property. */
@@ -459,6 +460,7 @@ function emptyIncome() {
     employment: 0,
     employmentPensionContribution: 0,
     rentalProfit: 0,
+    nursingHomeExpenses: 0,
     lumpSumScheduleE: 0
   };
 }
@@ -700,6 +702,7 @@ export function computeTaxYear({ state = null, input, assumptions = null } = {})
     heldForward: rules.heldForward,
     rulesStatus: rules.status,
     enactedBy: rules.enactedBy,
+    announcedBy: rules.announcedBy,
     sftBasis: rules.sftBasis,
     prsiRate: rules.prsi.rate,
     assumptionsVersion: assumptions?.version || PLANEIR_ASSUMPTIONS_VERSION,

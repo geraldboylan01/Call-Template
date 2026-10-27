@@ -13,6 +13,7 @@ import {
   PLANEIR_ASSUMPTIONS,
   PLANEIR_ASSUMPTIONS_VERSION,
   approvedCollegeScenarios,
+  assumptionLabel,
   assumptionRecord,
   resolvePlanningAssumptions
 } from '../js/planning/planeir_assumptions.js';
@@ -245,6 +246,86 @@ check('living away costs three times living at home in today’s money', () => {
   const atHome = scenarios.find((item) => item.id === 'living_at_home');
   const away = scenarios.find((item) => item.id === 'living_away');
   assert.equal(away.annualCostTodayPerChild / atHome.annualCostTodayPerChild, 3);
+});
+
+
+// ---------------------------------------------------------------------------
+// Care costs (the Fair Deal module's central figures)
+// ---------------------------------------------------------------------------
+
+const CARE = PLANEIR_ASSUMPTIONS.care;
+const NOT_FOR_A_CLIENT = [
+  /\byou should\b/i, /\bwe recommend\b/i, /\bbest\b/i, /\bideal\b/i, /\boptimal\b/i,
+  /\bbank of ireland\b/i, /\baib\b/i, /\bptsb\b/i, /\brevolut\b/i, /\bzurich\b/i, /\birish life\b/i, /\bdavy\b/i
+];
+
+function careStrings() {
+  return [
+    CARE.agreedPrices.basis, CARE.agreedPrices.disclosure, CARE.relativeCare.basis,
+    CARE.ownCareStress.basis, PLANEIR_ASSUMPTIONS.inflation.educationBasis,
+    ...['careFeeGrowth', 'careWeeklyFee', 'ownCareStressAge', 'ownCareStressYears']
+      .map((key) => assumptionRecord(key).reason),
+    ...['careFeeGrowthRate', 'careWeeklyFee', 'ownCareStressAge', 'ownCareStressYears'].map(assumptionLabel)
+  ];
+}
+
+check('care fee growth is the education rate, with no separate care rate', () => {
+  const record = assumptionRecord('careFeeGrowth');
+  assert.equal(record.key, 'careFeeGrowthRate');
+  assert.equal(record.value, PLANEIR_ASSUMPTIONS.inflation.educationRate);
+  assert.equal(record.value, 0.04);
+  assert.equal(record.reason, assumptionRecord('educationInflation').reason);
+  assert.match(PLANEIR_ASSUMPTIONS.inflation.educationBasis, /education and care planning/);
+  assert.ok(!Object.keys(CARE).some((key) => /growth|inflation|rate/i.test(key)),
+    'the care entry holds no rate of its own');
+});
+
+check('the agreed prices are the HSE list, with every county and a national average', () => {
+  const prices = CARE.agreedPrices;
+  assert.equal(prices.listNumber, 230);
+  assert.equal(prices.listDate, '2026-09-04');
+  assert.equal(prices.nationalWeeklyAverage, 1312);
+  assert.equal(prices.checkedOn, '2026-10-21');
+  const counties = Object.entries(prices.countyWeeklyAverages);
+  assert.equal(counties.length, 26);
+  assert.equal(counties.reduce((total, [, county]) => total + county.homes, 0), prices.homesInList);
+  counties.forEach(([name, county]) => {
+    assert.ok(county.lowest <= county.average && county.average <= county.highest, `${name}: average inside its range`);
+    assert.ok(county.lowest >= prices.lowestWeekly && county.highest <= prices.highestWeekly, `${name}: inside the national range`);
+  });
+  // The national figure is the simple average over all 411 homes, so the
+  // county averages, weighted by their homes, must land on it to the euro.
+  const weighted = counties.reduce((total, [, county]) => total + (county.homes * county.average), 0) / prices.homesInList;
+  assert.ok(Math.abs(weighted - prices.nationalWeeklyAverage) < 1, `county averages weigh to ${weighted.toFixed(2)}`);
+  const record = assumptionRecord('careWeeklyFee');
+  assert.equal(record.value, 1312);
+  assert.match(record.reason, /list 230/);
+  assert.match(record.reason, new RegExp(PLANEIR_ASSUMPTIONS_VERSION));
+});
+
+check('relative care is 5 years with 3 and 10 beside it, and the stress is care from 85 to 90', () => {
+  assert.equal(CARE.relativeCare.defaultYears, 5);
+  assert.deepEqual([...CARE.relativeCare.compareYears], [3, 10]);
+  assert.equal(CARE.ownCareStress.startAge, 85);
+  assert.equal(CARE.ownCareStress.years, 5);
+  assert.equal(CARE.ownCareStress.approvedOn, '2026-10-21');
+  assert.deepEqual([...CARE.ownCareStress.sources], ['igeesNhss2019']);
+  assert.equal(assumptionRecord('ownCareStressAge').value, 85);
+  assert.equal(assumptionRecord('ownCareStressYears').value, 5);
+  assert.match(CARE.ownCareStress.basis, /not a forecast/);
+});
+
+check('the care figures are frozen, labelled and free of banned wording or provider names', () => {
+  assert.ok(Object.isFrozen(CARE) && Object.isFrozen(CARE.agreedPrices.countyWeeklyAverages));
+  assert.ok(Object.isFrozen(CARE.agreedPrices.countyWeeklyAverages.Dublin));
+  ['careFeeGrowthRate', 'careWeeklyFee', 'ownCareStressAge', 'ownCareStressYears'].forEach((key) => {
+    assert.ok(assumptionLabel(key), `${key} has a plain label`);
+  });
+  careStrings().forEach((text) => {
+    NOT_FOR_A_CLIENT.forEach((pattern) => assert.ok(!pattern.test(text), `"${text}" matches ${pattern}`));
+    assert.ok(!/€\d{4,}/.test(text), `"${text}" has an amount without a thousands separator`);
+    assert.ok(!/\bp\.a\./i.test(text), `"${text}" says p.a.`);
+  });
 });
 
 if (failures > 0) {

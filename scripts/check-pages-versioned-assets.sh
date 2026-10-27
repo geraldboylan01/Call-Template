@@ -93,7 +93,6 @@ app_js="$(fetch_html "${SITE_ORIGIN}/js/app.js?v=${EXPECTED_VERSION}")"
 landing_js="$(fetch_html "${SITE_ORIGIN}/js/landing.js?v=${EXPECTED_VERSION}")"
 render_js="$(fetch_html "${SITE_ORIGIN}/js/render.js?v=${EXPECTED_VERSION}")"
 session_viewer_js="$(fetch_html "${SITE_ORIGIN}/js/session_viewer.js?v=${EXPECTED_VERSION}")"
-plan_entry_js="$(fetch_html "${SITE_ORIGIN}/js/plan/app.js?v=${EXPECTED_VERSION}")"
 
 assert_contains "$landing_html" "<title>Planeir | Private financial education</title>" "landing title"
 assert_contains "$landing_html" 'href="./apply/"' "landing apply link"
@@ -137,18 +136,13 @@ assert_contains "$render_js" "./education_svg.js?v=${EXPECTED_VERSION}" "render 
 assert_contains "$render_js" "./report.js?v=${EXPECTED_VERSION}" "render -> report module import"
 assert_contains "$session_viewer_js" "./app.js?v=${EXPECTED_VERSION}" "session viewer dynamic import"
 assert_contains "$plan_html" '<meta name="robots" content="noindex, nofollow"' "consumer plan noindex"
-assert_contains "$plan_html" "../styles/plan.css?v=${EXPECTED_VERSION}" "consumer plan stylesheet"
-assert_contains "$plan_html" "../js/plan/app.js?v=${EXPECTED_VERSION}" "consumer plan entry script"
 assert_contains "$plan_html" "../assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "consumer plan wordmark"
-assert_contains "$plan_html" './privacy-legacy.html' "invited consumer privacy link"
+assert_contains "$plan_html" '../plan/privacy-legacy.html' "invited consumer privacy link"
 assert_not_contains "$plan_html" 'http://127.0.0.1:8787' "consumer plan local API origin"
 assert_not_contains "$plan_html" 'http://localhost:8787' "consumer plan localhost API origin"
 assert_contains "$plan_privacy_html" '<link rel="canonical" href="https://planeir.ie/privacy/"' "shared workspace privacy canonical"
 assert_contains "$plan_privacy_html" "../styles/workspace.css?v=${EXPECTED_VERSION}" "workspace privacy stylesheet"
 assert_contains "$plan_privacy_html" "../assets/brand/planeir-lockup-light.svg?v=${EXPECTED_VERSION}" "consumer privacy wordmark"
-assert_contains "$plan_entry_js" "./api.js?v=${EXPECTED_VERSION}" "consumer plan -> API module import"
-assert_contains "$plan_entry_js" "./store.js?v=${EXPECTED_VERSION}" "consumer plan -> store module import"
-assert_contains "$plan_entry_js" "./views.js?v=${EXPECTED_VERSION}" "consumer plan -> views module import"
 
 
 # Include every deployed document, including legacy redirect entry points.
@@ -178,5 +172,8 @@ assert_contains "$alignment_js" "./planeir_brand_artwork.js?v=${EXPECTED_VERSION
 for icon in favicon.svg favicon-32.png favicon.ico apple-touch-icon.png assets/brand/planeir-social-card-newgrange.png assets/brand/planeir-lockup-light.svg js/brand_header.js; do
   curl --fail --silent --show-error --output /dev/null "${SITE_ORIGIN}/${icon}?v=${EXPECTED_VERSION}"
 done
+
+assert_contains "$plan_html" 'href="../apply/"' "retired planning page form link"
+assert_not_contains "$plan_html" '<script' "retired planning page has no conversation client"
 
 echo "Verified versioned Pages asset URLs for ${SITE_ORIGIN} (${EXPECTED_VERSION})"

@@ -47,6 +47,9 @@ import {
 import { createSourcedFigureSet, addSourcedFiguresFromText, scanAssistantSpeech } from '../worker/src/consumer/live/compliance.js';
 import { directModuleTestInputs } from './live-harness/direct-fixtures.mjs';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 let checks = 0;
 const pass = (message) => { checks += 1; console.info(`[LiveAnaphoricEvidence] PASS: ${message}`); };
 const ok = (condition, message) => { checks += 1; assert.ok(condition, message); };
@@ -161,11 +164,11 @@ pass('an unresolvable turn reference is refused as firmly as a misquote');
 // The loop is closed by the compliance tripwire, not by trust: an adviser turn
 // may only carry a figure the client already sourced. Without that, citing
 // adviser speech would let the lane launder an invented number.
-const sourced = createSourcedFigureSet();
+const sourced = createSourcedFigureSet(TEST_PLAN_DATE);
 addSourcedFiguresFromText(sourced, 'My mortgage balance is 240000 euro.');
 ok(!scanAssistantSpeech(ADVISER_READS_BACK, sourced).tripped,
   'the adviser may read back a figure the client sourced');
-const unsourced = scanAssistantSpeech(ADVISER_READS_BACK, createSourcedFigureSet());
+const unsourced = scanAssistantSpeech(ADVISER_READS_BACK, createSourcedFigureSet(TEST_PLAN_DATE));
 ok(unsourced.tripped && unsourced.actId === 'unsourced_figure',
   'the adviser may NOT state a figure the client never gave, so there is nothing to cite');
 pass('adviser-turn citation is safe because unsourced adviser figures are cancelled before they are spoken');

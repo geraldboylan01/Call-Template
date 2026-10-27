@@ -34,6 +34,9 @@ import {
 import worker from '../worker/src/index.js';
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 const root = resolve(new URL('..', import.meta.url).pathname);
 const fixture = JSON.parse(readFileSync(
   resolve(root, 'scripts/fixtures/module-catalogue-authoring-identity.json'),
@@ -483,7 +486,7 @@ const provisionedEnv = {
 };
 
 const manifestBeforeDrafts = JSON.stringify(MODULE_MANIFEST);
-const promptBeforeDrafts = buildLiveCataloguePrompt();
+const promptBeforeDrafts = buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE });
 const mortgageCandidate = structuredClone(MODULE_MANIFEST.find((entry) => entry.moduleId === MODULE_IDS.MORTGAGE));
 mortgageCandidate.consumerLanguage.consumerOfferDescription = 'compare the recorded mortgage using reviewed candidate wording';
 mortgageCandidate.consumerLanguage.consumerShortLabel = 'a reviewed candidate mortgage comparison';
@@ -744,7 +747,7 @@ const specPreview = await callAuthoring(
 assert.match(specPreview.payload.previewUnavailableReason, /only for an existing registered-module manifest edit/i);
 
 assert.equal(JSON.stringify(MODULE_MANIFEST), manifestBeforeDrafts);
-assert.equal(buildLiveCataloguePrompt(), promptBeforeDrafts);
+assert.equal(buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE }), promptBeforeDrafts);
 
 // Full Worker smoke: origin, adviser login, CSRF, no-store, preflight and the
 // route-specific persistent rate limit all execute through the actual entry point.

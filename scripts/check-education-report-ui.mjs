@@ -20,7 +20,7 @@ const capabilities = {
   advisor: await buildPublishedCapabilityToken(encrypted.advisorSecretB64u, 'advisor')
 };
 const publishedId = 'report_snapshot_fixture';
-const server = await startPreviewServer(resolve('.'));
+const server = await startPreviewServer(resolve(process.env.PLANEIR_REPORT_PREVIEW_ROOT || '.'));
 let browser;
 try {
   browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
@@ -33,6 +33,16 @@ try {
       if (staff) await context.addCookies([{ name: 'planeir_advisor_session', value: 'fixture-staff', domain: '127.0.0.1', path: '/' }]);
       const page = await context.newPage(), errors = [];
       page.on('pageerror', error => errors.push(error.message));
+      if (process.env.PLANEIR_REPORT_PREVIEW_ROOT) {
+        // The production build removes development API origins from its CSP.
+        // This local fixture intercepts that API at 127.0.0.1:8787; allow only
+        // that fixture origin while exercising the otherwise unchanged build.
+        await context.route('**/app/education-call-report.html*', async route => {
+          const response = await route.fetch();
+          const body = (await response.text()).replace("connect-src 'self'", "connect-src 'self' http://127.0.0.1:8787");
+          await route.fulfill({ response, body });
+        });
+      }
       await context.route('**/api/published-sessions/**', async route => {
         const request = route.request(), path = new URL(request.url()).pathname;
         requests.push({ path, headers: request.headers() });

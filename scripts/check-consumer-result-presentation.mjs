@@ -59,7 +59,7 @@ class ShimNode {
 globalThis.document = { createElement: (tag) => new ShimNode(tag), getElementById: () => null };
 globalThis.window = { location: { hash: '' }, matchMedia: () => ({ matches: false }) };
 
-const { createResultsView } = await import('../js/plan/views.js');
+const { createReadOnlyResultsView: createResultsView } = await import('../js/results/view.js');
 
 let checks = 0;
 const check = (label, condition, detail = '') => {
@@ -68,7 +68,8 @@ const check = (label, condition, detail = '') => {
 };
 
 const render = (results) => createResultsView({
-  analysis: { results },
+  analysis: { results, profileRevision: 1, status: 'complete' },
+  session: { currentProfileRevision: 1 },
   analysisPlan: { moduleSlots: results.map((item) => ({ moduleId: item.moduleId })) },
   bootstrap: { handoffEnabled: false },
   stage: 'results'

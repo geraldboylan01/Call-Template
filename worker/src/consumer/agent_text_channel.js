@@ -181,7 +181,9 @@ async function dispatchToolCall({ env, config, context, call }) {
     return {
       ok: true,
       topic,
-      explanation: intakeExplanation(topic, context.state.meetingBrief)
+      explanation: intakeExplanation(topic, context.state.meetingBrief, {
+        planDateIso: context.profile?.assumptions?.calculationDateIso
+      })
     };
   }
   if (call.name === 'get_meeting_brief') {
