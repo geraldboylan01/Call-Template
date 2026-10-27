@@ -640,7 +640,9 @@ function collectHousePurchase(out) {
 function collectPlaneirAssumptions(out) {
   const add = entryBuilder({ id: 'planeir_assumptions', version: PLANEIR_ASSUMPTIONS_VERSION }, out);
   const a = PLANEIR_ASSUMPTIONS;
-  const row = (field, label, value, unit, basis, usedBy) => add({
+  // An assumption approved on its own day (its own `approvedOn`) carries that day; the rest carry the set's.
+  const approvedText = (day) => `Planeir central planning assumptions, approved ${dateShown(day)}`;
+  const row = (field, label, value, unit, basis, usedBy, ownApprovedOn = null) => add({
     id: `planeir.assumption.${field}`,
     quantity: `planeir.assumption.${field}`,
     label,
@@ -649,16 +651,16 @@ function collectPlaneirAssumptions(out) {
     status: 'approved',
     kind: 'planeir_assumption',
     effectiveFrom: null,
-    sources: [PLANEIR_SOURCE(basis)],
-    checkedOn: a.approvedOn,
-    checkedOnFrom: 'catalogue',
+    sources: [PLANEIR_SOURCE(ownApprovedOn ? approvedText(ownApprovedOn) : basis)],
+    checkedOn: ownApprovedOn ?? a.approvedOn,
+    checkedOnFrom: ownApprovedOn ? 'own' : 'catalogue',
     usedBy
   });
-  const approved = `Planeir central planning assumptions, approved ${dateShown(a.approvedOn)}`;
+  const approved = approvedText(a.approvedOn);
   row('investment_growth', 'Long-term investment growth assumed, before inflation', a.investment.nominalGrowthRate, 'rate_a_year', approved, ['pension_projection']);
   row('general_inflation', 'General inflation assumed', a.inflation.generalRate, 'rate_a_year', approved, ['pension_projection', 'net_retirement_cashflow', 'college_funding', 'future_cost_fund']);
   row('education_inflation', 'Education cost inflation assumed', a.inflation.educationRate, 'rate_a_year', approved, ['college_funding', 'future_cost_fund', 'goals_and_resources']);
-  row('net_retirement_present_value_rate', 'After-tax growth used to work out the fund needed for retirement spending', a.netRetirement.presentValueRate, 'rate_a_year', approved, ['net_retirement_cashflow']);
+  row('net_retirement_present_value_rate', 'After-tax growth used to work out the fund needed for retirement spending', a.netRetirement.presentValueRate, 'rate_a_year', approved, ['net_retirement_cashflow'], a.netRetirement.approvedOn);
   row('college_start_age', 'Age a child is assumed to start college', a.collegeFunding.startAge, 'age', approved, ['college_funding', 'goals_and_resources']);
   row('college_duration_years', 'Years of college assumed for each child', a.collegeFunding.durationYears, 'years', approved, ['college_funding', 'goals_and_resources']);
   for (const scenario of a.collegeFunding.scenarios) {

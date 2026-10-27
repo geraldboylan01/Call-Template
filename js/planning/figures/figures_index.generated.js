@@ -29,7 +29,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "ie_market",
-    "version": "ie-market-2026.1",
+    "version": "ie-market-2026.2",
     "count": 3
   }
 ].map(Object.freeze));
@@ -9690,17 +9690,17 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "approved",
     "effectiveFrom": null,
     "source": {
-      "title": "Planeir central planning assumptions, approved 21 October 2026",
+      "title": "Planeir central planning assumptions, approved 27 October 2026",
       "url": null
     },
     "sources": [
       {
-        "title": "Planeir central planning assumptions, approved 21 October 2026",
+        "title": "Planeir central planning assumptions, approved 27 October 2026",
         "url": null
       }
     ],
-    "checkedOn": "2026-10-21",
-    "checkedOnFrom": "catalogue",
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
       "version": "planeir-assumptions-1.6.0"
@@ -9975,11 +9975,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": null
       }
     ],
-    "checkedOn": "2026-10-22",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_market",
-      "version": "ie-market-2026.1"
+      "version": "ie-market-2026.2"
     },
     "usedBy": [
       "future_cost_fund",
@@ -9995,11 +9995,11 @@ export const FIGURES_INDEX = Object.freeze([
     "observations": [
       {
         "sourceLabel": "Bank of Ireland, Instant Access Demand (balances up to €5,000)",
-        "url": "https://personalbanking.bankofireland.com/app/uploads/Deposits-Interest-Rate-Table-14th-September-2026-A.pdf",
+        "url": "https://personalbanking.bankofireland.com/app/uploads/Deposit-Interest-Rates-Table-22nd-October-2026-A.pdf",
         "value": 0.001,
         "quotedAs": "AER, variable, before DIRT",
-        "effective": "2026-09-14",
-        "retrievedOn": "2026-10-22"
+        "effective": "2026-10-22",
+        "retrievedOn": "2026-10-27"
       },
       {
         "sourceLabel": "AIB, Personal Demand Deposit Account",
@@ -10031,11 +10031,11 @@ export const FIGURES_INDEX = Object.freeze([
         "url": null
       }
     ],
-    "checkedOn": "2026-10-22",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_market",
-      "version": "ie-market-2026.1"
+      "version": "ie-market-2026.2"
     },
     "usedBy": [
       "house_purchase"
@@ -10050,11 +10050,11 @@ export const FIGURES_INDEX = Object.freeze([
     "observations": [
       {
         "sourceLabel": "Bank of Ireland, SuperSaver Standard Regular Saver (balances up to €29,999)",
-        "url": "https://personalbanking.bankofireland.com/app/uploads/Deposits-Interest-Rate-Table-14th-September-2026-A.pdf",
+        "url": "https://personalbanking.bankofireland.com/app/uploads/Deposit-Interest-Rates-Table-22nd-October-2026-A.pdf",
         "value": 0.02,
         "quotedAs": "AER, variable, before DIRT",
-        "effective": "2026-09-14",
-        "retrievedOn": "2026-10-22"
+        "effective": "2026-10-22",
+        "retrievedOn": "2026-10-27"
       },
       {
         "sourceLabel": "AIB, Online Regular Saver (up to €1,000 a month)",
@@ -10078,12 +10078,12 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "ie.market.mortgage.illustration_rate",
     "quantity": "ie.market.mortgage.illustration_rate",
     "label": "Interest rate used to illustrate mortgage repayments",
-    "value": 0.035,
-    "valueShown": "3.5% a year",
+    "value": 0.04,
+    "valueShown": "4% a year",
     "unit": "rate_a_year",
     "kind": "market",
     "status": "current",
-    "effectiveFrom": "2026-07-12",
+    "effectiveFrom": "2026-10-27",
     "source": {
       "title": "Published rates of large Irish banks and lenders",
       "url": null
@@ -10094,32 +10094,32 @@ export const FIGURES_INDEX = Object.freeze([
         "url": null
       }
     ],
-    "checkedOn": "2026-10-22",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_market",
-      "version": "ie-market-2026.1"
+      "version": "ie-market-2026.2"
     },
     "usedBy": [
       "house_purchase"
     ],
     "method": {
       "kind": "reviewed",
-      "value": 0.035,
-      "reviewedOn": "2026-07-11",
+      "value": 0.04,
+      "reviewedOn": "2026-10-27",
       "driftWarnAt": 0.002
     },
-    "changedOn": "2026-07-12",
+    "changedOn": "2026-10-27",
     "reviewEveryDays": 35,
-    "figureVersion": "1.0.0",
+    "figureVersion": "1.1.0",
     "observations": [
       {
         "sourceLabel": "Bank of Ireland, 3 Year Fixed, first-time buyer, BER C",
         "url": "https://personalbanking.bankofireland.com/borrow/mortgages/mortgage-interest-rates/",
         "value": 0.04,
         "quotedAs": "interest rate, fixed for three years",
-        "effective": null,
-        "retrievedOn": "2026-10-22"
+        "effective": "2025-11-26",
+        "retrievedOn": "2026-10-27"
       },
       {
         "sourceLabel": "AIB, 3 Year LTV Fixed, over 50% and up to 80%",
@@ -10127,21 +10127,21 @@ export const FIGURES_INDEX = Object.freeze([
         "value": 0.036,
         "quotedAs": "interest rate, fixed for three years",
         "effective": null,
-        "retrievedOn": "2026-10-22"
+        "retrievedOn": "2026-10-27"
       },
       {
         "sourceLabel": "PTSB, 3 Year Fixed Rate New Business, over 60% and up to 80%",
         "url": "https://www.ptsb.ie/mortgages/mortgage-interest-rates/",
-        "value": 0.0375,
+        "value": 0.0405,
         "quotedAs": "borrowing rate, fixed for three years",
-        "effective": "2026-01-20",
-        "retrievedOn": "2026-10-22"
+        "effective": "2026-10-22",
+        "retrievedOn": "2026-10-27"
       }
     ],
     "evidence": {
-      "median": 0.0375,
-      "gap": 0.0025,
-      "drifted": true
+      "median": 0.04,
+      "gap": 0,
+      "drifted": false
     }
   }
 ].map(Object.freeze));

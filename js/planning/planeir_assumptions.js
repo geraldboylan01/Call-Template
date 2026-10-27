@@ -52,6 +52,8 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
    * a name and a basis here.
    */
   netRetirement: Object.freeze({
+    /** The rate, and the basis and disclosure below, were approved on this day. */
+    approvedOn: '2026-10-27',
     presentValueRate: 0.04,
     basis: 'A 4% a year after-tax growth rate is used to work out the fund needed today to pay for each year of retirement spending that other income does not cover.',
     disclosure: 'This is a planning assumption, not a guaranteed return. It is held separately from the long-term growth assumption used for pension pots.'
@@ -186,6 +188,8 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
    * ahead, and `resolveTaxRules` is its only implementation.
    */
   taxProjection: Object.freeze({
+    /** The policy, and the "enacted or announced" wording of its basis, were approved on this day. */
+    approvedOn: '2026-10-27',
     policy: 'freeze_budget_parameters_apply_fixed_law_hold_unknowns',
     basis: 'Tax bands, credits and thresholds that each Budget sets are kept at their latest enacted or announced values in euro terms and never increased with inflation, because Budgets often leave them unchanged. Changes the law has already fixed by date and amount, such as the scheduled PRSI rises and the Standard Fund Threshold steps, are applied on their dates. Where the law ties a future figure to data that does not exist yet, such as the Standard Fund Threshold from 2030, the last known figure is held rather than forecast.',
     disclosure: 'If future Budgets raise bands and credits, tax in later years would be lower than shown. A held Standard Fund Threshold is its lowest possible level, so any tax shown on a fund above it may be overstated.'

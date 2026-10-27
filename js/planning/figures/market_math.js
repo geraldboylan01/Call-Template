@@ -147,8 +147,14 @@ export function marketFigureProblems(figure, { modules = FIGURE_MODULES } = {}) 
   }
   if (!ISO_DATE.test(figure?.checkedOn ?? '')) add('checkedOn must be a date.');
   if (!ISO_DATE.test(figure?.changedOn ?? '')) add('changedOn must be a date.');
-  if (ISO_DATE.test(figure?.checkedOn ?? '') && ISO_DATE.test(figure?.changedOn ?? '') && figure.changedOn > figure.checkedOn) {
-    add('changedOn is later than checkedOn.');
+  // A reviewed value is changed by a person, not by reading the quotes, so the day
+  // they chose it counts as a check of that figure: changedOn may be as late as it.
+  const reviewed = figure?.method?.kind === 'reviewed';
+  if (reviewed && !ISO_DATE.test(figure.method.reviewedOn ?? '')) add('a reviewed figure needs method.reviewedOn, the day a person chose its value.');
+  const lastChecked = [figure?.checkedOn, reviewed ? figure.method.reviewedOn : null]
+    .filter((day) => ISO_DATE.test(day ?? '')).sort().pop();
+  if (lastChecked && ISO_DATE.test(figure?.changedOn ?? '') && figure.changedOn > lastChecked) {
+    add(reviewed ? 'changedOn is later than checkedOn and reviewedOn.' : 'changedOn is later than checkedOn.');
   }
   if (!Number.isInteger(figure?.reviewEveryDays) || figure.reviewEveryDays <= 0) add('reviewEveryDays must be a positive whole number.');
   if (!Array.isArray(figure?.usedBy) || figure.usedBy.length === 0) {
