@@ -18,8 +18,12 @@ import assert from 'node:assert/strict';
 
 import { attachTypedSession, newLiveMeeting, settle } from './live-harness/session.mjs';
 import { buildLiveCataloguePrompt, LIVE_PROMPT_VERSION } from '../worker/src/consumer/live/catalogue_prompt.js';
+import { getCurrentProfile, getSessionRow } from '../worker/src/consumer/repository.js';
 import { liveToolsForConfig } from '../worker/src/consumer/live/live_provider.js';
 import { listRealtimeFinalTurns } from '../worker/src/consumer/realtime_repository.js';
+
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
 
 let checks = 0;
 function ok(value, message) { checks += 1; assert.ok(value, message); }
@@ -31,8 +35,8 @@ function equal(actual, expected, message) { checks += 1; assert.equal(actual, ex
 // decides what Planeir does -- the analyses, the fact definitions, the safety
 // rules, the Ireland rules, the conversation stages -- may not. If a future
 // edit adds a typed-only rule about WHAT to collect, these fail.
-const voicePrompt = buildLiveCataloguePrompt({ directModulePlanning: true, channel: 'voice' });
-const textPrompt = buildLiveCataloguePrompt({ directModulePlanning: true, channel: 'text' });
+const voicePrompt = buildLiveCataloguePrompt({ directModulePlanning: true, channel: 'voice', planDateIso: TEST_PLAN_DATE });
+const textPrompt = buildLiveCataloguePrompt({ directModulePlanning: true, channel: 'text', planDateIso: TEST_PLAN_DATE });
 ok(voicePrompt !== textPrompt, 'the two channels must not be byte-identical');
 
 const SHARED_SECTIONS = [
@@ -176,7 +180,19 @@ ok(plannerIndex < rendererIndex,
 // THE INSTRUCTIONS THE RENDERER WAS ACTUALLY GIVEN. Asserting on the wire is
 // the only way to catch a future edit that assembles its own prompt.
 const rendererCall = renderer.seen.at(-1);
-equal(rendererCall.instructions, textPrompt, 'the renderer is given the shared typed prompt verbatim');
+// The prompt is built for the plan's own year, and this session's plan began
+// whenever the harness created it, so the expectation is read from that plan
+// rather than from the day the suite runs.
+const sessionProfile = await getCurrentProfile(meeting.env, await getSessionRow(meeting.env, meeting.sessionId));
+equal(
+  rendererCall.instructions,
+  buildLiveCataloguePrompt({
+    directModulePlanning: true,
+    channel: 'text',
+    planDateIso: sessionProfile.assumptions.calculationDateIso
+  }),
+  'the renderer is given the shared typed prompt verbatim'
+);
 equal(rendererCall.store, false, 'typed renders are never stored by the provider');
 assert.deepEqual(rendererCall.tools.map((t) => t.name).sort(), tools, 'the renderer is given the shared toolset');
 checks += 1;

@@ -1,10 +1,12 @@
 import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
+import { PLANEIR_ASSUMPTIONS } from './planning/planeir_assumptions.js';
 
 const DEFAULT_CURRENT_YEAR = new Date().getFullYear();
 const DEFAULT_CURRENT_AGE = 60;
 const DEFAULT_HORIZON_END_AGE = 100;
-const DEFAULT_EXPENDITURE_INFLATION_RATE = 0.02;
-const DEFAULT_PRESENT_VALUE_RATE = 0.04;
+// Defaults come from the central assumptions, never a copy.
+const DEFAULT_EXPENDITURE_INFLATION_RATE = PLANEIR_ASSUMPTIONS.inflation.generalRate;
+const DEFAULT_PRESENT_VALUE_RATE = PLANEIR_ASSUMPTIONS.netRetirement.presentValueRate;
 const NET_INCOME_STACK_COLORS = [
   '#74936f',
   '#67899e',

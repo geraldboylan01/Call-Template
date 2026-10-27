@@ -5,8 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createTestRuntime } from './lib/application-test-runtime.mjs';
 import { createWalkthroughCheckout, handleStripeWebhook, stripeClient, handleStripePurchases, processStripePurchaseJobs } from '../worker/src/stripe_walkthroughs.js';
-import { handleEducationCalls, processEducationCallJobs } from '../worker/src/education_calls.js';
-import { educationSlots } from '../js/workspace/education_booking.js';
+import { handleEducationCalls, processEducationCallJobs, availableSlots } from '../worker/src/education_calls.js';
 
 const time = () => Math.floor(Date.now() / 1000);
 // Test the migration with actual historic parent/child rows, not only an empty
@@ -261,7 +260,10 @@ try {
   assert.equal(newParameters.client_reference_id, purchase.id);
   assert.equal(JSON.stringify(newParameters).includes(purchase.accessToken), false);
   assert.equal(JSON.stringify(newParameters).includes('private-source-capability'), false);
-  const slots = educationSlots().filter(slot => Date.parse(slot.startAt) >= Date.now() + 25 * 3600000);
+  // Pick from the times a customer would be offered. The fixture bookings above
+  // hold real calendar time, and which offered slots they cover depends on the
+  // time of day the check runs.
+  const slots = (await availableSlots(env)).filter(slot => Date.parse(slot.startAt) >= Date.now() + 25 * 3600000);
   const beforePayment = await purchaseCall(`${purchasePath}/schedule`, { token: purchase.accessToken, startAt: slots[0].startAt });
   assert.equal(beforePayment.status, 409);
   const newSession = paid(newOrder), newEvent = `evt_${randomUUID()}`;

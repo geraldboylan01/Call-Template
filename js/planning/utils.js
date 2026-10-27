@@ -186,3 +186,11 @@ export function uniqueBy(items, keyFn) {
     return true;
   });
 }
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** "2026-01-01" as "January 2026". */
+export function monthYearText(iso) {
+  const [year, month] = String(iso).split('-').map(Number);
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}

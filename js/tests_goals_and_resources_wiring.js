@@ -2,7 +2,7 @@ import { applyNormalizedPayloadToModule, createBlankModule, ensureGenerated, nor
 import { normalizeGenerated, drainSessionImportWarnings } from './state.js';
 import { buildPresentationCatalogue } from './presenter_catalogue.js';
 import { buildVideoSceneManifest } from './video_scene.js';
-import { GOALS_AND_RESOURCES_SAMPLE } from './tests_goals_and_resources_math.js';
+import { GOALS_AND_RESOURCES_SAMPLE, withDesignTaxRules } from './tests_goals_and_resources_math.js';
 import { HOME_TRADE_DOWN_SAMPLE } from './tests_home_trade_down_math.js';
 import { projectGoalsAndResources } from './goals_and_resources_math.js';
 import { buildGarModel, goalsAndResourcesReliefNotes } from './goals_and_resources_view.js';
@@ -14,6 +14,10 @@ function paste(module, generated) {
   return module;
 }
 export function runGoalsAndResourcesWiringTests() {
+  return withDesignTaxRules(runGoalsAndResourcesWiringTestsOnDesignRules);
+}
+
+function runGoalsAndResourcesWiringTestsOnDesignRules() {
   const cases = [];
   function check(name, run) {
     try { run(); cases.push({ name, pass: true }); console.info(`[GoalsAndResourcesWiringTests] PASS: ${name}`); }

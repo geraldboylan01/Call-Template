@@ -9,7 +9,8 @@ import {
   DEFAULT_IE_TAX_CATALOGUE,
   recordPublishedSft,
   resolveSft,
-  resolveTaxRules
+  resolveTaxRules,
+  withTaxCatalogue
 } from './planning/tax/resolve.js';
 import { crystallise } from './planning/tax/heads/sft.js';
 import {
@@ -260,7 +261,11 @@ export const IE_TAX_GOLDEN_CASES = Object.freeze([
         items: [item('a', 'arfDistribution', 40000)]
       }
     },
-    expected: { incomeTax: 3755, usc: 732.82, prsi: 1880, netIncome: 33632.18, prsiRate: 0.047 }
+    // Held forward from the 2027 block (Budget 2027, announced). By hand: 20% of 40,000 is 8,000, less credits of
+    // 2,125 personal + 245 age + 2,125 employee (s.784A treats ARF payments as emoluments) = 3,505. USC: 12,012 at
+    // 0.5% + 18,288 at 2% + 9,700 at 3% = 60.06 + 365.76 + 291 = 716.82. PRSI 4.7% of 40,000 = 1,880.
+    // 40,000 - 3,505 - 716.82 - 1,880 = 33,898.18. (On the 2026 rules this case was 3,755, 732.82 and 33,632.18.)
+    expected: { incomeTax: 3505, usc: 716.82, prsi: 1880, netIncome: 33898.18, prsiRate: 0.047 }
   },
   {
     id: 'G10b',
@@ -273,7 +278,9 @@ export const IE_TAX_GOLDEN_CASES = Object.freeze([
         items: [item('a', 'arfDistribution', 40000)]
       }
     },
-    expected: { incomeTax: 3755, usc: 619.82, prsi: 0, netIncome: 35625.18 }
+    // As G10a for income tax (3,505). Age 70: reduced USC, 12,012 at 0.5% + 27,988 at 2% = 60.06 + 559.76 = 619.82,
+    // which the 2% ceiling does not touch. No PRSI from 70. 40,000 - 3,505 - 619.82 = 35,875.18.
+    expected: { incomeTax: 3505, usc: 619.82, prsi: 0, netIncome: 35875.18 }
   },
   {
     id: 'G13',
@@ -722,26 +729,52 @@ export function runIeTaxTests() {
     assert(projection.debug.tax.disclosureCodes.includes('NET_COST_CONTRIBUTIONS'), 'the net cost is disclosed');
   }));
 
-  cases.push(runCase('resolveTaxRules(2040) holds the 2026 Budget figures and the legislated end points', () => {
+  cases.push(runCase('resolveTaxRules(2040) holds the 2027 Budget figures and the legislated end points', () => {
     const rules = resolveTaxRules(2040);
-    const base = resolveTaxRules(2026);
-    assert(rules.rulesYear === 2026, 'rulesYear 2026');
+    const base = resolveTaxRules(2027);
+    assert(rules.rulesYear === 2027, 'rulesYear 2027');
     assert(rules.heldForward === true, 'heldForward');
-    assert(base.heldForward === false, '2026 is not held forward');
-    assert(rules.incomeTax.standardRateBand.single === 44_000, 'single band €44,000');
+    assert(base.heldForward === false, '2027 is not held forward');
+    assert(rules.incomeTax.standardRateBand.single === 46_500, 'single band €46,500');
     assert(rules.sft.amount === 2_800_000 && rules.sftBasis === 'held', 'SFT €2.8m held');
     assertCents(rules.prsi.rate * 1e4, 0.047 * 1e4, 'PRSI 4.7%');
-    assert(rules.status === 'enacted' && rules.version === DEFAULT_IE_TAX_CATALOGUE.version, 'status and version');
+    assert(rules.status === 'announced' && rules.announcedBy === 'Budget 2027' && rules.enactedBy === undefined, 'announced, not yet law');
+    assert(rules.version === DEFAULT_IE_TAX_CATALOGUE.version, 'version');
+    assert(resolveTaxRules(2026).status === 'enacted' && resolveTaxRules(2026).enactedBy === 'Finance Act 2025', '2026 is still enacted');
   }));
 
-  cases.push(runCase('No year after 2026 produces different bands, credits, exemption limits or USC thresholds', () => {
-    const base = resolveTaxRules(2026);
-    for (let year = 2027; year <= 2110; year += 1) {
+  cases.push(runCase('No year after 2027 produces different bands, credits, exemption limits or USC thresholds', () => {
+    const base = resolveTaxRules(2027);
+    for (let year = 2028; year <= 2110; year += 1) {
       const rules = resolveTaxRules(year);
       ['incomeTax', 'ageExemption', 'usc', 'lumpSum'].forEach((key) => {
         assert(JSON.stringify(rules[key]) === JSON.stringify(base[key]), `${key} changed in ${year}`);
       });
     }
+  }));
+
+  cases.push(runCase('Budget 2027 changes the bands, the main credits and the USC 2% ceiling, and leaves every other rule as it was', () => {
+    const before = resolveTaxRules(2026);
+    const after = resolveTaxRules(2027);
+    const band = after.incomeTax.standardRateBand;
+    assert(band.single === 46_500 && band.widowed === 46_500 && band.marriedOneIncome === 55_500 && band.secondIncomeIncreaseMax === 37_500, 'bands');
+    assert(before.incomeTax.standardRateBand.single === 44_000 && before.incomeTax.standardRateBand.marriedOneIncome === 53_000, '2026 bands untouched');
+    const credit = after.incomeTax.personalCredit;
+    assert(credit.single === 2_125 && credit.married === 4_250, 'personal credits');
+    assert(credit.widowed === credit.single + 540, 'widowed is the personal credit plus the 540 widowed person credit (s.461A)');
+    assert(after.incomeTax.employeeCredit.amount === 2_125, 'employee credit');
+    assert(after.usc.bands[1].upTo === 30_300 && before.usc.bands[1].upTo === 28_700, 'the 2% ceiling');
+    assert(after.usc.bands[0].upTo === 12_012 && after.usc.bands[2].upTo === 70_044 && after.usc.bands[3].rate === 0.08, 'the other USC bands');
+    for (const key of ['ageExemption', 'lumpSum', 'dirt']) {
+      assert(after[key] === before[key], `${key} is the 2026 rule itself, not a copy`);
+    }
+    // The resolver rebuilds these two, so they are compared by content.
+    for (const key of ['chargeableExcessTax', 'capitalGainsTax']) {
+      assert(JSON.stringify(after[key]) === JSON.stringify(before[key]), `${key} is unchanged`);
+    }
+    assert(after.incomeTax.ageCredit === before.incomeTax.ageCredit, 'the age credit is the 2026 rule itself');
+    assert(after.usc.reduced === before.usc.reduced && after.usc.surcharge === before.usc.surcharge, 'reduced USC and the surcharge are the 2026 rules');
+    assert(after.prsi.liableUnderAge === before.prsi.liableUnderAge && after.prsi.exemptFromAge === before.prsi.exemptFromAge, 'PRSI age rules');
   }));
 
   cases.push(runCase('PRSI is blended by months in force', () => {
@@ -896,11 +929,92 @@ export function runIeTaxTests() {
     assert(alone.disclosureCodes.includes('STATUS_SPOUSE_NO_INCOME'), 'STATUS_SPOUSE_NO_INCOME');
   }));
 
+  /**
+   * Nursing home fees, relieved at the payer's marginal rate (Revenue, Tax and
+   * Duty Manual Part 15-01-12, section 4). The first two are the Manual's own
+   * Examples 1 and 2, with the figures for the nursing home fees alone: the
+   * Manual adds a 20% credit on its other health expenses, which is not here.
+   */
+  const nursingHome = (people, items, fees, status = 'single') => {
+    const year = (extra) => computeTaxYear({ input: { year: 2026, status, people, items: [...items, ...extra] } }).result;
+    const without = year([]);
+    const withFees = year(fees === 0 ? [] : [item(people[0].id, 'nursingHomeExpenses', fees)]);
+    return {
+      without,
+      withFees,
+      relief: without.totals.incomeTax - withFees.totals.incomeTax
+    };
+  };
+
+  cases.push(runCase('Nursing home fees come off income at the highest rate of tax paid, as in Revenue’s Manual', () => {
+    const higher = nursingHome([single('a', 55)], [item('a', 'employment', 60_000)], 3_000);
+    assertCents(higher.without.totals.incomeTax, 11_200, 'the Manual: tax paid before relief on 60,000 is 11,200');
+    assertCents(higher.withFees.totals.incomeTax, 10_000, 'taxable income 57,000, tax 14,000, less 4,000 of credits');
+    assertCents(higher.relief, 1_200, 'Example 1: 3,000 of fees at 40%');
+    const straddling = nursingHome([single('a', 55)], [item('a', 'employment', 46_000)], 9_000);
+    assertCents(straddling.without.totals.incomeTax, 5_600, 'the Manual: tax paid before relief on 46,000 is 5,600');
+    assertCents(straddling.relief, 2_200, 'Example 2: 2,000 at 40% and 7,000 at 20%');
+    const standard = nursingHome([single('a', 55)], [item('a', 'employment', 30_000)], 5_000);
+    assertCents(standard.relief, 1_000, 'a standard-rate payer gets 20%');
+  }));
+
+  cases.push(runCase('Nursing home fee relief is never more than the income tax there is to relieve', () => {
+    const exempt = nursingHome([single('a', 70)], [item('a', 'occupationalPension', 15_000)], 8_000);
+    assertCents(exempt.without.totals.incomeTax, 0, 'under the over-65 exemption there is no tax');
+    assertCents(exempt.relief, 0, 'so no relief');
+    const covered = nursingHome([single('a', 55)], [item('a', 'employment', 20_000)], 5_000);
+    assertCents(covered.without.totals.incomeTax, 0, 'credits cover the tax on 20,000');
+    assertCents(covered.relief, 0, 'so no relief');
+    const huge = nursingHome([single('a', 55)], [item('a', 'employment', 30_000)], 50_000);
+    assertCents(huge.withFees.totals.incomeTax, 0, 'fees above income leave no tax');
+    assertCents(huge.relief, huge.without.totals.incomeTax, 'the relief is exactly the tax that was due, never more');
+    assertCents(huge.withFees.assessments[0].incomeAfterNursingHome, 0, 'taxable income floors at nothing');
+  }));
+
+  cases.push(runCase('Nursing home fees change income tax only: USC and PRSI do not move', () => {
+    const mixed = nursingHome([single('a', 55)], [item('a', 'employment', 60_000), item('a', 'rentalProfit', 12_000)], 20_000);
+    assert(mixed.relief > 0, 'there is relief');
+    assertCents(mixed.withFees.totals.usc, mixed.without.totals.usc, 'USC is charged on income before the deduction');
+    assertCents(mixed.withFees.totals.prsi, mixed.without.totals.prsi, 'PRSI is charged on income before the deduction');
+    assert(mixed.withFees.assessments[0].nursingHomeExpenses === 20_000, 'the assessment records the fees');
+  }));
+
+  cases.push(runCase('A jointly assessed couple’s nursing home fees come off their combined income', () => {
+    const joint = nursingHome(
+      [single('a', 60), single('b', 58)],
+      [item('a', 'employment', 70_000), item('b', 'employment', 20_000)],
+      10_000,
+      'married_or_civil_partners'
+    );
+    assert(joint.withFees.assessments[0].basis === 'joint', 'one joint assessment');
+    assertCents(joint.without.totals.incomeTax - joint.withFees.totals.incomeTax, 4_000, '10,000 of fees at 40% on the couple’s total');
+    const byOther = computeTaxYear({
+      input: {
+        year: 2026, status: 'married_or_civil_partners', people: [single('a', 60), single('b', 58)],
+        items: [item('a', 'employment', 70_000), item('b', 'employment', 20_000), item('b', 'nursingHomeExpenses', 10_000)]
+      }
+    }).result;
+    assertCents(byOther.totals.incomeTax, joint.withFees.totals.incomeTax, 'either partner can pay and the relief is the same');
+  }));
+
+  cases.push(runCase('Nursing home fees are an income tax rule with a source, a disclosure and a refusal of negative amounts', () => {
+    const rules = resolveTaxRules(2026);
+    assert(rules.incomeTax.nursingHomeExpenses.ruleId === 'ie.income_tax.nursing_home_expenses.2026', 'the rule has an id');
+    assert(rules.incomeTax.nursingHomeExpenses.sources.length === 2, 'Revenue’s page and the Manual are the sources');
+    assert(resolveTaxRules(2031).incomeTax.nursingHomeExpenses.ruleId === rules.incomeTax.nursingHomeExpenses.ruleId, 'held forward');
+    const withFees = nursingHome([single('a', 55)], [item('a', 'employment', 60_000)], 3_000);
+    assert(withFees.withFees.disclosureCodes.includes('IT_NURSING_HOME_RELIEF'), 'the relief is disclosed');
+    assert(!withFees.without.disclosureCodes.includes('IT_NURSING_HOME_RELIEF'), 'and only when fees are paid');
+    assertThrows(() => nursingHome([single('a', 55)], [item('a', 'employment', 60_000)], -1), /greater than or equal to 0/, 'negative fees');
+    assert(!/medical expenses/.test(taxNotIncludedLine()), 'medical expenses are no longer listed as not modelled in full');
+  }));
+
   cases.push(runCase('Every disclosure renders in plain words, with its figures filled in and no em dashes', () => {
     const rules = resolveTaxRules(2031);
     const params = {
       IT_AGE_EXEMPTION: { years: [2031, 2032, 2033, 2035] },
       IT_MARGINAL_RELIEF: { years: [2031] },
+      IT_NURSING_HOME_RELIEF: { years: [2031] },
       OTHER_INCOME_AS_PENSION: { title: 'Land lease income' },
       LUMP_SUM_PRIOR: { amount: 150_000 },
       SFT_THRESHOLD: { amount: 2_800_000, years: [2031] },
@@ -1051,7 +1165,8 @@ export function runIeTaxTests() {
     assert(base.dirt.sources.length === 1 && /revenue\.ie/.test(base.dirt.sources[0].url), 'Revenue is the source');
     assert(base.heldForward === false, '2026 is not held forward');
     assert(later.dirt.rate === 0.33, 'DIRT 33% in 2031');
-    assert(later.heldForward === true && later.rulesYear === 2026, '2031 is held forward from the 2026 block');
+    assert(later.heldForward === true && later.rulesYear === 2027, '2031 is held forward from the 2027 block');
+    assert(resolveTaxRules(2027).dirt === base.dirt, 'the 2027 block carries the 2026 DIRT rule itself, not a copy');
     assert(later.dirt === base.dirt, 'the held block is the same rule, not a copy');
   }));
 
@@ -1187,6 +1302,94 @@ export function runIeTaxTests() {
     // The brief's bound is 300 ms in Node. A browser Dev Panel run can be
     // slower, so this only guards against something pathological.
     assert(elapsed < 3000, `took ${elapsed} ms`);
+  }));
+
+  /**
+   * The Department of Finance's own worked figures for Budget 2027 (Tax Policy
+   * Changes, Table 2: single person, no children, PAYE employee, full-rate PRSI).
+   * Typed here from the printed table, independent of the catalogue, so a slip in
+   * the 2027 block cannot agree with itself. Each row is gross pay, then income
+   * tax, PRSI and USC as the table prints them for 2026 ("existing") and 2027
+   * ("proposed"), to the euro. PRSI includes the scheduled rises, which is why
+   * 2027 is blended: 4.35% to September and 4.5% from October.
+   */
+  const DEPARTMENT_TABLE_2 = Object.freeze([
+    [30_000, [2_000, 1_271, 433], [1_750, 1_316, 420]],
+    [35_000, [3_000, 1_483, 583], [2_750, 1_536, 567]],
+    [40_000, [4_000, 1_695, 733], [3_750, 1_755, 717]],
+    [45_000, [5_200, 1_907, 883], [4_750, 1_974, 867]],
+    [50_000, [7_200, 2_119, 1_033], [6_450, 2_194, 1_017]],
+    [55_000, [9_200, 2_331, 1_183], [8_450, 2_413, 1_167]],
+    [65_000, [13_200, 2_754, 1_483], [12_450, 2_852, 1_467]],
+    [75_000, [17_200, 3_178, 2_031], [16_450, 3_291, 2_015]],
+    [100_000, [27_200, 4_238, 4_031], [26_450, 4_388, 4_015]],
+    [125_000, [37_200, 5_297, 6_031], [36_450, 5_484, 6_015]],
+    [150_000, [47_200, 6_356, 8_031], [46_450, 6_581, 8_015]],
+    [175_000, [57_200, 7_416, 10_031], [56_450, 7_678, 10_015]]
+  ]);
+
+  cases.push(runCase('withTaxCatalogue pins a catalogue for one run and puts the built-in one back, even after an error', () => {
+    const pinned = { ...DEFAULT_IE_TAX_CATALOGUE, rulesByYear: { 2026: DEFAULT_IE_TAX_CATALOGUE.rulesByYear[2026] } };
+    assert(resolveTaxRules(2031).rulesYear === 2027, 'the built-in catalogue holds 2027 forward');
+    assert(withTaxCatalogue(pinned, () => resolveTaxRules(2031).rulesYear) === 2026, 'pinned to 2026 held forward');
+    assert(withTaxCatalogue(pinned, () => resolveSft(2027).amount) === 2_400_000, 'the threshold schedule follows the pinned catalogue');
+    assert(resolveTaxRules(2031).rulesYear === 2027, 'restored afterwards');
+    assertThrows(() => withTaxCatalogue(pinned, () => { throw new Error('boom'); }), /boom/, 'an error passes through');
+    assert(resolveTaxRules(2031).rulesYear === 2027, 'restored after an error');
+    const first = withTaxCatalogue(pinned, () => resolveTaxRules(2031));
+    assert(withTaxCatalogue(pinned, () => resolveTaxRules(2031)) === first, 'a pinned catalogue is cached like the built-in one');
+    assert(resolveTaxRules(2031, { catalogue: pinned }).rulesYear === 2026, 'an explicit catalogue still wins');
+  }));
+
+  cases.push(runCase('Budget 2027: the engine reproduces the Department of Finance\'s Table 2 for a single PAYE employee, 2026 and 2027, to the euro', () => {
+    for (const [gross, existing, proposed] of DEPARTMENT_TABLE_2) {
+      for (const [year, [incomeTax, prsi, usc]] of [[2026, existing], [2027, proposed]]) {
+        const { result } = computeTaxYear({ input: { year, status: 'single', people: [single('a', 40)], items: [item('a', 'employment', gross)] } });
+        const label = `${year} on ${gross}`;
+        assert(Math.round(result.totals.incomeTax) === incomeTax, `${label}: income tax ${result.totals.incomeTax}, table ${incomeTax}`);
+        assert(Math.round(result.totals.prsi) === prsi, `${label}: PRSI ${result.totals.prsi}, table ${prsi}`);
+        assert(Math.round(result.totals.usc) === usc, `${label}: USC ${result.totals.usc}, table ${usc}`);
+      }
+    }
+  }));
+
+  cases.push(runCase('Budget 2027: a married couple with one income, by hand from the Bill: band 55,500, credits 4,250 and 2,125', () => {
+    // 20% of 55,000 = 11,000, less the married credit 4,250 and the employee credit 2,125. The Department's Table 3
+    // prints 2,575 for this couple because it also gives the home carer credit (2,050 in 2027), which this engine
+    // leaves out: 11,000 - 6,375 = 4,625, and 4,625 - 2,050 = 2,575.
+    const { result } = computeTaxYear({ input: { year: 2027, status: 'married_or_civil_partners', people: [single('a', 40), single('b', 40)], items: [item('a', 'employment', 55_000)] } });
+    assertCents(result.totals.incomeTax, 4_625, 'income tax');
+    assertCents(result.assessments[0].standardRateBand, 55_500, 'the band');
+  }));
+
+  cases.push(runCase('Budget 2027: a couple with two incomes gets the 37,500 second-income increase, capped at the lower income', () => {
+    // 60,000 and 40,000. The band is 55,500 plus the lower income capped at 37,500 = 93,000. Tax by hand: the first
+    // earner has 55,500 at 20% and 4,500 at 40% = 12,900; the second 37,500 at 20% and 2,500 at 40% = 8,500.
+    // 21,400 less credits of 4,250 married + 2 x 2,125 employee = 12,900.
+    const { result } = computeTaxYear({ input: { year: 2027, status: 'married_or_civil_partners', people: [single('a', 40), single('b', 40)], items: [item('a', 'employment', 60_000), item('b', 'employment', 40_000)] } });
+    assertCents(result.totals.incomeTax, 12_900, 'income tax');
+    assertCents(result.assessments[0].standardRateBand, 93_000, 'the band');
+    // A lower income below the cap adds only itself: 30,000 gives 55,500 + 30,000 = 85,500.
+    const small = computeTaxYear({ input: { year: 2027, status: 'married_or_civil_partners', people: [single('a', 40), single('b', 40)], items: [item('a', 'employment', 60_000), item('b', 'employment', 30_000)] } }).result;
+    // 60,000: 11,100 + 1,800 = 12,900. 30,000 at 20% = 6,000. 18,900 less 8,500 credits = 10,400.
+    assertCents(small.totals.incomeTax, 10_400, 'income tax with a lower income under the cap');
+    assertCents(small.assessments[0].standardRateBand, 85_500, 'the band with a lower income under the cap');
+  }));
+
+  cases.push(runCase('Budget 2027: a widowed person without dependent children has the 2,125 personal credit plus the 540 widowed credit', () => {
+    // 20% of 40,000 = 8,000, less 2,125 + 540 personal and 2,125 employee = 3,210. Under the 2026 rules it was
+    // 8,000 - (2,000 + 540) - 2,000 = 3,460.
+    const input = (year) => ({ input: { year, status: 'widowed_or_surviving_civil_partner', people: [single('a', 55)], items: [item('a', 'employment', 40_000)] } });
+    assertCents(computeTaxYear(input(2027)).result.totals.incomeTax, 3_210, '2027 income tax');
+    assertCents(computeTaxYear(input(2026)).result.totals.incomeTax, 3_460, '2026 income tax');
+  }));
+
+  cases.push(runCase('Budget 2027: USC at the new 2% ceiling, by hand, including the band edge', () => {
+    // 30,300 exactly: 12,012 at 0.5% + 18,288 at 2% = 60.06 + 365.76 = 425.82. One euro more is taxed at 3%.
+    const usc = (gross) => computeTaxYear({ input: { year: 2027, status: 'single', people: [single('a', 40)], items: [item('a', 'rentalProfit', gross)] } }).result.totals.usc;
+    assertCents(usc(30_300), 425.82, 'USC at the ceiling');
+    assertCents(usc(30_301) - usc(30_300), 0.03, 'the next euro is taxed at 3%');
+    assertCents(usc(13_000), 0, 'no USC at or below 13,000');
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;

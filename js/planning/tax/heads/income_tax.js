@@ -9,6 +9,14 @@
  *
  * The ring-fenced standard-rate slice of a lump sum never reaches this head.
  * The Schedule E part does, as ordinary income for the year.
+ *
+ * Nursing home fees a person pays themselves (never the HSE's share) are a
+ * deduction from total income, so they are relieved at the payer's marginal
+ * rate: 40% on the part of their income taxed at the higher rate, 20% below it
+ * (Revenue, TDM Part 15-01-12, section 4). They change income tax only. For a
+ * jointly assessed couple the deduction comes off the couple's combined income.
+ * The age exemption and the standard rate band's increase are tested on income
+ * before the deduction, which never gives more relief than the Manual shows.
  */
 
 const INCOME_TAX_HEAD_ID = 'income_tax';
@@ -64,8 +72,13 @@ function assessUnit(unit, rules) {
   const totalIncome = incomes.reduce((total, amount) => total + amount, 0);
   const { band, increase } = bandFor(unit, rules, incomes);
 
-  const atStandardRate = Math.min(totalIncome, band);
-  const atHigherRate = Math.max(0, totalIncome - band);
+  // Fees paid come off total income, and never below nothing: with no income
+  // taxed there is no tax to relieve, so the relief is nil.
+  const nursingHomeExpenses = unit.people.reduce((total, person) => total + person.income.nursingHomeExpenses, 0);
+  const incomeAfterNursingHome = Math.max(0, totalIncome - nursingHomeExpenses);
+
+  const atStandardRate = Math.min(incomeAfterNursingHome, band);
+  const atHigherRate = Math.max(0, incomeAfterNursingHome - band);
   const grossTax = (atStandardRate * it.standardRate) + (atHigherRate * it.higherRate);
   const personIds = unit.people.map((person) => person.id);
   const unitPersonId = personIds.length === 1 ? personIds[0] : null;
@@ -135,12 +148,17 @@ function assessUnit(unit, rules) {
   if (unit.people.some((person) => person.income.rentalProfit > 0)) {
     disclosures.push({ code: 'RENT_AS_ENTERED' });
   }
+  if (nursingHomeExpenses > 0) {
+    disclosures.push({ code: 'IT_NURSING_HOME_RELIEF', params: { years: [rules.year] } });
+  }
 
   return {
     assessment: {
       basis: unit.basis,
       personIds,
       totalIncome,
+      nursingHomeExpenses,
+      incomeAfterNursingHome,
       standardRateBand: band,
       bandIncrease: increase,
       grossTax,

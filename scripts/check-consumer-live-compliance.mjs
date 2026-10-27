@@ -23,6 +23,9 @@ import {
   supervisorVerdictIsActionable
 } from '../worker/src/consumer/live/compliance.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 let checks = 0;
 function ok(condition, message) {
   checks += 1;
@@ -81,7 +84,7 @@ for (const text of nonFinancial) {
 /* ------------------------------------------ L2: liquidity policy grounding */
 
 {
-  const sourced = createSourcedFigureSet();
+  const sourced = createSourcedFigureSet(TEST_PLAN_DATE);
   const unsupported = [
     'An emergency fund of between one and three months can help.',
     'A 1–3 month cash reserve is a useful range.'
@@ -107,7 +110,7 @@ for (const text of nonFinancial) {
 /* ------------------------------------------------- L2: sourced containment */
 
 {
-  const sourced = createSourcedFigureSet();
+  const sourced = createSourcedFigureSet(TEST_PLAN_DATE);
 
   // The State Pension rule ships in the set, so quoting it is always allowed.
   let verdict = scanAssistantSpeech('The maximum is €299.30 a week, or €15,563.60 a year.', sourced);
@@ -130,7 +133,7 @@ for (const text of nonFinancial) {
   ok(!verdict.tripped, 'A figure the client stated must be sourced.');
 
   // Server-side values arrive as structured data, not prose.
-  const withModuleOutput = createSourcedFigureSet();
+  const withModuleOutput = createSourcedFigureSet(TEST_PLAN_DATE);
   addSourcedFigures(withModuleOutput, { monthlyRepayment: 1642.19, nested: [{ deposit: 84000 }] });
   ok(!scanAssistantSpeech('Your repayment came out at €1,642.19.', withModuleOutput).tripped,
     'A deterministic module output figure must be sourced.');
@@ -143,7 +146,7 @@ for (const text of nonFinancial) {
 /* ------------------------------------------------------ L3: lead-in tripwire */
 
 {
-  const sourced = createSourcedFigureSet();
+  const sourced = createSourcedFigureSet(TEST_PLAN_DATE);
   const trips = (text) => scanAssistantSpeech(text, sourced);
 
   const recommendations = [

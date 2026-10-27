@@ -5,17 +5,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      activate_realtime_adviser_canary:
-        description: Activate the invite-only Realtime adviser canary for this reviewed deployment
-        required: false
-        default: false
-        type: boolean
-      run_paid_realtime_infrastructure_proof:
-        description: Prove real SDP, sideband tool execution, and server hang-up (required for activation)
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -41,27 +30,30 @@ jobs:
       # Protected production setting; absence keeps all payment/email gates off.
       WALKTHROUGH_SETTINGS_JSON: ${{ vars.WALKTHROUGH_SETTINGS_JSON }}
       SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
-      RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
-      # Explicit source approval activates only the fixed adviser-test,
+      RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: "false"
+      # RETIRED 2026-10-27: forms -> analysis replaces conversational intake.
+      # Pinned off: repository variables cannot reactivate this beta.
+      # Historical activation machinery below is retained for reference.
+      # Explicit source approval previously activated only the fixed adviser-test,
       # signed-invite, typed rules-only mode. The protected override may disable it
       # immediately; it can never activate a source-unapproved mode.
-      CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"
-      CONSUMER_ADVISER_TEST_BETA_OVERRIDE: ${{ vars.CONSUMER_ADVISER_TEST_BETA_OVERRIDE }}
+      CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "false"
+      CONSUMER_ADVISER_TEST_BETA_OVERRIDE: "false"
       # Realtime is a separately kill-switchable adviser canary layered on the
       # signed-invite beta. The committed Wrangler flag must remain false.
       # Ordinary pushes and default manual runs remain source-false. Realtime
       # can be source-approved only by an explicit protected manual dispatch,
       # and the validation step below then requires the paid infrastructure
       # proof in the same run.
-      CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.activate_realtime_adviser_canary == true && 'true' || 'false' }}
-      CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE: ${{ vars.CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE }}
+      CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: "false"
+      CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE: "false"
       # Standing approval: once the canary has been proof-activated by a manual
       # dispatch, this protected repository variable lets ordinary pushes keep
       # the LIVE activation instead of silently rolling Realtime back to false.
       # It can never switch Realtime on by itself: the validation step only
       # honors it when the currently deployed Worker already reports Realtime
       # enabled, and the OVERRIDE=false kill switch still wins.
-      CONSUMER_REALTIME_KEEP_ACTIVE: ${{ vars.CONSUMER_REALTIME_KEEP_ACTIVE }}
+      CONSUMER_REALTIME_KEEP_ACTIVE: "false"
       # Legacy controlled-lane switches are pinned off. They remain in the
       # Worker configuration only so historical deployments remain legible.
       CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: "false"
@@ -72,11 +64,11 @@ jobs:
       # One shared rule across every transport: on means all transports offer
       # optional analyses and the three-analysis capacity decision, off means
       # none does. Canaried separately from the rest of the beta.
-      CONSUMER_MODULE_OFFERS_ENABLED: ${{ vars.CONSUMER_MODULE_OFFERS_ENABLED || 'false' }}
+      CONSUMER_MODULE_OFFERS_ENABLED: "false"
       # The typed consumer lane (D-08). Off unless the repository variable says
       # otherwise, and gated below on the same adviser beta as voice plus the
       # direct-module planner, which it cannot run without.
-      CONSUMER_TYPED_LANE_ENABLED: ${{ vars.CONSUMER_TYPED_LANE_ENABLED || 'false' }}
+      CONSUMER_TYPED_LANE_ENABLED: "false"
       CONSUMER_DB_NAME: "planeir-consumer"
       CONSUMER_SITE_ZONE_NAME: "planeir.ie"
       CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
@@ -104,7 +96,7 @@ jobs:
       # for the protected Realtime canary. The committed Worker config remains
       # off, and the builder below resolves this back to off whenever Realtime
       # itself is not active.
-      CONSUMER_BETA_MODULE_PLANNER_MODE: ${{ vars.CONSUMER_MODULE_PLANNER_MODE || 'off' }}
+      CONSUMER_BETA_MODULE_PLANNER_MODE: "off"
       CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v12"
       CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v11"
       # Phase 3 semantic turn reading: a second, independent reading of each

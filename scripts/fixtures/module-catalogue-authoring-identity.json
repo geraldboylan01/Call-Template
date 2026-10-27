@@ -957,17 +957,17 @@
             {
               "key": "investmentGrowthRate",
               "value": 0.05,
-              "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.3.0)"
+              "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
             },
             {
               "key": "inflationRate",
               "value": 0.02,
-              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.3.0)"
+              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
             },
             {
               "key": "statePensionContributory",
               "value": 15563.6,
-              "reason": "ie-planning-rules-2026.01, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record."
+              "reason": "ie-planning-rules-2026.02, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record."
             }
           ],
           "warnings": [
@@ -1005,12 +1005,12 @@
             {
               "key": "inflationRate",
               "value": 0.02,
-              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.3.0)"
+              "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
             },
             {
               "key": "presentValueRate",
               "value": 0.04,
-              "reason": "Existing net retirement engine default."
+              "reason": "A 4% a year after-tax growth rate is used to work out the fund needed today to pay for each year of retirement spending that other income does not cover. This is a planning assumption, not a guaranteed return. It is held separately from the long-term growth assumption used for pension pots. (planeir-assumptions-1.6.0)"
             }
           ],
           "warnings": [

@@ -1306,7 +1306,7 @@ export async function handleConsumerRequest(request, env, dependencies = {}) {
           sessionId: sessionRow.id,
           offerSdp,
           state,
-          sessionConfig: buildLiveSessionConfig(config)
+          sessionConfig: buildLiveSessionConfig(config, { planDateIso: profile.assumptions.calculationDateIso })
         });
         providerCallId = providerCall.providerCallId;
         lease = await activateRealtimeLease(env, sessionRow.id, lease.id, providerCallId);

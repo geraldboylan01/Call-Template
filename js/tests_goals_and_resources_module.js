@@ -4,7 +4,7 @@ import {
   buildGoalsAndResourcesModule,
   createGarClock
 } from './goals_and_resources_module.js';
-import { GOALS_AND_RESOURCES_SAMPLE } from './tests_goals_and_resources_math.js';
+import { GOALS_AND_RESOURCES_SAMPLE, withDesignTaxRules } from './tests_goals_and_resources_math.js';
 import { findForbiddenText } from './goals_and_resources_view.js';
 
 /**
@@ -284,7 +284,12 @@ const press = (root, id) => findAll(root, 'gar-case').find((button) => button.da
 
 /* ----------------------------------------------------------------- tests */
 
-export async function runGoalsAndResourcesModuleTests() {
+/** The frames are drawn on the rules in force when they were approved. */
+export function runGoalsAndResourcesModuleTests() {
+  return withDesignTaxRules(runGoalsAndResourcesModuleTestsOnDesignRules);
+}
+
+async function runGoalsAndResourcesModuleTestsOnDesignRules() {
   const cases = [];
 
   cases.push(runCase('The clock paints eased progress from the first frame and ends exactly on 1', () => {

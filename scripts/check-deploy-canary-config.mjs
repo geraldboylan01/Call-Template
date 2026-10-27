@@ -133,8 +133,8 @@ for (const tableName of ['fixedRealtimeValues']) {
   );
   assert.match(
     workflow,
-    /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: \$\{\{ github\.event_name == 'workflow_dispatch'/,
-    'realtime activation still requires an explicit manual dispatch'
+    /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: "false"/,
+    'retired realtime activation stays pinned off'
   );
   const wranglerSource = readFileSync(`${root}/worker/wrangler.toml`, 'utf8');
   assert.match(
@@ -154,10 +154,10 @@ for (const tableName of ['fixedRealtimeValues']) {
   );
   assert.match(
     workflow,
-    /run_paid_realtime_infrastructure_proof/,
-    'the paid infrastructure proof input still exists'
+    /RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: "false"/,
+    'paid activation is pinned off'
   );
-  pass('the protected assertion, manual-dispatch gate and paid proof are all still in place');
+  pass('historical config guards remain intact and production activation is retired');
 }
 
 {
@@ -585,6 +585,9 @@ for (const tableName of ['fixedRealtimeValues']) {
   assert.match(active['worker/wrangler.bootstrap.generated.toml'], /^CONSUMER_TYPED_LANE_ENABLED = "false"$/m);
   const dormant = buildConfig({ CONSUMER_ADVISER_INVITE_BETA_ENABLED: 'false' });
   assert.match(dormant['worker/wrangler.production.generated.toml'], /^CONSUMER_TYPED_LANE_ENABLED = "false"$/m);
+  for (const name of ['CONSUMER_JOURNEY_ENABLED', 'CONSUMER_AI_INTAKE_ENABLED', 'CONSUMER_VOICE_ENABLED', 'CONSUMER_REALTIME_VOICE_ENABLED', 'CONSUMER_LIVE_VOICE_ENABLED', 'CONSUMER_TYPED_LANE_ENABLED', 'CONSUMER_PUBLIC_ACCESS_ENABLED']) {
+    assert.match(dormant['worker/wrangler.production.generated.toml'], new RegExp(`^${name} = "false"$`, 'm'), `Retired production setting ${name} must resolve off`);
+  }
   assert.throws(() => buildConfig({ CONSUMER_REALTIME_ADVISER_CANARY_ENABLED: 'true', CONSUMER_BETA_MODULE_PLANNER_MODE: 'shadow' }), /requires CONSUMER_MODULE_PLANNER_MODE = apply/);
   assert.throws(() => buildConfig({ CONSUMER_TYPED_LANE_ENABLED: 'typo' }), /must be exactly true or false/);
   pass('production builder handles saved typed preferences without activating a disabled planner or relaxing active-canary checks');

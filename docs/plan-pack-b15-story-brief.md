@@ -1,24 +1,27 @@
 # B1.5: story facts, the what-if catalogue, the tool interface and the checker
 
-Prepared 20 October 2026 for Gerry's review, and revised on 22 October to his change of approach: an AI analyst with tools, not a fixed list of scenarios. Nothing here is built yet. B1.5 starts after this brief is approved, and it comes before the plan screen design (D2), because the screen is laid out around the story sections below.
+Prepared 20 October 2026 for Gerry's review, revised on 22 October to an AI analyst with tools, and refreshed on 27 October for the form-to-analysis journey, the merged figures register (#90) and Gerry's settled decisions below. B1 and B1.1 are merged (#85 and #87); this document specifies the B1.5 work still to build. The story screen can be tidied alongside this brief, before it is wired to compiled plans. PR #88 stays open for Gerry's review.
 
 B1 prices each route through the resource ledger and checks that it balances. B1.1 adds freed cash (a loan's repayment comes back after its native schedule ends) and stops each person's share of the yearly surplus at their own retirement year. B1.5 turns a priced plan into a story that follows the CFP Integrated Financial Planning method, told only with figures the code produced.
 
 ## Outcome
 
-An AI analyst reads what a household tells us, decides which routes and what-ifs matter for them, chooses their settings from the household's facts, runs the engines through tools, reads the results and tells one story per route. The engines do every calculation; the analyst never does maths. So the code offers capabilities with parameters and guardrails, not a fixed list of scenarios, as the live consumer lane already does (validated tool calls, deterministic checks). Code works out every fact the story may mention, finds the inefficiencies, and checks that each story meets the method's floor. The analyst never types a figure, never ranks routes and never gives advice.
+An AI analyst reads a confirmed version of the household's form, decides which routes and what-ifs matter for them, chooses their settings from the household's facts, runs the engines through tools, reads the results and tells one story per route. The engines do every calculation; the analyst never does maths. The code offers capabilities with parameters and guardrails. Code works out every fact the story may mention, finds the inefficiencies, and checks that each story meets the method's floor. The analyst never types a figure, never ranks routes and never gives advice.
+
+The conversation intake was retired in #94, merged on 27 October. People give their details through the form defined in `js/case_application/schema.js`, saved and confirmed by `worker/src/demo/`, then choose **Generate my analysis**. That generation action is not connected yet. The first analyses run from Claude Code and Gerry reviews each checked plan before releasing it. Website runs come later, through the same tool interface and plan-pack check, as a tracked job whose result Gerry releases. A missing fact becomes a short follow-up form on the person's private page, never a live-chat question (section 7).
 
 Later, several agents can walk the same ledger in different ways (for example one per section, or one per goal). The facts, sections and checks below are the contract they all share, so changing who tells the story never changes what the numbers are.
 
-B1.5 does not draw the plan screen (D2 and B3), build the analyst agent (B4) or change any engine. It adds story facts, the what-if catalogue (6c), the parameter checks (6d), the tool interface (section 7) and the checker around the existing ledger, and puts every dated cost behind one contract (6a). B1.6 adds the one retirement-years run (6b), the later-life what-ifs, and the growth, gift and later-life stories (section 5), with the engine and tax-rule changes they need. B4 builds the analyst agent itself: its prompt, its loop and the golden plans.
+B1.5 does not draw the plan screen (D2 and B3) or build the analyst agent (B4). It is built in two parts: first the shared pieces and what-if tools (section 6), then story facts, the issue list, link sources and the checker (sections 1 to 4 and 9). The tool interface (section 7) follows, then the screen's links from compiled plans and the matching check. The [plan document's order of work](plan-and-routes-implementation-plan.md#7-the-order-of-work) sets the sequence alongside B2 and care. B1.6 retains the later-life run and the growth, gift and later-life stories (sections 5 and 6b), with the engine and tax-rule changes they need; it does not hold up the first story screen. B4 builds the analyst agent itself: its prompt, its loop and the golden plans, first run from Claude Code.
 
 ## Rules carried from the plan
 
 - Education only. Never "you should", "we recommend", "best", a ranking word, or a product or provider name. The existing banned-phrase list applies, plus "better", "worse", "cheapest", "smartest", "preferred" and "top" when used to compare routes.
-- Narration types no figures, dates, percentages or calculated states. Every one is a placeholder the code fills.
+- Narration types no figures, dates, percentages or calculated states. Engine facts use registered placeholders; rates, bands, limits and payments from the figures register use `{figure.<id>}`, read through `read_figures` (section 7).
 - A story may refer to its own route and to the current position. It may not refer to another alternative.
 - Routes are never ranked. They keep B1's neutral order: current first, then by cash committed.
-- Protection is shown as the gap and the months savings last, never a cover amount, premium or product.
+- Protection shows the income gap and how long savings last, counting stated existing cover. A stated payout appears as money received and a protected mortgage as cleared. It never shows a cover amount needed, a gap against cover, a premium, a product or a provider; personal cover and employer death-in-service remain separate facts (section 8).
+- A run never guesses a missing household fact. It allows one follow-up form and restarts from the newly confirmed version; after that it runs on the confirmed facts available and says what it could not show (section 7).
 - Pension money is gross for growth and after relief for cash flow.
 - Freed cash is timed from when a loan actually ends, as B1.1 does.
 
@@ -39,6 +42,8 @@ A figure the plan works out itself, with no module behind it (a ledger total, th
 
 The analyst marks which placeholders are links, by writing `{@key}` instead of `{key}` (the placeholder syntax accepts this one marker and nothing else); code builds every link from the registry, never from the analyst's text. A link therefore opens the module in this route's case (or the current position's case, for `{@current.<key>}`) and focuses that target, and can never point at the wrong module or route. A link marked on a placeholder with no linkable source is refused with its path.
 
+**The linked figure must match what opens.** For every story link, the checker follows the compiled route's `chapterCases` to that chapter's compiled case and its `nativeCaseId`, and checks the placeholder against the value the linked module shows for that case and focus target. It compares the underlying value and unit, and applies the module's own rounding and formatting so the figure reads identically in both places. The compiled plan's inputs, results and versions supply the evidence; module samples and separately authored example payloads never do. A link to current facts uses the compiled current-position case. A plan-owned fact is checked against its compiled plan panel. A wrong case, missing target or unequal value is refused at the story/link path, even if the link itself opens successfully.
+
 ### Current position
 
 | Placeholder | Meaning | Source |
@@ -49,7 +54,7 @@ The analyst marks which placeholders are links, by writing `{@key}` instead of `
 | `{position.reserve}`, `{position.reserveMonths}` | The reserve and the months of spending it covers | Liquidity policy |
 | `{position.netWorth}`, `{position.grossAssets}` | Net worth and total assets | Balance-sheet chapter |
 | `{position.solvency}` | Net worth divided by total assets, as a percentage | Balance sheet |
-| `{position.homeShare}` | The home's share of net worth (see decision 3) | Balance sheet |
+| `{position.homeShare}` | The home's value less its mortgage, as a share of net worth | Balance sheet |
 | `{position.mortgageShare}` | Yearly mortgage repayments as a share of yearly bank take-home | Liability and cash flow |
 | `{position.pressurePoints}` | Code-found list, in plain words, from the facts below | Ledger and chapters |
 
@@ -86,12 +91,14 @@ Code scans every route for the method's "removing inefficiencies" step and lists
 | Issue | Found when | Facts shown |
 |---|---|---|
 | `idle_cash_vs_debt` | Spare cash above the reserve while a loan costs more than cash earns after DIRT, using the central cash rate | Spare cash, the cash rate after tax, each such loan and its rate, the yearly interest difference on the smaller of the two amounts |
-| `dear_debt` | A loan or card meeting the dear-debt definition (decision 2) | Each debt, its rate, balance, yearly cost and native end date, dearest first |
+| `debts_other_than_mortgage` | Every loan and card other than the mortgage, with no rate threshold | Each debt, its rate, balance, yearly cost and native end date where one exists, dearest first |
 | `investment_at_a_loss` | An ordinary-CGT holding with a stated base cost whose sale the tax engine would record as a loss. Found from the engine's own disposal result, after stated selling costs, never by comparing market value with base cost, so a loss made by selling costs is not missed. Never when the base cost is missing or assumed | The holding, its value, its selling costs, its base cost and the loss the tax engine records |
 | `tax_due` | A stated tax liability (needs the new optional `taxDue` binding below) | The amount and its due date |
 | `mortgage_could_be_shorter` | Spare cash above the reserve and a mortgage costing more than cash earns after tax | The native end date today, and the end date if all spare cash went to the mortgage, from the amortisation engine |
 
 `tax_due` needs one new optional fact: `planningInputs.taxDue: [{liabilityId, dueDate}]`, binding a stated liability as tax owed. Nothing is inferred from a label.
+
+`debts_other_than_mortgage` uses a neutral headline, including for a cheap loan. `idle_cash_vs_debt` already identifies where cash earns less than a loan costs. No arrears, penalties or promotional-rate facts are added: the form does not collect them. A missing rate or balance stays missing and follows section 7; it is never guessed to price or order a debt.
 
 The current position lists every issue it finds. An alternative lists the same issues and says, through code facts, which ones its changes deal with.
 
@@ -127,7 +134,9 @@ Beyond the sections, the floor is:
 - every what-if the analyst chooses cites the fact that makes it relevant to this household;
 - every issue the code found (section 2), every goal, and every freed-cash event inside the ledger years appears.
 
-The checker also refuses a story that mentions protection with any amount other than the gap, the months and stated payouts (section 8); uses a growth version without the disclosure; types a figure; uses a ranking word; or references another alternative. Anything else is the analyst's choice.
+The checker also refuses a story that mentions protection with any amount other than the income gap, how long savings last and stated money received (section 8); uses a growth version without the disclosure; types a figure; uses a ranking word; references another alternative; or links a figure that differs from the linked module in the compiled route case (section 1). It refuses a cover amount needed, a gap against cover, a premium, a product or a provider. Anything else is the analyst's choice.
+
+After the one allowed follow-up, a fact that is still missing can make a result impossible. The checker then requires a code-produced limitation naming the missing fact and the affected result, in that section and in `check_next`, instead of a fabricated result. The same rule applies to a required what-if that cannot run. It is recorded as not shown with its reason, never passed off as a completed calculation; the remaining story still meets the method's floor.
 
 These are completeness and wording checks. Sentence quality remains B4's authoring playbook.
 
@@ -138,7 +147,7 @@ Routes are composed from the existing change primitives (`useCash`, `clearOutgoi
 | Recipe | Spare cash | Yearly surplus |
 |---|---|---|
 | `current` | Stays as it is | As today |
-| `inefficiencies_first` | Clears dear debt, dearest first, then tax due, then goes to the mortgage | Funds the goals in the method's order |
+| `inefficiencies_first` | Clears loans and cards other than the mortgage, dearest first, then tax due, then goes to the mortgage | Funds the goals in the method's order |
 | `soonest_goal_first` | Funds the soonest dated cost in full, then the next | Funds the remaining goals in order |
 | `pension_led` | Funds dated costs as lump sums where it can, so the surplus is free | After the earlier goals' needs, goes to extra pension contributions with tax relief, up to the relief limit |
 
@@ -148,7 +157,7 @@ For `pension_led`, code also lists the retirement moves within the stated flexib
 
 ## 5. After the goals: growth, gifts and later life (B1.6)
 
-These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they are built as B1.6, straight after B1.5, and do not hold up the plan screen. Each is a what-if the analyst may run when its condition is met (6c); beyond section 3's floor, none is required. Every figure is worked out by code; none is advice or names a product.
+These stories follow Gerry's direction of 21 October 2026. They need new central assumptions and gift tax rules in the shared tax engine, so they remain B1.6 extensions after B1.5, outside the first-release sequence in the plan's section 7. They do not hold up the plan screen. Each is a what-if the analyst may run when its condition is met (6c); beyond section 3's floor, none is required. Every figure is worked out by code; none is advice or names a product.
 
 **Shared assumptions**, settled by Gerry on 21 October 2026 and kept as central, dated, versioned values:
 - Four investment mixes, each with a long-run growth rate. Clients see them as levels of risk, not as shares and bonds: lower risk (about 25% shares, 75% bonds) 4%; medium risk (50/50) 5%, the existing central rate; higher risk (75/25) 6%; highest risk (all shares) 7%. The shares-and-bonds split is available as a detail line for anyone who wants it.
@@ -170,7 +179,7 @@ Within growth, pension contributions still come before investing outside the pen
 The engines do not run one answer. For each route and each story in this section, the analyst can run any investment mix the client's stated preference allows, before and after retirement, and code registers each version's figures under its mix, for example `{growth.medium.atRetirement}` or `{growth.higher.at100}`. The analyst's job is to pick the versions that are feasible and realistic for this household and tell their story clearly, for example how much further a higher-risk mix would go than the base case, and what it would cost in a bad year.
 
 - **Never above the stated preference.** The profile gains one optional fact, the client's stated investment preference (one of the four risk levels, or "not sure"). It is the upper bound on the mix parameter (6d), so code only runs and registers the mixes at or below it. With no answer, or "not sure", the ceiling is the base case: medium risk before retirement and lower risk after. Nothing assumes a client is comfortable with high risk.
-- **The question.** B2's intake asks it in plain words, with no investment terms, recorded as stated, not as an assessment. Each option describes the trade-off and what a very bad year could do to €10,000:
+- **The question.** The form asks it in plain words when the new questions are added alongside B2, with no investment terms, recorded as stated, not as an assessment. Each option describes the trade-off and what a very bad year could do to €10,000:
 
   > To get more growth over the long term, investments have to go up and down more along the way. Which sounds most like you?
   > - **Lower risk.** I want steadier growth. In a very bad year, €10,000 might fall by about [fall].
@@ -204,7 +213,7 @@ For a couple, code works out the survivor's income rather than assuming it stops
 - a DB pension pays the spouse the scheme's spouse's percentage (50% central default);
 - State payments follow the existing stated survivor contract; nothing is assumed.
 
-The story shows the survivor's yearly surplus or shortfall and how long savings would last. This is the catalogue's `death` what-if (6c) with `when` at retirement or later: an income change to the retirement-years run (6b), never a separate model. For a working couple, the protection chapter's existing cases stay as they are.
+The story shows the survivor's yearly surplus or shortfall and how long savings would last. This is the catalogue's `death` what-if (6c) with `when` at retirement or later: an income change to the retirement-years run (6b), never a separate model. For a working couple, use the protection chapter's existing cases with the stated facts and payout treatment in section 8.
 
 ### Gifts to children
 
@@ -278,9 +287,23 @@ Each catalogue entry has:
 | `defaults` | A central default for each parameter |
 | `runsThrough` | The engine path it uses: `ledger`, `protection`, `retirementRun` (6b), `datedCost` (6a) or `sale` |
 | `returns` | The facts it registers as placeholders for the story |
-| `status` | `live`, or waiting for its engine or for its bounds to be approved |
+| `status` | `live`, or waiting for its engine; the defaults and bounds below are settled |
 
 The entries:
+
+**Defaults and bounds settled by Gerry on 27 October 2026.** These are kept with the central assumptions, dated and versioned, and shared by both callers of the tools. A rate change is in percentage points, not a relative percentage change.
+
+| What-if parameter | Default | Allowed bounds |
+|---|---|---|
+| `ratesRise.size` | Interest rates 2 percentage points higher | 0.5 to 5 points higher |
+| `lowerReturns.size` | Investment growth 2 percentage points lower | 0.5 to 4 points lower |
+| `costsRiseFaster.size` | Dated-cost inflation 2 percentage points higher | 0.5 to 5 points higher |
+| `saleValueLower.size` | Sale fetches 20% less | 5% to 50% less |
+| `incomeStops.months` | 12 months | 1 month up to that person's retirement, measured from `from` |
+| `care.startAge` | 85 | 65 to 100 |
+| `care.years` | 5 years | 1 to 15 years |
+
+The parameter check still enforces the person's actual retirement boundary. If a default cannot fit within the allowed period, the tool returns a refusal with its path rather than extending the period or silently changing the default.
 
 **`death`.** Parameters: `personId`; `when`, one of `now`, `atRetirement` or a calendar year (default `now`); and the household's existing cover and survivor income, from facts only (section 8): life cover, death-in-service, mortgage protection, and a survivor's pension that is stated or follows the central default (a DB pension pays the spouse 50%, an ARF passes to the spouse, a DC pot not yet drawn is paid to the spouse). A death before the person's retirement runs through the protection gap and the ledger, as the course's life-cover method does: that person's salary stops, the costs that stop with them stop, stated cover pays out (a lump sum into savings, or a mortgage cleared), and any survivor's pension starts. A death at retirement or later runs through the retirement-years run (6b) as an income change. It returns the survivor's yearly surplus or gap, how many months savings last, which goals become short and from when, and, through the run, whether money runs out before 100. It never shows a cover amount to take out, a premium, a product or a provider.
 
@@ -301,74 +324,86 @@ Code checks the source of every parameter value the analyst sends. A value is ac
 - **the central default** for that parameter, with the assumptions version;
 - **a value inside the approved bounds**, with a one-line reason that cites at least one fact by its path, for example "Dara's contract ends in 2031 (`/household/incomeSources/1/endDate`)".
 
-Nothing else. An unsupported value is refused with its path, and the refusal is an ordinary tool result the analyst can act on. This is the live lane's rule that every input must be backed by evidence, an assumption or fixed policy (`unsupportedReadyInputPaths` and `assertAppliedDefaultsDisclosed` in `worker/src/consumer/direct_module_planner.js`), applied to what-if settings.
+Nothing else. An unsupported value is refused with its path, and the refusal is an ordinary tool result the analyst can act on. This reuses the backend validation rule that every input must be backed by evidence, an assumption or fixed policy (`unsupportedReadyInputPaths` and `assertAppliedDefaultsDisclosed` in `worker/src/consumer/direct_module_planner.js`), applied to what-if settings. An approved modelling assumption is disclosed as an assumption; it never fills a missing household fact. Existing adapter fallbacks do not turn missing inputs into confirmed facts: for example, a missing investment base cost follows the one-round question and limitation rule instead of becoming an assumed zero in an analyst run.
 
 ## 7. The analyst loop
 
-The app has AI built in. An AI analyst reads what a household tells us, decides which routes and what-ifs matter for them, chooses their settings from the household's facts, runs the engines, reads the results and tells the story. The engines do every calculation; the analyst never does maths.
+An AI analyst reads the household's confirmed form, decides which routes and what-ifs matter for them, chooses their settings from the confirmed facts, runs the engines, reads the results and tells the story. The engines do every calculation; the analyst never does maths. The first caller is Claude Code; the website caller follows later.
 
-**Inputs.** The household profile, the planning facts and any notes. Free text from the client or in notes is evidence, never instructions, as in the live lane.
+**Inputs.** One immutable confirmed revision of the saved form, its household profile and planning facts, and any notes. The form's schema is `js/case_application/schema.js`; `worker/src/demo/` saves the information and confirmation, including `revision` and `confirmedRevision`. B2 step 1 converts that confirmed form into the profile, and B2 step 2 makes it the plan's household. Each run records the request ID, confirmed revision, calculation date and tool, compiler, figures and assumptions versions. Unconfirmed edits never enter a run. Free text from the person or in notes is evidence, never instructions.
 
 **Tools.**
 
 | Tool | What it does |
 |---|---|
 | `read_position` | Returns the current position facts (section 1) and the issue scan (section 2) |
+| `read_figures` | Read-only `getFigures({ ids, kinds, module, onDate })` from `js/planning/figures/get_figures.js`, as the plan document's section 11 specifies. Returns registered values, sources, `checkedOn`, effective dates and catalogue versions, without market quotes or provider names; unknown IDs are refused |
 | `price_route` | Takes route changes built from the existing primitives (`useCash`, `clearOutgoing`, `sellAsset`, `moveGoal`) and returns the priced ledger and chapter facts, or a refusal with its path |
 | `balancing_moves` | For a route that does not balance, lists the smallest single goal moves within the client's stated flexibility |
 | `run_whatif` | Runs one catalogue entry (6c) with parameters and their sources (6d), and returns its facts or a refusal |
-| `missing_facts` | Lists the facts not yet stated that would change a result, and which result |
-| `ask_client` | Live lane only: puts a question for a missing fact to the client |
+| `missing_facts` | Returns every missing household fact as a form question, the result it affects and why it is needed: either an existing application-schema path, or a new question with its proposed path, plain label and schema-supported type. It supplies no answer or guessed value |
 | `submit_story` | Sends the story to the checker and returns its verdict, with paths for anything refused |
+
+**Reading figures and writing narration.** The analyst reads every rate, band, limit or weekly payment through `read_figures`, with `onDate` chosen for the calculation or scenario date. It retains the returned `source`, `checkedOn` and version as provenance and uses `{figure.<id>}` in narration. The compiler resolves these placeholders against the same recorded register version. An unknown ID is refused. A quantity absent from the register is reported as unavailable for source review; it is never estimated or asked of the person as a household fact.
 
 **A run budget.** Each plan has a central limit: up to three routes beside the current position, and a set number of what-ifs per route and engine runs per plan (starting at eight and 60, tuned in B4). The website lane also stays inside the existing consumer cost budget. A call past the budget is refused like any other.
 
-**The flow.** Propose, run, read the results, refine, write the story with placeholders, then the checker. A refusal comes back with its path; the analyst fixes it and tries again within the budget.
+**The flow and the one follow-up round.**
 
-**One tool interface, two lanes.** The tools are defined once, as JSON Schema generated from the engines' own normalisers (`normalizePlanningModuleInput` and the plan pack schema), with one executor each. The same catalogue serves:
-- **Claude in a chat or in Claude Code**, through a command-line tool: JSON in, JSON out, no API cost;
-- **the website agent**, through tool definitions in the worker, dispatched with the live lane's guards (`executeLiveTool` in `worker/src/consumer/live/live_tools.js`): a known tool, available in this mode, checked before any argument is read, with a refusal as an ordinary result.
+1. The person enters and confirms their details, then chooses **Generate my analysis**. At first Gerry takes that confirmed revision into Claude Code. Once website generation is connected, the action creates a tracked job pinned to that revision.
+2. Propose routes, run tools and read the results. If a household fact needed for a result is missing, collect the questions through `missing_facts` and stop the analysis. No chat is opened and no missing fact is guessed.
+3. Put those questions together in one short follow-up form on the person's private page. An existing question reuses its schema path, label, type, choices and validation. A proposed new question includes its proposed path, label and type, plus choices or units and validation where that type needs them; it is validated against the application schema contract before it is rendered or saved. A proposed path never writes directly into the planner's profile or a tool argument.
+4. The person answers what they can and confirms a new saved revision. Start a fresh analysis from that newly confirmed version and record its link to the stopped run. Discard calculations and stories from the older revision; do not splice new answers into them.
+5. **Only one follow-up round is allowed for this analysis request.** The restarted run works from what it has, without another form or guessed values. It records every result it cannot show, the missing fact and a plain reason, both beside the affected section and in `check_next` (section 3). A person may leave a question unanswered; that fact remains unknown, never zero.
+6. Write the story with placeholders and submit it to the plan-pack check, including the matching check for story links. A refusal comes back with its path; the analyst fixes what it can within the budget. Gerry reviews every checked analysis before release. Passing the checker never releases a result by itself.
 
-The same call gives the same result in either lane and in any order (A–B–A and B–A–B).
+**One tool interface, two callers.** The tools are defined once, as JSON Schema generated from the engines' own normalisers (`normalizePlanningModuleInput` and the plan pack schema), with one executor each. The same catalogue serves:
+- **First, Claude Code**, through a command-line tool: JSON in, JSON out. Gerry runs and reviews the analyses before releasing them.
+- **Later, the website analyst**, through tool definitions and dispatch in the worker, as part of the tracked generation job. Dispatch checks that the tool is known and available before reading arguments, validates parameters, returns refusals as ordinary results and runs the same plan-pack check before review. The backend's existing guarded tool execution is a reuse reference, not a live intake channel.
+
+The same call, facts and versions give the same result with either caller and in any order (A–B–A and B–A–B). The follow-up limit belongs to the analysis request, so retrying a job or switching callers cannot reset it. Website automation changes who starts the run; Gerry's release step remains.
 
 ## 8. Facts the what-ifs need
 
-The profile holds no existing cover. These optional facts are added, asked only when protection comes up or when the analyst asks for them through `missing_facts`:
+The profile holds no existing cover. These optional facts join the application schema and profile through B2. They are collected in the initial form when relevant or in the one short follow-up form returned through `missing_facts`:
 - **life cover:** the amount, when the term ends, whose life, and whether it is single or joint;
 - **mortgage protection:** which mortgage, and whose life;
 - **death-in-service:** the multiple of salary, and whose job;
 - **income protection:** the benefit, the waiting period, and the age it stops;
 - **employer sick pay:** how long at full pay and at part pay;
-- **married or in a civil partnership:** yes or no. This also settles joint assessment, which the plan already lists as missing.
+- **married or in a civil partnership:** yes or no. The form already collects `household.married`; B2 carries it into the profile for joint assessment instead of adding a duplicate question.
 
-Each fact is stated or confirmed as none; a fact that has not been given is never treated as zero. When a what-if runs without one, its results say so in plain words, and the review section must carry it. Until B2 moves them into the profile, these facts sit in the plan pack's `planningInputs`.
+Personal cover and employer death-in-service are separate facts, never one inferred total. Each fact is stated or confirmed as none; a fact that has not been given is never treated as zero. When a what-if runs without one, its results say so in plain words, and the review section must carry it. A result that cannot be calculated is marked not shown under section 7's follow-up rule. Until B2 moves them into the profile, confirmed facts sit in the plan pack's `planningInputs` with their source revision.
+
+**What the protection screen shows.** It keeps the income gap and how long savings last, as it does now, with any stated existing cover counted in. A stated payout appears as money received, for example "a lump sum paid on death, as you told us", and a mortgage protected on that death appears as cleared. It never shows a cover amount needed, a gap against cover, a premium, a product or a provider. The protection module's wording check accepts this stated-money case without permitting a recommendation for cover. A missing fact is disclosed in the results, not silently modelled as zero.
 
 ## 9. Risks and review items
 
 The analyst chooses which what-ifs to run (6c), within the checker's floor (section 3). Each risk in the story is a what-if result with its sources (6d). None is a forecast. When the retirement-years run exists, its own "Money running out" (the age the pension, ARF and savings run out before 100, if they do) is always shown beside them.
 
-Review items for `check_next` are also code facts, including the investment mixes and growth rates used and the client's stated preference: any assumed zero base cost, any estimated bank pay, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve. Where a care what-if is shown, the review items also carry the care brief's plain statements about Fair Deal, with no figures, and every what-if that ran without a fact it could use (section 8) is listed.
+Review items for `check_next` are also code facts, including the investment mixes and growth rates used and the client's stated preference: any result not shown because a base cost or another required fact is missing, any bank pay estimated by the shared tax engine from confirmed income facts, any announced but not yet enacted tax rate, each loan end and saving end within the ledger years, each retirement year, and the opening reserve. Where a care what-if is shown, the review items also carry the care brief's plain statements about Fair Deal, with no figures, and every what-if that ran without a fact it could use (section 8) is listed.
 
 ## 10. Golden plans for B4
 
 The five CFP case studies (Doyle, Gallagher, Shannon, Laune and McGowan) become plan packs, each checked against the course solution's figures. Gerry supplies the case notes and solutions.
 
-- **They stay out of the public repository** (decision 4). The notes, solutions and the five packs live in a git-ignored local folder, for example `private/cfp-cases/`. `npm run check:golden-plans` runs them when the folder is present and reports "not present" otherwise, so CI and the public site never hold course material. Niamh and Dara remain the public sample.
+- **They stay only on Gerry's Mac.** The notes, solutions, expected course figures and the five golden plan packs live only in `private/cfp-cases/`, excluded by `.gitignore` in this PR. The repository holds only made-up examples such as Niamh and Dara. Nothing from the course is committed, uploaded for CI or published with the site. B4 adds `npm run check:golden-plans`: it runs these private cases locally when present and reports "not present" otherwise, without copying them into public artifacts.
+- **An ignore rule does not untrack an earlier commit.** Run `git ls-files -- private/cfp-cases/` and require no output before committing or pushing. This was checked for this PR and nothing under that path is tracked. If it ever returns a path, stop and remove that material from the proposed commit; adding the ignore rule alone is not enough.
 - **What is compared.** Each case file records the solution's figures and the check compares them one by one: net worth, solvency, surplus or deficit, spare cash, the reserve, the ledger's resources and requirements, the order goals are funded in, and each goal's state. Figures that depend only on stated facts must match to the euro.
 - **Known differences are written down, not hidden.** Where the course uses a different tax year, reserve policy or growth rate, the case file states the course figure, Planeir's figure and the reason. A difference with no recorded reason fails the check.
-- B4's analyst agent is tested against these five cases.
+- B4's analyst agent is run from Claude Code against these five private cases. Gerry reviews each analysis before it is released.
 
 ## 11. The plan document
 
-Update `docs/plan-and-routes-implementation-plan.md` so B1.1, B1.5 and B1.6 sit after B1, B1.5 is "story facts, the what-if catalogue, the tool interface and the checker", B4 is "the analyst agent: prompt, loop and golden plans", D2 waits for B1.5's sections, the care costs module joins track A, and the rules list carries the dated-cost contract, the one retirement-years run, the what-if catalogue and the rule that every new engine is a tool. Done in the same pull request as this brief.
+Refresh `docs/plan-and-routes-implementation-plan.md` in the same PR. Section 1 records status through #95, distinguishing merged work from open PRs. Section 7 gives Gerry's order: tidy the story screen and finish both briefs alongside form-to-profile; shared pieces and what-if tools alongside the cash-flow/goals adapters, care calculations and the screen reading any compiled plan; then new questions, story facts and the checker, protection/college adapters and care funding/screen; then the tool interface and checked links; then B4 in Claude Code with private golden plans; finally the tracked website job, Gerry's release and a whole-journey test with made-up households. B1.6's later extensions stay recorded separately.
 
-## Decisions for Gerry
+## Decisions settled by Gerry, 27 October 2026
 
-1. **Defaults and bounds for the what-ifs.** Recommended, each as default (bounds): interest rates 2 percentage points higher (0.5 to 5); investment growth 2 points lower (0.5 to 4); dated-cost inflation 2 points higher (0.5 to 5); a sale fetching 20% less (5% to 50%); an income stopping for 12 months (1 month to the person's retirement); care from 85 for 5 years (starting 65 to 100, lasting 1 to 15 years). Kept with the central assumptions, dated and versioned.
-2. **What counts as dear debt.** Recommended default: every loan and card other than the mortgage, listed dearest first with its rate, with no rate threshold. A threshold can be added later if the list is too long in practice.
-3. **The home's share of net worth.** Recommended default: the home's value less its mortgage, as a share of net worth, so it reads as how much of the person's wealth is tied up in the home. The alternative is the home's full value over net worth, which can exceed 100%.
-4. **Course material stays private.** Recommended default: as in section 10. The course notes and solutions are not published.
-5. **How stated cover appears on screen.** The protection screen never shows the word "cover", a cover amount, a premium, a product or a provider. The death what-if now counts cover the household already has. Recommended default: show a stated payout as money received ("a lump sum paid on death, as you told us") and a mortgage as cleared, never as an amount of cover to take out. The protection module's wording check gains this one stated case.
+1. **Defaults and bounds for the what-ifs.** Interest rates 2 percentage points higher (0.5 to 5); investment growth 2 points lower (0.5 to 4); dated-cost inflation 2 points higher (0.5 to 5); a sale fetching 20% less (5% to 50%); an income stopping for 12 months (1 month up to the person's retirement); care from 85 for 5 years (starting 65 to 100, lasting 1 to 15 years). Kept with the central assumptions, dated and versioned, as section 6c records.
+2. **Loans and cards other than the mortgage.** No rate threshold. `debts_other_than_mortgage` lists every loan and card other than the mortgage, dearest first, with its rate, balance and yearly cost, under a neutral headline. `idle_cash_vs_debt` already shows where cash earns less than a loan costs. No arrears, penalties or promotional rates are added; the form does not collect them.
+3. **The home's share of net worth.** The home's value less its mortgage, as a share of net worth: how much of the person's wealth is tied up in the home.
+4. **Course material stays private.** Section 10 applies: golden plans built from the CFP cases live only in `private/cfp-cases/` on Gerry's Mac, with only made-up examples in the repository. This PR adds the ignore rule and checks `git ls-files -- private/cfp-cases/` for tracked files; an ignore rule never untracks a previously committed file.
+5. **How stated existing cover appears on screen.** The protection screen shows the income gap and how long savings last, counting the existing cover the household has stated. A stated payout appears as money received ("a lump sum paid on death, as you told us"), and a protected mortgage as cleared. It never shows a cover amount needed, a gap against cover, a premium, a product or a provider. Personal cover and employer death-in-service remain separate facts; an unstated fact is never zero, and the results say so.
 
 Settled by Gerry on 22 October 2026: when a death happens is a what-if parameter, not a decision, and the order money is drawn in retirement is an engine default.
 
@@ -381,12 +416,18 @@ Settled by Gerry on 21 October 2026: the four mixes and their rates (4%, 5%, 6% 
 - Each issue fires on a fixture built to trigger it and stays silent on one built not to, including a missing base cost for `investment_at_a_loss` and a loss that only selling costs create (value €100, base cost €95, selling costs €10).
 - A household with no assets, no home or no mortgage can still pass the check, with the code's reason in place of each missing figure.
 - Every linked placeholder resolves to a module and case of its own route (or the current position's), and to a focus target that exists in the presenter catalogue for that case; a link marked on a figure with no linkable source is refused with its path.
+- Every figure the story links equals what the linked module shows for that route's case, checked from the compiled plan's chapter input, output, `chapterCases`, `nativeCaseId` and versions, never from module samples. Check the underlying value and unit and the module's displayed rounding and formatting. Deliberately changing the value, case or focus target must fail at the story/link path, including when the wrong case happens to have the same amount. Run this across changed compiled households as well as current-position links and plan-owned panels; a link that opens is not sufficient evidence.
 - Each recipe expands deterministically, A–B–A and B–A–B give the same routes, and a balancing move never leaves the stated flexibility.
 - What-if runs reuse the native engines and never change the base figures.
 - 6a: college and future-cost-fund figures through the contract equal today's to the cent; a part lump sum is worked out the same way for every producer; years after retirement move to the retirement goal exactly once, and relief is counted once.
 - 6b: a what-if with no change equals the base run to the cent; a couple retiring in different years keeps the working partner's take-home until that partner's own retirement year; "Money running out", growth, spend-more, survivor and care figures for the same route and version all come from one run and agree.
-- 6c and 6d: every what-if's parameters validate against the schema generated from its engine's normaliser; a value outside its bounds, or without a fact, a default or a reasoned bounded value, is refused with its path; a refusal is an ordinary tool result; an entry waiting for its engine or its bounds cannot be called; each what-if's change is the only difference from the base run.
+- 6c and 6d: every what-if's parameters validate against the schema generated from its engine's normaliser and the settled defaults and bounds; a value outside its bounds, or without a fact, a default or a reasoned bounded value, is refused with its path; a refusal is an ordinary tool result; an entry waiting for its engine cannot be called; each what-if's change is the only difference from the base run. Check each allowed endpoint and the person's retirement boundary.
 - Section 7: the command-line tool and the worker give identical results for the same calls in any order; an unknown or unavailable tool is refused before its arguments are read; a call past the run budget is refused.
+- `read_figures` matches `getFigures` for all four parameters, including date-effective selection, sources, check dates and versions. Unknown IDs fail; `{figure.<id>}` resolves from the compiled plan's recorded register version; no provider quotes reach narration and no rate is supplied from memory.
+- A missing household fact returns an existing schema path or a validated proposed question with path, label and type, never an invented answer. The first run stops for one private-page follow-up form; the next run starts afresh from the newly confirmed revision and records its parent run. Still-missing facts produce named limitations instead of guessed values, including for the method's required what-ifs. Retries and caller changes cannot grant another round; unconfirmed edits never enter a run.
+- The initial Claude Code analysis and the later tracked website job both pass the same plan-pack check and remain unreleased until Gerry reviews and releases them. A passing check never publishes a result automatically.
 - Section 8: an unstated cover fact is never treated as zero; a what-if run without it says so, and the review section carries it; stated payouts pass the protection module's wording checks.
+- `debts_other_than_mortgage` includes both cheap and expensive loans and cards, excludes the mortgage and uses no rate threshold. The screen shows only the income gap, savings duration, stated money received and a protected mortgage cleared, with no cover need, cover comparison, premium, product or provider. Personal cover and death-in-service stay separate facts. `position.homeShare` uses net home equity over net worth.
+- `git ls-files -- private/cfp-cases/` returns nothing and `git check-ignore private/cfp-cases/ignore-check.json` confirms the rule; no course files or solutions appear in the PR or public artifacts. B4's private golden check is reported as future work, not a command already available in this docs-only change.
 - B1.6: growth, gift and spend-more what-ifs on one route never use more than the money left over, run as alternatives that are never added or as one split that fits; no version above the stated preference, or above the base case when none is stated, is ever run or registered; a story using a growth version without the disclosure is refused; invested figures reproduce the central rates and the tax engine's exit tax and deemed-disposal figures; pension contributions stop at each relief limit before anything is invested outside; spend-more figures never draw on the reserve in any year; spend-more and survivor figures match the pension and net-retirement engines; gift figures use the dated gift tax rules and the children's actual birthdays.
 - Existing B0, B1 and B1.1 checks, the consumer suite, stale exports and build stay green. No prompt-pack changes and no consumer activation.
