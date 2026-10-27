@@ -1248,7 +1248,7 @@ export function computeHousePurchaseProjection(rawInputs, {
       id: 'house-purchase-mortgage-sensitivity',
       title: 'Mortgage repayment sensitivity',
       type: 'bar',
-      labels: mortgage.sensitivity.map((entry) => `${formatPercent(entry.rate, 1)} / ${entry.termYears}y`),
+      labels: mortgage.sensitivity.map((entry) => `${formatPercent(entry.rate, 2)} / ${entry.termYears}y`),
       datasets: [{ label: 'Monthly repayment', data: mortgage.sensitivity.map((entry) => entry.monthlyPayment) }]
     }
   ];
