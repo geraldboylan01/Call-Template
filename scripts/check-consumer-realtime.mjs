@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildGoalModulePlan, MODULE_IDS } from '../js/planning/index.js';
+import { publicIrishStatePensionRule } from '../js/planning/ireland_rules.js';
 import { getConsumerConfig } from '../worker/src/consumer/config.js';
 import {
   handleConsumerRequest,
@@ -137,6 +138,9 @@ import {
   toConsumerRealtimePlanningLists,
   realtimeUsageFromResponse
 } from '../worker/src/consumer/realtime_session.js';
+
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
 
 const FORMAL_CONSUMER_MODULE_NAMES = /\b(?:Personal Balance Sheet|Mortgage Analysis|College Funding|Pension Projection|Liquidity Analysis|Liquidity Reserve|Loan Analysis|House Purchase(?: Planner)?)\b/i;
 const INTERNAL_CONSUMER_MODULE_IDS = /\b(?:personal_balance_sheet|mortgage_analysis|college_funding|pension_projection|liquidity_analysis|loan_analysis|house_purchase|net_retirement_cashflow)\b/i;
@@ -624,7 +628,7 @@ const pensionConfirmationSummary = buildVoiceConfirmationSummary({
       { key: 'inflationRate', value: 0.02 }
     ]
   }],
-  statePensionRule: { effectiveFrom: '2026-01-01' },
+  statePensionRule: publicIrishStatePensionRule(TEST_PLAN_DATE),
   understood: [{ factId: 'state_pension_fraction', value: 0.5 }]
 });
 assert.match(pensionConfirmationSummary, /€15,563\.60 gross a year, effective January 2026, with a default start age of 66/);
@@ -648,6 +652,7 @@ assert.doesNotMatch(legacyNarrativeConfirmation, /net_retirement_cashflow/i);
 const couplePensionConfirmationSummary = buildVoiceConfirmationSummary({
   analyses: [{ moduleId: 'pension_projection', label: 'Pension projection' }],
   statePensionRule: {
+    ...publicIrishStatePensionRule(TEST_PLAN_DATE),
     perPersonAssumptions: [
       { label: 'You', fraction: 1, startAge: 66 },
       { label: 'Your wife', fraction: 0.5, startAge: 66 }
@@ -865,6 +870,7 @@ const signedBrief = await composeMeetingBrief({
   },
   context: {
     sessionRow: { current_profile_revision: 7 },
+    profile: { assumptions: { calculationDateIso: TEST_PLAN_DATE } },
     state: {
       profileRevision: 7,
       moduleSlots: [
@@ -1019,6 +1025,7 @@ const perPersonMissingBrief = await composeMeetingBrief({
   context: {
     config: { realtimeSpokenCompletionEnabled: true },
     sessionRow: { current_profile_revision: 1 },
+    profile: { assumptions: { calculationDateIso: TEST_PLAN_DATE } },
     state: {
       profileRevision: 1,
       goalAssessment: { activeGoalTypes: ['retire'], deferredGoalTypes: [] },
@@ -1046,6 +1053,7 @@ const rangeAssumptionContext = (previousBrief) => ({
   profile: {
     preferences: { baseCurrency: 'EUR' },
     assumptions: {
+      calculationDateIso: TEST_PLAN_DATE,
       values: {
         completionFacts: {
           rangedFactValues: {
@@ -1104,7 +1112,7 @@ assert.ok(!('announcedAssumptions' in toConversationGuide(firstAssumptionBrief))
 const droppedContext = (previousBrief) => ({
   config: { realtimeSpokenCompletionEnabled: true },
   sessionRow: { current_profile_revision: 1 },
-  profile: { preferences: { baseCurrency: 'EUR' } },
+  profile: { preferences: { baseCurrency: 'EUR' }, assumptions: { calculationDateIso: TEST_PLAN_DATE } },
   state: {
     profileRevision: 1,
     meetingBrief: previousBrief,
@@ -1170,6 +1178,7 @@ const missingHomeValueBrief = await composeMeetingBrief({
   context: {
     config: { realtimeSpokenCompletionEnabled: true },
     sessionRow: { current_profile_revision: 2 },
+    profile: { assumptions: { calculationDateIso: TEST_PLAN_DATE } },
     state: {
       profileRevision: 2,
       goalAssessment: { activeGoalTypes: ['understand_position'], deferredGoalTypes: [] },
@@ -1203,6 +1212,7 @@ const missingBusinessBrief = await composeMeetingBrief({
   context: {
     config: { realtimeSpokenCompletionEnabled: true },
     sessionRow: { current_profile_revision: 3 },
+    profile: { assumptions: { calculationDateIso: TEST_PLAN_DATE } },
     state: {
       profileRevision: 3,
       goalAssessment: { activeGoalTypes: ['understand_position'], deferredGoalTypes: [] },

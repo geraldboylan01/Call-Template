@@ -73,6 +73,9 @@ import {
   tangentAnswerLooksSubstantive
 } from './run-live-persona-replay.mjs';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 const NOW = '2026-07-27T09:00:00.000Z';
 const CONFIG = livePlanningConfig({
   goalRoutingEnabled: true,
@@ -451,9 +454,9 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
 /* ------------------------------------------------------ prompt invariants */
 
 {
-  const prompt = buildLiveCataloguePrompt();
+  const prompt = buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE });
 
-  ok(prompt === buildLiveCataloguePrompt(), 'The prompt must be byte-stable so the provider caches it.');
+  ok(prompt === buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE }), 'The prompt must be byte-stable so the provider caches it.');
   ok(prompt.length > 8_000, 'The prompt must actually carry the catalogue.');
 
   // Every consumer analysis must be described, or the model cannot offer it.
@@ -1001,7 +1004,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   const orientProblems = checkAssistantTurn(session, 'What is your annual income?', {
     goalsAgreed: false,
     clientAskedQuestion: false,
-    sourcedFigures: createSourcedFigureSet()
+    sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE)
   });
   ok(orientProblems.some((problem) => problem.includes('FIGURE BEFORE')),
     'A figure question cannot authorize itself by saving a goal in the same response.');
@@ -1009,7 +1012,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   const broadProblems = checkAssistantTurn(session, 'Roughly what brought you here today?', {
     goalsAgreed: false,
     clientAskedQuestion: false,
-    sourcedFigures: createSourcedFigureSet()
+    sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE)
   });
   ok(!broadProblems.some((problem) => problem.includes('FIGURE BEFORE')),
     'A broad ORIENT question containing "roughly" is not a financial-figure request.');
@@ -1020,7 +1023,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     {
       goalsAgreed: true,
       clientAskedQuestion: false,
-      sourcedFigures: createSourcedFigureSet()
+      sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE)
     }
   );
   ok(moduleLeakProblems.some((problem) => problem.includes('LEAKED INTERNAL ID: pension_projection')),
@@ -1033,7 +1036,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
       goalsAgreed: true,
       readyToConfirm: false,
       clientAskedQuestion: false,
-      sourcedFigures: createSourcedFigureSet()
+      sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE)
     }
   );
   ok(notReadyProblems.some((problem) => problem.includes('STATE WAS NOT READY')),
@@ -1042,7 +1045,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     goalsAgreed: true,
     readyToConfirm: true,
     clientAskedQuestion: false,
-    sourcedFigures: createSourcedFigureSet()
+    sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE)
   });
   ok(!readyProblems.some((problem) => problem.includes('STATE WAS NOT READY')),
     'A final run confirmation is valid once deterministic state is ready.');
@@ -1054,13 +1057,13 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
       readyToConfirm: false,
       missingFactIds: ['monthly_spending', 'liability_position'],
       clientAskedQuestion: false,
-      sourcedFigures: createSourcedFigureSet()
+      sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE)
     }
   );
   ok(staleStateProblems.some((problem) => problem.includes('CLAIMED ONLY ONE ITEM')),
     'The harness must catch a spoken missing-fact summary that contradicts deterministic state.');
 
-  const beforeToolSources = createSourcedFigureSet();
+  const beforeToolSources = createSourcedFigureSet(TEST_PLAN_DATE);
   executeReplayTool(session, 'save_facts', {
     facts: [{
       factId: 'cash_savings',
@@ -1076,7 +1079,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   ok(launderingProblems.some((problem) => problem.includes('COMPLIANCE L2 unsourced_figure')),
     'A model cannot source its own invented figure through a same-response save_facts call.');
 
-  const accumulatedSources = createSourcedFigureSet();
+  const accumulatedSources = createSourcedFigureSet(TEST_PLAN_DATE);
   addSourcedFiguresFromText(accumulatedSources, 'I have €1,000 saved already.');
   const activeResponseSources = { values: [...accumulatedSources.values] };
   const earlyEcho = scanAssistantSpeech(
@@ -1308,7 +1311,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
     responseId: 'resp_repeated_unsafe_delta',
     causeItemId: null,
     pendingSourceItemIds: new Set(),
-    sourcedFigures: createSourcedFigureSet(),
+    sourcedFigures: createSourcedFigureSet(TEST_PLAN_DATE),
     assistantTranscript: '',
     assistantDone: false,
     assistantItemId: '',
@@ -2744,7 +2747,7 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
 // 5. AN EMPTY MISSING QUEUE IS NOT AN INVITATION. Nothing may be invented from
 //    the catalogue once an analysis has what it needs.
 {
-  const prompt = buildLiveCataloguePrompt();
+  const prompt = buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE });
   ok(/lists nothing under Needs[\s\S]{0,200}Do not invent/i.test(prompt),
     'The prompt must forbid inventing a question when an analysis needs nothing.');
   const item = liveVolatileStateItem({
@@ -2922,7 +2925,7 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
 // 12. One unavailable input blocks only its dependent analysis. The server,
 //     not the model, identifies the remaining runnable set.
 {
-  const prompt = buildLiveCataloguePrompt();
+  const prompt = buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE });
   ok(/BLOCKS ONLY THE ANALYSIS THAT NEEDS IT/.test(prompt),
     'The prompt must make module-specific blocking explicit.');
   const item = liveVolatileStateItem({
@@ -3197,7 +3200,7 @@ function pensionSession({ partner = false, value = { amount: 28_000, currency: '
 //     refused, stayed missing, and the meeting asked a third time — which is
 //     why anxious_late_starter failed every run of the 3x sweep.
 {
-  const sourced = createSourcedFigureSet();
+  const sourced = createSourcedFigureSet(TEST_PLAN_DATE);
   addSourcedFiguresFromText(sourced, 'My PRSA is worth about 28000 and I earn 54000 a year.');
   const readBack = 'So your PRSA is about EUR 28,000 — is that right?';
   const money = (amount) => [{

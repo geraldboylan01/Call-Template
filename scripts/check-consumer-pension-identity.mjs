@@ -28,6 +28,9 @@ import { partitionSupportedLiveFacts, pensionIdentityDirective } from '../worker
 import { plannerReconciliationPreflight } from '../worker/src/consumer/live/live_session.js';
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 const pass = (message) => console.info(`[PensionIdentity] PASS: ${message}`);
 
 function household() {
@@ -309,7 +312,7 @@ const occupational = (over) => ({
  * it is not evidence about whose the pension is.
  * ------------------------------------------------------------------------ */
 {
-  const prompt = buildLiveCataloguePrompt({ recommendations: [], profile: null });
+  const prompt = buildLiveCataloguePrompt({ recommendations: [], profile: null, planDateIso: TEST_PLAN_DATE });
   const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
   assert.match(text, /between us/i,
     'the prompt must name the collective phrasing that caused the invented holding');

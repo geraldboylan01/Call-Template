@@ -13,8 +13,12 @@
  * rebuilding the calculation engines.
  */
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.3.0';
+import { marketFigure, marketFigureValue } from './figures/market_math.js';
+
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.5.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-13';
+
+const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
 
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
   version: PLANEIR_ASSUMPTIONS_VERSION,
@@ -36,35 +40,32 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
     educationBasis: 'Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education planning.'
   }),
 
+  /**
+   * The growth rate the net retirement cash-flow module uses. It is after tax
+   * and held on its own: it is not worked out from the 5% investment growth
+   * assumption. It was an unnamed default inside the engine and the adapter,
+   * with the note "existing net retirement engine default", until it was given
+   * a name and a basis here.
+   */
+  netRetirement: Object.freeze({
+    presentValueRate: 0.04,
+    basis: 'A 4% a year after-tax growth rate is used to work out the fund needed today to pay for each year of retirement spending that other income does not cover.',
+    disclosure: 'This is a planning assumption, not a guaranteed return. It is held separately from the long-term growth assumption used for pension pots.'
+  }),
+
   cash: Object.freeze({
-    /** Gross, before DIRT. DIRT itself lives in the tax catalogue, not here. */
-    instantAccessGrossRate: 0.002,
+    /**
+     * Gross, before DIRT. DIRT itself lives in the tax catalogue, not here. The
+     * rate is a market figure worked out from the quotes in the figures
+     * register (`figures/market_ie.js`), which keeps them as the audit trail.
+     * Nothing from there reaches a client-facing string, which is why `basis`
+     * does not name the banks.
+     */
+    instantAccessGrossRate: marketFigureValue(CASH_RATE_FIGURE_ID),
     basis: 'A 0.2% interest rate is used for money held in instant-access cash. It is the rounded average of the standard instant-access rates two large Irish retail banks quoted in October 2026, before DIRT.',
     disclosure: 'This is a planning assumption, not a quoted rate. Banks can change instant-access rates at any time, and regular-saver and notice accounts pay more.',
-    /**
-     * The two rates the figure was averaged from, for the audit trail only.
-     * Nothing here reaches a client-facing string, which is why `basis` does
-     * not name the banks.
-     */
-    observed: Object.freeze([
-      Object.freeze({
-        provider: 'Bank of Ireland',
-        product: 'Instant Access Demand / Demand Deposit',
-        quotedRate: 0.001,
-        quotedAs: 'AER, variable, gross of DIRT',
-        effective: '2026-09-14',
-        url: 'https://personalbanking.bankofireland.com/save-and-invest/savings/bank-of-ireland-deposit-rates/'
-      }),
-      Object.freeze({
-        provider: 'AIB',
-        product: 'Personal Demand Deposit Account',
-        quotedRate: 0.0025,
-        quotedAs: 'AER and gross annual interest rate',
-        effective: '2025-05-13',
-        url: 'https://aib.ie/our-products/savings-and-deposits/Deposit-Rates'
-      })
-    ]),
-    checkedOn: '2026-10-13'
+    figureId: CASH_RATE_FIGURE_ID,
+    checkedOn: marketFigure(CASH_RATE_FIGURE_ID).checkedOn
   }),
 
   collegeFunding: Object.freeze({
@@ -114,7 +115,7 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
    */
   taxProjection: Object.freeze({
     policy: 'freeze_budget_parameters_apply_fixed_law_hold_unknowns',
-    basis: 'Tax bands, credits and thresholds that each Budget sets are kept at their latest enacted values in euro terms and never increased with inflation, because Budgets often leave them unchanged. Changes the law has already fixed by date and amount, such as the scheduled PRSI rises and the Standard Fund Threshold steps, are applied on their dates. Where the law ties a future figure to data that does not exist yet, such as the Standard Fund Threshold from 2030, the last known figure is held rather than forecast.',
+    basis: 'Tax bands, credits and thresholds that each Budget sets are kept at their latest enacted or announced values in euro terms and never increased with inflation, because Budgets often leave them unchanged. Changes the law has already fixed by date and amount, such as the scheduled PRSI rises and the Standard Fund Threshold steps, are applied on their dates. Where the law ties a future figure to data that does not exist yet, such as the Standard Fund Threshold from 2030, the last known figure is held rather than forecast.',
     disclosure: 'If future Budgets raise bands and credits, tax in later years would be lower than shown. A held Standard Fund Threshold is its lowest possible level, so any tax shown on a fund above it may be overstated.'
   })
 });
@@ -173,6 +174,11 @@ export function assumptionRecord(key) {
       key: 'collegeDurationYears',
       value: collegeFunding.durationYears,
       reason: `Four years of college for each child (${version}).`
+    },
+    presentValueRate: {
+      key: 'presentValueRate',
+      value: PLANEIR_ASSUMPTIONS.netRetirement.presentValueRate,
+      reason: `${PLANEIR_ASSUMPTIONS.netRetirement.basis} ${PLANEIR_ASSUMPTIONS.netRetirement.disclosure} (${version})`
     },
     taxProjection: {
       key: 'taxProjectionPolicy',

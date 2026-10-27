@@ -36,6 +36,9 @@ import {
   verifyDirectModuleCertificate
 } from '../worker/src/consumer/direct_module_planner.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 const NOW = '2026-09-02T10:00:00.000Z';
 const TODAY = '2026-09-02';
 const CONFIRMATION_PROMPT = 'I will run the existing mortgage analysis using a €240,000 balance, 4.1% interest and 22 years remaining, with no overpayment. Would you like me to run exactly that plan now?';
@@ -57,7 +60,7 @@ assert.equal(getConsumerConfig({ CONSUMER_MODULE_PLANNER_MODE: 'typo' }).moduleP
 pass('direct mode is off by default and invalid deployment values fail closed');
 const directProviderConfig = buildLiveSessionConfig(getConsumerConfig({
   CONSUMER_MODULE_PLANNER_MODE: 'apply'
-}));
+}), { planDateIso: TEST_PLAN_DATE });
 assert.deepEqual(directProviderConfig.tools.map((tool) => tool.name), ['get_state', 'confirm_and_run']);
 assert.doesNotMatch(directProviderConfig.instructions, /\bsave_facts\b/);
 assert.doesNotMatch(directProviderConfig.instructions, /save primary_goal_focus/i);

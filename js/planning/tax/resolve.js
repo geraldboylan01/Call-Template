@@ -28,6 +28,41 @@ export const DEFAULT_IE_TAX_CATALOGUE = Object.freeze({
   schedules: IE_LEGISLATED_SCHEDULES
 });
 
+/**
+ * A catalogue that stands in for the built-in one while a function runs. FOR TESTS
+ * THAT PIN A DESIGN FIXTURE: a screen's approved frames are drawn on the rules in
+ * force when they were drawn, and should not change every Budget. A module whose
+ * engine takes no catalogue option (the retirement and goals engines read the
+ * default directly) can still be run on those rules. Nothing in the app calls it.
+ *
+ * It holds for an async function until its promise settles, so callers run one
+ * pinned function at a time.
+ */
+let overrideCatalogue = null;
+const overrideCaches = new WeakMap();
+
+export function withTaxCatalogue(catalogue, fn) {
+  const previous = overrideCatalogue;
+  overrideCatalogue = catalogue;
+  let result;
+  try {
+    result = fn();
+  } catch (error) {
+    overrideCatalogue = previous;
+    throw error;
+  }
+  if (result && typeof result.then === 'function') {
+    return result.finally(() => { overrideCatalogue = previous; });
+  }
+  overrideCatalogue = previous;
+  return result;
+}
+
+/** The catalogue in force for a call that does not pass one. */
+function currentCatalogue() {
+  return overrideCatalogue ?? DEFAULT_IE_TAX_CATALOGUE;
+}
+
 function requireTaxYear(year, fieldName = 'year') {
   if (typeof year !== 'number' || !Number.isInteger(year)) {
     throw new Error(`${fieldName} must be an integer tax year; received ${JSON.stringify(year)}.`);
@@ -105,7 +140,7 @@ export function recordPublishedSft(catalogue, { year, amount, source = null }) {
  * The threshold for a year: the figure recorded for that year, or the last
  * one recorded before it, held.
  */
-export function resolveSft(year, catalogue = DEFAULT_IE_TAX_CATALOGUE) {
+export function resolveSft(year, catalogue = currentCatalogue()) {
   requireTaxYear(year);
   const threshold = catalogue.schedules.standardFundThreshold;
   const fixed = validateSftSchedule(threshold.fixed);
@@ -135,7 +170,7 @@ function monthStart(year, month) {
  * The PRSI rate for a year, blended by months in force where it changes during
  * the year (brief, 4.1): income is assumed to arrive evenly across the year.
  */
-function resolvePrsiRate(year, catalogue = DEFAULT_IE_TAX_CATALOGUE) {
+function resolvePrsiRate(year, catalogue = currentCatalogue()) {
   requireTaxYear(year);
   const schedule = catalogue.schedules.prsiRate;
   const monthsByRate = new Map();
@@ -245,6 +280,7 @@ function buildResolvedRules(year, catalogue) {
     heldForward: year > rulesYear,
     status: block.status,
     enactedBy: block.enactedBy,
+    announcedBy: block.announcedBy,
     verifiedOn: block.verifiedOn,
     incomeTax: block.incomeTax,
     ageExemption: block.ageExemption,
@@ -288,11 +324,19 @@ const defaultCache = new Map();
  */
 export function resolveTaxRules(year, { catalogue = null } = {}) {
   requireTaxYear(year);
-  if (!catalogue || catalogue === DEFAULT_IE_TAX_CATALOGUE) {
+  const active = catalogue ?? currentCatalogue();
+  if (active === DEFAULT_IE_TAX_CATALOGUE) {
     if (!defaultCache.has(year)) {
       defaultCache.set(year, buildResolvedRules(year, DEFAULT_IE_TAX_CATALOGUE));
     }
     return defaultCache.get(year);
   }
-  return buildResolvedRules(year, catalogue);
+  if (catalogue === null && active === overrideCatalogue) {
+    // A pinned design fixture is asked for the same few years thousands of times too.
+    if (!overrideCaches.has(active)) overrideCaches.set(active, new Map());
+    const cache = overrideCaches.get(active);
+    if (!cache.has(year)) cache.set(year, buildResolvedRules(year, active));
+    return cache.get(year);
+  }
+  return buildResolvedRules(year, active);
 }
