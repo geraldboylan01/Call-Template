@@ -1,0 +1,374 @@
+/*
+ * THE PLAN STORY.
+ *
+ * A reading column about 70 characters wide, a narrow rail beside it, and
+ * nothing else. Colours come from the app's own tokens (styles/base.css :root);
+ * the fallbacks are the same values so the file also reads on its own.
+ *
+ * Links are never the only cue: they carry a dotted underline as well as the
+ * accent, and a small module mark appears on hover or focus. Nothing here
+ * ranks, scores or colours a route.
+ */
+
+.ps {
+  --ps-ink: var(--text, #f7f4ee);
+  --ps-body: #c5ced4;
+  --ps-muted: var(--muted, #a9b5bd);
+  --ps-blue: var(--electric-blue, #6aa7c8);
+  --ps-blue-wash: rgba(106, 167, 200, 0.14);
+  --ps-line: var(--surface-line, rgba(190, 202, 207, 0.18));
+  --ps-panel: var(--panel, rgba(17, 24, 29, 0.68));
+  --ps-amber: var(--accent-amber, #d4a64f);
+  --ps-serif: 'Iowan Old Style', 'Source Serif 4', 'Palatino Linotype', 'Book Antiqua', Georgia, serif;
+  color: var(--ps-body);
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  padding: 40px 24px 96px;
+}
+
+.ps *, .ps *::before, .ps *::after { box-sizing: border-box; }
+.ps { overflow-x: clip; }
+.ps-grid > * { min-width: 0; }
+.ps-route-list, .ps-cards { position: relative; }
+
+.ps-g { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.ps-g-lg { width: 20px; height: 20px; }
+
+.ps-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 680px) 380px;
+  gap: 72px;
+  justify-content: center;
+  align-items: start;
+}
+
+.ps-eyebrow {
+  margin: 0;
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ps-muted);
+  font-weight: 700;
+}
+
+.ps-tag {
+  margin-left: 8px;
+  padding: 2px 9px;
+  border: 1px solid rgba(190, 202, 207, 0.4);
+  border-radius: 99px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ps-body);
+}
+
+/* ------------------------------------------------------------ the story */
+
+.ps-headline {
+  margin: 12px 0 16px;
+  font: 600 44px/1.1 var(--ps-serif);
+  letter-spacing: -0.02em;
+  color: var(--ps-ink);
+}
+
+.ps-summary { margin: 0 0 34px; font-size: 20px; line-height: 1.55; }
+
+.ps-section { padding: 28px 0 8px; border-top: 1px solid var(--ps-line); scroll-margin-top: 24px; }
+.ps-section h2 { margin: 6px 0 14px; font: 600 28px/1.2 var(--ps-serif); color: var(--ps-ink); }
+.ps-section p { margin: 0; font-size: 18px; line-height: 1.72; }
+.ps-section p + p { margin-top: 14px; }
+.ps-section p.ps-eyebrow { font-size: 11.5px; line-height: 1.4; }
+
+.ps-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-bottom: 20px;
+  padding: 0 14px;
+  border: 1px solid rgba(106, 167, 200, 0.4);
+  background: var(--ps-blue-wash);
+  border-radius: 12px;
+  font-size: 13.5px;
+}
+.ps-status b { color: var(--ps-ink); }
+.ps-status .ps-g { color: var(--ps-blue); }
+
+/* a figure that is a way into its module */
+.ps-tw { position: relative; display: inline; }
+.ps-link {
+  color: var(--ps-blue);
+  text-decoration: underline dotted 1.5px;
+  text-underline-offset: 4px;
+  border-radius: 4px;
+}
+.ps-link:hover { text-decoration-style: solid; background: var(--ps-blue-wash); }
+.ps-link:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 3px; text-decoration-style: solid; }
+.ps-g-hover { display: none; margin-left: 3px; width: 13px; height: 13px; vertical-align: -2px; }
+.ps-link:hover .ps-g-hover, .ps-link:focus-visible .ps-g-hover { display: inline-block; }
+
+.ps-tip {
+  display: none;
+  position: absolute;
+  left: -40px;
+  bottom: calc(100% + 12px);
+  width: 290px;
+  z-index: 20;
+  padding: 10px 13px;
+  border: 1px solid rgba(160, 190, 205, 0.42);
+  border-radius: 12px;
+  background: #121b21;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: var(--ps-body);
+}
+.ps-tip b { display: block; margin-bottom: 2px; font-size: 13.5px; color: var(--ps-ink); }
+.ps-tw:hover .ps-tip, .ps-tw:focus-within .ps-tip { display: block; }
+.ps-tw[data-ps-dismissed] .ps-tip { display: none; }
+
+.ps-seein { display: flex; flex-wrap: wrap; align-items: center; gap: 0 20px; margin-top: 10px !important; }
+.ps-seein-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ps-muted); font-weight: 700; }
+.ps-see {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  color: var(--ps-blue);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+}
+.ps-see:hover { background: var(--ps-blue-wash); }
+.ps-see:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 2px; border-radius: 4px; }
+
+/* where you were: quiet, and still there under reduced motion */
+.ps-section p.ps-here {
+  margin-left: -17px;
+  padding: 6px 0 6px 14px;
+  border-left: 3px solid var(--ps-blue);
+  background: var(--ps-blue-wash);
+  border-radius: 0 12px 12px 0;
+}
+
+/* a section the analyst is still recalculating */
+.ps-sk { display: grid; gap: 12px; }
+.ps-sk i { display: block; height: 16px; border-radius: 6px; background: linear-gradient(90deg, rgba(190, 202, 207, 0.08), rgba(190, 202, 207, 0.2), rgba(190, 202, 207, 0.08)); }
+.ps-sk i:nth-child(1) { width: 96%; }
+.ps-sk i:nth-child(2) { width: 90%; }
+.ps-sk i:nth-child(3) { width: 60%; }
+
+/* ------------------------------------------------------------- the rail */
+
+.ps-rail { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 30px; }
+
+.ps-route-list { display: flex; flex-direction: column; margin-top: 8px; }
+.ps-route {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 14px;
+  color: var(--ps-body);
+  font-size: 14.5px;
+  font-weight: 600;
+  text-decoration: none;
+  border-left: 2px solid var(--ps-line);
+}
+.ps-route small { width: 14px; font: 600 12px 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; color: var(--ps-muted); }
+.ps-route:hover { color: var(--ps-ink); }
+.ps-route[aria-current='true'] { color: var(--ps-ink); border-left-color: var(--ps-blue); background: rgba(106, 167, 200, 0.08); }
+.ps-route:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 2px; }
+
+.ps-glance { padding: 18px 16px 14px; border: 1px solid var(--ps-line); border-radius: 20px; background: var(--ps-panel); }
+.ps-glance-table { width: 100%; margin-top: 4px; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.ps-glance-table th, .ps-glance-table td { padding: 8px 4px; text-align: left; vertical-align: top; font-size: 12px; border-top: 1px solid rgba(190, 202, 207, 0.14); }
+.ps-glance-table thead th, .ps-glance-table thead td { border-top: 0; }
+.ps-rowlabel { width: 84px; color: var(--ps-body); font-weight: 600; line-height: 1.3; }
+.ps-glance-table thead a { display: block; min-height: 44px; color: var(--ps-ink); font-size: 11.5px; font-weight: 700; line-height: 1.25; text-decoration: none; }
+.ps-glance-table thead a:hover { text-decoration: underline; }
+.ps-glance-table thead a:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 2px; }
+.ps-glance-table small { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--ps-muted); }
+.ps-glance-table thead small { text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+.ps-glance-table td { color: var(--ps-ink); font: 500 12.5px 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; letter-spacing: -0.04em; }
+.ps-glance-table td.ps-word { font: 600 12.5px 'Manrope', 'Segoe UI', sans-serif; letter-spacing: 0; }
+.ps-readcell { height: 18px; padding: 0 !important; text-align: center !important; font: 700 10px 'Manrope', 'Segoe UI', sans-serif !important; letter-spacing: 0.04em !important; color: var(--ps-blue) !important; white-space: nowrap; overflow: visible; }
+
+/* the selected route: an outline, and the words "You're reading", and nothing else */
+.ps-sel { border-left: 1px solid rgba(106, 167, 200, 0.55) !important; border-right: 1px solid rgba(106, 167, 200, 0.55) !important; padding-left: 5px !important; }
+.ps-sel-top { border-top: 1px solid rgba(106, 167, 200, 0.55) !important; border-radius: 10px 10px 0 0; }
+.ps-sel-bottom { border-bottom: 1px solid rgba(106, 167, 200, 0.55) !important; border-radius: 0 0 10px 10px; }
+
+.ps-glance-note { margin: 16px 0 0; font-size: 11.5px; line-height: 1.45; }
+.ps-cards { display: none; }
+
+/* ----------------------------------------- a module opened from the story */
+
+.ps-pillbar { display: flex; align-items: center; gap: 18px; padding: 16px 24px; }
+.ps-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px 0 16px;
+  border: 1px solid rgba(106, 167, 200, 0.6);
+  border-radius: 99px;
+  background: rgba(106, 167, 200, 0.16);
+  color: var(--ps-ink, #f7f4ee);
+  font: 700 14.5px 'Manrope', 'Segoe UI', sans-serif;
+  cursor: pointer;
+}
+.ps-pill:hover { background: rgba(106, 167, 200, 0.26); }
+.ps-pill:focus-visible, .ps-btn:focus-visible, .ps-switch button:focus-visible { outline: 2px solid var(--electric-blue, #6aa7c8); outline-offset: 2px; }
+.ps-pill-context { font-size: 13.5px; line-height: 1.4; color: var(--muted, #a9b5bd); }
+.ps-pill-context b { color: var(--text, #f7f4ee); }
+
+.ps-offroute {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 24px 14px;
+  padding: 12px 16px;
+  border: 1px solid rgba(212, 166, 79, 0.45);
+  background: rgba(212, 166, 79, 0.09);
+  border-radius: 16px;
+  color: var(--muted, #a9b5bd);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.ps-offroute > div { flex: 1; }
+.ps-offroute b { display: block; font-size: 15px; color: var(--text, #f7f4ee); }
+.ps-offroute .ps-g-lg { color: var(--accent-amber, #d4a64f); }
+.ps-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(212, 166, 79, 0.55);
+  border-radius: 12px;
+  background: rgba(212, 166, 79, 0.14);
+  color: var(--text, #f7f4ee);
+  font: 600 14px 'Manrope', 'Segoe UI', sans-serif;
+  cursor: pointer;
+}
+
+.ps-switch { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid rgba(190, 202, 207, 0.24); border-radius: 99px; background: var(--panel, rgba(17, 24, 29, 0.68)); }
+.ps-switch button { min-height: 44px; padding: 0 22px; border: 0; border-radius: 99px; background: transparent; color: var(--muted, #a9b5bd); font: 700 14px 'Manrope', 'Segoe UI', sans-serif; cursor: pointer; }
+.ps-switch button[aria-pressed='true'] { background: rgba(106, 167, 200, 0.2); color: var(--text, #f7f4ee); box-shadow: inset 0 0 0 1px rgba(106, 167, 200, 0.55); }
+
+/* ------------------------------------------------------------- narrow */
+
+@media (max-width: 1179px) {
+  .ps { padding: 20px 20px 72px; }
+  .ps-grid { display: flex; flex-direction: column; align-items: stretch; gap: 22px; }
+  .ps-rail { position: static; order: -1; gap: 16px; }
+  .ps-headline { font-size: 30px; }
+  .ps-summary { font-size: 16px; }
+  .ps-section h2 { font-size: 24px; }
+  .ps-section p { font-size: 17px; line-height: 1.7; }
+  .ps-route-list { flex-direction: row; gap: 8px; margin: 8px -20px 0; padding: 0 20px 6px; overflow-x: auto; }
+  .ps-route { flex: none; min-height: 44px; padding: 0 15px; border: 1px solid var(--ps-line); border-radius: 99px; white-space: nowrap; }
+  .ps-route[aria-current='true'] { border-color: rgba(106, 167, 200, 0.7); }
+  .ps-glance { padding: 0; border: 0; background: transparent; }
+  .ps-glance-table, .ps-glance-note { display: none; }
+  .ps-cards { display: flex; gap: 10px; margin: 26px -20px 0; padding: 0 20px 6px; overflow-x: auto; scroll-snap-type: x proximity; }
+  .ps-card { position: relative; flex: none; width: 178px; padding: 12px 13px; border: 1px solid var(--ps-line); border-radius: 16px; background: var(--ps-panel); scroll-snap-align: start; }
+  .ps-card.ps-sel { border: 1px solid rgba(106, 167, 200, 0.55) !important; padding-left: 13px !important; }
+  .ps-readcard { display: block; margin: 0 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--ps-blue); white-space: nowrap; }
+  .ps-card h3 { margin: 2px 0 8px; font-size: 14px; line-height: 1.25; color: var(--ps-ink); }
+  .ps-card dt { margin-top: 7px; font-size: 11.5px; }
+  .ps-card dd { margin: 1px 0 0; color: var(--ps-ink); font: 500 14px 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; letter-spacing: -0.03em; }
+  .ps-card dd.ps-word { font: 600 14px 'Manrope', 'Segoe UI', sans-serif; letter-spacing: 0; }
+  .ps-card small { display: block; font: 500 10px 'Manrope', 'Segoe UI', sans-serif; color: var(--ps-muted); }
+  .ps-tip { left: 0; width: min(290px, 86vw); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ps-section p.ps-here { transition: background 240ms ease; }
+}
+
+/* ------------------------------------------------ inside the overview */
+
+.overview-viewport.has-plan-story {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.overview-viewport.has-plan-story .overview-zoom-wrap {
+  position: relative;
+  inset: auto;
+}
+.ps-host[hidden] { display: none; }
+
+/* The Story | Modules switch stays at the top while you read; the grid is laid out in what is left. */
+.ps-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, rgba(7, 12, 16, 0.94), rgba(7, 12, 16, 0.78));
+  backdrop-filter: blur(8px);
+}
+
+/*
+ * The Back pill and the off-route note take their own row above the module, so nothing of the module is
+ * covered or moved: the module's stage simply fills the row below them.
+ */
+body.ps-focusbar-on #focusLayer {
+  grid-template-rows: auto minmax(0, 1fr);
+  place-items: stretch center;
+}
+body.ps-focusbar-on .swipe-stage {
+  grid-row: 2;
+  height: 100%;
+  max-height: 100%;
+  align-self: stretch;
+}
+.ps-focusbar {
+  grid-row: 1;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(760px, calc(100% - 24px));
+  padding: 4px 0 8px;
+}
+.ps-focusbar .ps-pillbar {
+  align-self: flex-start;
+  padding: 6px 16px 6px 6px;
+  border: 1px solid var(--surface-line, rgba(190, 202, 207, 0.18));
+  border-radius: 99px;
+  background: var(--panel-strong, rgba(10, 16, 20, 0.88));
+}
+.ps-focusbar .ps-offroute { margin: 0; background-color: var(--panel-strong, rgba(10, 16, 20, 0.94)); }
+
+/* A ring that is drawn once over the figure a link named, then goes. */
+.ps-outline {
+  position: fixed;
+  z-index: 2000;
+  pointer-events: none;
+  border: 2px solid var(--electric-blue, #6aa7c8);
+  border-radius: 10px;
+  box-shadow: 0 0 0 4px rgba(106, 167, 200, 0.22);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ps-outline:not(.is-still) { animation: ps-ring 1.1s ease-in-out 2; }
+}
+@keyframes ps-ring {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(106, 167, 200, 0.22); }
+  50% { box-shadow: 0 0 0 11px rgba(106, 167, 200, 0.1); }
+}
+
+@media (max-width: 1179px) {
+  .ps-focusbar { width: calc(100% - 16px); }
+  .ps-focusbar .ps-pillbar { flex-wrap: wrap; gap: 4px 12px; border-radius: 24px; }
+  .ps-focusbar .ps-offroute { flex-wrap: wrap; }
+  .ps-focusbar .ps-offroute > div { flex: 1 1 calc(100% - 44px); }
+  .ps-focusbar .ps-offroute .ps-btn { flex: 1 1 100%; justify-content: center; }
+}
