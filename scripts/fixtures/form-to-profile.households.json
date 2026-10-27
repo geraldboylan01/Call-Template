@@ -1,0 +1,101 @@
+[
+  {
+    "id": "fictional-single-renter",
+    "description": "Entirely invented: a single renter building a reserve.",
+    "information": {
+      "schema": "planeir.application.v1",
+      "topics": ["savings", "retirement"],
+      "question": "How much room is there to save while renting?",
+      "household": { "age": 31, "partner": "no", "children": "no" },
+      "income": { "gross": 54000, "work": "employee", "sector": "private", "takeHome": 3200 },
+      "spending": { "pattern": "save", "saved": 400, "spend": 1600 },
+      "home": { "status": "rent", "rent": 1200 },
+      "savings": { "cash": 12000, "investments": 5000, "employerShares": 0 },
+      "retirement": { "age": 67, "income": 30000, "statePension": "yes" },
+      "none": ["pensions", "loans", "properties"],
+      "creditCard": { "clears": "yes" }
+    }
+  },
+  {
+    "id": "fictional-mortgage-college-family",
+    "description": "Entirely invented: married partners with a mortgage and two children planning for college.",
+    "information": {
+      "schema": "planeir.application.v1",
+      "topics": ["mortgage", "education", "retirement", "whole"],
+      "question": "How do college saving and the mortgage fit with retirement?",
+      "household": { "age": 44, "partner": "yes", "partnerAge": 42, "married": "yes", "children": "yes" },
+      "children": [ { "age": 15, "collegePlan": "away", "saved": 6000 }, { "age": 12, "collegePlan": "home", "saved": 2500 } ],
+      "income": { "gross": 82000, "partnerGross": 48000, "work": "employee", "partnerWork": "employee", "sector": "private", "partnerSector": "public", "takeHome": 7400 },
+      "spending": { "pattern": "save", "saved": 800, "spend": 3900 },
+      "home": { "status": "mortgage", "value": 470000 },
+      "mortgage": { "balance": 230000, "rate": 3.6, "rateType": "fixed", "fixedEnds": "2028-06", "yearsLeft": 19, "repayment": 1600, "overpaying": "yes", "overpayment": 200 },
+      "savings": { "cash": 50000, "investments": 18000, "employerShares": 0 },
+      "pensions": [
+        { "owner": "you", "type": "company", "value": 180000, "youPay": 8, "youPayUnit": "pct", "employerPays": 5, "employerPaysUnit": "pct", "contributing": "yes" },
+        { "owner": "partner", "type": "prsa", "value": 65000, "youPay": 200, "youPayUnit": "eur", "employerPays": 3, "employerPaysUnit": "pct", "contributing": "yes" }
+      ],
+      "retirement": { "age": 63, "partnerAge": 65, "income": 50000, "statePension": "yes" },
+      "none": ["loans", "properties"],
+      "creditCard": { "clears": "none" },
+      "cover": { "life": "yes", "incomeProtection": "no" }
+    }
+  },
+  {
+    "id": "fictional-near-retirement-couple",
+    "description": "Entirely invented: unmarried partners near retirement with funded, defined-benefit and preserved pensions.",
+    "information": {
+      "schema": "planeir.application.v1",
+      "topics": ["retirement", "whole"],
+      "question": "What does our income look like when we stop working?",
+      "household": { "age": 61, "partner": "yes", "partnerAge": 59, "married": "no", "children": "no" },
+      "income": { "gross": 76000, "partnerGross": 58000, "work": "employee", "partnerWork": "employee", "sector": "private", "partnerSector": "public", "takeHome": 7200 },
+      "spending": { "pattern": "save", "saved": 1500, "spend": 3500 },
+      "home": { "status": "owned", "value": 390000 },
+      "savings": { "cash": 90000, "investments": 50000, "employerShares": 10000 },
+      "pensions": [
+        { "owner": "you", "type": "company", "value": 480000, "youPay": 800, "youPayUnit": "eur", "employerPays": 5, "employerPaysUnit": "pct", "contributing": "yes" },
+        { "owner": "partner", "type": "public", "dbPension": 22000, "dbLumpSum": 66000, "dbAge": 65 },
+        { "owner": "you", "type": "bond", "value": 60000 }
+      ],
+      "retirement": { "age": 65, "partnerAge": 65, "income": 45000, "statePension": "partly" },
+      "none": ["loans", "properties"],
+      "creditCard": { "clears": "yes" }
+    }
+  },
+  {
+    "id": "fictional-borrower-with-card",
+    "description": "Entirely invented: a self-employed renter with two loans and an uncleared credit card.",
+    "information": {
+      "schema": "planeir.application.v1",
+      "topics": ["loans"],
+      "question": "How would clearing my debts affect the monthly budget?",
+      "household": { "age": 38, "partner": "no", "children": "no" },
+      "income": { "gross": 46000, "work": "self_employed", "takeHome": 2700 },
+      "spending": { "pattern": "save", "saved": 100, "spend": 1450 },
+      "home": { "status": "rent", "rent": 800 },
+      "savings": { "cash": 0, "investments": 0, "employerShares": 0 },
+      "loans": [
+        { "type": "car", "balance": 9500, "rate": 7.5, "yearsLeft": 3.5, "payment": 280 },
+        { "type": "personal", "balance": 4200, "rate": 0.5, "yearsLeft": 2, "payment": 190 }
+      ],
+      "creditCard": { "clears": "no", "balance": 3200 },
+      "none": ["pensions", "properties"]
+    }
+  },
+  {
+    "id": "fictional-mostly-blank",
+    "description": "Entirely invented: most answers blank or explicitly unsure, including a mortgage without figures.",
+    "information": {
+      "schema": "planeir.application.v1",
+      "topics": ["whole"],
+      "question": "I would like to understand where we stand.",
+      "household": { "partner": "yes", "children": "yes" },
+      "children": [ { "collegePlan": "unsure" } ],
+      "home": { "status": "mortgage" },
+      "pensions": [ { "owner": "partner", "type": "unsure", "youPay": 100, "youPayUnit": "eur", "contributing": "yes" } ],
+      "creditCard": { "clears": "no" },
+      "unsure": ["household.age", "income.gross", "spending.spend", "mortgage.balance"],
+      "anythingElse": "This is an invented incomplete example."
+    }
+  }
+]
