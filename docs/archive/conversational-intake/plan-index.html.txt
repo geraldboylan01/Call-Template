@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en-IE">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 https://api.planeir.ie; media-src 'self' blob:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
+    <meta
+      name="planeir-consumer-api-base-url"
+      content="https://api.planeir.ie"
+    />
+    <meta
+      name="description"
+      content="A private-beta Planeir journey for exploring your financial goals with clear assumptions and educational analysis."
+    />
+    <title>Planeir | Explore your next financial step</title>
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png" />
+    <link rel="shortcut icon" href="../favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="../apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles/plan.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#planMain">Skip to your plan</a>
+
+    <div class="plan-backdrop" aria-hidden="true">
+      <span class="plan-orb plan-orb-one"></span>
+      <span class="plan-orb plan-orb-two"></span>
+      <span class="plan-grid"></span>
+    </div>
+
+    <header class="plan-header">
+      <a class="plan-brand" href="../" aria-label="Planeir home">
+        <img
+          src="../assets/brand/planeir-lockup-light.svg"
+          alt="Planeir"
+          width="1330"
+          height="384"
+          decoding="async"
+        />
+      </a>
+      <div class="plan-header-meta">
+        <span class="beta-badge">Private beta</span>
+        <span id="headerSessionStatus" class="header-session-status" hidden></span>
+        <button id="privacyControlsButton" class="quiet-button" type="button" hidden>
+          Privacy controls
+        </button>
+        <button id="deleteSessionButton" class="quiet-button danger-button" type="button" hidden>
+          Delete my session
+        </button>
+      </div>
+    </header>
+
+    <main id="planMain" class="plan-main" tabindex="-1">
+      <noscript>
+        <section class="unavailable-card">
+          <h1>JavaScript is needed for this private planning journey.</h1>
+          <p>No information has been submitted. Enable JavaScript and reload, or return to Planeir.</p>
+          <a class="secondary-button" href="../">Back to Planeir.ie</a>
+        </section>
+      </noscript>
+      <div id="appRoot" aria-busy="true">
+        <section class="loading-card" aria-label="Loading your Planeir journey">
+          <span class="loading-mark" aria-hidden="true"></span>
+          <p>Preparing your private planning space…</p>
+        </section>
+      </div>
+
+      <div
+        id="realtimeVoiceCompanion"
+        class="realtime-voice-companion"
+        data-realtime-phase="off"
+        hidden
+      >
+        <button
+          id="realtimeVoiceLauncher"
+          class="realtime-voice-launcher"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="realtimeVoiceShell"
+        >
+          <span class="realtime-launcher-orb" aria-hidden="true">
+            <span></span>
+          </span>
+          <span class="realtime-launcher-copy">
+            <strong>Talk to Planeir</strong>
+            <span id="realtimeVoiceLauncherStatus">Private AI planning companion</span>
+          </span>
+        </button>
+
+        <div id="realtimeVoiceBackdrop" class="realtime-voice-backdrop" aria-hidden="true" hidden></div>
+
+        <aside
+          id="realtimeVoiceShell"
+          class="realtime-voice-shell"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="realtimeVoiceTitle"
+          tabindex="-1"
+          hidden
+        >
+          <div class="realtime-voice-heading">
+            <div>
+              <p class="section-kicker">Planeir</p>
+              <h2 id="realtimeVoiceTitle">Let’s talk about what matters to you.</h2>
+              <p class="realtime-meeting-sub">
+                A voice conversation about your goals and your finances.
+              </p>
+            </div>
+            <button
+              id="realtimeVoiceCollapseButton"
+              class="realtime-collapse-button"
+              type="button"
+              aria-label="Minimise Talk to Planeir"
+            >
+              <span aria-hidden="true">−</span>
+            </button>
+          </div>
+
+          <div class="realtime-trust-badges" aria-label="Meeting status">
+            <span><span class="realtime-dot" aria-hidden="true"></span><span id="realtimeMicBadge">Mic off</span></span>
+            <span id="realtimeVoiceLeaseTime" class="realtime-lease-time" hidden></span>
+          </div>
+
+          <div class="realtime-voice-layout">
+            <div class="realtime-orb-stage">
+              <div class="realtime-voice-orb" aria-hidden="true">
+                <canvas id="realtimeVoiceOrbCanvas" class="realtime-orb-canvas" data-live-orb aria-hidden="true"></canvas>
+              </div>
+              <span id="realtimeVoiceOrbLabel" class="realtime-orb-label" role="status" aria-live="polite">Ready when you are</span>
+              <div class="realtime-orb-copy">
+                <p
+                  id="realtimeVoiceStatus"
+                  class="realtime-voice-status"
+                  data-live-status
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  Press the button when you’re ready to begin.
+                </p>
+                <p id="realtimeVoiceError" class="field-error realtime-voice-error" role="alert" hidden></p>
+              </div>
+            </div>
+
+            <section id="realtimeVoiceBriefing" class="realtime-precall" aria-label="What to expect and what to have ready">
+              <ul class="realtime-precall-chips" aria-label="What this meeting is like">
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                  About 10 to 15 minutes
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+                  Private to this session
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l8 4-8 4-8-4 8-4z"></path><path d="M6 9v4c0 2 3 3.5 6 3.5s6-1.5 6-3.5V9"></path></svg>
+                  Guidance, not advice
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v4"></path></svg>
+                  Speak or type
+                </li>
+              </ul>
+
+              <div class="realtime-precall-grid">
+                <article class="realtime-precall-card">
+                  <h3 class="realtime-precall-card-title">
+                    <span class="realtime-precall-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M15.5 8.5l-2 5-5 2 2-5 5-2z"></path></svg>
+                    </span>
+                    What we’ll talk about
+                  </h3>
+                  <ol class="realtime-precall-steps">
+                    <li>
+                      <strong>Your goals for the future.</strong>
+                      <span>Things like retirement, buying a home, or paying for education.</span>
+                    </li>
+                    <li>
+                      <strong>Your finances.</strong>
+                      <span>What you earn, what you spend, and what you own and owe.</span>
+                    </li>
+                    <li>
+                      <strong>A starting point.</strong>
+                      <span>Planeir uses your answers to build a personalised plan and shows every assumption it makes.</span>
+                    </li>
+                  </ol>
+                </article>
+
+                <article class="realtime-precall-card">
+                  <h3 class="realtime-precall-card-title">
+                    <span class="realtime-precall-ico" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" focusable="false"><rect x="6" y="4" width="12" height="16" rx="2"></rect><path d="M9 4.5h6V7H9zM9 12h6M9 16h4"></path></svg>
+                    </span>
+                    What to have ready
+                  </h3>
+                  <ul class="realtime-precall-list">
+                    <li>
+                      <strong>Your goals</strong>
+                      <span>When you want to reach them and what they might cost</span>
+                    </li>
+                    <li>
+                      <strong>Income</strong>
+                      <span>Your take-home salary, and a partner’s if you’re planning together</span>
+                    </li>
+                    <li>
+                      <strong>Spending</strong>
+                      <span>What you spend each month or year, from your recent bank statements</span>
+                    </li>
+                    <li>
+                      <strong>Home</strong>
+                      <span>Rent, or your mortgage balance, payment, and property value</span>
+                    </li>
+                    <li>
+                      <strong>Savings and assets</strong>
+                      <span>Savings, investments, pensions, and any other property</span>
+                    </li>
+                    <li>
+                      <strong>Debts</strong>
+                      <span>Loans, credit cards, and car finance</span>
+                    </li>
+                  </ul>
+                  <p class="realtime-precall-hint">
+                    Estimates are fine. You can update anything as you talk.
+                  </p>
+                </article>
+              </div>
+            </section>
+
+            <section
+              id="realtimeVoiceCaptionCard"
+              class="realtime-caption-card"
+              aria-labelledby="realtimeCaptionTitle"
+              hidden
+            >
+              <div class="realtime-caption-heading">
+                <div>
+                  <span class="realtime-caption-eyebrow">Transcript</span>
+                  <h3 id="realtimeCaptionTitle">Your conversation</h3>
+                </div>
+                <button
+                  id="realtimeVoiceTranscriptCopyButton"
+                  class="quiet-button"
+                  type="button"
+                  disabled
+                >
+                  Copy transcript
+                </button>
+              </div>
+              <ol
+                id="realtimeVoiceTranscriptHistory"
+                class="realtime-caption-history"
+                data-live-transcript
+                role="log"
+                aria-live="polite"
+                aria-relevant="additions"
+                aria-label="Finalized Live voice transcript"
+              ></ol>
+              <div class="realtime-caption-stream" aria-label="Current Live voice captions">
+                <div class="realtime-caption-row is-user">
+                  <span>You · live</span>
+                  <p id="realtimeVoiceUserCaption" data-live-caption="user">Your words will appear here while you speak.</p>
+                </div>
+                <div class="realtime-caption-row is-assistant">
+                  <span>Planeir · AI · live</span>
+                  <p id="realtimeVoiceAssistantCaption" data-live-caption="assistant">I’ll ask one useful question at a time.</p>
+                </div>
+              </div>
+            </section>
+
+            <form id="liveVoiceTextForm" class="live-voice-text-card" aria-labelledby="liveVoiceTextTitle">
+              <div>
+                <span class="realtime-caption-eyebrow">Same live call</span>
+                <h3 id="liveVoiceTextTitle">Prefer to type?</h3>
+                <p>Your message goes into this live conversation. It does not open another call system.</p>
+              </div>
+              <label for="liveVoiceTextInput">Message Planeir</label>
+              <textarea
+                id="liveVoiceTextInput"
+                name="liveVoiceTextInput"
+                rows="4"
+                maxlength="4000"
+                placeholder="Type what you’d like to say…"
+                disabled
+              ></textarea>
+              <button id="liveVoiceTextSendButton" class="secondary-button" type="submit" disabled>
+                Send to live call
+              </button>
+            </form>
+
+          </div>
+
+          <div class="realtime-voice-controls" aria-label="Meeting controls">
+            <button id="realtimeVoiceStartButton" class="primary-button" type="button" data-live-start>
+              Start your Planeir meeting
+            </button>
+            <button id="realtimeVoiceEndButton" class="secondary-button realtime-end-button" type="button" data-live-stop disabled>
+              End meeting
+            </button>
+            <button
+              id="realtimeVoiceTranscriptToggle"
+              class="quiet-button"
+              type="button"
+              aria-pressed="false"
+              aria-controls="realtimeVoiceCaptionCard"
+            >
+              Show transcript
+            </button>
+          </div>
+
+          <p id="realtimeVoiceTrustCopy" class="realtime-voice-trust-copy">
+            Planeir is an AI companion for financial education, not a person or a regulated adviser.
+            Your microphone is on only during the meeting. No module runs until Planeir summarises the exact plan and you explicitly confirm it.
+            <a href="./privacy-legacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Privacy details</a>.
+          </p>
+          <audio id="realtimeVoiceAudio" autoplay playsinline aria-hidden="true"></audio>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="plan-footer">
+      <p>
+        Planeir provides financial education, not regulated financial, tax, legal, mortgage, or
+        product advice. Figures are illustrations based on the information and assumptions shown.
+      </p>
+      <a href="./privacy-legacy.html">Consumer journey privacy</a>
+      <a href="../">Back to Planeir.ie</a>
+    </footer>
+
+    <dialog id="deleteSessionDialog" class="plan-dialog" aria-labelledby="deleteDialogTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Your privacy</p>
+        <h2 id="deleteDialogTitle">Delete this planning session?</h2>
+        <p>
+          This removes your consumer journey, confirmed information, and results from this session.
+          It cannot be undone. It does not affect any separate request you already chose to send to Gerry.
+          Minimized reliability signals contain no answers or transcripts and follow a separate 30-day deletion schedule.
+        </p>
+        <div class="dialog-actions">
+          <button class="secondary-button" value="cancel" type="submit">Keep session</button>
+          <button id="confirmDeleteButton" class="primary-button destructive" value="delete" type="button">
+            Delete permanently
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="privacyControlsDialog" class="plan-dialog" aria-labelledby="privacyControlsTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Your privacy</p>
+        <h2 id="privacyControlsTitle">Privacy controls for this session</h2>
+        <p id="privacyControlsCopy">
+          You can stop AI assistance at any time. Future messages will use fixed questions and rules-only extraction;
+          tested code will continue to perform every calculation.
+        </p>
+        <p id="realtimeVoicePrivacyCopy" hidden></p>
+        <p id="handoffPrivacyCopy" hidden></p>
+        <p id="privacyControlsError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="closePrivacyControlsButton" class="secondary-button" value="cancel" type="button">Close</button>
+          <button id="withdrawAiConsentButton" class="primary-button destructive" type="button">
+            Stop AI assistance
+          </button>
+          <button id="withdrawRealtimeVoiceConsentButton" class="primary-button destructive" type="button" hidden>
+            Stop Live voice
+          </button>
+          <button id="revokeHandoffButton" class="primary-button destructive" type="button" hidden>
+            Withdraw adviser handoff
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="realtimeVoiceConsentDialog" class="plan-dialog" aria-labelledby="realtimeVoiceConsentTitle">
+      <form id="realtimeVoiceConsentForm" class="dialog-card voice-consent-card">
+        <p class="section-kicker">Before your meeting begins</p>
+        <h2 id="realtimeVoiceConsentTitle">Before you start Live voice</h2>
+        <p>
+          Live voice is optional. OpenAI processes your microphone audio for realtime transcription,
+          conversation and the AI-generated voice you hear. You can always continue by typing.
+        </p>
+        <ul class="voice-consent-facts">
+          <li>Your completed spoken turns are processed automatically so the conversation can flow naturally.</li>
+          <li>Finalized transcripts and planning information are stored encrypted with your seven-day Planeir session. Planeir does not store raw audio or partial transcripts.</li>
+          <li>You can end Live voice or withdraw consent at any time. Muting stops microphone audio without ending the meeting.</li>
+          <li>Planeir will summarise the plan before calculations. Only a clear answer to that summary can authorize the stated plan; calculations still run in Planeir's tested code.</li>
+          <li>Do not say PPS numbers, passwords, PINs, full account or card numbers, exact addresses, or identity-document details.</li>
+        </ul>
+        <label class="check-row" for="realtimeVoiceConsentAcknowledgement">
+          <input id="realtimeVoiceConsentAcknowledgement" name="realtimeVoiceConsentAcknowledgement" type="checkbox" required />
+          <span>
+            <strong>I agree to OpenAI processing my microphone audio for Live voice</strong>
+            <small>I understand that finalized spoken turns are processed automatically and that a clear answer after the exact plan summary can authorize that stated plan.</small>
+          </span>
+        </label>
+        <p class="consent-detail">
+          Read the <a id="realtimeVoiceConsentPrivacyLink" href="./privacy-legacy.html#optional-voice" target="_blank" rel="noopener noreferrer">Live voice privacy details</a>.
+          <span id="realtimeVoiceConsentPolicy"></span>
+        </p>
+        <p id="realtimeVoiceConsentError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelRealtimeVoiceConsentButton" class="secondary-button" type="button">Keep using text</button>
+          <button class="primary-button" type="submit">Agree and start my meeting</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="termsDialog" class="plan-dialog terms-dialog" aria-labelledby="termsDialogTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Planeir demo</p>
+        <h2 id="termsDialogTitle">Terms of Use</h2>
+        <p class="dialog-context">Version <span id="termsVersion">—</span>. These terms apply to the Planeir demo only.</p>
+        <div id="termsBody" class="terms-body" tabindex="0">
+          <h3>1. Who we are</h3>
+          <p>
+            <strong>Planeir</strong> is the name of this demo. It is built and run by <strong>Gerry Boylan</strong>,
+            a sole trader based in Dublin, Ireland, so any agreement under these terms is between you and Gerry
+            Boylan.
+          </p>
+          <p>
+            You can contact us at <a href="mailto:hello@planeir.ie">hello@planeir.ie</a>, and we will give you a
+            postal address on request. By starting a session you agree to these terms.
+          </p>
+
+          <h3>2. This is education, not advice</h3>
+          <p>
+            Planeir uses an AI conversation to help you organise information about your finances and goals, and
+            to produce educational illustrations from it.
+          </p>
+          <p>
+            <strong>Planeir does not provide regulated financial, investment, pension, mortgage, tax or legal
+            advice, and is not authorised by the Central Bank of Ireland to do so.</strong> Anything Planeir
+            produces is an illustration based on what you told it. It is not a recommendation, an approval, a
+            guarantee, a forecast, or a substitute for professional advice. Please do not make a financial
+            decision on the basis of this demo alone.
+          </p>
+
+          <h3>3. Who can use the demo</h3>
+          <ul>
+            <li>You must be 18 or older.</li>
+            <li>Use it for your own finances, for personal and non-commercial purposes.</li>
+            <li>
+              Do not enter information about another person unless you genuinely need to and you are entitled to
+              share it.
+            </li>
+            <li>
+              Do not try to break, overload, scrape or reverse-engineer the demo, use it to build a competing
+              service, or use it for anything unlawful or abusive.
+            </li>
+          </ul>
+
+          <h3>4. Please do not enter these details</h3>
+          <p>The demo never needs them, so please do not type or say:</p>
+          <ul>
+            <li>PPS numbers;</li>
+            <li>passwords, PINs or security codes;</li>
+            <li>complete bank-account, IBAN or card numbers;</li>
+            <li>identity-document details;</li>
+            <li>your exact home address;</li>
+            <li>medical or other highly sensitive personal information; or</li>
+            <li>identifying information about other people that isn't needed.</li>
+          </ul>
+          <p>If you enter something you'd rather we didn't hold, use <strong>Delete my session</strong>.</p>
+
+          <h3>5. AI can get things wrong</h3>
+          <p>
+            The conversation, including live speech, is powered by AI. AI and speech recognition make mistakes,
+            especially with amounts, dates, names and accents. Financial calculations themselves run in Planeir's
+            own tested code rather than in the AI model, but the figures and assumptions fed into them came from
+            the conversation. <strong>Review the figures, dates and assumptions shown to you before relying on
+            any illustration.</strong>
+          </p>
+
+          <h3>6. Your information</h3>
+          <p>
+            We handle information as explained in the
+            <a id="termsPrivacyLink" href="./privacy-legacy.html" target="_blank" rel="noopener noreferrer">privacy notice</a>
+            including how optional voice uses OpenAI, how long information is kept, and your rights. Your planning
+            session expires after <span id="termsRetentionDays">7</span> days and you can delete it sooner.
+          </p>
+
+          <h3>7. The demo is provided as is</h3>
+          <p>
+            This is a demo, provided "as is" and "as available". It may change, break, be interrupted or be
+            withdrawn at any time without notice, and we do not promise that it will be available, uninterrupted
+            or error-free, or that your session will survive. Keep your own copy of anything you want to keep.
+          </p>
+
+          <h3>8. Our responsibility to you</h3>
+          <p>
+            We are not liable for any decision you make, or choose not to make, on the basis of anything Planeir
+            produces, or for any loss arising from relying on its outputs, from the demo being unavailable, or
+            from the loss of session data.
+          </p>
+          <p>
+            Nothing in these terms excludes or limits our liability for death or personal injury caused by our
+            negligence, for fraud or fraudulent misrepresentation, or for anything else that Irish law does not
+            permit us to exclude. Where our liability can lawfully be limited, our total liability to you in
+            connection with the demo is limited to €100.
+          </p>
+          <p>
+            <strong>None of this affects your mandatory rights as a consumer</strong> under Irish and EU law,
+            including the Consumer Rights Act 2022.
+          </p>
+
+          <h3>9. Stopping, and us withdrawing the demo</h3>
+          <p>
+            You can stop at any time, and you can delete your session at any time using
+            <strong>Delete my session</strong>. Sessions also expire on their own. Because this is an early-stage
+            demo, we may suspend or withdraw access, for you or generally, at any time.
+          </p>
+
+          <h3>10. Changes to these terms</h3>
+          <p>
+            We may update these terms. If we make a material change, you will be asked to read and accept the new
+            version before continuing.
+          </p>
+
+          <h3>11. Law and complaints</h3>
+          <p>
+            These terms are governed by Irish law and the Irish courts have jurisdiction, though as a consumer you
+            may also have the right to bring proceedings where you live. If you believe your information has been
+            handled unlawfully, you can complain to the Irish Data Protection Commission.
+          </p>
+        </div>
+        <div class="dialog-actions">
+          <button id="closeTermsButton" class="secondary-button" value="cancel" type="button">Close</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="removeItemDialog" class="plan-dialog" aria-labelledby="removeItemTitle">
+      <form method="dialog" class="dialog-card">
+        <p class="section-kicker">Correct your information</p>
+        <h2 id="removeItemTitle">Remove this item?</h2>
+        <p id="removeItemContext">This removes the complete item from your profile and requires a fresh confirmation and analysis.</p>
+        <p id="removeItemError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelRemoveItemButton" class="secondary-button" value="cancel" type="button">Keep item</button>
+          <button id="confirmRemoveItemButton" class="primary-button destructive" type="button">Remove item</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="editFieldDialog" class="plan-dialog" aria-labelledby="editFieldTitle">
+      <form id="editFieldForm" class="dialog-card">
+        <p class="section-kicker">Confirm or correct</p>
+        <h2 id="editFieldTitle">Edit this detail</h2>
+        <p id="editFieldContext" class="dialog-context"></p>
+        <label class="field-label" for="editFieldInput">Your value</label>
+        <input id="editFieldInput" class="text-input" autocomplete="off" />
+        <p id="editFieldError" class="field-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="cancelEditButton" class="secondary-button" type="button">Cancel</button>
+          <button class="primary-button" type="submit">Save and confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toastRegion" class="toast-region" aria-live="assertive" aria-atomic="true"></div>
+    <script type="module" src="../js/plan/app.js"></script>
+  </body>
+</html>

@@ -2432,7 +2432,7 @@ for (const paraphrase of ['that sounds right, go for it', 'yeah grand, fire away
   const adapter = readFileSync(fileURLToPath(new URL('../js/plan/voice_lane.js', import.meta.url)), 'utf8');
   const client = readFileSync(fileURLToPath(new URL('../js/plan/live_voice.js', import.meta.url)), 'utf8');
   const app = readFileSync(fileURLToPath(new URL('../js/plan/app.js', import.meta.url)), 'utf8');
-  const markup = readFileSync(fileURLToPath(new URL('../plan/index.html', import.meta.url)), 'utf8');
+  const markup = readFileSync(fileURLToPath(new URL('../docs/archive/conversational-intake/plan-index.html.txt', import.meta.url)), 'utf8');
   const views = readFileSync(fileURLToPath(new URL('../js/plan/views.js', import.meta.url)), 'utf8');
 
   // THE LIFECYCLE TRAP. `teardown()` closes the peer connection but never

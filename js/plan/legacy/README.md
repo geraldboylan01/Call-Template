@@ -1,3 +1,5 @@
+> Retired 27 October 2026: the entire `js/plan/` conversation UI is now reference-only and excluded from the published app. The production-path descriptions below describe the former beta. See [the archive](../../../docs/archive/conversational-intake/README.md).
+
 # Legacy voice clients — reference only
 
 Nothing in this directory is part of the active browser call path.

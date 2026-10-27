@@ -2,8 +2,8 @@ import {
   buildPublishedCapabilityToken, decryptPublishedSessionV2ForAdvisor,
   finalizePublishedClientPinV4, resolvePublishedClientSessionAccess
 } from './crypto_session.js';
-import { createResultsView } from './plan/views.js';
-import { describePlanningCompletion } from './plan/completion.js';
+import { createReadOnlyResultsView } from './results/view.js';
+import { describePlanningCompletion } from './results/completion.js';
 
 // The published access key stays in this tab's memory; it is never persisted,
 // copied into query parameters, sent to an event endpoint, or written to logs.
@@ -40,7 +40,7 @@ function renderConsumerReport(snapshot, host) {
   };
   const completion = describePlanningCompletion(state);
   if (!completion.ready || completion.kind !== 'analysis') throw new Error('incomplete_report_snapshot');
-  const view = createResultsView(state);
+  const view = createReadOnlyResultsView(state);
   // Reuse exactly the consumer's result cards, assumptions and uncertainty
   // panels, while removing actions belonging to the live planning journey.
   for (const node of view.querySelectorAll('.education-call-cta, .results-toolbar, .progress-meter, .meeting-transcript-section, [data-action]')) node.remove();
@@ -199,7 +199,7 @@ async function openReport(link) {
   try {
     const brand = document.getElementById('educationReportBrand');
     if (brand && link.role === 'client') {
-      brand.href = '../plan/'; brand.setAttribute('aria-label', 'Planéir home');
+      brand.href = '../'; brand.setAttribute('aria-label', 'Planéir home');
     }
     const badge = header?.querySelector('.beta-badge');
     if (badge) badge.textContent = link.clientView ? 'Your analysis · Read only' : 'Private report · Read only';

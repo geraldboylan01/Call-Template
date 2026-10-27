@@ -286,21 +286,12 @@ assert.doesNotMatch(deployWorkflowSource, /test -n "\$CONSUMER_DB_ID"/);
 assert.match(deployWorkflowSource, /if \[\[ -n "\$CONSUMER_DB_ID" \]\]; then/);
 assert.match(deployWorkflowSource, /if \(databaseId && !\/\^\[0-9a-f\]/);
 assert.match(deployWorkflowSource, /ALLOW_LOCAL_DEV_ORIGINS must not be enabled/);
-assert.match(deployWorkflowSource, /CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"/);
-assert.match(deployWorkflowSource, /CONSUMER_ADVISER_TEST_BETA_OVERRIDE: \$\{\{ vars\.CONSUMER_ADVISER_TEST_BETA_OVERRIDE \}\}/);
+// Forms-to-analysis retires both manual and standing beta activation.
+for (const name of ['CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED', 'CONSUMER_ADVISER_TEST_BETA_OVERRIDE', 'CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED']) {
+  assert.match(deployWorkflowSource, new RegExp(`${name}: "false"`));
+}
+assert.doesNotMatch(deployWorkflowSource, /inputs\.(?:activate_realtime_adviser_canary|run_paid_realtime_infrastructure_proof)/);
 assert.match(deployWorkflowSource, /A protected override cannot activate a source-unapproved beta/);
-assert.match(
-  deployWorkflowSource,
-  /activate_realtime_adviser_canary:[\s\S]{0,240}default:\s*false[\s\S]{0,80}type:\s*boolean/
-);
-assert.match(
-  deployWorkflowSource,
-  /run_paid_realtime_infrastructure_proof:[\s\S]{0,260}default:\s*false[\s\S]{0,80}type:\s*boolean/
-);
-assert.match(
-  deployWorkflowSource,
-  /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.activate_realtime_adviser_canary == true && 'true' \|\| 'false' \}\}/
-);
 assert.doesNotMatch(deployWorkflowSource, /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*"true"/);
 assert.doesNotMatch(
   deployWorkflowSource,
@@ -308,7 +299,7 @@ assert.doesNotMatch(
 );
 assert.match(
   deployWorkflowSource,
-  /RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.run_paid_realtime_infrastructure_proof == true && 'true' \|\| 'false' \}\}/
+  /RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF:\s*"false"/
 );
 assert.match(
   deployWorkflowSource,
@@ -319,7 +310,7 @@ assert.match(
 // report Realtime enabled, and never overrides the kill switch.
 assert.match(
   deployWorkflowSource,
-  /CONSUMER_REALTIME_KEEP_ACTIVE:\s*\$\{\{ vars\.CONSUMER_REALTIME_KEEP_ACTIVE \}\}/
+  /CONSUMER_REALTIME_KEEP_ACTIVE:\s*"false"/
 );
 assert.match(
   deployWorkflowSource,

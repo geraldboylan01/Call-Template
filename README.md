@@ -9,6 +9,22 @@ Planeir now ships as two connected experiences:
 - `/app/session.html?id=...` is the client session viewer used by published links.
 - `/session.html?id=...` remains as a compatibility redirect to `/app/session.html?id=...`.
 
+## Active product direction: forms to analysis
+
+The active journey is **form → confirmed household information → AI-authored
+routes → deterministic calculations and checks → completed analysis**.
+The form currently saves and confirms information; generation remains to be connected.
+
+The conversational AI beta (voice and typed meetings), its adviser test launcher
+and its call analytics dashboard are retired as of 27 October 2026. `/plan/`
+now offers links to the form and saved information, without starting a session.
+Conversation controllers are excluded from the published app, and production
+activation switches are pinned off. Existing report viewers use a separate
+read-only renderer. Historical source, experiments and lessons remain available
+in [the conversational-intake archive](docs/archive/conversational-intake/README.md).
+Older sections below that describe the beta are historical engineering reference,
+not the current product or instructions to reactivate it.
+
 ## Demo requests and private access
 
 Planeir now centres on helping people understand different routes to their

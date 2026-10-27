@@ -963,7 +963,7 @@ const storeSource = readFileSync(`${rootPath}/js/plan/store.js`, 'utf8');
 const viewsSource = readFileSync(`${rootPath}/js/plan/views.js`, 'utf8');
 const planCssSource = readFileSync(`${rootPath}/styles/plan.css`, 'utf8');
 const privacySource = readFileSync(`${rootPath}/plan/privacy-legacy.html`, 'utf8');
-const planIndexSource = readFileSync(`${rootPath}/plan/index.html`, 'utf8');
+const planIndexSource = readFileSync(`${rootPath}/docs/archive/conversational-intake/plan-index.html.txt`, 'utf8');
 assert.match(
   viewsSource,
   /const consumerDescription = consumerLanguageForModule\(id\)\?\.shortDescription;[\s\S]{0,180}consumerDescription,[\s\S]{0,80}'an analysis'/,

@@ -1,3 +1,5 @@
+> Historical reference: conversational AI intake was retired on 27 October 2026. The active product goes from forms to completed analysis. These are records of the earlier beta, not current activation instructions. See [retirement and lessons](archive/conversational-intake/README.md).
+
 # Planeir: first 20 consumer readiness
 
 Audit started 5 September 2026; final validation continued 7 September. No production deployment was performed. The preserved starting commit is `3a85575427aa1db229afa27b53a3edf0b029fa31`. Subsequent commits through `382832a` arrived during this continuing audit and were preserved and independently retested. Remaining changes are reviewable in the working tree.
