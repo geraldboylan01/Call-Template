@@ -1,10 +1,12 @@
 import {
   IRELAND_RULES_CATALOGUE_VERSION,
   IRISH_ARF_MINIMUM_DRAWDOWN,
+  IRISH_PENSION_RELIEF_LIMITS,
   IRISH_STATE_PENSION_CONTRIBUTORY,
   irishArfFirstAttainedAge,
   irishArfMinimumRate,
-  normalizeStatePensionFraction
+  normalizeStatePensionFraction,
+  statePensionRuleForYear
 } from './planning/ireland_rules.js';
 import { MAX_MODULE_SCENARIO_CASES } from './scenario_cap.js';
 import {
@@ -24,15 +26,23 @@ import {
   renderTaxDisclosures,
   taxNotIncludedLine
 } from './planning/tax/disclosures.js';
-import { assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
+import { PLANEIR_ASSUMPTIONS, assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
+import { monthYearText } from './planning/utils.js';
 
-const DEFAULT_INFLATION_RATE = 0.02;
-const DEFAULT_WAGE_GROWTH_RATE = 0.02;
-const DEFAULT_GROWTH_RATE = 0.05;
+// Defaults come from the central assumptions, never a copy. Pay is assumed to
+// grow with general prices, which is how the retirement adapter has always set it.
+const DEFAULT_INFLATION_RATE = PLANEIR_ASSUMPTIONS.inflation.generalRate;
+const DEFAULT_WAGE_GROWTH_RATE = PLANEIR_ASSUMPTIONS.inflation.generalRate;
+const DEFAULT_GROWTH_RATE = PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate;
 const DEFAULT_HORIZON_END_AGE = 100;
 const DEFAULT_INCOME_MODE = 'target';
 const DEFAULT_AFFORDABLE_END_AGES = Object.freeze([100]);
-const STATE_PENSION_ANNUAL_TODAY = IRISH_STATE_PENSION_CONTRIBUTORY.annualMaximumEur;
+/**
+ * "Today's" State Pension is the maximum rate in force in the plan's own year:
+ * 2026 for a plan starting in 2026, the announced Budget 2027 rate for one starting
+ * in 2027. The rates are in the social welfare catalogue, never typed in here.
+ */
+const statePensionAnnualToday = (inputs) => statePensionRuleForYear(inputs.currentYear).annualMaximumEur;
 const STATE_PENSION_START_AGE = IRISH_STATE_PENSION_CONTRIBUTORY.defaultStartAge;
 const REQUIRED_POT_TOLERANCE_EUR = 25;
 const HOUSEHOLD_OWNER_IDS = new Set(['household', 'joint', 'family']);
@@ -236,17 +246,22 @@ function sum(values) {
  * can resolve "the maximum" into a rate, rather than either of them carrying a
  * second copy of a rule that changes by statute.
  */
-const PENSION_AGE_BANDS = Object.freeze([
-  Object.freeze({ maxAge: 29, rate: 0.15 }),
-  Object.freeze({ maxAge: 39, rate: 0.20 }),
-  Object.freeze({ maxAge: 49, rate: 0.25 }),
-  Object.freeze({ maxAge: 54, rate: 0.30 }),
-  Object.freeze({ maxAge: 59, rate: 0.35 }),
-  Object.freeze({ maxAge: Infinity, rate: 0.40 })
-]);
+
+// The limits live in the Irish rules catalogue with their sources. This is the
+// same table with each band's last age spelled out, for the wording below.
+const PENSION_AGE_BANDS = Object.freeze(IRISH_PENSION_RELIEF_LIMITS.ageBands.map((band, index, bands) => Object.freeze({
+  maxAge: index + 1 < bands.length ? bands[index + 1].fromAge - 1 : Infinity,
+  rate: band.rate
+})));
 
 /** Earnings above this do not attract relief, whatever the age band allows. */
-export const PENSION_EARNINGS_CAP = 115_000;
+export const PENSION_EARNINGS_CAP = IRISH_PENSION_RELIEF_LIMITS.earningsCap.amountEur;
+
+/** The share of earnings relievable at an age: the last band that has started. */
+function reliefRateForAge(age) {
+  const bands = IRISH_PENSION_RELIEF_LIMITS.ageBands;
+  return (bands.filter((band) => age >= band.fromAge).pop() ?? bands[0]).rate;
+}
 
 /**
  * The maximum relievable personal contribution rate for an age, as a
@@ -255,8 +270,7 @@ export const PENSION_EARNINGS_CAP = 115_000;
 export function maxRelievableContributionRatePercent(age) {
   const years = Number(age);
   if (!Number.isFinite(years) || years < 0) return null;
-  const band = PENSION_AGE_BANDS.find((entry) => years <= entry.maxAge);
-  return band ? Math.round(band.rate * 100) : null;
+  return Math.round(reliefRateForAge(years) * 100);
 }
 
 /**
@@ -291,27 +305,8 @@ export function pensionConversationGuidance() {
   ]);
 }
 
-function ageBandPct(age) {
-  if (age < 30) {
-    return 0.15;
-  }
-  if (age <= 39) {
-    return 0.20;
-  }
-  if (age <= 49) {
-    return 0.25;
-  }
-  if (age <= 54) {
-    return 0.30;
-  }
-  if (age <= 59) {
-    return 0.35;
-  }
-  return 0.40;
-}
-
 export function maxRelievablePersonalContribution(age, salaryAtAge) {
-  return ageBandPct(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
+  return reliefRateForAge(age) * Math.min(salaryAtAge, PENSION_EARNINGS_CAP);
 }
 
 /**
@@ -938,7 +933,7 @@ function buildIncomeBreakdownAtYear(inputs, year) {
       return total;
     }
     return total + (
-      STATE_PENSION_ANNUAL_TODAY
+      statePensionAnnualToday(inputs)
       * member.statePensionFraction
       * Math.pow(1 + member.statePensionEscalationRate, year - inputs.currentYear)
     );
@@ -1177,7 +1172,7 @@ function statePensionForMemberAtYear(inputs, member, year) {
   if (!member.includeStatePension || age < member.statePensionStartAge) {
     return 0;
   }
-  const amount = STATE_PENSION_ANNUAL_TODAY
+  const amount = statePensionAnnualToday(inputs)
     * member.statePensionFraction
     * Math.pow(1 + member.statePensionEscalationRate, year - inputs.currentYear);
   return Number.isFinite(amount) ? amount : 0;
@@ -1660,7 +1655,7 @@ function goalSeekAffordableHouseholdIncomeToday(inputs, startBalances, horizonEn
   };
 
   let low = 0;
-  let high = Math.max(sum(inputs.pensions.map((member) => member.currentSalary)), STATE_PENSION_ANNUAL_TODAY, 1000);
+  let high = Math.max(sum(inputs.pensions.map((member) => member.currentSalary)), statePensionAnnualToday(inputs), 1000);
   while (isSustainable(high) && high < 5000000) {
     low = high;
     high *= 1.5;
@@ -3583,6 +3578,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
     memberHasPot
   });
 
+  const statePensionRule = statePensionRuleForYear(inputs.currentYear);
   const assumptionsTable = {
     columns: ['Assumption', 'Value'],
     rows: [
@@ -3590,8 +3586,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Growth rate', toPercentText(inputs.growthRate)],
       ['Wage growth', toPercentText(inputs.wageGrowthRate)],
       ['Inflation', toPercentText(inputs.inflationRate)],
-      ['Maximum Irish State Pension (gross)', `${toEuroText(STATE_PENSION_ANNUAL_TODAY, 2)} a year (€299.30 a week)`],
-      ['State Pension rule', `${IRELAND_RULES_CATALOGUE_VERSION}; effective January 2026; default start age 66`],
+      ['Maximum Irish State Pension (gross)', `${toEuroText(statePensionRule.annualMaximumEur, 2)} a year (${toEuroText(statePensionRule.weeklyMaximumEur, 2)} a week)`],
+      ['State Pension rule', `${IRELAND_RULES_CATALOGUE_VERSION}; effective ${monthYearText(statePensionRule.effectiveFrom)}${statePensionRule.status === 'announced' ? `, announced in ${statePensionRule.announcedBy}` : ''}; default start age ${STATE_PENSION_START_AGE}`],
       ['State Pension escalation', toPercentText(IRISH_STATE_PENSION_CONTRIBUTORY.defaultEscalationRate)],
       ['State Pension entitlement', IRISH_STATE_PENSION_CONTRIBUTORY.entitlementNotice],
       ['State Pension guidance source', IRISH_STATE_PENSION_CONTRIBUTORY.source.url],
@@ -3615,7 +3611,7 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       isAffordableMode
         ? ['Affordable income mode', 'Goal-seek (see outputs)']
         : ['Target retirement income', toEuroText(inputs.targetIncomeToday)],
-      ['Earnings cap for max-relief maths', toEuroText(115000)],
+      ['Earnings cap for max-relief maths', toEuroText(PENSION_EARNINGS_CAP)],
       ['ARF minimum withdrawals', describeArfMinimumRule()],
       ...(currentPersonalWasCapped && Number.isInteger(firstCappedAge)
         ? [[

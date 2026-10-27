@@ -11,6 +11,7 @@ import {
   assumptionLabel
 } from './planning/planeir_assumptions.js';
 import { DEFAULT_IE_TAX_CATALOGUE, resolveTaxRules } from './planning/tax/resolve.js';
+import { marketFigure } from './planning/figures/market_math.js';
 import { IE_TAX_RULES_VERSION } from './planning/tax/rules_ie.js';
 
 /**
@@ -395,9 +396,10 @@ export function runFutureCostFundTests() {
     assert(!bankOrBannedWording(record.reason), 'the record reason names no provider');
     assert(!bankOrBannedWording(PLANEIR_ASSUMPTIONS.cash.basis), 'basis names no provider');
     assert(!bankOrBannedWording(PLANEIR_ASSUMPTIONS.cash.disclosure), 'disclosure names no provider');
-    assert(PLANEIR_ASSUMPTIONS.cash.observed.length === 2, 'the audit trail keeps the two observed rates');
+    const trail = marketFigure(PLANEIR_ASSUMPTIONS.cash.figureId).observations;
+    assert(trail.length === 2, 'the audit trail, kept in the figures register, holds the two observed rates');
     assert(
-      PLANEIR_ASSUMPTIONS.cash.observed.every((entry) => entry.url && entry.effective),
+      trail.every((entry) => entry.url && entry.effective),
       'each observed rate keeps its source and date'
     );
   }));

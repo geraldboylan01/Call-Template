@@ -1,11 +1,42 @@
-export const IRELAND_RULES_CATALOGUE_VERSION = 'ie-planning-rules-2026.01';
+import { socialWelfareAnnualEur, socialWelfareRateOn } from './social_welfare_rates.js';
+
+export const IRELAND_RULES_CATALOGUE_VERSION = 'ie-planning-rules-2026.02';
+
+/**
+ * The State Pension (Contributory) rate is held in the social welfare catalogue
+ * (`social_welfare_ie.js`), where every payment's weekly rate sits by effective
+ * date with its source. `IRISH_STATE_PENSION_CONTRIBUTORY` below is the rate
+ * payable from January 2026; `statePensionRuleForYear` is the rate for any year.
+ */
+const STATE_PENSION_SERIES = 'ie.social_welfare.state_pension_contributory.personal_under_80';
+const STATE_PENSION_RATE = socialWelfareRateOn(STATE_PENSION_SERIES, '2026-01-01');
+
+/**
+ * The maximum State Pension (Contributory) personal rate in force in a calendar
+ * year, from the first of January: what "today's" State Pension means for a plan
+ * that starts that year. A year before the first rate recorded uses that first
+ * rate, as the engines always have. A rate announced in a Budget is used from the
+ * year it takes effect, with `status: 'announced'` saying so.
+ */
+export function statePensionRuleForYear(year) {
+  const date = `${Math.max(year, Number(STATE_PENSION_RATE.effectiveFrom.slice(0, 4)))}-01-01`;
+  const rate = socialWelfareRateOn(STATE_PENSION_SERIES, date);
+  return Object.freeze({
+    year,
+    weeklyMaximumEur: rate.weeklyEur,
+    annualMaximumEur: socialWelfareAnnualEur(rate.weeklyEur),
+    effectiveFrom: rate.effectiveFrom,
+    status: rate.status,
+    announcedBy: rate.announcedBy ?? null
+  });
+}
 
 export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
   ruleId: 'ie.state_pension_contributory.maximum',
   jurisdiction: 'IE',
-  effectiveFrom: '2026-01-01',
-  weeklyMaximumEur: 299.30,
-  annualMaximumEur: 15_563.60,
+  effectiveFrom: STATE_PENSION_RATE.effectiveFrom,
+  weeklyMaximumEur: STATE_PENSION_RATE.weeklyEur,
+  annualMaximumEur: socialWelfareAnnualEur(STATE_PENSION_RATE.weeklyEur),
   defaultStartAge: 66,
   defaultEscalationRate: 0.02,
   source: Object.freeze({
@@ -16,6 +47,48 @@ export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
   }),
   entitlementNotice: 'The maximum rate is a planning assumption, not a confirmed entitlement. The actual contributory rate depends on the person’s PRSI record.',
   grossAmountNotice: 'State Pension figures are gross and must not be described as net income unless a module explicitly applies a tax conversion.'
+});
+
+/**
+ * The Revenue limits on personal pension contributions that qualify for tax
+ * relief: a share of earnings that rises with age, applied to earnings up to a
+ * cap. These are the numbers behind "I pay the max".
+ *
+ * The age limit is s.774(7)(c) TCA for occupational schemes, with the same bands
+ * in s.787 (retirement annuity contracts), s.787E (PRSAs) and s.787Z (PEPPs).
+ * The earnings cap is s.790A TCA, and has been 115,000 since 2011. Neither is
+ * indexed. A change to either arrives in a Finance Act, so a change goes in as
+ * a new dated block with its source, never as an edit to this one.
+ *
+ * Certain professional sportspersons have a 30% limit below age 50. That is not
+ * modelled.
+ */
+export const IRISH_PENSION_RELIEF_LIMITS = Object.freeze({
+  ruleId: 'ie.pension_relief.limits',
+  jurisdiction: 'IE',
+  status: 'enacted',
+  verifiedOn: '2026-10-22',
+  /** The share of earnings relievable, from the age each band starts at. */
+  ageBands: Object.freeze([
+    Object.freeze({ fromAge: 0, rate: 0.15 }),
+    Object.freeze({ fromAge: 30, rate: 0.20 }),
+    Object.freeze({ fromAge: 40, rate: 0.25 }),
+    Object.freeze({ fromAge: 50, rate: 0.30 }),
+    Object.freeze({ fromAge: 55, rate: 0.35 }),
+    Object.freeze({ fromAge: 60, rate: 0.40 })
+  ]),
+  /** Earnings above this do not attract relief, whatever the age band allows. */
+  earningsCap: Object.freeze({ amountEur: 115_000, effectiveFrom: '2011-01-01' }),
+  sources: Object.freeze([
+    Object.freeze({
+      title: 'Revenue, tax relief limits on pension contributions',
+      url: 'https://www.revenue.ie/en/jobs-and-pensions/pension/relief/tax-relief-limits.aspx'
+    }),
+    Object.freeze({
+      title: 'Revenue Pensions Manual, Chapter 26 (earnings limit, s.790A)',
+      url: 'https://www.revenue.ie/en/tax-professionals/tdm/pensions/chapter-26.pdf'
+    })
+  ])
 });
 
 /**
@@ -33,6 +106,9 @@ export const IRISH_STATE_PENSION_CONTRIBUTORY = Object.freeze({
 export const IRISH_ARF_MINIMUM_DRAWDOWN = Object.freeze({
   ruleId: 'ie.arf.imputed_distribution',
   jurisdiction: 'IE',
+  status: 'enacted',
+  /** Rates and ages read against Revenue's Pensions Manual chapter 28 (last updated May 2026). */
+  verifiedOn: '2026-10-22',
   effectiveFrom: '2026-01-01',
   /** The holder must be at least this age for the whole of the year. */
   minimumWholeYearAge: 60,
