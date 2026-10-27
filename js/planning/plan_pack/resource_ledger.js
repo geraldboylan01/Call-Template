@@ -33,6 +33,10 @@ function availableCashProfile(pack, profile) {
   }
   return view;
 }
+function cashAssignments(pack) {
+  return pack.planningInputs.assetAssignments.filter(binding => pack.household.assets.find(asset => asset.assetId === binding.assetId).type === 'cash')
+    .map(binding => ({ assetId: binding.assetId, amount: money(pack.household.assets.find(asset => asset.assetId === binding.assetId).currentValue, '/household/assets/currentValue') }));
+}
 function reserveFor(pack) {
   const view = availableCashProfile(pack, pack.household);
   const definition = getPlanningModuleDefinition('liquidity_analysis');
@@ -179,16 +183,17 @@ function validateFundingFacts(pack) {
   }
 }
 
-function investmentInventory(pack, sales) {
+function investmentInventory(pack, sales, { pricePotential = true } = {}) {
   const assigned = new Set(pack.planningInputs.assetAssignments.map(a => a.assetId));
   const holdings = pack.household.assets.filter(a => a.type === 'investment' && !assigned.has(a.assetId));
   const sold = new Set(sales.sales.map(s => s.assetId));
   // Only holdings the route keeps: a sold asset and its exemption are already in the route's own sale.
   const ordinary = holdings.filter(a => a.investmentTaxTreatment === 'ordinary_cgt' && a.currentValue && !sold.has(a.assetId));
   // This is one hypothetical batch, never additional cash or another allowance.
-  const potentialSale = ordinary.length && pack.planningInputs.householdTaxStatus
+  const potentialSale = pricePotential && ordinary.length && pack.planningInputs.householdTaxStatus
     ? priceInvestmentSales(pack.household, ordinary.map(a => a.assetId), pack.calculationDate, pack.planningInputs.householdTaxStatus, pack.planningInputs.openingTaxState) : null;
   return { countedAsCash: false, potentialSaleBasis: 'unassigned_ordinary_cgt_holdings_kept_by_the_route_sold_together_from_opening_tax_history', potentialSale,
+    ...(!pricePotential ? { potentialSaleStatus: 'not_priced_in_current_position_mode' } : {}),
     holdings: holdings.map(asset => ({ assetId: asset.assetId, marketValue: asset.currentValue ?? null,
       taxTreatment: asset.investmentTaxTreatment ?? 'unknown', soldInRoute: sold.has(asset.assetId),
       valuationStatus: sold.has(asset.assetId) ? 'sold_in_route'
@@ -327,8 +332,7 @@ export async function prepareResourceRoute(pack, route, index) {
       fromYear: calendarYear + goal.startsInYears, basis: 'fund_pays_the_cost_from_its_start' }] : [];
   })].sort((a, b) => (a.fromOffset ?? Infinity) - (b.fromOffset ?? Infinity));
   // Investment/cost capital remains an asset, but cannot also be emergency cash.
-  context.usableCashDeductions = pack.planningInputs.assetAssignments.filter(a => pack.household.assets.find(asset => asset.assetId === a.assetId).type === 'cash')
-    .map(a => ({ assetId: a.assetId, amount: money(pack.household.assets.find(asset => asset.assetId === a.assetId).currentValue, '/household/assets/currentValue') }));
+  context.usableCashDeductions = cashAssignments(pack);
   if (context.reservedCash > 0) context.usableCashDeductions.push({ assetId: context.cashAssetId, amount: context.reservedCash });
   if (pack.chapters.includes('household_cash_flow')) {
     const cashflow = await buildChapter(context, pack, 'household_cash_flow');
@@ -394,5 +398,56 @@ export async function prepareResourceRoute(pack, route, index) {
       'Each working person’s share of today’s annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. Someone already retired keeps their share, because today’s left over already comes from their retirement income. A repayment that stops comes back in full while anyone still has an income. When every working person has retired and no one was already retired, there is no yearly money for goals; later needs are shown short. A deficit is not reduced by retirement.',
       'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.'],
     pricing: quotes.map(g => ({ goalId: g.goalId, kind: g.kind, input: g.input, priced: g.priced })) });
+  return { context, ledger };
+}
+
+/**
+ * Today's resources can be compiled before goal-funding questions are answered.
+ * This deliberately makes no affordability or goal-coverage conclusion. Full
+ * B1 pricing remains prepareResourceRoute's strict, unchanged contract.
+ */
+export async function prepareCurrentPosition(pack) {
+  if (pack.routes.length !== 1 || pack.routes[0].id !== 'current' || pack.routes[0].changes.length) {
+    fail('/routes', 'Current-position resources require exactly the unchanged current route.');
+  }
+  validateFundingFacts(pack);
+  for (const goalId of new Set(pack.planningInputs.assetAssignments.map(binding => binding.goalId))) assignedCash(pack, pack.household, goalId);
+  const context = routeContext(pack, pack.routes[0], 0);
+  context.usableCashDeductions = cashAssignments(pack);
+  const diagnostics = [];
+  const record = error => diagnostics.push({ code: error.code ?? 'missing_information', path: error.path ?? '/household', message: error.message });
+  const accounts = cashAssets(availableCashProfile(pack, pack.household));
+  let openingCash = null, recordedCash = null, reserve = null, baselineLeftOver = null, takeHomeByPerson = null;
+  try {
+    if (!accounts.length) missing('/household/assets', 'Record current cash, including explicit zero.');
+    openingCash = sum(accounts.map(asset => money(asset.currentValue, '/household/assets/' + pack.household.assets.indexOf(asset) + '/currentValue')));
+    recordedCash = sum(cashAssets(pack.household).map(asset => money(asset.currentValue, '/household/assets/currentValue')));
+  } catch (error) { record(error); }
+  try { reserve = reserveFor(pack); } catch (error) { record(error); }
+  try {
+    if (pack.chapters.includes('household_cash_flow')) {
+      const flow = await buildChapter(context, pack, 'household_cash_flow');
+      baselineLeftOver = flow.metrics.leftOver;
+      takeHomeByPerson = flow.cashFlowSummary.cases[0].takeHome.byPerson;
+    } else if (pack.planningInputs.leftOverEachYear !== undefined) baselineLeftOver = pack.planningInputs.leftOverEachYear;
+    else missing('/planningInputs/leftOverEachYear', 'Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount.');
+  } catch (error) { record(error); }
+  const goals = activeGoals(pack.household).map(goal => ({ goalId: goal.goalId, status: 'not_priced' }));
+  const ledger = finiteJson({
+    version: 1, status: diagnostics.length ? 'incomplete' : 'current_resources',
+    currentPositionUnchanged: true, goalFundingStatus: 'not_priced', goals,
+    recordedCash, openingCash, reserve, cashAllocated: 0, cashRemaining: openingCash,
+    assignedCash: context.usableCashDeductions,
+    cashAvailableAfterReserve: openingCash === null || !reserve ? null : Math.max(0, openingCash - reserve.protectedAmount),
+    reserveProtected: openingCash === null || !reserve ? null : openingCash >= reserve.protectedAmount,
+    baselineLeftOver, takeHomeByPerson,
+    investments: investmentInventory(pack, { sales: [], netProceeds: 0 }, { pricePotential: false }),
+    diagnostics,
+    assumptions: [
+      'Current-position resources only. No cash is committed and no goal funding, affordability or coverage is claimed.',
+      'The reserve uses the existing opening central-policy calculation. Cash flow retains current personal contributions and repayments.',
+      'Current saving by goal is not inferred from an aggregate saving amount. Annual left over is before any unidentified goal-saving transfers.'
+    ]
+  });
   return { context, ledger };
 }

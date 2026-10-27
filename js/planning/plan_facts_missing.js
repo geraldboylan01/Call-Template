@@ -27,8 +27,10 @@ export function planFactsMissing(profile) {
     'Bind the saved confirmed revision and timestamp before calculation; the unbound conversion has no real capture or calculation date.', 'snapshot_binding');
   if (application && !known(profile.household?.planningWithPartner)) add('household_structure', '/household/planningWithPartner',
     'Establish whether a partner is included so income, pensions and assessment use the right people.');
-  requireValue('married_or_civil_partners', '/household/married',
-    'Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.');
+  if (profile.partner) requireValue('married_or_civil_partners', '/household/married',
+    'Marriage or civil partnership decides joint assessment for the couple.');
+  else if (!values.planPack?.planningInputs?.householdTaxStatus) add('single_or_widowed', '/planningInputs/householdTaxStatus',
+    'With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.');
   const people = [['primaryPerson', profile.primaryPerson], ['partner', profile.partner]].filter(([, person]) => person);
   for (const [key, person] of people) {
     requireValue('person_current_age', `/${key}/age`, 'Current age sets pension, mortgage and dependant timelines.');

@@ -56,7 +56,7 @@ assert.equal(renter.incomeSources.length, 1);
 assert.deepEqual(renter.incomeSources[0].ownerIds, ['primary']);
 assert.ok(!renter.incomeSources[0].netAnnual, 'Household take-home is not an individual salary');
 assert.equal(renter.household.married, undefined);
-assert.ok(hasGap(renter, 'married_or_civil_partners'), 'Planning without a partner is not a legal marital-status declaration');
+assert.ok(hasGap(renter, 'single_or_widowed'), 'Planning without a partner does not establish the single or surviving-partner tax credit');
 assert.ok(!hasGap(renter, 'pension_positions'), 'Explicit no pensions stays distinct from unanswered');
 assert.ok(!hasGap(renter, 'loans_presence'));
 assert.equal(family.household.married, true);
