@@ -397,6 +397,7 @@ export function computeDatedCostFunding({ costKind, startsInYears, costYears, an
     throw new Error('Dated-cost startsInYears must be a whole number from 0 to 40.');
   }
   const rates = resolveRates({ costKind }, options);
+  const inflatesCost = costYears === undefined;
   if (costYears === undefined) {
     if (!isFiniteNumber(annualCostToday) || annualCostToday <= 0 || !Number.isInteger(durationYears)
       || durationYears < 1 || durationYears > MAX_DURATION_YEARS) throw new Error('A dated cost needs a positive annual cost and a duration from 1 to 30.');
@@ -413,8 +414,9 @@ export function computeDatedCostFunding({ costKind, startsInYears, costYears, an
     || (funding === 'save_then_pay' && savingStartsInYears >= startsInYears)) {
     throw new Error('Saving must start before the dated cost; a cost starting now cannot use save_then_pay.');
   }
+  const { priceGrowthRate, priceGrowthSource, ...fundingRates } = rates;
   return { ...solveFunding(costYears, rates.cashRateNet, { startsInYears, cashToday, funding, savingStartsInYears }),
-    costYears: costYears.map(row => ({ ...row })), assumptions: { ...rates, timing: 'start-of-year' } };
+    costYears: costYears.map(row => ({ ...row })), assumptions: { ...(inflatesCost ? rates : fundingRates), timing: 'start-of-year' } };
 }
 
 function buildAssumptionsTable(inputs, rates) {

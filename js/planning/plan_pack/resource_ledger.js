@@ -6,7 +6,7 @@ import { planDatedCostProducer } from '../dated_costs/plan_producers.js';
 import { planWorkingShares } from './working_shares.js';
 import { computeAmortizationMonthlySchedule } from '../../mortgage_math.js';
 import { GOAL_STATE_WORDS, pricePlanMortgage, pricePlanRetirement } from '../../goals_and_resources_math.js';
-import { routeContext, buildChapter, missing, people, ownerBankPay, LaterStage } from './chapters.js';
+import { routeContext, buildChapter, missing, people, LaterStage } from './chapters.js';
 import { priceInvestmentSales } from './investment_sales.js';
 import { fail, finiteJson } from './schema.js';
 

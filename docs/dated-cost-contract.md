@@ -41,7 +41,7 @@ amountBeforeRelief - reliefAmount = amountAfterRelief
 
 The producer obtains relief from the tax engine; the contract does not calculate a percentage or apply relief again. College and future-cost-fund rows currently have zero relief and empty claims. The care brief can align its row names to these fields without changing this funding core.
 
-College's bills come directly from its native nominal year rows, including any one-off support. The future-cost producer uses the existing engine's inflation and cost schedule. Both hand the same after-relief bills to the same funding calculation.
+College's bills come directly from its native nominal year rows, including any one-off support. The future-cost producer uses the existing engine's inflation and cost schedule. Both hand the same after-relief bills to the same funding calculation. Funding a nominal schedule carries no unused inflation default; each producer records the growth assumption that actually built its bills.
 
 ## The ledger and retirement
 

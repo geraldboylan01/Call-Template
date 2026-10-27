@@ -195,6 +195,17 @@ await test('A named child keeps their own start and duration in a mixed-age coll
   const native = computeCollegeFundingProjection(input).debug.scenarios.find(row => row.id === 'living_at_home');
   result.costByYear.forEach(row => close(row.amountAfterRelief, native.yearRows.find(year => year.year === row.year).children.find(child => child.id === 'younger').cost));
 });
+await test('A nominal schedule carries its producer’s actual cost-growth assumption, not an unused funding default', () => {
+  const input = { ...collegeInput(), inflationRate: 0.02 };
+  const college = produceCollegeCost({ ...producerBase, title: 'College', input, scenarioId: 'living_at_home' });
+  assert.equal(college.assumptions.priceGrowthRate, 0.02);
+  const native = computeCollegeFundingProjection(input).debug.scenarios.find(row => row.id === 'living_at_home');
+  college.costByYear.forEach((row, i) => close(row.amountAfterRelief, native.yearRows[i].annualFamilyCost));
+  const fund = produceFutureCostFundCost({ ...producerBase, input: FUTURE_COST_FUND_SAMPLE });
+  assert.equal(fund.assumptions.priceGrowthRate, PLANEIR_ASSUMPTIONS.inflation.educationRate);
+  const raw = createDatedCost(contractInput());
+  assert(!Object.hasOwn(raw.assumptions, 'priceGrowthRate'));
+});
 await test('A producer passes its explicit plan date and never falls back to the clock', () => {
   const OriginalDate = globalThis.Date;
   globalThis.Date = class extends OriginalDate { constructor(...args) { if (!args.length) throw new Error('Clock read'); super(...args); } };

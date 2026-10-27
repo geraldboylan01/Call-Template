@@ -9,10 +9,12 @@ export function produceFutureCostFundCost({ input, calculationDate, costId, goal
   const priced = computeDatedCostFunding({ costKind: input.costKind, startsInYears: input.startsInYears,
     annualCostToday: input.annualCostToday, durationYears: input.durationYears, cashToday, funding, savingStartsInYears
   }, { ...options, calculationYear: Number(calculationDate.slice(0, 4)) });
-  return createDatedCost({ costId, goalId, title: input.costTitle, producer: { module: 'future_cost_fund', version: 'dated-cost-future-fund-1.0.0' },
+  const contract = createDatedCost({ costId, goalId, title: input.costTitle, producer: { module: 'future_cost_fund', version: 'dated-cost-future-fund-1.0.0' },
     payerIds, payerRetirements, calculationDate, costKind: input.costKind, cashToday, funding, savingStartsInYears,
     costByYear: priced.costYears.map(row => ({ year: priced.assumptions.calculationYear + row.yearIndex,
       amountBeforeRelief: row.cost, reliefAmount: 0, amountAfterRelief: row.cost, reliefClaims: [] })),
     provenance: { input: { ...input }, costBasis: 'native_future_cost_fund_nominal_schedule' }
   }, options);
+  return { ...contract, assumptions: { ...contract.assumptions,
+    priceGrowthRate: priced.assumptions.priceGrowthRate, priceGrowthSource: priced.assumptions.priceGrowthSource } };
 }
