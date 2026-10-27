@@ -239,6 +239,14 @@ check('the shape check refuses what a hand edit could get wrong', () => {
     const problems = marketFigureProblems({ ...sound, ...patch });
     assert.ok(problems.some((problem) => expected.test(problem)), `${what} should be refused; got ${JSON.stringify(problems)}`);
   }
+  // A person choosing a reviewed value is a check of it: changedOn may follow the
+  // quotes' check by up to the day they chose, and no further.
+  const chosen = MARKET_FIGURES.find((figure) => figure.method.kind === 'reviewed');
+  const method = (reviewedOn) => ({ ...chosen.method, reviewedOn });
+  const changedOn = (day, reviewedOn) => marketFigureProblems({ ...chosen, changedOn: day, method: method(reviewedOn) });
+  assert.deepEqual(changedOn('2026-11-02', '2026-11-02'), [], 'changed on the day a person chose it, after the quotes were read');
+  assert.ok(changedOn('2026-11-03', '2026-11-02').some((problem) => /later than checkedOn and reviewedOn/.test(problem)), 'not later than the choice');
+  assert.ok(marketFigureProblems({ ...chosen, method: { ...chosen.method, reviewedOn: undefined } }).some((problem) => /needs method\.reviewedOn/.test(problem)), 'a chosen value says when');
 });
 
 check('provider names are never in a label, and the name check matches whole words only', () => {
@@ -676,7 +684,11 @@ check('warnings: a market figure past its review interval, a reviewed rate its q
   assert.ok(figureWarnings([stale], later).some((warning) => /last checked \d+ days ago/.test(warning)), 'one day over the interval warns');
   const onTime = new Date(Date.parse(`${stale.checkedOn}T00:00:00Z`) + stale.reviewEveryDays * 86_400_000).toISOString().slice(0, 10);
   assert.equal(figureWarnings([{ ...stale, evidence: undefined }], onTime).length, 0, 'on the last day it does not');
-  const drifted = market.find((figure) => figure.evidence);
+  // Built from the live figure rather than read from it, so this does not depend on where this week's quotes point.
+  const reviewed = market.find((figure) => figure.evidence);
+  const agreeing = { ...reviewed, evidence: { ...reviewed.evidence, median: reviewed.value, drifted: false } };
+  assert.equal(figureWarnings([agreeing], agreeing.checkedOn).some((warning) => /quotes now point to/.test(warning)), false, 'a reviewed rate its quotes agree with does not');
+  const drifted = { ...reviewed, evidence: { ...reviewed.evidence, median: Number((reviewed.value + 0.0025).toPrecision(12)), drifted: true } };
   assert.ok(figureWarnings([drifted], drifted.checkedOn).some((warning) => /quotes now point to/.test(warning)), 'a reviewed rate the evidence has left warns');
   const announced = collected.find((figure) => figure.kind === 'announced_law');
   assert.equal(figureWarnings([announced], announced.checkedOn).length, 0);
