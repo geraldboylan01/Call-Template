@@ -231,6 +231,14 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
      */
     maximumRelief: 35000,
     maximumReliefFrom: '2026-10-07',
+    /**
+     * The cap for contracts signed from 23 July 2020 to 6 October 2026, which a
+     * plan with an earlier purchase date still gets. The screen picks the cap by
+     * the target purchase date, so a historical plan never gains relief it could
+     * not claim. Relief before July 2020 (20,000) is not modelled.
+     */
+    earlierMaximumRelief: 30000,
+    earlierMaximumReliefFrom: '2020-07-23',
     maximumPrice: 500000,
     priceShare: 0.1,
     minimumQualifyingMortgageShare: 0.7,

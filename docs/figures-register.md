@@ -11,7 +11,7 @@ Every figure that can change: law, market prices and Planeir's own assumptions, 
 | Market | A price or rate that moves on its own, worked out from the quotes it was read from | The weekly job adds quotes; code does the arithmetic |
 | Planeir assumption | A choice Planeir makes | A person only; a job never changes these |
 
-Counts: Law in force 225, Announced law 32, Market 3, Planeir assumption 27. Total 287.
+Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Total 288.
 
 **Checked.** The day the value was read against its source. † means the figure has no check date of its own and shows the date its catalogue was last verified. ‡ means a Planeir choice with no review recorded, so the date shown is the day it was set.
 
@@ -238,7 +238,7 @@ Catalogue version `ie-social-welfare-2026.2`. 14 figures.
 
 ## House Purchase rules
 
-Catalogue version `house-purchase-rules-2026.10`. 130 figures.
+Catalogue version `house-purchase-rules-2026.10`. 131 figures.
 
 ### Mortgage lending and illustration
 
@@ -266,7 +266,8 @@ Catalogue version `house-purchase-rules-2026.10`. 130 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
-| Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026 | €35,000 | 2026-10-07 | in force | [Revenue Help to Buy](https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx) | 2026-10-22 | house_purchase | `ie.house_purchase.help_to_buy.maximum_relief` |
+| Most Help to Buy can refund a first-time buyer, for contracts signed from 23 July 2020 to 6 October 2026 | €30,000 | 2020-07-23 | in force | [Revenue Help to Buy](https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx) | 2026-10-22 | house_purchase | `ie.house_purchase.help_to_buy.maximum_relief.from_2020_07_23` |
+| Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026 | €35,000 | 2026-10-07 | in force | [Revenue Help to Buy](https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx) | 2026-10-22 | house_purchase | `ie.house_purchase.help_to_buy.maximum_relief.from_2026_10_07` |
 | Highest price of a home that qualifies for Help to Buy | €500,000 | — | in force | [Revenue Help to Buy](https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx) | 2026-10-22 | house_purchase | `ie.house_purchase.help_to_buy.maximum_price` |
 | Help to Buy refund as a share of the home’s price, at most | 10% | — | in force | [Revenue Help to Buy](https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx) | 2026-10-22 | house_purchase | `ie.house_purchase.help_to_buy.price_share` |
 | Smallest share of the price that must be a mortgage for Help to Buy | 70% | — | in force | [Revenue Help to Buy](https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx) | 2026-10-22 | house_purchase | `ie.house_purchase.help_to_buy.minimum_qualifying_mortgage_share` |

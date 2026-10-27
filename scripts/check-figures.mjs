@@ -583,7 +583,7 @@ check('figures read from catalogues are the catalogues\' own values, not retyped
   assert.equal(byId.get('ie.pension_relief.limits.earnings_cap').value, PENSION_EARNINGS_CAP);
   assert.equal(byId.get('ie.market.cash.instant_access_gross_rate').value, marketFigureValue('ie.market.cash.instant_access_gross_rate'));
   assert.equal(byId.get('planeir.assumption.investment_growth').value, PLANEIR_ASSUMPTIONS.investment.nominalGrowthRate);
-  assert.equal(byId.get('ie.house_purchase.help_to_buy.maximum_relief').value, HOUSE_PURCHASE_RULES.helpToBuy.maximumRelief);
+  assert.equal(byId.get('ie.house_purchase.help_to_buy.maximum_relief.from_2026_10_07').value, HOUSE_PURCHASE_RULES.helpToBuy.maximumRelief);
   assert.equal(byId.get('ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01').value, socialWelfareRateOn('ie.social_welfare.illness_benefit.personal_highest', '2026-06-01').weeklyEur);
 });
 
@@ -743,6 +743,24 @@ check('onDate gives the value in force on that date: the latest to have taken ef
   assert.equal(new Set(quantities).size, quantities.length, 'one value for each quantity');
 });
 
+check('a filter never brings back a value that a newer one has replaced on that date', () => {
+  // Asking for the superseded id alone, on a date after its replacement took effect: nothing, not the old rate.
+  assert.deepEqual(getFigures({ ids: ['ie.cgt.rate.2012-12'], onDate: '2026-10-22' }), []);
+  assert.deepEqual(getFigures({ ids: ['ie.cgt.rate.2012-12'], onDate: '2026-10-06' }).map((figure) => figure.valueShown), ['33%']);
+  // By kind: in January 2027 the single-person band in force is the announced one, so the law kind has none for it.
+  const law = getFigures({ kinds: ['law'], onDate: '2027-01-01' }).map((figure) => figure.id);
+  assert.ok(!law.includes('ie.income_tax.2026.standard_rate_band.single'), 'the 2026 band is superseded');
+  assert.ok(!law.includes('ie.income_tax.2027.standard_rate_band.single'), 'the 2027 band is announced, not law');
+  assert.ok(law.includes('ie.dirt.2026.rate'), 'a rule nothing has replaced is still in force');
+  const announced = getFigures({ kinds: ['announced_law'], onDate: '2027-01-01' }).map((figure) => figure.id);
+  assert.ok(announced.includes('ie.income_tax.2027.standard_rate_band.single'));
+  // By module, the same.
+  const byModule = getFigures({ module: 'plan_pack', onDate: '2027-03-01' }).map((figure) => figure.id);
+  assert.ok(byModule.includes('ie.income_tax.2027.standard_rate_band.single') && !byModule.includes('ie.income_tax.2026.standard_rate_band.single'));
+  // An unknown id is still an error, whatever the date.
+  assert.throws(() => getFigures({ ids: ['ie.nothing'], onDate: '2026-10-22' }), /holds no figure with the id/);
+});
+
 check('the register version label names the index and every catalogue behind it', () => {
   const label = figuresVersionLabel();
   assert.ok(label.startsWith(FIGURES_INDEX_VERSION));
@@ -818,7 +836,13 @@ check('the 2027 tax year is in the register as announced law, with its changed r
 
 check('Help to Buy is 35,000 from 7 October 2026, as Revenue prints it, with the scheme\'s other parameters unchanged', () => {
   const byId = new Map(collected.map((figure) => [figure.id, figure]));
-  const relief = byId.get('ie.house_purchase.help_to_buy.maximum_relief');
+  const relief = byId.get('ie.house_purchase.help_to_buy.maximum_relief.from_2026_10_07');
+  const earlier = byId.get('ie.house_purchase.help_to_buy.maximum_relief.from_2020_07_23');
+  assert.equal(earlier.value, 30_000);
+  assert.equal(earlier.effectiveFrom, '2020-07-23');
+  assert.equal(earlier.quantity, relief.quantity, 'two dated values of one quantity');
+  assert.equal(getFigures({ onDate: '2026-10-06', ids: [earlier.id, relief.id] })[0].value, 30_000, 'the day before the increase');
+  assert.equal(getFigures({ onDate: '2026-10-07', ids: [earlier.id, relief.id] })[0].value, 35_000, 'the day it takes effect');
   assert.equal(relief.value, 35_000);
   assert.equal(relief.effectiveFrom, '2026-10-07');
   assert.equal(relief.kind, 'law');

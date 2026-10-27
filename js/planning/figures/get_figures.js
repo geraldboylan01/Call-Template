@@ -63,12 +63,15 @@ function inForceOn(figures, onDate) {
  * @param {object} [options]
  * @param {string[]} [options.ids] Exactly these figures. An id the register does not
  *   hold is an error, not an omission: a figure silently missing from an answer is
- *   how a rate gets typed in from memory.
+ *   how a rate gets typed in from memory. With `onDate`, the ids are candidates: one
+ *   already superseded on that date, or not yet in force, is left out, so listing an
+ *   old and a new id returns the one in force.
  * @param {string[]} [options.kinds] Only these kinds: law, announced_law, market,
  *   planeir_assumption.
  * @param {string} [options.module] Only the figures this module uses.
  * @param {string} [options.onDate] YYYY-MM-DD. For each quantity, only the value in
- *   force on that date; later announced values are left out.
+ *   force on that date, decided before any other filter is applied; later announced
+ *   values are left out, and a filter never brings a superseded one back.
  */
 export function getFigures({ ids, kinds, module, onDate } = {}) {
   if (ids !== undefined && !(Array.isArray(ids) && ids.every((id) => typeof id === 'string'))) {
@@ -85,10 +88,15 @@ export function getFigures({ ids, kinds, module, onDate } = {}) {
     throw new Error(`onDate must be a YYYY-MM-DD date; received ${JSON.stringify(onDate)}.`);
   }
 
-  let selected = FIGURES_INDEX;
   if (ids !== undefined) {
     const missing = ids.filter((id) => !BY_ID.has(id));
     if (missing.length > 0) throw new Error(`The figures register holds no figure with the id ${missing.map((id) => JSON.stringify(id)).join(', ')}.`);
+  }
+  // What is in force on a date is decided against the whole register first. Filtering
+  // first would drop a newer value from the comparison and let the superseded one
+  // through: the 2012 CGT rate for an id, or the old band for the law kind.
+  let selected = onDate !== undefined ? inForceOn(FIGURES_INDEX, onDate) : FIGURES_INDEX;
+  if (ids !== undefined) {
     const wanted = new Set(ids);
     selected = selected.filter((figure) => wanted.has(figure.id));
   }
@@ -97,7 +105,6 @@ export function getFigures({ ids, kinds, module, onDate } = {}) {
     selected = selected.filter((figure) => wanted.has(figure.kind));
   }
   if (module !== undefined) selected = selected.filter((figure) => figure.usedBy.includes(module));
-  if (onDate !== undefined) selected = inForceOn(selected, onDate);
   return Object.freeze(selected.map(frozenCopy));
 }
 

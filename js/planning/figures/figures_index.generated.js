@@ -20,7 +20,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   {
     "id": "house_purchase_rules",
     "version": "house-purchase-rules-2026.10",
-    "count": 130
+    "count": 131
   },
   {
     "id": "planeir_assumptions",
@@ -5653,7 +5653,49 @@ export const FIGURES_INDEX = Object.freeze([
     ]
   },
   {
-    "id": "ie.house_purchase.help_to_buy.maximum_relief",
+    "id": "ie.house_purchase.help_to_buy.maximum_relief.from_2020_07_23",
+    "quantity": "ie.house_purchase.help_to_buy.maximum_relief",
+    "label": "Most Help to Buy can refund a first-time buyer, for contracts signed from 23 July 2020 to 6 October 2026",
+    "value": 30000,
+    "valueShown": "€30,000",
+    "unit": "eur",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": "2020-07-23",
+    "source": {
+      "title": "Revenue Help to Buy",
+      "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx"
+    },
+    "sources": [
+      {
+        "title": "Revenue Help to Buy",
+        "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx"
+      },
+      {
+        "title": "Revenue Help to Buy (supporting page)",
+        "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/who-can-claim-htb.aspx"
+      },
+      {
+        "title": "Revenue Help to Buy (supporting page)",
+        "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/what-type-of-property-qualifies.aspx"
+      },
+      {
+        "title": "Revenue Help to Buy (supporting page)",
+        "url": "https://www.revenue.ie/en/property/help-to-buy-incentive/how-much-can-you-claim.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-22",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "house_purchase_rules",
+      "version": "house-purchase-rules-2026.10"
+    },
+    "usedBy": [
+      "house_purchase"
+    ]
+  },
+  {
+    "id": "ie.house_purchase.help_to_buy.maximum_relief.from_2026_10_07",
     "quantity": "ie.house_purchase.help_to_buy.maximum_relief",
     "label": "Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026",
     "value": 35000,

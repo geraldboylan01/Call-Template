@@ -273,6 +273,27 @@ export function runHousePurchaseMathTests() {
     assertEqual(DEFAULT_HOUSE_PURCHASE_RULES.helpToBuy.maximumReliefFrom, '2026-10-07', 'from the day after the Budget');
   }));
 
+  cases.push(runCase('Help to Buy keeps the earlier 30,000 cap for a purchase before 7 October 2026 and gives 35,000 from then', () => {
+    // A plan dated 1 July 2026 buying a 400,000 new build on 1 September 2026 signs before the increase.
+    const cap = (targetPurchaseDate) => screenHelpToBuy(makeInputs({
+      calculationDateIso: '2026-07-01',
+      targetPropertyPrice: 400000,
+      targetPurchaseDate,
+      helpToBuy: { expectedIncomeTaxAndDirtPaidPriorFourYears: 50000 }
+    }), { mortgageAmount: 320000 }).maximumBeforeTaxVerification;
+    assertEqual(cap('2026-09-01'), 30000, 'before the increase');
+    assertEqual(cap('2026-10-06'), 30000, 'the last day of the earlier cap');
+    assertEqual(cap('2026-10-07'), 35000, 'the first day of the new cap');
+    assertEqual(cap('2028-07-01'), 35000, 'a later purchase');
+    const range = screenHelpToBuy(makeInputs({
+      targetPurchaseDate: '2026-09-01',
+      helpToBuy: { expectedIncomeTaxAndDirtPaidPriorFourYears: null }
+    }), { mortgageAmount: 320000 });
+    assertEqual(range.amountRange.maximum, 30000, 'the unverified range follows the same cap');
+    assertEqual(DEFAULT_HOUSE_PURCHASE_RULES.helpToBuy.earlierMaximumRelief, 30000, 'the earlier cap is kept in the rules');
+    assertEqual(DEFAULT_HOUSE_PURCHASE_RULES.helpToBuy.earlierMaximumReliefFrom, '2020-07-23', 'from the enhanced scheme');
+  }));
+
   cases.push(runCase('Second-hand property does not receive HTB', () => {
     const inputs = makeInputs({ acquisitionType: 'second_hand' });
     const screen = screenHelpToBuy(inputs, { mortgageAmount: 320000 });

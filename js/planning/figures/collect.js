@@ -536,7 +536,7 @@ function collectHousePurchase(out) {
   const rules = HOUSE_PURCHASE_RULES;
   const law = (group, field, label, value, unit, source, checkedOn, extra = {}) => add({
     id: `ie.house_purchase.${group}.${field}`,
-    quantity: `ie.house_purchase.${group}.${field}`,
+    quantity: extra.quantity ?? `ie.house_purchase.${group}.${field}`,
     label,
     value,
     unit,
@@ -574,7 +574,10 @@ function collectHousePurchase(out) {
 
   const htb = asSource(meta.helpToBuy);
   const htbChecked = meta.helpToBuy.asOfDate;
-  law('help_to_buy', 'maximum_relief', 'Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026', rules.helpToBuy.maximumRelief, 'eur', htb, htbChecked, { effectiveFrom: rules.helpToBuy.maximumReliefFrom });
+  // One quantity with two dated values, so a date picks the cap that applies to it.
+  const reliefQuantity = 'ie.house_purchase.help_to_buy.maximum_relief';
+  law('help_to_buy', 'maximum_relief.from_2020_07_23', 'Most Help to Buy can refund a first-time buyer, for contracts signed from 23 July 2020 to 6 October 2026', rules.helpToBuy.earlierMaximumRelief, 'eur', htb, htbChecked, { quantity: reliefQuantity, effectiveFrom: rules.helpToBuy.earlierMaximumReliefFrom });
+  law('help_to_buy', 'maximum_relief.from_2026_10_07', 'Most Help to Buy can refund a first-time buyer, for contracts signed from 7 October 2026', rules.helpToBuy.maximumRelief, 'eur', htb, htbChecked, { quantity: reliefQuantity, effectiveFrom: rules.helpToBuy.maximumReliefFrom });
   law('help_to_buy', 'maximum_price', 'Highest price of a home that qualifies for Help to Buy', rules.helpToBuy.maximumPrice, 'eur', htb, htbChecked);
   law('help_to_buy', 'price_share', 'Help to Buy refund as a share of the home’s price, at most', rules.helpToBuy.priceShare, 'rate', htb, htbChecked);
   law('help_to_buy', 'minimum_qualifying_mortgage_share', 'Smallest share of the price that must be a mortgage for Help to Buy', rules.helpToBuy.minimumQualifyingMortgageShare, 'rate', htb, htbChecked);
