@@ -7,7 +7,7 @@ Use this playbook when Gerry says `use the house purchase playbook`, `house purc
 Do not use this playbook for an existing mortgage balance, repayment schedule, payoff date, or overpayment comparison. Those belong in the Mortgage playbook.
 
 ## Job
-Parse only the client facts and dated planning assumptions into `generated.housePurchaseInputs`, then write a short client-facing `generated.summaryHtml`.
+Parse only the client facts into `generated.housePurchaseInputs`, leaving out the standard planning assumptions (below), then write a short client-facing `generated.summaryHtml`.
 
 The app owns every repeatable calculation and result after the payload is applied, including capacity, purchase costs, deposit growth, mortgage illustrations, household headroom, funding stacks, readiness gates, bottlenecks, Help to Buy and First Home Scheme screens, next actions, tables, and charts.
 
@@ -102,19 +102,6 @@ What-if state is not part of the prompt payload. The app supports the local, non
         "isMaximumAvailable": false,
         "macroPrudentialException": false,
         "htbQualifyingLender": null
-      },
-      "depositSavingsGrossAer": 0.02,
-      "dirtRate": 0.33,
-      "mortgageIllustrationRate": 0.035,
-      "mortgageTermYears": 35,
-      "purchaseCosts": {
-        "stampDutyMode": "rules",
-        "customStampDuty": null,
-        "legalAndConveyancing": 3200,
-        "valuation": 200,
-        "surveyOrEngineer": 400,
-        "movingAndFurnishing": 5000,
-        "contingency": 2500
       },
       "helpToBuy": {
         "taxCompliant": null,
@@ -212,29 +199,14 @@ Do not collapse `acquisitionType` and `dwellingType`. The former drives purchase
 Do not turn a Central Bank multiple into an AIP, and do not label an AIP as a mortgage approval. Preserve a lender amount above the standard income-limit illustration only when supplied; the app decides how it affects the result.
 
 ### Planning assumptions and purchase costs
-- `depositSavingsGrossAer` - annual decimal rate.
-- `dirtRate` - annual decimal tax rate.
-- `mortgageIllustrationRate` - annual decimal rate.
-- `mortgageTermYears` - positive whole number.
-- `purchaseCosts.stampDutyMode` - `rules` or `custom`.
-- `purchaseCosts.customStampDuty` - number for `custom`, otherwise `null`.
-- `purchaseCosts.legalAndConveyancing`
-- `purchaseCosts.valuation`
-- `purchaseCosts.surveyOrEngineer`
-- `purchaseCosts.movingAndFurnishing`
-- `purchaseCosts.contingency`
+These are the standard planning assumptions. The app holds them in its figures register, with their sources and the dates they were checked, and fills them in itself:
+- `depositSavingsGrossAer` - the interest rate on deposit savings.
+- `dirtRate` - the tax rate on deposit interest.
+- `mortgageIllustrationRate` - the rate used to illustrate mortgage repayments.
+- `mortgageTermYears` - the term used to illustrate mortgage repayments.
+- `purchaseCosts` - stamp duty by the rules, and the standard legal and conveyancing, valuation, survey or engineer, moving and furnishing, and contingency amounts.
 
-When Gerry says to use standard planning assumptions, use:
-- `depositSavingsGrossAer: 0.02`
-- `dirtRate: 0.33`
-- `mortgageIllustrationRate: 0.035`
-- `mortgageTermYears: 35`
-- rules-based stamp duty
-- legal/conveyancing `3200`
-- valuation `200`
-- survey/engineer `400` for a new build, `600` for second-hand, or `800` for self-build
-- moving/furnishing `5000`
-- contingency `2500`
+Leave all of them out of `housePurchaseInputs`. Do not type, estimate or recall any of these figures, including when Gerry says to use the standard planning assumptions: the app fills each one and shows what it used. Include one only when Gerry gives a figure of his own for it, such as a rate a lender quoted or a stamp duty or survey cost quoted to the client, and then include only that field. The `purchaseCosts` fields are `stampDutyMode` (`rules` or `custom`), `customStampDuty` (a number for `custom`, otherwise `null`), `legalAndConveyancing`, `valuation`, `surveyOrEngineer`, `movingAndFurnishing` and `contingency`; give only the ones the client supplied.
 
 These are editable educational assumptions, not live quotes or product recommendations. Do not calculate the net savings rate, stamp duty, repayment, total interest, or sensitivity cases in the prompt output.
 
@@ -281,7 +253,7 @@ Keep NOTES concise and call-friendly. Flag only material classifications, missin
 - variable income recognised by a lender versus raw variable income;
 - missing AIP/lender details;
 - potential versus confirmed HTB/FHS support;
-- standard cost, savings-rate, mortgage-rate, or term assumptions used.
+- any standard planning assumption the client has questioned (the app shows the ones it used; do not restate them).
 
 Do not calculate or report runtime results in NOTES.
 

@@ -584,19 +584,6 @@ House Purchase examples must contain only `generated.summaryHtml` and `generated
         "macroPrudentialException": false,
         "htbQualifyingLender": null
       },
-      "depositSavingsGrossAer": 0.02,
-      "dirtRate": 0.33,
-      "mortgageIllustrationRate": 0.035,
-      "mortgageTermYears": 35,
-      "purchaseCosts": {
-        "stampDutyMode": "rules",
-        "customStampDuty": null,
-        "legalAndConveyancing": 3200,
-        "valuation": 200,
-        "surveyOrEngineer": 400,
-        "movingAndFurnishing": 5000,
-        "contingency": 2500
-      },
       "helpToBuy": {
         "taxCompliant": null,
         "revenueApprovedDeveloperOrApprover": null,
