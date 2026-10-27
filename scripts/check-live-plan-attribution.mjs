@@ -196,7 +196,7 @@ ok(/no supplied fixed payment/.test(source),
   'the extractor is told to leave internal wording out of speech');
 
 const livePrompt = (await import('../worker/src/consumer/live/catalogue_prompt.js'))
-  .buildLiveCataloguePrompt({ directModulePlanning: true });
+  .buildLiveCataloguePrompt({ directModulePlanning: true, planDateIso: '2026-06-15' });
 const stateItem = liveDirectModuleStateItem({
   schemaVersion: 'MeetingBriefV3', snapshotRevision: 1, readyToConfirm: false,
   directModuleSnapshot: { modules: [], generalAmbiguities: [] }

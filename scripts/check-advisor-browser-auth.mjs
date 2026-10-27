@@ -19,7 +19,6 @@ for (const page of [
   'app/index.html',
   'app/session.html',
   'app/clients.html',
-  'app/analytics.html',
   'app/modules.html',
   'app/access.html'
 ]) {
@@ -40,11 +39,8 @@ assert.ok(
 assert.ok(!landingHtml.includes(LEGACY_CROSS_SITE_ORIGIN), 'The landing page must not use the cross-site Worker origin.');
 
 const planHtml = read('plan/index.html');
-assert.ok(
-  planHtml.includes(`name="planeir-consumer-api-base-url"`) && planHtml.includes(`content="${API_ORIGIN}"`),
-  'The consumer page must use the same production API origin.'
-);
-assert.ok(!planHtml.includes(LEGACY_CROSS_SITE_ORIGIN), 'The consumer page must not use the legacy Worker origin.');
+assert.ok(!planHtml.includes('<script'), 'The retired conversation page must not start a client or contact the API.');
+assert.ok(planHtml.includes('../apply/'), 'Old planning links must lead to the form journey.');
 
 const wrangler = read('worker/wrangler.toml');
 assert.match(

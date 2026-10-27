@@ -201,6 +201,25 @@ export function buildDirectModulePolicyEnvelope({ calculationDateIso, baseCurren
 }
 
 /**
+ * Server-owned numbers the planner may leave out of its input, because the
+ * server supplies them. They are House Purchase's standard planning assumptions,
+ * which the figures register holds: the planner has no figure of its own to put
+ * there, and a copy typed into a playbook goes stale when the register moves.
+ * A number the planner does write is still checked against the server's value,
+ * so a changed rate still fails loudly. /purchaseCosts is an object, which the
+ * server already writes whole.
+ */
+const SUPPLIED_WHEN_OMITTED = Object.freeze({
+  house_purchase: Object.freeze([
+    '/depositSavingsGrossAer', '/dirtRate', '/mortgageIllustrationRate', '/mortgageTermYears'
+  ])
+});
+
+export function directModulePolicySuppliedWhenOmitted(moduleId, path) {
+  return SUPPLIED_WHEN_OMITTED[moduleId]?.includes(path) === true;
+}
+
+/**
  * Expand policy that depends only on an already-semantic field (for example the
  * AI-authored retired/working cohort). The deterministic choice is the module's
  * own policy lookup, not an interpretation of the transcript.

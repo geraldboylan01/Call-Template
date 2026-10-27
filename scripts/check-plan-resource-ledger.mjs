@@ -65,6 +65,60 @@ await test('The reserve remains at the opening policy amount when a loan is clea
   assert.equal(a.reserve.protectedAmount,42000);assert.equal(b.reserve.protectedAmount,a.reserve.protectedAmount);
   assert.equal(b.cashAllocated,15000);assert.equal(b.cashRemaining,75000);assert.equal(b.baselineLeftOver,17000);
 });
+await test('Every route, the current position included, gets each loan repayment back after its native schedule ends',async()=>{
+  const r=await compile(base());valid(r);
+  for (const l of r.resourceLedger.routes) {
+    const car=l.freedCash.find(e=>e.liabilityId==='car_loan'),row=year=>l.years.find(y=>y.year===year);
+    if (l.routeId==='clear_car') { assert.equal(car,undefined); continue; }
+    assert.equal(car.payoffDateIso,'2029-07-01');assert.equal(car.fromYear,2029);assert.equal(car.annualAmount,6000);
+    close(row(2029).freed-row(2028).freed,6000);close(row(2029).available-row(2028).available,6000);
+  }
+  const home=ledger(r).freedCash.find(e=>e.liabilityId==='home_loan');
+  assert.equal(home.payoffDateIso,'2046-10-01');assert.equal(home.fromYear,2046);assert.equal(home.annualAmount,20400);
+  assert.equal(ledger(r,'fund_annually').freedCash.find(e=>e.liabilityId==='home_loan').fromYear,2041);
+  const saving=ledger(r).freedCash.find(e=>e.goalId==='college');assert.equal(saving.fromYear,2034);assert.equal(saving.annualAmount,1000);
+  assert.equal(ledger(r).years.find(y=>y.year===2034).planned,0);
+  assert(ledger(r).assumptions.some(a=>a.includes('comes back in full')));assert(!ledger(r).assumptions.some(a=>a.includes('loan-expiry')));
+  const unbound=ledger(await compile(lean(['college']))).freedCash.find(e=>e.liabilityId==='car_loan');
+  assert.equal(unbound.basis,'contract_schedule');assert.equal(unbound.fromYear,2029);
+});
+await test('Each person’s share of left over stops funding goals from their own retirement year',async()=>{
+  const p=lean(['goal_mortgage']);p.household.primaryPerson.intendedRetirementAge=55;p.routes.push({id:'clear_2041'});
+  let r=await compile(p);valid(r);const l=ledger(r,'clear_2041'),row=year=>l.years.find(y=>y.year===year);
+  const dara=l.earners.find(e=>e.personId==='dara');close(dara.share,45000/95000);
+  assert.equal(l.earners[0].stopsFromYear,2036);assert.equal(dara.stopsFromYear,2050);
+  assert.equal(row(2035).earningShare,1);close(row(2036).earningShare,dara.share);close(row(2036).available,l.earnedLeftOver*dara.share+row(2036).freed);
+  p.household.partner.intendedRetirementAge=50;r=await refuses(p,'unbalanced_route');
+  const short=ledger(r,'clear_2041');assert.equal(short.years.find(y=>y.year===2036).available,0);assert.equal(short.goals[0].firstShortYear,10);
+  const deficit=lean(['goal_mortgage']);deficit.household.expenses.annualTotal.amount=110000;deficit.household.primaryPerson.intendedRetirementAge=50;
+  const d=ledger(await compile(deficit));close(d.years.find(y=>y.year===2031).available,d.years.find(y=>y.year===2030).available);
+});
+await test('A repayment that stops comes back in full while anyone still earns, and nothing funds goals once everyone has retired',async()=>{
+  const p=lean(['goal_mortgage']);p.household.primaryPerson.intendedRetirementAge=47;p.routes.push({id:'clear_2041'},{id:'clear_car_now',changes:[{type:'clearOutgoing',outgoingId:'car',paidFrom:'savings'}]});
+  const r=await compile(p);valid(r);const l=ledger(r,'clear_2041'),row=year=>l.years.find(y=>y.year===year),dara=l.earners.find(e=>e.personId==='dara').share;
+  assert.equal(l.earners[0].stopsFromYear,2028);close(row(2028).available,l.earnedLeftOver*dara);close(row(2029).available,l.earnedLeftOver*dara+6000);
+  const cleared=ledger(r,'clear_car_now');close(cleared.earnedLeftOver,l.earnedLeftOver);close(cleared.years.find(y=>y.year===2028).available,cleared.earnedLeftOver*dara+6000);
+  p.household.partner.intendedRetirementAge=50;p.household.goals[0].targetDate='2046-11-01';p.routes=[{id:'current'}];
+  const both=ledger(await compile(p)),last=both.years.at(-1);assert(last.year>=2033);assert.equal(last.earningShare,0);assert(last.freed>=6000);assert.equal(last.available,0);
+});
+await test('A working person without a retirement age is asked for one, and one retiring this year stops now',async()=>{
+  const p=lean(['goal_mortgage']);delete p.household.partner.intendedRetirementAge;
+  const r=await refuses(p,'missing_information');assert(r.diagnostics.some(d=>d.path==='/household/partner/intendedRetirementAge'));
+  p.household.partner.intendedRetirementAge=43;const l=ledger(await compile(p));
+  assert.equal(l.earners.find(e=>e.personId==='dara').stopsFromYear,2026);close(l.years[0].earningShare,l.earners[0].share);
+});
+await test('Current saving that meets a goal is not covered once the yearly money to pay it has stopped',async()=>{
+  const p=lean(['college']);const need=ledger(await compile(p)).pricing[0].priced.cases[0].yearlyAmount;
+  p.planningInputs.goalFundingFacts[0].currentAnnualSaving=Math.ceil(need);let l=ledger(await compile(p));assert.equal(l.goals[0].state,'covered');
+  p.household.primaryPerson.intendedRetirementAge=48;p.household.partner.intendedRetirementAge=46;l=ledger(await compile(p));
+  assert.equal(l.goals[0].state,'partly');assert.equal(l.goals[0].firstShortYear,3);assert.equal(l.years[3].available,0);
+});
+await test('Someone already retired keeps their share, because today’s left over already comes from retirement income',async()=>{
+  const p=lean(['goal_mortgage']);p.household.partner.employmentStatus='retired';delete p.household.partner.intendedRetirementAge;
+  p.household.primaryPerson.intendedRetirementAge=50;const l=ledger(await compile(p)),dara=l.earners.find(e=>e.personId==='dara');
+  assert.equal(dara.stopsFromYear,null);const after=l.years.find(y=>y.year===2031);close(after.earningShare,dara.share);
+  close(after.available,l.earnedLeftOver*dara.share+after.freed);assert(l.assumptions.some(a=>a.includes('already retired keeps their share')));
+});
 await test('An overspend of the reserve refuses an alternative atomically and retains its ledger',async()=>{
   const p=lean(['goal_mortgage']);p.routes.push({id:'overspend',changes:[{type:'useCash',goalId:'goal_mortgage',amount:49000}]});
   const r=await refuses(p,'unbalanced_route');assert.equal(ledger(r,'overspend').reserveProtected,false);assert.deepEqual(r.chapters,[]);
@@ -85,7 +139,7 @@ await test('Dated costs use the native fund engine, and later years release only
   const r=await compile(p);valid(r);const l=ledger(r,'fund');assert.deepEqual(l.goalOrder,['sooner','later']);
   for(const q of l.pricing) close(q.priced.cases[0].yearlyAmount,computeFutureCostFundProjection(q.input,{calculationYear:2026}).debug.cases[0].yearlyAmount);
   close(l.years[3].planned,l.pricing.find(q=>q.goalId==='later').priced.cases[0].yearlyAmount);
-  assert.equal(l.years[0].available,l.years[7].available);
+  close(l.years[7].available-l.years[0].available,6000);assert.equal(l.years[7].freed,6000);
 });
 await test('Whole resolves a native cash need; remaining uses only resources left after explicit commitments',async()=>{
   const p=lean(['college','goal_mortgage']);p.routes.push({id:'use_cash',changes:[{type:'useCash',goalId:'goal_mortgage',amount:'remaining'},{type:'useCash',goalId:'college',amount:'whole'}]});

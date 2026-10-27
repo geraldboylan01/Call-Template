@@ -8,8 +8,10 @@ import { approvedCollegeScenarios, PLANEIR_ASSUMPTIONS } from '../js/planning/pl
 import { MODULE_MANIFEST } from '../js/planning/module_manifest.generated.js';
 import {
   buildDirectModulePolicyEnvelope,
+  directModuleMaterialAssumptions,
   directModulePolicyEntries
 } from '../js/planning/direct_module_policy.js';
+import { marketFigureValue } from '../js/planning/figures/market_math.js';
 import {
   normalizePlanningModuleInput,
   runPlanningModuleWithInput
@@ -36,6 +38,9 @@ import {
   verifyDirectModuleCertificate
 } from '../worker/src/consumer/direct_module_planner.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 const NOW = '2026-09-02T10:00:00.000Z';
 const TODAY = '2026-09-02';
 const CONFIRMATION_PROMPT = 'I will run the existing mortgage analysis using a €240,000 balance, 4.1% interest and 22 years remaining, with no overpayment. Would you like me to run exactly that plan now?';
@@ -57,7 +62,7 @@ assert.equal(getConsumerConfig({ CONSUMER_MODULE_PLANNER_MODE: 'typo' }).moduleP
 pass('direct mode is off by default and invalid deployment values fail closed');
 const directProviderConfig = buildLiveSessionConfig(getConsumerConfig({
   CONSUMER_MODULE_PLANNER_MODE: 'apply'
-}));
+}), { planDateIso: TEST_PLAN_DATE });
 assert.deepEqual(directProviderConfig.tools.map((tool) => tool.name), ['get_state', 'confirm_and_run']);
 assert.doesNotMatch(directProviderConfig.instructions, /\bsave_facts\b/);
 assert.doesNotMatch(directProviderConfig.instructions, /save primary_goal_focus/i);
@@ -295,6 +300,67 @@ pass('AI-authored inputs cannot override pension, liquidity, college, or house-p
     'and it is the server value, so nothing the planner wrote can stand in for it');
 }
 pass('an omitted server-owned string is completed by the server, while a tampered number still fails closed');
+
+// ...AND HOUSE PURCHASE'S STANDARD PLANNING ASSUMPTIONS ARE THE SERVER'S TO SUPPLY.
+//
+// The deposit rate, DIRT, the mortgage illustration rate and the term come from
+// the figures register through the policy envelope. A playbook that types them
+// goes stale when the register moves, so the playbook leaves them out and the
+// server fills them. A number the planner does write is still compared with the
+// server's value (the tamper case above), so this lets an omission through and
+// nothing else.
+{
+  const houseRows = (houseInput) => DIRECT_MODULE_IDS.map((id) => ({
+    moduleId: id,
+    outputKey: DIRECT_MODULE_CONTRACTS[id].outputKey,
+    status: id === 'house_purchase' ? 'ready' : 'not_relevant',
+    inputJson: id === 'house_purchase' ? JSON.stringify(houseInput) : '',
+    steeringSummary: '', missing: [], ambiguities: [], assumptions: [],
+    evidence: id === 'house_purchase'
+      ? Object.keys(houseInput).map((key) => ({
+        path: `/${key}`, source: 'conversation', turnId: 'turn-policy', quote: 'Use the standard Planeir policy.', profilePath: ''
+      }))
+      : []
+  }));
+  const normalizeHouse = (houseInput) => normalizeDirectSnapshot({
+    schemaVersion: MODULE_PLANNING_SNAPSHOT_V1,
+    baseSnapshotRevision: 0,
+    throughTurnId: 'turn-policy',
+    modules: houseRows(houseInput),
+    generalAmbiguities: [],
+    confirmationPrompt: CONFIRMATION_PROMPT
+  }, {
+    turns: [{ id: 'turn-policy', role: 'user', transcript: 'Use the standard Planeir policy.' }],
+    throughTurnId: 'turn-policy', previousRevision: 0,
+    policyEnvelope: POLICY, currentProfileContext: PROFILE,
+    allowedModuleIds: APPROVED_CONSUMER_MODULE_IDS
+  });
+  const {
+    depositSavingsGrossAer: _deposit, dirtRate: _dirt, mortgageIllustrationRate: _rate,
+    mortgageTermYears: _term, purchaseCosts: _costs, ...houseWithoutStandardAssumptions
+  } = inputs.house_purchase;
+  const policyValue = (path) => POLICY.modules.house_purchase.find((entry) => entry.path === path).value;
+  const completed = normalizeHouse(houseWithoutStandardAssumptions);
+  const row = completed.modules.find((item) => item.moduleId === 'house_purchase');
+  assert.equal(row.status, 'ready', 'a payload that leaves the standard planning assumptions out is accepted');
+  for (const field of ['depositSavingsGrossAer', 'dirtRate', 'mortgageIllustrationRate', 'mortgageTermYears']) {
+    assert.equal(row.input[field], policyValue(`/${field}`), `${field} is the server's value, from the register`);
+  }
+  assert.equal(row.input.mortgageIllustrationRate, marketFigureValue('ie.market.mortgage.illustration_rate'),
+    'and the illustration rate is the register figure itself');
+  assert.equal(row.input.purchaseCosts.legalAndConveyancing, policyValue('/purchaseCosts').legalAndConveyancing,
+    'the standard purchase costs are the server\u2019s too');
+  const read = directModuleMaterialAssumptions('house_purchase', row.input, POLICY).map((entry) => entry.path);
+  for (const path of ['/depositSavingsGrossAer', '/dirtRate', '/mortgageIllustrationRate', '/mortgageTermYears', '/purchaseCosts/legalAndConveyancing']) {
+    assert.ok(read.includes(path), `${path} is still read back to the client with its value`);
+  }
+  assert.throws(() => normalizeHouse({ ...houseWithoutStandardAssumptions, mortgageIllustrationRate: 0.09 }), /server-owned value/,
+    'a rate the planner writes that is not the server\u2019s still fails');
+  const { dirtRate: _stillOmitted, ...withoutOnlyDirt } = inputs.house_purchase;
+  assert.equal(normalizeHouse(withoutOnlyDirt).modules.find((item) => item.moduleId === 'house_purchase').input.dirtRate, policyValue('/dirtRate'),
+    'one left out is filled on its own');
+}
+pass('house purchase standard planning assumptions may be left out and are supplied from the register, while a written number that differs still fails');
 
 const transcript = 'About two and a half thousand a month, and the mortgage is two hundred and forty grand.';
 const moduleRows = DIRECT_MODULE_IDS.map((moduleId) => ({

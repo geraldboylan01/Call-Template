@@ -1,0 +1,1200 @@
+name: Deploy Worker
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      activate_realtime_adviser_canary:
+        description: Activate the invite-only Realtime adviser canary for this reviewed deployment
+        required: false
+        default: false
+        type: boolean
+      run_paid_realtime_infrastructure_proof:
+        description: Prove real SDP, sideband tool execution, and server hang-up (required for activation)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-production
+  # Never cancel a production activation run after it may have changed the
+  # Worker configuration. A later run queues until the paid proof or the
+  # compensating Realtime-only rollback has completed.
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ADVISOR_SMOKE_PASSWORD: ${{ secrets.ADVISOR_SMOKE_PASSWORD }}
+      WORKER_BASE_URL: "https://api.planeir.ie"
+      DEMO_REQUESTS_ENABLED: ${{ vars.DEMO_REQUESTS_ENABLED || 'false' }}
+      # Protected production setting; absence keeps all payment/email gates off.
+      WALKTHROUGH_SETTINGS_JSON: ${{ vars.WALKTHROUGH_SETTINGS_JSON }}
+      SMOKE_ORIGIN: ${{ vars.PUBLISHED_SMOKE_ORIGIN || 'https://planeir.ie' }}
+      RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.run_paid_realtime_infrastructure_proof == true && 'true' || 'false' }}
+      # Explicit source approval activates only the fixed adviser-test,
+      # signed-invite, typed rules-only mode. The protected override may disable it
+      # immediately; it can never activate a source-unapproved mode.
+      CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED: "true"
+      CONSUMER_ADVISER_TEST_BETA_OVERRIDE: ${{ vars.CONSUMER_ADVISER_TEST_BETA_OVERRIDE }}
+      # Realtime is a separately kill-switchable adviser canary layered on the
+      # signed-invite beta. The committed Wrangler flag must remain false.
+      # Ordinary pushes and default manual runs remain source-false. Realtime
+      # can be source-approved only by an explicit protected manual dispatch,
+      # and the validation step below then requires the paid infrastructure
+      # proof in the same run.
+      CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.activate_realtime_adviser_canary == true && 'true' || 'false' }}
+      CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE: ${{ vars.CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE }}
+      # Standing approval: once the canary has been proof-activated by a manual
+      # dispatch, this protected repository variable lets ordinary pushes keep
+      # the LIVE activation instead of silently rolling Realtime back to false.
+      # It can never switch Realtime on by itself: the validation step only
+      # honors it when the currently deployed Worker already reports Realtime
+      # enabled, and the OVERRIDE=false kill switch still wins.
+      CONSUMER_REALTIME_KEEP_ACTIVE: ${{ vars.CONSUMER_REALTIME_KEEP_ACTIVE }}
+      # Legacy controlled-lane switches are pinned off. They remain in the
+      # Worker configuration only so historical deployments remain legible.
+      CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: "false"
+      CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: "false"
+      # Every enabled Realtime canary uses the one active live conversation
+      # lane. The generated config below sets this to the canary state.
+      CONSUMER_LIVE_VOICE_ENABLED: "true"
+      # One shared rule across every transport: on means all transports offer
+      # optional analyses and the three-analysis capacity decision, off means
+      # none does. Canaried separately from the rest of the beta.
+      CONSUMER_MODULE_OFFERS_ENABLED: ${{ vars.CONSUMER_MODULE_OFFERS_ENABLED || 'false' }}
+      # The typed consumer lane (D-08). Off unless the repository variable says
+      # otherwise, and gated below on the same adviser beta as voice plus the
+      # direct-module planner, which it cannot run without.
+      CONSUMER_TYPED_LANE_ENABLED: ${{ vars.CONSUMER_TYPED_LANE_ENABLED || 'false' }}
+      CONSUMER_DB_NAME: "planeir-consumer"
+      CONSUMER_SITE_ZONE_NAME: "planeir.ie"
+      CONSUMER_BETA_CONSENT_POLICY_VERSION: "consumer-adviser-test-v1"
+      CONSUMER_BETA_CONSENT_MANIFEST_ID: "consumer-adviser-test-manifest-v1"
+      CONSUMER_BETA_ANALYSIS_NOTICE_ID: "privacy-ack-adviser-test-v2"
+      CONSUMER_BETA_AI_NOTICE_ID: "ai-adviser-test-v1"
+      CONSUMER_BETA_REALTIME_NOTICE_ID: "realtime-voice-openai-audio-adviser-test-v3"
+      CONSUMER_BETA_REALTIME_DATA_POLICY_ID: "openai-realtime-audio-adviser-test-v2"
+      CONSUMER_BETA_REALTIME_MODEL: "gpt-realtime-2.1"
+      CONSUMER_BETA_REALTIME_VOICE: "marin"
+      CONSUMER_BETA_REALTIME_REASONING_EFFORT: "low"
+      CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL: "gpt-4o-mini-transcribe"
+      # The silent planner's approved model. Declared here like every other
+      # protected canary value: the fail-closed builder compares the runtime
+      # value against this literal, so an undeclared variable is an empty
+      # string and correctly aborts the deployment.
+      CONSUMER_BETA_REALTIME_PLANNER_MODEL: "gpt-5.6-luna"
+      # The background reconciler's mode. A repo variable rather than a literal
+      # so it can be moved between legacy, shadow and apply without a code
+      # change, and an unset variable deploys the inert legacy path. The Worker
+      # also fails closed to legacy on any value it does not recognise.
+      CONSUMER_BETA_PLANNER_RECONCILIATION_MODE: ${{ vars.CONSUMER_PLANNER_RECONCILIATION_MODE || 'legacy' }}
+      CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION: "planning-reconciliation-v3"
+      # Direct transcript-to-native-module planning is separately selectable
+      # for the protected Realtime canary. The committed Worker config remains
+      # off, and the builder below resolves this back to off whenever Realtime
+      # itself is not active.
+      CONSUMER_BETA_MODULE_PLANNER_MODE: ${{ vars.CONSUMER_MODULE_PLANNER_MODE || 'off' }}
+      CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION: "direct-module-planner-v12"
+      CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION: "direct-module-verifier-v11"
+      # Phase 3 semantic turn reading: a second, independent reading of each
+      # reviewed client turn, where agreement between the two readers is what
+      # authorises writing a figure.
+      #
+      # The deployed default is `shadow` — it reads, records and changes
+      # nothing. Two safety defects were reproduced in the version that
+      # defaulted to `apply` (every figure authorising a hundredth of itself,
+      # and a rejected review still clearing the confirmation barrier), and both
+      # passed the full suite at the time. Recall on the labelled corpus is also
+      # only 6-7/10. Shadow first is how the next one of those gets found in
+      # telemetry rather than in someone's financial plan.
+      #
+      # Move to `apply` with the CONSUMER_TURN_READING_MODE repository variable
+      # once shadow telemetry shows agreement and recall holding.
+      CONSUMER_BETA_TURN_READING_MODE: ${{ vars.CONSUMER_TURN_READING_MODE || 'shadow' }}
+      # The one active live prompt/tool pair. The lease records these exact
+      # versions; there is no controlled-lane alternative in deployment.
+      CONSUMER_BETA_LIVE_PROMPT_VERSION: "planeir-live-conversation-v13"
+      CONSUMER_BETA_LIVE_TOOLSET_VERSION: "planeir-live-tools-v1"
+      CONSUMER_BETA_REALTIME_PRICING_VERSION: "openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1"
+      # Adviser-demo envelope: €10 per session (warn at €7.50) inside the
+      # retained €50 UTC-day ceiling, 15-minute maximum meeting, 3-minute
+      # silence timeout with a spoken warning 45 seconds beforehand.
+      CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS: "1000"
+      CONSUMER_BETA_REALTIME_SESSION_WARN_EUR_CENTS: "750"
+      CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS: "5000"
+      CONSUMER_BETA_REALTIME_MAX_DURATION_SECONDS: "900"
+      CONSUMER_BETA_REALTIME_IDLE_TIMEOUT_SECONDS: "180"
+      CONSUMER_BETA_REALTIME_SILENCE_PROMPT_SECONDS: "45"
+      CONSUMER_BETA_REALTIME_MAX_SDP_BYTES: "32768"
+      CONSUMER_BETA_REALTIME_MAX_RESPONSES: "100"
+      CONSUMER_BETA_REALTIME_MAX_TOOL_CALLS: "60"
+      # The conversation director phrases Worker-owned speech with a bounded
+      # text-model pass (deterministic templates remain the fallback).
+      CONSUMER_BETA_REALTIME_DIRECTOR_ENABLED: "true"
+      # Current GPT-Realtime-2.1 USD prices are treated as equal euro amounts,
+      # which is deliberately conservative for the application allowance.
+      CONSUMER_BETA_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION: "4000000"
+      CONSUMER_BETA_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION: "400000"
+      CONSUMER_BETA_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION: "24000000"
+      CONSUMER_BETA_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION: "32000000"
+      CONSUMER_BETA_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION: "400000"
+      CONSUMER_BETA_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION: "64000000"
+      # Realtime input transcription is a separately billed model call and is
+      # reconciled inside the same session/day application allowance.
+      CONSUMER_BETA_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: "1250000"
+      CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: "5000000"
+      CONSUMER_BETA_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: "30000000"
+      CONSUMER_BETA_HANDOFF_POLICY_VERSION: "consumer-adviser-handoff-v1"
+      CONSUMER_BETA_HANDOFF_POLICY_URL: "https://planeir.ie/plan/privacy-legacy.html#handoff"
+      CONSUMER_BETA_HANDOFF_RETENTION_POLICY_ID: "consumer-handoff-bridge-30d-v1"
+      CONSUMER_BETA_HANDOFF_RETENTION_DAYS: "30"
+      CONSUMER_BETA_PRIVACY_NOTICE_URL: "https://planeir.ie/plan/privacy-legacy.html"
+      CONSUMER_BETA_SESSION_TTL_DAYS: "7"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Validate deploy configuration
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is required in GitHub Settings > Secrets and variables > Actions"; exit 1; }
+          test -n "$WORKER_BASE_URL" || { echo "WORKER_BASE_URL is required"; exit 1; }
+          test -n "$SMOKE_ORIGIN" || { echo "SMOKE_ORIGIN is required"; exit 1; }
+          [[ "$CONSUMER_DB_NAME" == "planeir-consumer" ]] || { echo "CONSUMER_DB_NAME must remain planeir-consumer"; exit 1; }
+          [[ "$CONSUMER_SITE_ZONE_NAME" == "planeir.ie" ]] || { echo "CONSUMER_SITE_ZONE_NAME must remain planeir.ie"; exit 1; }
+          case "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" in
+            false|true) ;;
+            *) echo "CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED must be exactly true or false"; exit 1 ;;
+          esac
+          case "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" in
+            ""|false|true) ;;
+            *) echo "CONSUMER_ADVISER_TEST_BETA_OVERRIDE must be empty, true, or false"; exit 1 ;;
+          esac
+          case "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" in
+            false|true) ;;
+            *) echo "CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED must be exactly true or false"; exit 1 ;;
+          esac
+          case "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" in
+            ""|false|true) ;;
+            *) echo "CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE must be empty, true, or false"; exit 1 ;;
+          esac
+          case "$CONSUMER_REALTIME_KEEP_ACTIVE" in
+            ""|false|true) ;;
+            *) echo "CONSUMER_REALTIME_KEEP_ACTIVE must be empty, true, or false"; exit 1 ;;
+          esac
+          case "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" in
+            false|true) ;;
+            *) echo "RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF must be exactly true or false"; exit 1 ;;
+          esac
+          if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" != "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" == "true" ]]; then
+            echo "A protected override cannot activate a source-unapproved beta"
+            exit 1
+          fi
+          if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" != "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" == "true" ]]; then
+            echo "A protected override cannot activate a source-unapproved realtime canary"
+            exit 1
+          fi
+          effective_beta="false"
+          if [[ "$CONSUMER_ADVISER_TEST_BETA_SOURCE_APPROVED" == "true" && "$CONSUMER_ADVISER_TEST_BETA_OVERRIDE" != "false" ]]; then
+            effective_beta="true"
+          fi
+          effective_realtime="false"
+          realtime_standing_preserved="false"
+          if [[ "$effective_beta" == "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED" == "true" && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false" ]]; then
+            effective_realtime="true"
+          fi
+          # A push must not silently roll back a proof-activated Realtime
+          # canary. When the protected repository variable grants standing
+          # approval AND the currently deployed Worker still reports Realtime
+          # enabled, this push preserves the live activation. It cannot turn
+          # Realtime on from a disabled state, and OVERRIDE=false still wins.
+          if [[ "$effective_realtime" != "true" \
+            && "$GITHUB_EVENT_NAME" == "push" \
+            && "$CONSUMER_REALTIME_KEEP_ACTIVE" == "true" \
+            && "$effective_beta" == "true" \
+            && "$CONSUMER_REALTIME_ADVISER_CANARY_OVERRIDE" != "false" ]]; then
+            # A probe that cannot answer is not the same signal as a live Worker
+            # reporting Realtime off. Only the latter may keep Realtime disabled.
+            # Because the branch above can never switch Realtime back on, a
+            # transient probe failure that was read as "off" would retire a live
+            # canary permanently, so an unreadable probe aborts the deployment
+            # instead. Aborting leaves the deployed Worker exactly as it is.
+            live_realtime_enabled=""
+            probe_attempt=0
+            while [[ "$probe_attempt" -lt 3 && -z "$live_realtime_enabled" ]]; do
+              probe_attempt=$(( probe_attempt + 1 ))
+              probe_body=""
+              if ! probe_body="$(curl -fsS --max-time 20 "$WORKER_BASE_URL/api/consumer/bootstrap" -H "Origin: $SMOKE_ORIGIN")"; then
+                probe_body=""
+              fi
+              if [[ -n "$probe_body" ]]; then
+                if ! live_realtime_enabled="$(
+                  printf '%s' "$probe_body" \
+                    | node --input-type=module -e '
+                        let raw = "";
+                        process.stdin.on("data", (chunk) => { raw += chunk; });
+                        process.stdin.on("end", () => {
+                          let parsed = null;
+                          try {
+                            parsed = JSON.parse(raw);
+                          } catch (_error) {
+                            process.exit(1);
+                          }
+                          const flag = parsed?.flags?.consumerRealtimeVoiceEnabled;
+                          if (typeof flag !== "boolean") {
+                            process.exit(1);
+                          }
+                          const enabled = parsed?.flags?.consumerRealtimeVoiceEnabled === true;
+                          process.stdout.write(enabled ? "true" : "false");
+                        });
+                      '
+                )"; then
+                  live_realtime_enabled=""
+                fi
+              fi
+              if [[ -z "$live_realtime_enabled" ]]; then
+                echo "Realtime standing-preservation probe ${probe_attempt}/3 could not read the live bootstrap."
+                if [[ "$probe_attempt" -lt 3 ]]; then
+                  sleep 5
+                fi
+              fi
+            done
+            if [[ -z "$live_realtime_enabled" ]]; then
+              echo "Could not determine whether the Realtime adviser canary is currently live."
+              echo "Aborting so this push cannot silently retire a live canary; the deployed Worker is unchanged."
+              echo "Re-run once ${WORKER_BASE_URL} is reachable, or dispatch with the canary override to set the state explicitly."
+              exit 1
+            fi
+            if [[ "$live_realtime_enabled" == "true" ]]; then
+              effective_realtime="true"
+              realtime_standing_preserved="true"
+              echo "Standing approval preserves the live Realtime adviser canary for this push deployment."
+            else
+              echo "Standing approval present but Realtime is not currently live; this push keeps Realtime disabled."
+            fi
+          fi
+          if [[ "$effective_beta" == "true" ]]; then
+            test -n "$ADVISOR_SMOKE_PASSWORD" || { echo "ADVISOR_SMOKE_PASSWORD is required for the authenticated adviser beta gate"; exit 1; }
+            test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is required in the protected GitHub production environment for adviser-test voice"; exit 1; }
+            if [[ "$OPENAI_API_KEY" =~ [[:space:]] ]]; then
+              echo "OPENAI_API_KEY must not contain whitespace"
+              exit 1
+            fi
+          fi
+          if [[ "$effective_realtime" == "true" && "$realtime_standing_preserved" != "true" && "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" != "true" ]]; then
+            echo "Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof in the same manual deployment"
+            exit 1
+          fi
+          if [[ "$RUN_PAID_REALTIME_INFRASTRUCTURE_PROOF" == "true" && "$effective_realtime" != "true" ]]; then
+            echo "The paid Realtime infrastructure proof requires explicit canary activation in the same manual deployment"
+            exit 1
+          fi
+          echo "CONSUMER_ADVISER_INVITE_BETA_ENABLED=$effective_beta" >> "$GITHUB_ENV"
+          echo "CONSUMER_REALTIME_ADVISER_CANARY_ENABLED=$effective_realtime" >> "$GITHUB_ENV"
+          echo "CONSUMER_REALTIME_STANDING_PRESERVED=$realtime_standing_preserved" >> "$GITHUB_ENV"
+          if [[ "$effective_realtime" == "true" ]]; then
+            echo "Effective consumer deployment mode: adviser-test-realtime-orchestrated-rules-only"
+          elif [[ "$effective_beta" == "true" ]]; then
+            echo "Effective consumer deployment mode: adviser-test-rules-only"
+          else
+            echo "Effective consumer deployment mode: dormant"
+          fi
+
+      - name: Install Realtime canary browser harness
+        if: env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'
+        run: npm install --no-package-lock --no-save --ignore-scripts playwright-core@1.61.1
+
+      - name: Run full consumer and adviser regression gate
+        run: |
+          set -euo pipefail
+          npm run check:consumer
+          npm run check:house-purchase
+          npm run check:future-cost-fund
+          npm run check:household-cash-flow
+          npm run check:protection-gap
+          npm run check:rental-keep-or-sell
+          npm run check:home-trade-down
+          npm run check:module-media
+          npm run check:video-summary
+          npm run check:video-scene
+          npm run check:codex-video-brief
+          npm run check:application-voice
+          npm run check:success-animation
+          npm run build
+        env:
+          ASSET_VERSION: ${{ github.sha }}
+
+      # A valid Realtime credential can still be unable to call the separate
+      # Responses planner because of model or endpoint permissions. Prove the
+      # exact production model, schema and candidate-application path before
+      # the final configuration is allowed to activate Realtime.
+      #
+      # IT RUNS BEFORE ANYTHING IS DEPLOYED, AND THAT ORDERING IS THE POINT.
+      # It used to sit between the bootstrap deploy and the final one. A failure
+      # there left production on the fail-closed bootstrap config -- Realtime
+      # off, live lane off, planner off -- because the compensating rollback only
+      # arms once the FINAL deploy has been attempted. Two manual deployments in
+      # a row ended that way on 2026-09-03, each taking the adviser canary dark
+      # over a check that touches nothing Cloudflare holds. This step needs only
+      # Node and the provider credential, so it belongs before the first deploy,
+      # where a failure costs a red run and nothing else.
+      #
+      # AND IT IS SAMPLED, NOT ASSERTED ONCE. What it proves is that the
+      # credential can reach the production planner model and drive a
+      # conversation to a certified plan. That path ends in a semantic verdict
+      # from a real model, and one sample of a real model is a coin with a bias,
+      # not a boolean: the local pass rate is high but not one. A single flake
+      # must not be read as a broken credential, so allow a bounded retry --
+      # while a genuinely unusable credential still fails all three, fast.
+      - name: Verify protected Realtime planner credential
+        if: env.CONSUMER_REALTIME_ADVISER_CANARY_ENABLED == 'true'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # The step exists to prove the EXACT production model. The eval reads
+          # CONSUMER_MODULE_PLANNER_MODEL; passing only the realtime name meant
+          # it silently fell back to its own default and proved a model the
+          # deployment might not be configured to use.
+          CONSUMER_MODULE_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
+          CONSUMER_REALTIME_PLANNER_MODEL: ${{ env.CONSUMER_BETA_REALTIME_PLANNER_MODEL }}
+        run: |
+          set -euo pipefail
+          run_planner_probe() {
+            if [[ "$CONSUMER_BETA_MODULE_PLANNER_MODE" == "apply" ]]; then
+              node ./scripts/run-direct-module-planner-eval.mjs
+            else
+              node ./scripts/run-consumer-planner-probe.mjs
+            fi
+          }
+          for attempt in 1 2 3; do
+            if run_planner_probe; then
+              echo "Planner credential proved on attempt $attempt."
+              exit 0
+            fi
+            echo "Planner credential probe attempt $attempt did not pass."
+          done
+          echo "The production planner model could not be driven to a certified plan in three attempts."
+          exit 1
+
+      - name: Install Wrangler
+        run: npm install --global wrangler@4.110.0
+
+      - name: Exercise consumer API against fresh local D1 bindings
+        run: |
+          set -euo pipefail
+          state_dir=".worker-dry-run/consumer-http-deploy"
+          rm -rf "$state_dir"
+          mkdir -p "$state_dir"
+          (
+            cd worker
+            wrangler d1 migrations apply LEADS_DB --local --config wrangler.consumer-test.toml --persist-to "../$state_dir"
+            wrangler d1 migrations apply CONSUMER_DB --local --config wrangler.consumer-test.toml --persist-to "../$state_dir"
+            wrangler dev --local --ip 127.0.0.1 --port 8788 --config wrangler.consumer-test.toml --persist-to "../$state_dir" --log-level warn --var CONSUMER_DATA_ENCRYPTION_KEY:AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE --var CONSUMER_RATE_LIMIT_HASH_KEY:AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI --var CONSUMER_INVITE_SIGNING_KEY:AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM
+          ) >"$state_dir/wrangler.log" 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8788/api/consumer/bootstrap >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat "$state_dir/wrangler.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          CONSUMER_INVITE_SIGNING_KEY=AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM npm run check:consumer-http
+
+      - name: Resolve or provision the isolated consumer D1
+        run: |
+          set -euo pipefail
+          resolve_database_id() {
+            local inventory="$1"
+            D1_INVENTORY="$inventory" node --input-type=module -e '
+              const entries = JSON.parse(process.env.D1_INVENTORY || "[]");
+              const matches = entries.filter((entry) => entry?.name === "planeir-consumer");
+              if (matches.length > 1) {
+                throw new Error("More than one D1 database has the exact name planeir-consumer.");
+              }
+              if (matches.length === 1) {
+                const activationEnabled = process.env.CONSUMER_ADVISER_INVITE_BETA_ENABLED === "true";
+                const jurisdiction = String(matches[0]?.jurisdiction || "").toLowerCase();
+                if (activationEnabled && jurisdiction !== "eu") {
+                  throw new Error("The existing planeir-consumer D1 must have the immutable EU jurisdiction before beta activation.");
+                }
+                const id = String(matches[0]?.uuid || matches[0]?.id || "");
+                if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+                  throw new Error("Cloudflare returned an invalid planeir-consumer D1 UUID.");
+                }
+                process.stdout.write(id);
+              }
+            '
+          }
+
+          inventory="$(wrangler d1 list --json)"
+          database_id="$(resolve_database_id "$inventory")"
+          if [[ -z "$database_id" && "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
+            wrangler d1 create planeir-consumer --jurisdiction eu
+            inventory="$(wrangler d1 list --json)"
+            database_id="$(resolve_database_id "$inventory")"
+          fi
+          if [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" && -z "$database_id" ]]; then
+            echo "Cloudflare did not return the required planeir-consumer D1 after provisioning"
+            exit 1
+          fi
+          if [[ -n "$database_id" ]]; then
+            echo "CONSUMER_DB_ID=$database_id" >> "$GITHUB_ENV"
+            echo "Resolved isolated consumer D1: planeir-consumer"
+          else
+            echo "No consumer D1 exists; retaining the dormant, unbound deployment."
+          fi
+
+      - name: Build fail-closed production Wrangler config
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const envValue = (name) => String(process.env[name] || '').trim();
+          const databaseId = String(process.env.CONSUMER_DB_ID || '').trim();
+          const databaseName = String(process.env.CONSUMER_DB_NAME || '').trim();
+          const betaToggle = envValue('CONSUMER_ADVISER_INVITE_BETA_ENABLED');
+          if (!['false', 'true'].includes(betaToggle)) {
+            throw new Error('CONSUMER_ADVISER_INVITE_BETA_ENABLED must be exactly true or false.');
+          }
+          const betaEnabled = betaToggle === 'true';
+          const realtimeToggle = envValue('CONSUMER_REALTIME_ADVISER_CANARY_ENABLED');
+          if (!['false', 'true'].includes(realtimeToggle)) {
+            throw new Error('CONSUMER_REALTIME_ADVISER_CANARY_ENABLED must be exactly true or false.');
+          }
+          const realtimeEnabled = realtimeToggle === 'true';
+          const realtimeV2Toggle = envValue('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED');
+          if (realtimeV2Toggle !== 'false') {
+            throw new Error('CONSUMER_REALTIME_CONVERSATION_V2_ENABLED is legacy and must remain false.');
+          }
+          const realtimeV2Enabled = false;
+          const spokenCompletionToggle = envValue('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED');
+          if (spokenCompletionToggle !== 'false') {
+            throw new Error('CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED is legacy and must remain false.');
+          }
+          const spokenCompletionEnabled = false;
+          if (envValue('CONSUMER_LIVE_VOICE_ENABLED') !== 'true') {
+            throw new Error('CONSUMER_LIVE_VOICE_ENABLED must remain true so Realtime cannot fall back to the archived lane.');
+          }
+          // The background reconciler. Validated here rather than left to the
+          // Worker's own fallback so a typo is a failed deployment instead of a
+          // silently inert reconciler that looks enabled.
+          const {
+            isPlannerReconciliationMode, resolvePlannerReconciliationMode
+          } = require('./scripts/lib/planner-reconciliation-mode.cjs');
+          const reconciliationMode = envValue('CONSUMER_BETA_PLANNER_RECONCILIATION_MODE') || 'legacy';
+          if (!isPlannerReconciliationMode(reconciliationMode)) {
+            throw new Error('CONSUMER_PLANNER_RECONCILIATION_MODE must be legacy, shadow or apply.');
+          }
+          // The independent semantic turn reader. Validated here rather than left
+          // to the Worker's fallback so a typo is a failed deployment instead of
+          // a silently inert reader that looks enabled. SELECTABLE, deliberately:
+          // pinning it as a constant made shadow and off unreachable, which is
+          // the opposite of a staged rollout — this is the kill switch.
+          const turnReadingMode = envValue('CONSUMER_BETA_TURN_READING_MODE') || 'off';
+          if (!['off', 'shadow', 'apply'].includes(turnReadingMode)) {
+            throw new Error('CONSUMER_TURN_READING_MODE must be off, shadow or apply.');
+          }
+          // A reader that reads turns the reconciler never runs on is spend with
+          // no effect, so it cannot outrun the pass it informs.
+          const resolvedTurnReadingMode = reconciliationMode === 'legacy' ? 'off' : turnReadingMode;
+
+          // Direct module planning has its own kill switch. Validate the
+          // requested value here so a typo fails deployment rather than
+          // silently selecting a different source of financial state.
+          const requestedModulePlannerMode = envValue('CONSUMER_BETA_MODULE_PLANNER_MODE') || 'off';
+          if (!['off', 'shadow', 'apply'].includes(requestedModulePlannerMode)) {
+            throw new Error('CONSUMER_MODULE_PLANNER_MODE must be off, shadow or apply.');
+          }
+
+          // A Realtime deployment has exactly one conversation implementation.
+          const liveVoiceEnabled = realtimeEnabled;
+          const directModulePlannerMode = realtimeEnabled && liveVoiceEnabled
+            ? requestedModulePlannerMode
+            : 'off';
+          // The reconciler reads the transcript and the notes a live turn
+          // produced, so it cannot be more active than the lane that produces
+          // them -- and that is the lane as ACTUALLY RESOLVED, not the requested
+          // toggle. Reading the toggle alone claimed apply on a deployment whose
+          // Realtime canary was off, so the generated config said legacy while
+          // the safety check expected apply, and the deploy failed closed. It
+          // was right to: apply was being asserted for a lane that was not on.
+          const plannerReconciliationMode = resolvePlannerReconciliationMode({
+            requestedMode: reconciliationMode,
+            realtimeEnabled,
+            liveVoiceRequested: liveVoiceEnabled
+          });
+          const moduleOffersToggle = envValue('CONSUMER_MODULE_OFFERS_ENABLED');
+          if (!['true', 'false'].includes(moduleOffersToggle)) {
+            throw new Error('CONSUMER_MODULE_OFFERS_ENABLED must be exactly true or false.');
+          }
+          const moduleOffersEnabled = betaEnabled && moduleOffersToggle === 'true';
+          const typedLaneToggle = envValue('CONSUMER_TYPED_LANE_ENABLED');
+          if (!['true', 'false'].includes(typedLaneToggle)) {
+            throw new Error('CONSUMER_TYPED_LANE_ENABLED must be exactly true or false.');
+          }
+          // The planner is resolved off outside the Realtime canary above.
+          // Resolve its dependent typed lane off too, including ordinary pushes
+          // with a saved typed-lane preference. An active canary must still
+          // reject typed planning unless its planner is in apply mode.
+          const typedLaneEnabled = betaEnabled && realtimeEnabled && typedLaneToggle === 'true';
+          if (typedLaneEnabled && directModulePlannerMode !== 'apply') {
+            throw new Error('CONSUMER_TYPED_LANE_ENABLED requires CONSUMER_MODULE_PLANNER_MODE = apply.');
+          }
+          if (realtimeEnabled && !betaEnabled) {
+            throw new Error('Realtime cannot be enabled outside the signed-invite adviser beta.');
+          }
+          if (databaseId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(databaseId)) {
+            throw new Error('CONSUMER_DB_ID must be the UUID returned by Cloudflare D1.');
+          }
+          if (!/^[a-z0-9-]{1,64}$/.test(databaseName)) {
+            throw new Error('CONSUMER_DB_NAME must contain only lowercase letters, numbers, and hyphens.');
+          }
+
+          const sourcePath = 'worker/wrangler.toml';
+          const generatedPath = 'worker/wrangler.production.generated.toml';
+          const bootstrapPath = 'worker/wrangler.bootstrap.generated.toml';
+          const source = fs.readFileSync(sourcePath, 'utf8');
+          const leadsBinding = source.match(
+            /\[\[d1_databases\]\]\s*\nbinding\s*=\s*"LEADS_DB"[\s\S]*?\ndatabase_id\s*=\s*"([0-9a-f-]+)"/i
+          );
+          if (!leadsBinding?.[1]) {
+            throw new Error('The committed LEADS_DB binding could not be verified.');
+          }
+          if (databaseId && databaseId.toLowerCase() === leadsBinding[1].toLowerCase()) {
+            throw new Error('CONSUMER_DB_ID must identify a different D1 database from LEADS_DB.');
+          }
+          const requiredFalseFlags = [
+            'CONSUMER_JOURNEY_ENABLED',
+            'CONSUMER_AI_INTAKE_ENABLED',
+            'CONSUMER_VOICE_ENABLED',
+            'CONSUMER_REALTIME_VOICE_ENABLED',
+            'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+            'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+            'CONSUMER_LIVE_VOICE_ENABLED',
+            'CONSUMER_MODULE_ROUTING_ENABLED',
+            'CONSUMER_GOAL_ROUTING_ENABLED',
+            'CONSUMER_MODULE_OFFERS_ENABLED',
+            'CONSUMER_AGENT_TEST_ENABLED',
+            'CONSUMER_HANDOFF_ENABLED',
+            'CONSUMER_PUBLIC_ACCESS_ENABLED',
+            // The typed consumer lane (D-08). Every other consumer capability
+            // is held false in source and enforced here; this one was false in
+            // source but unenforced, so an edit could have flipped it without
+            // the deploy gate noticing -- which is the entire point of the list.
+            'CONSUMER_TYPED_LANE_ENABLED'
+          ];
+          for (const flag of requiredFalseFlags) {
+            const expression = new RegExp(`^${flag}\\s*=\\s*"false"\\s*$`, 'm');
+            if (!expression.test(source)) {
+              throw new Error(`${flag} must remain exactly false for production deployment.`);
+            }
+          }
+          // A8: the agent-test transport's SECOND gate. The flag being false is
+          // asserted above with the other required-false flags; this asserts the
+          // cohort allowlist cannot silently grow to include the production
+          // cohort, which is what would make flipping the flag dangerous.
+          const agentCohorts = source.match(/^CONSUMER_AGENT_TEST_COHORTS\s*=\s*"([^"]*)"\s*$/m);
+          if (!agentCohorts) {
+            throw new Error('CONSUMER_AGENT_TEST_COHORTS must be declared for production deployment.');
+          }
+          const allowedAgentCohorts = agentCohorts[1].split(',').map((item) => item.trim()).filter(Boolean);
+          if (allowedAgentCohorts.length === 0) {
+            throw new Error('CONSUMER_AGENT_TEST_COHORTS must name at least one cohort.');
+          }
+          const productionCohort = source.match(/^CONSUMER_COHORT\s*=\s*"([^"]*)"\s*$/m)?.[1]?.trim();
+          if (!productionCohort) {
+            throw new Error('CONSUMER_COHORT must be declared for production deployment.');
+          }
+          if (allowedAgentCohorts.includes(productionCohort)) {
+            throw new Error(
+              `The agent-test transport must never be permitted in the production cohort "${productionCohort}".`
+            );
+          }
+          if (!/^CONSUMER_ALLOWED_MODULE_IDS\s*=\s*"college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet"\s*$/m.test(source)) {
+            throw new Error('The protected beta module allowlist must remain the manifest-approved set: college_funding,house_purchase,liquidity_analysis,loan_analysis,mortgage_analysis,pension_projection,personal_balance_sheet.');
+          }
+          if (!/^CONSUMER_MODULE_PLANNER_MODE\s*=\s*"off"\s*$/m.test(source)) {
+            throw new Error('Direct module planning must remain off in the committed production source.');
+          }
+          if (!/^bindings\s*=\s*\[\s*\{\s*name\s*=\s*"CONSUMER_REALTIME_SESSIONS",\s*class_name\s*=\s*"ConsumerRealtimeSession"\s*\}\s*,\s*\{\s*name\s*=\s*"CONSUMER_LIVE_SESSIONS",\s*class_name\s*=\s*"ConsumerLiveSession"\s*\}\s*\]\s*$/m.test(source)) {
+            throw new Error('The ConsumerRealtimeSession and ConsumerLiveSession Durable Object bindings must remain explicit.');
+          }
+          if (!/\[\[migrations\]\]\s*\ntag\s*=\s*"consumer_realtime_sessions_v1"\s*\nnew_sqlite_classes\s*=\s*\["ConsumerRealtimeSession"\]/m.test(source)) {
+            throw new Error('The ConsumerRealtimeSession SQLite migration must remain explicit.');
+          }
+          if (!/\[\[migrations\]\]\s*\ntag\s*=\s*"consumer_live_sessions_v1"\s*\nnew_sqlite_classes\s*=\s*\["ConsumerLiveSession"\]/m.test(source)) {
+            throw new Error('The ConsumerLiveSession SQLite migration must remain explicit.');
+          }
+
+          const requiredPolicyVariables = [
+            'CONSUMER_CONSENT_MANIFEST_ID',
+            'CONSUMER_ANALYSIS_NOTICE_ID',
+            'CONSUMER_AI_NOTICE_ID',
+            'CONSUMER_VOICE_NOTICE_ID',
+            'CONSUMER_PRIVACY_NOTICE_URL',
+            'CONSUMER_AI_DATA_POLICY_ID',
+            'CONSUMER_VOICE_DATA_POLICY_ID',
+            'CONSUMER_VOICE_TRANSCRIPTION_MODEL',
+            'CONSUMER_VOICE_SPEECH_MODEL',
+            'CONSUMER_VOICE_NAME',
+            'CONSUMER_VOICE_PRICING_VERSION',
+            'CONSUMER_VOICE_SESSION_BUDGET_EUR_CENTS',
+            'CONSUMER_VOICE_DAILY_BUDGET_EUR_CENTS',
+            'CONSUMER_VOICE_TRANSCRIPTION_RESERVATION_EUR_CENTS',
+            'CONSUMER_VOICE_SPEECH_RESERVATION_EUR_CENTS',
+            'CONSUMER_REALTIME_NOTICE_ID',
+            'CONSUMER_REALTIME_DATA_POLICY_ID',
+            'CONSUMER_REALTIME_MODEL',
+            'CONSUMER_REALTIME_VOICE',
+            'CONSUMER_REALTIME_REASONING_EFFORT',
+            'CONSUMER_REALTIME_TRANSCRIPTION_MODEL',
+            'CONSUMER_REALTIME_PROMPT_VERSION',
+            'CONSUMER_REALTIME_TOOLSET_VERSION',
+            'CONSUMER_REALTIME_PRICING_VERSION',
+            'CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS',
+            'CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS',
+            'CONSUMER_REALTIME_MAX_DURATION_SECONDS',
+            'CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS',
+            'CONSUMER_REALTIME_MAX_SDP_BYTES',
+            'CONSUMER_REALTIME_MAX_RESPONSES',
+            'CONSUMER_REALTIME_MAX_TOOL_CALLS',
+            'CONSUMER_REALTIME_PLANNER_TIMEOUT_MS',
+            'CONSUMER_REALTIME_PLANNER_CATCHUP_TIMEOUT_MS',
+            'CONSUMER_REALTIME_PLANNER_PROMPT_VERSION',
+            'CONSUMER_PLANNER_RECONCILIATION_MODE',
+            'CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION',
+            'CONSUMER_MODULE_PLANNER_MODE',
+            'CONSUMER_MODULE_PLANNER_PROMPT_VERSION',
+            'CONSUMER_MODULE_VERIFIER_PROMPT_VERSION',
+            'CONSUMER_REALTIME_DIRECTOR_ENABLED',
+            'CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION',
+            'CONSUMER_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS',
+            'CONSUMER_HANDOFF_POLICY_VERSION',
+            'CONSUMER_HANDOFF_POLICY_URL',
+            'CONSUMER_HANDOFF_RETENTION_POLICY_ID',
+            'CONSUMER_HANDOFF_RETENTION_DAYS'
+          ];
+          for (const variable of requiredPolicyVariables) {
+            const expression = new RegExp(`^${variable}\\s*=`, 'm');
+            if (!expression.test(source)) {
+              throw new Error(`${variable} must be explicit so the runtime can fail closed.`);
+            }
+          }
+
+          const originsMatch = source.match(/^ALLOWED_ORIGINS\s*=\s*"([^"]+)"\s*$/m);
+          if (!originsMatch) throw new Error('ALLOWED_ORIGINS must be explicit.');
+          for (const origin of originsMatch[1].split(',').map((value) => value.trim())) {
+            const parsed = new URL(origin);
+            if (parsed.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+              throw new Error('Production ALLOWED_ORIGINS may contain only non-local HTTPS origins.');
+            }
+          }
+          if (/^ALLOW_LOCAL_DEV_ORIGINS\s*=\s*"(?:1|true|yes|on)"\s*$/mi.test(source)) {
+            throw new Error('ALLOW_LOCAL_DEV_ORIGINS must not be enabled in the production config.');
+          }
+
+          const replaceTomlString = (input, name, value) => {
+            const expression = new RegExp('^' + name + '\\s*=\\s*"(?:\\\\.|[^"\\\\\\n])*"\\s*$', 'gm');
+            const matches = input.match(expression) || [];
+            if (matches.length !== 1) {
+              throw new Error(name + ' must have exactly one explicit string value in the source config.');
+            }
+            return input.replace(expression, name + ' = ' + JSON.stringify(value));
+          };
+          // Keep this validation equivalent to parseWalkthroughSettings. The
+          // runtime also fails closed if a dashboard change bypasses this gate.
+          const walkthroughDefaults = {
+            STRIPE_MODE: 'test', STRIPE_TAX_MODE: 'no_collection', STRIPE_WALKTHROUGH_PRICE_ID: '',
+            STRIPE_WALKTHROUGHS_ENABLED: 'false', STRIPE_WALKTHROUGH_LIVE_ACTIVATED: 'false', WALKTHROUGH_EMAILS_ENABLED: 'false'
+          };
+          const walkthroughRaw = envValue('WALKTHROUGH_SETTINGS_JSON') || '{}';
+          let walkthroughSupplied;
+          try { walkthroughSupplied = JSON.parse(walkthroughRaw); } catch { throw new Error('Invalid walkthrough settings.'); }
+          const walkthroughGates = ['STRIPE_WALKTHROUGHS_ENABLED', 'STRIPE_WALKTHROUGH_LIVE_ACTIVATED', 'WALKTHROUGH_EMAILS_ENABLED'];
+          if (Buffer.byteLength(walkthroughRaw) > 4096 || !walkthroughSupplied || typeof walkthroughSupplied !== 'object'
+            || Array.isArray(walkthroughSupplied) || Object.entries(walkthroughSupplied).some(([name, value]) =>
+              !Object.hasOwn(walkthroughDefaults, name) || typeof value !== 'string')) throw new Error('Invalid walkthrough settings.');
+          const walkthroughSettings = { ...walkthroughDefaults, ...walkthroughSupplied };
+          if (!['test', 'live'].includes(walkthroughSettings.STRIPE_MODE) || walkthroughSettings.STRIPE_TAX_MODE !== 'no_collection'
+            || !/^(?:|price_[A-Za-z0-9]+)$/.test(walkthroughSettings.STRIPE_WALKTHROUGH_PRICE_ID)
+            || walkthroughGates.some(name => !['true', 'false'].includes(walkthroughSettings[name]))
+            || (walkthroughSettings.STRIPE_WALKTHROUGHS_ENABLED === 'true' && !walkthroughSettings.STRIPE_WALKTHROUGH_PRICE_ID)) {
+            throw new Error('Invalid walkthrough settings.');
+          }
+          let generatedSource = replaceTomlString(source, 'WALKTHROUGH_SETTINGS_JSON', JSON.stringify(walkthroughSettings));
+          const demoEnabled = envValue('DEMO_REQUESTS_ENABLED') || 'false';
+          if (!['true', 'false'].includes(demoEnabled)) throw new Error('DEMO_REQUESTS_ENABLED must be true or false.');
+          generatedSource = replaceTomlString(generatedSource, 'DEMO_REQUESTS_ENABLED', demoEnabled);
+          if (betaEnabled) {
+            if (!databaseId) {
+              throw new Error('CONSUMER_DB_ID is required for the protected beta.');
+            }
+            const policyIds = {
+              CONSUMER_CONSENT_POLICY_VERSION: envValue('CONSUMER_BETA_CONSENT_POLICY_VERSION'),
+              CONSUMER_CONSENT_MANIFEST_ID: envValue('CONSUMER_BETA_CONSENT_MANIFEST_ID'),
+              CONSUMER_ANALYSIS_NOTICE_ID: envValue('CONSUMER_BETA_ANALYSIS_NOTICE_ID'),
+              CONSUMER_AI_NOTICE_ID: envValue('CONSUMER_BETA_AI_NOTICE_ID')
+            };
+            for (const [name, value] of Object.entries(policyIds)) {
+              if (!/^[A-Za-z0-9._:-]{1,120}$/.test(value)) {
+                throw new Error(name + ' must be a non-empty immutable policy identifier.');
+              }
+              generatedSource = replaceTomlString(generatedSource, name, value);
+            }
+
+            const privacyNoticeUrl = envValue('CONSUMER_BETA_PRIVACY_NOTICE_URL');
+            let parsedPrivacyUrl;
+            try {
+              parsedPrivacyUrl = new URL(privacyNoticeUrl);
+            } catch (_error) {
+              throw new Error('CONSUMER_BETA_PRIVACY_NOTICE_URL must be a valid HTTPS URL.');
+            }
+            if (
+              parsedPrivacyUrl.protocol !== 'https:'
+              || !['planeir.ie', 'www.planeir.ie'].includes(parsedPrivacyUrl.hostname)
+              || parsedPrivacyUrl.pathname !== '/plan/privacy-legacy.html'
+              || parsedPrivacyUrl.username
+              || parsedPrivacyUrl.password
+              || parsedPrivacyUrl.search
+              || parsedPrivacyUrl.hash
+            ) {
+              throw new Error('CONSUMER_BETA_PRIVACY_NOTICE_URL must be the canonical Planeir consumer privacy page.');
+            }
+
+            const sessionTtl = envValue('CONSUMER_BETA_SESSION_TTL_DAYS');
+            const parsedSessionTtl = Number.parseInt(sessionTtl, 10);
+            if (
+              !/^[1-9][0-9]*$/.test(sessionTtl)
+              || !Number.isInteger(parsedSessionTtl)
+              || parsedSessionTtl < 1
+              || parsedSessionTtl > 90
+            ) {
+              throw new Error('CONSUMER_BETA_SESSION_TTL_DAYS must be an integer from 1 to 90.');
+            }
+
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_PRIVACY_NOTICE_URL', parsedPrivacyUrl.toString());
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_SESSION_TTL_DAYS', String(parsedSessionTtl));
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_COHORT', 'adviser_test');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_INVITE_MAX_TTL_HOURS', '24');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_JOURNEY_ENABLED', 'true');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_VOICE_ENABLED', 'false');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_MODULE_ROUTING_ENABLED', 'true');
+            generatedSource = replaceTomlString(generatedSource, 'CONSUMER_GOAL_ROUTING_ENABLED', 'true');
+            generatedSource = replaceTomlString(
+              generatedSource,
+              'CONSUMER_MODULE_OFFERS_ENABLED',
+              moduleOffersEnabled ? 'true' : 'false'
+            );
+            generatedSource = replaceTomlString(
+              generatedSource,
+              'CONSUMER_TYPED_LANE_ENABLED',
+              typedLaneEnabled ? 'true' : 'false'
+            );
+
+            if (realtimeEnabled) {
+              const fixedRealtimeValues = {
+                CONSUMER_REALTIME_NOTICE_ID: ['CONSUMER_BETA_REALTIME_NOTICE_ID', 'realtime-voice-openai-audio-adviser-test-v3'],
+                CONSUMER_REALTIME_DATA_POLICY_ID: ['CONSUMER_BETA_REALTIME_DATA_POLICY_ID', 'openai-realtime-audio-adviser-test-v2'],
+                CONSUMER_REALTIME_MODEL: ['CONSUMER_BETA_REALTIME_MODEL', 'gpt-realtime-2.1'],
+                CONSUMER_REALTIME_VOICE: ['CONSUMER_BETA_REALTIME_VOICE', 'marin'],
+                CONSUMER_REALTIME_REASONING_EFFORT: ['CONSUMER_BETA_REALTIME_REASONING_EFFORT', 'low'],
+                CONSUMER_REALTIME_TRANSCRIPTION_MODEL: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_MODEL', 'gpt-4o-mini-transcribe'],
+                CONSUMER_REALTIME_PLANNER_MODEL: ['CONSUMER_BETA_REALTIME_PLANNER_MODEL', 'gpt-5.6-luna'],
+                CONSUMER_PLANNER_RECONCILIATION_PROMPT_VERSION: ['CONSUMER_BETA_PLANNER_RECONCILIATION_PROMPT_VERSION', 'planning-reconciliation-v3'],
+                CONSUMER_MODULE_PLANNER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_PLANNER_PROMPT_VERSION', 'direct-module-planner-v12'],
+                CONSUMER_MODULE_VERIFIER_PROMPT_VERSION: ['CONSUMER_BETA_MODULE_VERIFIER_PROMPT_VERSION', 'direct-module-verifier-v11'],
+                CONSUMER_REALTIME_PROMPT_VERSION: ['CONSUMER_BETA_LIVE_PROMPT_VERSION', 'planeir-live-conversation-v13'],
+                CONSUMER_REALTIME_TOOLSET_VERSION: ['CONSUMER_BETA_LIVE_TOOLSET_VERSION', 'planeir-live-tools-v1'],
+                CONSUMER_REALTIME_PRICING_VERSION: ['CONSUMER_BETA_REALTIME_PRICING_VERSION', 'openai-gpt-realtime-2.1-usd-parity-eur-safety-2026-07-14-v1'],
+                CONSUMER_REALTIME_SESSION_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_BUDGET_EUR_CENTS', '1000'],
+                CONSUMER_REALTIME_SESSION_WARN_EUR_CENTS: ['CONSUMER_BETA_REALTIME_SESSION_WARN_EUR_CENTS', '750'],
+                CONSUMER_REALTIME_DAILY_BUDGET_EUR_CENTS: ['CONSUMER_BETA_REALTIME_DAILY_BUDGET_EUR_CENTS', '5000'],
+                CONSUMER_REALTIME_MAX_DURATION_SECONDS: ['CONSUMER_BETA_REALTIME_MAX_DURATION_SECONDS', '900'],
+                CONSUMER_REALTIME_IDLE_TIMEOUT_SECONDS: ['CONSUMER_BETA_REALTIME_IDLE_TIMEOUT_SECONDS', '180'],
+                CONSUMER_REALTIME_SILENCE_PROMPT_SECONDS: ['CONSUMER_BETA_REALTIME_SILENCE_PROMPT_SECONDS', '45'],
+                CONSUMER_REALTIME_MAX_SDP_BYTES: ['CONSUMER_BETA_REALTIME_MAX_SDP_BYTES', '32768'],
+                CONSUMER_REALTIME_MAX_RESPONSES: ['CONSUMER_BETA_REALTIME_MAX_RESPONSES', '100'],
+                CONSUMER_REALTIME_MAX_TOOL_CALLS: ['CONSUMER_BETA_REALTIME_MAX_TOOL_CALLS', '60'],
+                CONSUMER_REALTIME_DIRECTOR_ENABLED: ['CONSUMER_BETA_REALTIME_DIRECTOR_ENABLED', 'true'],
+                CONSUMER_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TEXT_INPUT_EUR_MICROS_PER_MILLION', '4000000'],
+                CONSUMER_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TEXT_CACHED_INPUT_EUR_MICROS_PER_MILLION', '400000'],
+                CONSUMER_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TEXT_OUTPUT_EUR_MICROS_PER_MILLION', '24000000'],
+                CONSUMER_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_INPUT_EUR_MICROS_PER_MILLION', '32000000'],
+                CONSUMER_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_CACHED_INPUT_EUR_MICROS_PER_MILLION', '400000'],
+                CONSUMER_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_AUDIO_OUTPUT_EUR_MICROS_PER_MILLION', '64000000'],
+                CONSUMER_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_INPUT_EUR_MICROS_PER_MILLION', '1250000'],
+                CONSUMER_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION: ['CONSUMER_BETA_REALTIME_TRANSCRIPTION_OUTPUT_EUR_MICROS_PER_MILLION', '5000000'],
+                CONSUMER_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS: ['CONSUMER_BETA_REALTIME_SPEECH_EUR_MICROS_PER_MILLION_CHARACTERS', '30000000']
+              };
+              for (const [runtimeName, [sourceName, approvedValue]] of Object.entries(fixedRealtimeValues)) {
+                const value = envValue(sourceName);
+                if (value !== approvedValue) {
+                  throw new Error(`${sourceName} must remain exactly ${approvedValue} for the protected realtime canary.`);
+                }
+                generatedSource = replaceTomlString(generatedSource, runtimeName, value);
+              }
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_TURN_READING_MODE',
+                resolvedTurnReadingMode
+              );
+              generatedSource = replaceTomlString(generatedSource, 'CONSUMER_REALTIME_VOICE_ENABLED', 'true');
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+                realtimeV2Enabled ? 'true' : 'false'
+              );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_LIVE_VOICE_ENABLED',
+                liveVoiceEnabled ? 'true' : 'false'
+              );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+                spokenCompletionEnabled ? 'true' : 'false'
+              );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_PLANNER_RECONCILIATION_MODE',
+                plannerReconciliationMode
+              );
+              generatedSource = replaceTomlString(
+                generatedSource,
+                'CONSUMER_MODULE_PLANNER_MODE',
+                directModulePlannerMode
+              );
+              generatedSource = replaceTomlString(generatedSource, 'CONSUMER_HANDOFF_ENABLED', 'false');
+            }
+          }
+
+          const expectedGeneratedFlags = {
+            EDUCATION_CALLS_ENABLED: 'true',
+            CONSUMER_JOURNEY_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_VOICE_ENABLED: 'false',
+            CONSUMER_REALTIME_VOICE_ENABLED: realtimeEnabled ? 'true' : 'false',
+            CONSUMER_REALTIME_CONVERSATION_V2_ENABLED: realtimeV2Enabled ? 'true' : 'false',
+            CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED: spokenCompletionEnabled ? 'true' : 'false',
+            CONSUMER_LIVE_VOICE_ENABLED: liveVoiceEnabled ? 'true' : 'false',
+            // Already resolved to legacy unless the live lane actually came up,
+            // and the substitution only runs on that same path, so this holds
+            // whether or not the generated file was rewritten. Deriving it from
+            // betaEnabled instead let the expectation and the file disagree.
+            CONSUMER_PLANNER_RECONCILIATION_MODE: plannerReconciliationMode,
+            CONSUMER_MODULE_PLANNER_MODE: directModulePlannerMode,
+            CONSUMER_MODULE_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_GOAL_ROUTING_ENABLED: betaEnabled ? 'true' : 'false',
+            CONSUMER_MODULE_OFFERS_ENABLED: moduleOffersEnabled ? 'true' : 'false',
+            CONSUMER_TYPED_LANE_ENABLED: typedLaneEnabled ? 'true' : 'false',
+            // The agent-test transport is a protected testing facility and is
+            // never activated in production.
+            CONSUMER_AGENT_TEST_ENABLED: 'false',
+            CONSUMER_AI_INTAKE_ENABLED: 'false',
+            CONSUMER_HANDOFF_ENABLED: 'false',
+            CONSUMER_PUBLIC_ACCESS_ENABLED: 'false'
+          };
+          for (const [flag, value] of Object.entries(expectedGeneratedFlags)) {
+            const expression = new RegExp('^' + flag + '\\s*=\\s*"' + value + '"\\s*$', 'm');
+            if (!expression.test(generatedSource)) {
+              throw new Error('Generated deployment mode has an unsafe ' + flag + ' value.');
+            }
+          }
+
+          const binding = databaseId ? [
+            '',
+            '# Generated by deploy-worker.yml from the protected production environment.',
+            '[[d1_databases]]',
+            'binding = "CONSUMER_DB"',
+            `database_name = ${JSON.stringify(databaseName)}`,
+            `database_id = ${JSON.stringify(databaseId)}`,
+            'migrations_dir = "consumer-migrations"',
+            ''
+          ].join('\n') : '\n';
+          fs.writeFileSync(generatedPath, generatedSource.trimEnd() + '\n' + binding, { mode: 0o600 });
+          // Every conversation layer is off in the bootstrap config. It exists
+          // to stand the infrastructure up and prove SDP, sideband and hang-up
+          // -- not to exercise a lane. Written as a list rather than nested
+          // calls so adding a lane cannot quietly miss one.
+          let bootstrapSource = [
+            'CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED',
+            'CONSUMER_REALTIME_CONVERSATION_V2_ENABLED',
+            'CONSUMER_LIVE_VOICE_ENABLED',
+            'CONSUMER_REALTIME_VOICE_ENABLED',
+            // The typed lane is a conversation layer too, and this list missed
+            // it. A failed activation left the rolled-back Worker still
+            // carrying CONSUMER_TYPED_LANE_ENABLED = "true", dead only because
+            // the planner below is forced off -- safe by accident rather than
+            // by this list, which is what the comment above promises.
+            'CONSUMER_TYPED_LANE_ENABLED',
+            'CONSUMER_HANDOFF_ENABLED',
+            'EDUCATION_CALLS_ENABLED'
+          ].reduce((source, flag) => replaceTomlString(source, flag, 'false'), generatedSource);
+          bootstrapSource = replaceTomlString(
+            bootstrapSource,
+            'CONSUMER_MODULE_PLANNER_MODE',
+            'off'
+          );
+          // Retain environment/Price identity for outstanding signed webhooks,
+          // while the infrastructure bootstrap cannot collect or send emails.
+          bootstrapSource = replaceTomlString(bootstrapSource, 'WALKTHROUGH_SETTINGS_JSON', JSON.stringify({
+            ...walkthroughSettings, ...Object.fromEntries(walkthroughGates.map(name => [name, 'false']))
+          }));
+          if (!/^CONSUMER_REALTIME_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep realtime voice disabled.');
+          }
+          if (!/^CONSUMER_REALTIME_CONVERSATION_V2_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep conversational realtime v2 disabled.');
+          }
+          if (!/^CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep spoken completion disabled.');
+          }
+          if (!/^CONSUMER_LIVE_VOICE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep the live conversational lane disabled.');
+          }
+          if (!/^CONSUMER_HANDOFF_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep the realtime handoff disabled.');
+          }
+          if (!/^CONSUMER_MODULE_PLANNER_MODE\s*=\s*"off"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep direct module planning disabled.');
+          }
+          if (!/^CONSUMER_TYPED_LANE_ENABLED\s*=\s*"false"\s*$/m.test(bootstrapSource)) {
+            throw new Error('The infrastructure bootstrap config must keep the typed conversational lane disabled.');
+          }
+          fs.writeFileSync(bootstrapPath, bootstrapSource.trimEnd() + '\n' + binding, { mode: 0o600 });
+          NODE
+
+      - name: Compact non-secret settings for the Workers free plan
+        run: node ./scripts/pack-consumer-settings.mjs worker/wrangler.bootstrap.generated.toml worker/wrangler.production.generated.toml
+
+      - name: Replay adviser and consumer migrations in fresh local D1 state
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          rm -rf ../.worker-dry-run/deploy-local-d1
+          wrangler d1 migrations apply LEADS_DB --local --config wrangler.production.generated.toml --persist-to ../.worker-dry-run/deploy-local-d1
+          if [[ -n "$CONSUMER_DB_ID" ]]; then
+            wrangler d1 migrations apply CONSUMER_DB --local --config wrangler.production.generated.toml --persist-to ../.worker-dry-run/deploy-local-d1
+          else
+            echo "CONSUMER_DB_ID is not configured; preserving the dormant, unbound consumer capability."
+          fi
+
+      - name: Bundle production Worker without deploying
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          wrangler deploy --no-x-provision --dry-run --config wrangler.bootstrap.generated.toml --outdir ../.worker-dry-run/deploy-bootstrap-bundle
+          wrangler deploy --no-x-provision --dry-run --config wrangler.production.generated.toml --outdir ../.worker-dry-run/deploy-bundle
+
+      - name: Upsert protected-beta response security headers
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/upsert-consumer-plan-headers.mjs
+
+      - name: Verify protected-beta static security headers
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/check-consumer-static-headers.mjs
+
+      - name: Check demo access flow
+        run: |
+          npm run check:demo
+          npm run check:education-call
+          npm run check:education-booking
+          npm run check:stripe
+          npm run check:lead-qualification
+
+      - name: Ensure demo encryption key is provisioned
+        working-directory: ./worker
+        env:
+          DEMO_DATA_ENCRYPTION_KEY: ${{ secrets.DEMO_DATA_ENCRYPTION_KEY }}
+        run: |
+          set -euo pipefail
+          inventory="$(wrangler secret list --config wrangler.production.generated.toml --format json)"
+          if ! printf '%s' "$inventory" | node --input-type=module -e '
+            let input=""; for await (const chunk of process.stdin) input+=chunk;
+            process.exit(JSON.parse(input).some(secret=>secret.name==="DEMO_DATA_ENCRYPTION_KEY") ? 0 : 1);
+          '; then
+            if [[ -z "$DEMO_DATA_ENCRYPTION_KEY" ]]; then
+              echo "Provision DEMO_DATA_ENCRYPTION_KEY in the production environment before publishing demo access." >&2
+              exit 1
+            fi
+            printf '%s' "$DEMO_DATA_ENCRYPTION_KEY" | wrangler secret put DEMO_DATA_ENCRYPTION_KEY --config wrangler.production.generated.toml
+          fi
+
+      - name: Apply remote adviser D1 migrations
+        working-directory: ./worker
+        run: wrangler d1 migrations apply LEADS_DB --remote --config wrangler.production.generated.toml
+
+      - name: Apply remote consumer D1 migrations
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          if [[ -n "$CONSUMER_DB_ID" ]]; then
+            wrangler d1 migrations apply CONSUMER_DB --remote --config wrangler.production.generated.toml
+          else
+            echo "CONSUMER_DB_ID is not configured; skipping consumer migrations while all consumer flags are false."
+          fi
+
+      # The first realtime release introduces a new Durable Object class and
+      # migration. Deploy the reviewed code with only realtime held false before
+      # any `secret put`; a failed bootstrap prevents every secret mutation and
+      # the final activation. Existing bounded voice and invite controls retain
+      # their generated values in this bootstrap config.
+      - name: Deploy Worker code and Durable Object bootstrap
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        working-directory: ./worker
+        # Storage already exists and every binding has an explicit identifier.
+        # Avoid auto-provisioning's bucket-management calls: this deployment
+        # credential needs Worker deployment access, not storage administration.
+        run: wrangler deploy --config wrangler.bootstrap.generated.toml --no-x-provision
+
+      # Wrangler 4.110 `secret put` deploys a secret-only version immediately.
+      # Use the bootstrap config so realtime stays disabled throughout secret
+      # reconciliation; only the final production deploy may activate it.
+      - name: Ensure protected-beta Worker secrets and provider credential
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        working-directory: ./worker
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          secret_inventory="$(wrangler secret list --config wrangler.bootstrap.generated.toml --format json)"
+          mapfile -t missing_secrets < <(
+            SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
+              const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
+              const names = new Set(entries.map((entry) => String(entry?.name || "")));
+              const required = [
+                "CONSUMER_DATA_ENCRYPTION_KEY",
+                "CONSUMER_RATE_LIMIT_HASH_KEY",
+                "CONSUMER_INVITE_SIGNING_KEY",
+                "APPLICATION_DATA_ENCRYPTION_KEY"
+              ];
+              process.stdout.write(required.filter((name) => !names.has(name)).join("\n"));
+            '
+          )
+          for secret_name in "${missing_secrets[@]}"; do
+            [[ -n "$secret_name" ]] || continue
+            secret_value="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")"
+            [[ "$secret_value" =~ ^[A-Za-z0-9_-]{43}$ ]] || { echo "Generated consumer secret has an invalid format"; exit 1; }
+            printf '%s' "$secret_value" | wrangler secret put "$secret_name" --config wrangler.bootstrap.generated.toml
+            unset secret_value
+            echo "Created missing Worker secret: $secret_name"
+          done
+
+          test -n "$OPENAI_API_KEY" || { echo "OPENAI_API_KEY is required for adviser-test voice"; exit 1; }
+          printf '%s' "$OPENAI_API_KEY" | wrangler secret put OPENAI_API_KEY --config wrangler.bootstrap.generated.toml
+          unset OPENAI_API_KEY
+          echo "Provisioned the protected OpenAI provider credential without exposing its value."
+
+          # The credential that lets the post-deploy check read the live spend
+          # envelope, which is deliberately not on any public route. Minted fresh
+          # every run and never stored anywhere else: it only has to survive from
+          # this step to the verification step, so there is nothing to rotate, no
+          # long-lived shared secret, and nothing for a human to configure.
+          deploy_verification_key="$(node -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64url'))")"
+          [[ "$deploy_verification_key" =~ ^[A-Za-z0-9_-]{43}$ ]] || { echo "Generated deploy verification key has an invalid format"; exit 1; }
+          echo "::add-mask::$deploy_verification_key"
+          printf '%s' "$deploy_verification_key" | wrangler secret put CONSUMER_DEPLOY_VERIFICATION_KEY --config wrangler.bootstrap.generated.toml
+          echo "CONSUMER_DEPLOY_VERIFICATION_KEY=$deploy_verification_key" >> "$GITHUB_ENV"
+          unset deploy_verification_key
+          echo "Provisioned the deploy verification credential without exposing its value."
+
+          secret_inventory="$(wrangler secret list --config wrangler.bootstrap.generated.toml --format json)"
+          SECRET_INVENTORY="$secret_inventory" node --input-type=module -e '
+            const entries = JSON.parse(process.env.SECRET_INVENTORY || "[]");
+            const names = new Set(entries.map((entry) => String(entry?.name || "")));
+            const required = [
+              "CONSUMER_DATA_ENCRYPTION_KEY",
+              "CONSUMER_RATE_LIMIT_HASH_KEY",
+              "CONSUMER_INVITE_SIGNING_KEY",
+              "APPLICATION_DATA_ENCRYPTION_KEY",
+              "OPENAI_API_KEY",
+              "CONSUMER_DEPLOY_VERIFICATION_KEY"
+            ];
+            const missing = required.filter((name) => !names.has(name));
+            if (missing.length) throw new Error(`Protected beta Worker secrets are missing: ${missing.join(", ")}`);
+            console.log("Verified required protected-beta Worker secret names without rotating existing values.");
+          '
+
+      - name: Deploy final Worker configuration
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_ENABLED" == "true" ]]; then
+            # Record the activation attempt before the external deploy starts.
+            # If Wrangler fails or this job is cancelled after Cloudflare has
+            # accepted the config, the compensating step must assume Realtime
+            # may be live and restore the source-false bootstrap config.
+            echo "CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED=true" >> "$GITHUB_ENV"
+          fi
+          wrangler deploy --config wrangler.production.generated.toml --no-x-provision
+
+      - name: Verify live consumer deployment mode
+        run: |
+          set -euo pipefail
+          if [[ "$CONSUMER_REALTIME_ADVISER_CANARY_ENABLED" == "true" ]]; then
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="realtime_voice_rules_only"
+          elif [[ "$CONSUMER_ADVISER_INVITE_BETA_ENABLED" == "true" ]]; then
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="rules_only"
+          else
+            export CONSUMER_EXPECTED_DEPLOYMENT_MODE="dormant"
+          fi
+          node ./scripts/check-consumer-live-deployment.mjs
+
+      - name: Smoke check authenticated adviser planning bridge
+        if: env.CONSUMER_ADVISER_INVITE_BETA_ENABLED == 'true'
+        run: node ./scripts/check-consumer-live-advisor-bridge.mjs
+
+      - name: Smoke check live published-session routes
+        run: node ./scripts/check-worker-published-session-routes.mjs
+
+      - name: Verify live application voice consent and private storage
+        run: node ./scripts/check-application-voice-live.mjs
+
+      # A canary that cannot prove the real provider boundary must not remain
+      # active. This compensating deploy preserves the existing adviser beta,
+      # D1 data, and secrets while restoring only Realtime to source-false.
+      - name: Roll back Realtime after a failed live canary proof
+        if: (failure() || cancelled()) && env.CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED == 'true'
+        working-directory: ./worker
+        run: |
+          set -euo pipefail
+          wrangler deploy --config wrangler.bootstrap.generated.toml --no-x-provision
+          CONSUMER_EXPECTED_DEPLOYMENT_MODE=rules_only \
+            node ../scripts/check-consumer-live-deployment.mjs
+
+      - name: Remove generated deployment config
+        if: always()
+        run: rm -f worker/wrangler.bootstrap.generated.toml worker/wrangler.production.generated.toml

@@ -48,6 +48,7 @@ jobs:
         run: |
           npm run check:house-purchase
           npm run check:future-cost-fund
+          npm run check:market-refresh
           npm run check:household-cash-flow
           npm run check:protection-gap
           npm run check:rental-keep-or-sell

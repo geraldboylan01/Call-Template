@@ -322,6 +322,7 @@ Playbooks should only emit the subset they are responsible for.
   - `purchaseCosts`
   - `helpToBuy`
   - `firstHomeScheme`
+- `depositSavingsGrossAer`, `dirtRate`, `mortgageIllustrationRate`, `mortgageTermYears` and the standard `purchaseCosts` are the standard planning assumptions. The app fills each one from its figures register when it is left out, and the playbook leaves them out; a payload does not type them.
 - `lendingCategory` is exactly `first_time_buyer`, `second_or_subsequent`, or `unknown`. It controls the Central Bank income-limit illustration only.
 - `applicationType` is exactly `single` or `joint`; `applicants` must contain one or two records accordingly.
 - Each applicant supports `id`, `label`, `age`, `employmentStatus`, `grossAnnualIncome`, `variableAnnualIncome`, `lenderRecognisedVariableAnnualIncome`, `incomeReliability`, `existingMonthlyDebtPayments`, `schemeBuyerStatus`, `freshStartReason`, `previouslyOwnedPropertyAnywhere`, `retainedInterestInPreviousProperty`, and `rightToResideInIreland`.

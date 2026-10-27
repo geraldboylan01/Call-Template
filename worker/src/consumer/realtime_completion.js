@@ -1,5 +1,6 @@
 import { consumerLanguageForModule } from '../../../js/planning/module_offers.js';
 import { assumptionLabel as approvedAssumptionLabel } from '../../../js/planning/planeir_assumptions.js';
+import { statePensionWording } from './state_pension_wording.js';
 
 export const REALTIME_MEETING_PHASES = Object.freeze([
   'discovery',
@@ -118,8 +119,15 @@ export function buildVoiceConfirmationSummary({
     : statedFractions.length
     ? ` Any included person without a stated fraction defaults to 100%; the stated per-person ${statedFractions.length === 1 ? 'fraction is' : 'fractions are'} ${statedFractions.join(' and ')}.`
     : ' The fraction defaults to 100% for each included person unless you change it.';
+  // The rate is the one the signed brief carries for the plan's own year. A rule
+  // without its amounts says none, rather than one from somewhere else.
+  const wording = statePensionWording(statePensionRule);
+  const rateText = wording
+    ? ` of ${wording.annual} gross a year, ${wording.effective}, with a default start age of ${wording.startAge}`
+    : '';
+  const escalationText = wording ? ` by ${wording.escalation} a year` : ' each year';
   const pensionText = statePensionRule
-    ? ` Where the Irish State Pension is included, I’ll use the editable maximum-rate assumption of €15,563.60 gross a year, effective January 2026, with a default start age of 66.${fractionText} I’ll apply each fraction before escalating it by 2% a year. Actual entitlement depends on each person’s PRSI record.`
+    ? ` Where the Irish State Pension is included, I’ll use the editable maximum-rate assumption${rateText}.${fractionText} I’ll apply each fraction before escalating it${escalationText}. Actual entitlement depends on each person’s PRSI record.`
     : '';
   return `I’m ready to ${analysisText} using the assumptions shown.${assumptionsText}${pensionText} Does that all sound correct, and would you like me to run those analyses now?`;
 }

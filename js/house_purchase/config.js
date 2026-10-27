@@ -1,3 +1,7 @@
+import { marketFigureValue } from '../planning/figures/market_math.js';
+import { PLANEIR_ASSUMPTIONS } from '../planning/planeir_assumptions.js';
+import { IE_TAX_RULES_BY_YEAR } from '../planning/tax/rules_ie.js';
+
 const CENTRAL_BANK_SOURCE = 'https://www.centralbank.ie/financial-system/financial-stability/macro-prudential-policy/mortgage-measures';
 const REVENUE_HTB_SOURCE = 'https://www.revenue.ie/en/property/help-to-buy-incentive/index.aspx';
 const REVENUE_HTB_BUYER_SOURCE = 'https://www.revenue.ie/en/property/help-to-buy-incentive/who-can-claim-htb.aspx';
@@ -11,6 +15,16 @@ const FHS_RULES_SOURCE = 'https://www.firsthomescheme.ie/faqs/rules-and-eligibil
 const FHS_CEILINGS_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/property-price-ceilings/';
 const FHS_CHARGES_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/service-charges/';
 const FHS_LENDERS_SOURCE = 'https://www.firsthomescheme.ie/about-the-scheme/switching-your-mortgage/';
+
+// Rates that move with the market come from the figures register, which keeps the
+// quotes behind them. DIRT comes from the tax catalogue, and the reserve months
+// from the central assumptions. Nothing here types one in.
+const REGULAR_SAVER_GROSS_RATE = marketFigureValue('ie.market.cash.regular_saver_gross_rate');
+const MORTGAGE_ILLUSTRATION_RATE = marketFigureValue('ie.market.mortgage.illustration_rate');
+const LATEST_TAX_YEAR = Math.max(...Object.keys(IE_TAX_RULES_BY_YEAR).map(Number));
+const DIRT_RATE = IE_TAX_RULES_BY_YEAR[LATEST_TAX_YEAR].dirt.rate;
+// What the saver keeps after DIRT, to the nearest hundredth of a percentage point.
+const REGULAR_SAVER_NET_RATE = Number((REGULAR_SAVER_GROSS_RATE * (1 - DIRT_RATE)).toFixed(4));
 
 export const HOUSE_PURCHASE_SOURCE_METADATA = Object.freeze({
   centralBankMortgageMeasures: Object.freeze({
@@ -31,7 +45,7 @@ export const HOUSE_PURCHASE_SOURCE_METADATA = Object.freeze({
       REVENUE_HTB_PROPERTY_SOURCE,
       REVENUE_HTB_AMOUNT_SOURCE
     ]),
-    asOfDate: '2026-07-11'
+    asOfDate: '2026-10-22'
   }),
   firstHomeScheme: Object.freeze({
     label: 'First Home Scheme',
@@ -138,6 +152,9 @@ export const FHS_PRICE_CEILING_ROWS = Object.freeze(FHS_PRICE_CEILINGS.flatMap((
   })
 ]));
 
+/** Changes whenever a figure in these rules is re-checked and moves. */
+export const HOUSE_PURCHASE_RULES_VERSION = 'house-purchase-rules-2026.10';
+
 export const HOUSE_PURCHASE_RULES = Object.freeze({
   schemaVersion: 1,
   asOfDate: '2026-07-11',
@@ -148,10 +165,10 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
   secondSubsequentBuyerIncomeMultiple: 3.5,
   principalHomeMaxLtv: 0.9,
   minimumDepositRate: 0.1,
-  dirtRate: 0.33,
-  depositSavingsGrossAerDefault: 0.02,
-  depositSavingsNetAerDefault: 0.0134,
-  mortgageRateIllustrationDefault: 0.035,
+  dirtRate: DIRT_RATE,
+  depositSavingsGrossAerDefault: REGULAR_SAVER_GROSS_RATE,
+  depositSavingsNetAerDefault: REGULAR_SAVER_NET_RATE,
+  mortgageRateIllustrationDefault: MORTGAGE_ILLUSTRATION_RATE,
   maximumMortgageTermYearsDefault: 35,
 
   mortgage: Object.freeze({
@@ -159,7 +176,7 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     secondSubsequentBuyerIncomeMultiple: 3.5,
     principalHomeMaxLtv: 0.9,
     minimumDepositRate: 0.1,
-    illustrationRateDefault: 0.035,
+    illustrationRateDefault: MORTGAGE_ILLUSTRATION_RATE,
     termYearsDefault: 35,
     sensitivityTermsYears: Object.freeze([25, 30, 35]),
     sensitivityRateDelta: 0.01,
@@ -167,13 +184,13 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     sources: Object.freeze([CENTRAL_BANK_SOURCE])
   }),
   reserve: Object.freeze({
-    recommendedMonths: 6,
-    liquiditySafetyFloorMonths: 3
+    recommendedMonths: PLANEIR_ASSUMPTIONS.liquidity.working.targetBufferMonths,
+    liquiditySafetyFloorMonths: PLANEIR_ASSUMPTIONS.liquidity.working.minimumBufferMonths
   }),
   depositSavings: Object.freeze({
-    grossAerDefault: 0.02,
-    dirtRateDefault: 0.33,
-    netAerDefault: 0.0134,
+    grossAerDefault: REGULAR_SAVER_GROSS_RATE,
+    dirtRateDefault: DIRT_RATE,
+    netAerDefault: REGULAR_SAVER_NET_RATE,
     projectionHorizonMonths: 600,
     asOfDate: '2026-07-11',
     sources: Object.freeze([
@@ -206,12 +223,27 @@ export const HOUSE_PURCHASE_RULES = Object.freeze({
     contingency: 2500
   }),
   helpToBuy: Object.freeze({
-    maximumRelief: 30000,
+    /**
+     * 35,000 for contracts signed, or a self-build's first drawdown, from 7 October
+     * 2026 to the end of 2029; 30,000 before that. Budget 2027 raised it by 5,000
+     * with immediate effect, and Revenue's page now states both. Every other
+     * parameter here is unchanged (the Department's tax policy book, 3.3).
+     */
+    maximumRelief: 35000,
+    maximumReliefFrom: '2026-10-07',
+    /**
+     * The cap for contracts signed from 23 July 2020 to 6 October 2026, which a
+     * plan with an earlier purchase date still gets. The screen picks the cap by
+     * the target purchase date, so a historical plan never gains relief it could
+     * not claim. Relief before July 2020 (20,000) is not modelled.
+     */
+    earlierMaximumRelief: 30000,
+    earlierMaximumReliefFrom: '2020-07-23',
     maximumPrice: 500000,
     priceShare: 0.1,
     minimumQualifyingMortgageShare: 0.7,
     schemeEndDateIso: '2029-12-31',
-    asOfDate: '2026-07-11',
+    asOfDate: '2026-10-22',
     sources: Object.freeze([
       REVENUE_HTB_SOURCE,
       REVENUE_HTB_BUYER_SOURCE,

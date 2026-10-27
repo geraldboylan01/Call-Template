@@ -14,7 +14,26 @@ import {
   normalizePensionInputs
 } from './pension_math.js';
 import { renderTaxDisclosures } from './planning/tax/disclosures.js';
-import { resolveTaxRules } from './planning/tax/resolve.js';
+import { DEFAULT_IE_TAX_CATALOGUE, resolveTaxRules, withTaxCatalogue } from './planning/tax/resolve.js';
+
+/**
+ * The tax rules the brief's figures and the approved frames were drawn on: 2026,
+ * held forward, as the catalogue stood before Budget 2027 added its block. The
+ * four goals suites run their design fixture on these, so a screen's approved
+ * example does not change with every Budget. The engine's figures on the rules in
+ * force now are tested separately, below, and recorded in the register's
+ * catch-up. The engine takes no catalogue option for its pension years, so the
+ * resolver's test hook stands these rules in for the run.
+ */
+const GOALS_DESIGN_TAX_CATALOGUE = Object.freeze({
+  ...DEFAULT_IE_TAX_CATALOGUE,
+  rulesByYear: Object.freeze({ 2026: DEFAULT_IE_TAX_CATALOGUE.rulesByYear[2026] })
+});
+
+/** Runs `fn`, or the promise it returns, on the rules the design was drawn on. */
+export function withDesignTaxRules(fn) {
+  return withTaxCatalogue(GOALS_DESIGN_TAX_CATALOGUE, fn);
+}
 
 /**
  * The illustrative household every figure in the brief is proved against.
@@ -118,6 +137,10 @@ function bannedWording(text) {
 }
 
 export function runGoalsAndResourcesTests() {
+  return withDesignTaxRules(runGoalsAndResourcesTestsOnDesignRules);
+}
+
+function runGoalsAndResourcesTestsOnDesignRules() {
   const cases = [];
   let cached = null;
   const projection = () => {
@@ -146,6 +169,35 @@ export function runGoalsAndResourcesTests() {
       assertEqual(euro(entry.paidOutOverLife.total), want.life, `case ${index + 1} paid out over the life`);
       assertEqual(euro(entry.laterRetirement.neededThisYear), want.laterNeeded, `case ${index + 1} needed at the later option`);
       assertEqual(euro(entry.laterRetirement.paidOutOverLife.total), want.laterLife, `case ${index + 1} paid out at the later option`);
+    });
+  }));
+
+  cases.push(runCase('On the rules in force now, Budget 2027 lowers what the retirement goal needs and moves nothing that does not depend on income tax', () => {
+    // The suite runs on the design rules. Ask for the built-in catalogue, which carries the announced 2027 block,
+    // and compare. These figures are what the engine gives now; the audit script proves it against an independent
+    // reference on the same rules (the answer closes the gap, a hundredth of a point less does not).
+    const now = withTaxCatalogue(DEFAULT_IE_TAX_CATALOGUE, () => computeGoalsAndResourcesProjection(GOALS_AND_RESOURCES_SAMPLE, { includeHeadroom: true })).debug;
+    const design = GOALS_AND_RESOURCES_EXPECTED;
+    assertEqual(euro(now.wholeMortgageLump), design.wholeMortgageLump, 'whole mortgage lump is unchanged');
+    assertEqual(euro(now.wholeCollege.requiredToday), design.wholeCollege, 'whole college is unchanged');
+    assertEqual(euro(now.retirement.base.yearlyExtra), 14_294, 'extra paid in, gross (15,442 on the 2026 rules)');
+    assertEqual(euro(now.retirement.base.yearlyExtraTaxRelief), 5_717, 'relief on it (6,177)');
+    assertEqual(euro(now.retirement.base.yearlyExtraCost), 8_576, 'what it costs after relief (9,265)');
+    const moved = [
+      { id: 'cash-stays', needed: 19_373, life: 820_382 },
+      { id: 'college-today', needed: 12_657, life: 820_060 },
+      { id: 'mortgage-all-cash', needed: 14_048, life: 800_495 },
+      { id: 'mortgage-then-college', needed: 13_713, life: 805_069 }
+    ];
+    now.cases.forEach((entry, index) => {
+      const want = moved[index];
+      assertEqual(entry.id, want.id, `case ${index + 1} id`);
+      assertEqual(euro(entry.neededThisYear), want.needed, `${want.id}: needed this year (${design.cases[index].needed} on the 2026 rules)`);
+      assertEqual(euro(entry.paidOutOverLife.total), want.life, `${want.id}: paid out over the life (${design.cases[index].life})`);
+      assert(entry.neededThisYear < design.cases[index].needed, `${want.id}: less is needed than on the 2026 rules`);
+      assertEqual(euro(entry.mortgageLump), design.cases[index].mortgageLump, `${want.id}: mortgage lump is unchanged`);
+      assertEqual(euro(entry.collegeLump), design.cases[index].collegeLump, `${want.id}: college lump is unchanged`);
+      assertEqual(euro(entry.laterRetirement.neededThisYear), design.cases[index].laterNeeded, `${want.id}: the later option is already on track, so unchanged`);
     });
   }));
 

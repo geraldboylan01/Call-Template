@@ -184,7 +184,7 @@ export function newSession() {
       revision: 1
     }),
     revision: 1,
-    sourced: createSourcedFigureSet(),
+    sourced: createSourcedFigureSet(new Date().toISOString().slice(0, 10)),
     savedFactIds: [],
     savedFacts: [],
     requestedFactIds: [],
@@ -1179,7 +1179,7 @@ async function main() {
     process.exit(2);
   }
 
-  const instructions = buildLiveCataloguePrompt();
+  const instructions = buildLiveCataloguePrompt({ planDateIso: new Date().toISOString().slice(0, 10) });
   const personas = FIXTURE.personas.filter((persona) => !onlyPersona || persona.id === onlyPersona);
   if (!personas.length) {
     console.error(`No persona matched "${onlyPersona}". Available: ${FIXTURE.personas.map((p) => p.id).join(', ')}`);
