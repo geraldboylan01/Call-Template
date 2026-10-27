@@ -21,6 +21,7 @@ const CATALOGUE_TITLES = Object.freeze({
   ie_tax_rules: 'Irish tax rules',
   ie_planning_rules: 'Irish planning rules',
   ie_social_welfare: 'Social welfare rates',
+  ie_fair_deal_rules: 'Fair Deal rules',
   house_purchase_rules: 'House Purchase rules',
   planeir_assumptions: 'Planeir central assumptions',
   ie_market: 'Market figures'
@@ -46,6 +47,13 @@ const GROUP_TITLES = Object.freeze({
   first_home_scheme: 'First Home Scheme',
   deposit_savings: 'Deposit saving',
   purchase_costs: 'Purchase costs',
+  income: 'Income',
+  assets: 'Assets',
+  home: 'The home',
+  retained: 'What a person keeps',
+  transfers: 'Transfers',
+  review: 'Reviews',
+  loan: 'Nursing Home Loan',
   assumption: 'Assumptions',
   market: 'Market'
 });
@@ -86,6 +94,7 @@ function groupOf(figure) {
   const parts = figure.quantity.split('.');
   if (figure.catalogue.id === 'planeir_assumptions') return 'assumption';
   if (figure.catalogue.id === 'ie_market') return 'market';
+  if (figure.catalogue.id === 'ie_fair_deal_rules') return parts[2];
   return figure.catalogue.id === 'house_purchase_rules' ? parts[2] : parts[1];
 }
 

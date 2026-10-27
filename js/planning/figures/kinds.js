@@ -42,7 +42,8 @@ export const FIGURE_MODULES = Object.freeze([
   'goals_and_resources',
   'protection_gap',
   'rental_keep_or_sell',
-  'home_trade_down'
+  'home_trade_down',
+  'care_costs'
 ]);
 
 /**

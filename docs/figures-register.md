@@ -11,13 +11,13 @@ Every figure that can change: law, market prices and Planeir's own assumptions, 
 | Market | A price or rate that moves on its own, worked out from the quotes it was read from | The weekly job adds quotes; code does the arithmetic |
 | Planeir assumption | A choice Planeir makes | A person only; a job never changes these |
 
-Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Total 288.
+Counts: Law in force 244, Announced law 33, Market 3, Planeir assumption 63. Total 343.
 
 **Checked.** The day the value was read against its source. † means the figure has no check date of its own and shows the date its catalogue was last verified. ‡ means a Planeir choice with no review recorded, so the date shown is the day it was set.
 
 **From.** The day the value takes effect. A dash means the source states no date. A rule that a later tax year carries over unchanged is listed once, for the year it first took effect.
 
-Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.6.0`; Market figures `ie-market-2026.2`.
+Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.3`; Fair Deal rules `ie-fair-deal-2026.1`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.6.0`; Market figures `ie-market-2026.2`.
 
 ## Irish tax rules
 
@@ -217,7 +217,7 @@ Catalogue version `ie-planning-rules-2026.02`. 15 figures.
 
 ## Social welfare rates
 
-Catalogue version `ie-social-welfare-2026.2`. 14 figures.
+Catalogue version `ie-social-welfare-2026.3`. 16 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
@@ -233,8 +233,66 @@ Catalogue version `ie-social-welfare-2026.2`. 14 figures.
 | Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, aged 80 and over | €319.30 a week | 2027-01-01 | **announced** | [Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/) | 2026-10-22 | protection_gap | `ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2027_01_01` |
 | Invalidity Pension, weekly personal rate | €259.50 a week | 2026-01-01 | in force | [Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/) | 2026-10-22 | protection_gap | `ie.social_welfare.invalidity_pension.personal.from_2026_01_01` |
 | Invalidity Pension, weekly personal rate | €269.50 a week | 2027-01-01 | **announced** | [Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/) | 2026-10-22 | protection_gap | `ie.social_welfare.invalidity_pension.personal.from_2027_01_01` |
+| State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79 | €288 a week | 2026-01-02 | in force | [Department of Social Protection, State Pension (Non-Contributory)](https://www.gov.ie/en/department-of-social-protection/services/state-pension-non-contributory/) | 2026-10-27 | care_costs | `ie.social_welfare.state_pension_non_contributory.personal_66_to_79.from_2026_01_02` |
+| State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79 | €298 a week | 2027-01-01 | **announced** | [Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/) | 2026-10-27 | care_costs | `ie.social_welfare.state_pension_non_contributory.personal_66_to_79.from_2027_01_01` |
 | Illness Benefit, highest weekly personal rate | €254 a week | 2026-01-01 | in force | [Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/) | 2026-10-22 | protection_gap | `ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01` |
 | Illness Benefit, highest weekly personal rate | €264 a week | 2027-01-01 | **announced** | [Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/) | 2026-10-22 | protection_gap | `ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01` |
+
+## Fair Deal rules
+
+Catalogue version `ie-fair-deal-2026.1`. 17 figures.
+
+### Income
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Share of a single person’s income, after tax and deductions, that Fair Deal assesses | 80% | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.income.share.single.2024` |
+| Share of a couple’s combined income, after tax and deductions, that Fair Deal assesses for the person in care | 40% | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.income.share.couple.2024` |
+| Share of the rent from a person’s own home that Fair Deal assesses while they are in care | 0% | 2024-02-01 | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.income.rental_share.2024` |
+
+### Assets
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Yearly share of a person’s net assets above the disregard that Fair Deal assesses | 7.5% a year | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.assets.rate.2024` |
+| Number of people a couple’s assessed assets are divided between | 2 | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.assets.couple_divisor.2024` |
+| Assets of a single person that Fair Deal does not count | €36,000 | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.assets.disregard.single.2024` |
+| Assets of a couple that Fair Deal does not count | €72,000 | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.assets.disregard.couple.2024` |
+
+### The home
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Years of care after which a person’s home stops counting in the Fair Deal assessment | 3 years | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.home.cap_years.2024` |
+| Most a couple’s shared home can add to Fair Deal contributions when both receive care, as a share of its value | 22.5% | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.home.couple_both_in_care_cap.2024` |
+
+### What a person keeps
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Share of the maximum State Pension (Non-Contributory) that a single person keeps at least | 20% | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.retained.single_pension_share.2024` |
+| Multiple of the maximum State Pension (Non-Contributory) that a couple keeps at least when the partner stays at home | 1.2 times | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.retained.couple_at_home_pension_multiple.2024` |
+
+### Transfers
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Years before a Fair Deal application in which a transfer of assets or income still counts | 5 years | — | enacted | [Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.transfers.look_back_years.2024` |
+
+### Reviews
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Months after an assessment or review before a person can ask for another review without a material change | 12 months | — | enacted | [Nursing Homes Support Scheme Act 2009, section 30 (Reviews), revised Act](https://revisedacts.lawreform.ie/eli/2009/act/15/section/30/revised/en/html) | 2026-10-27 | care_costs | `ie.fair_deal.review.earliest_request_months.2024` |
+
+### Nursing Home Loan
+
+| Figure | Value | From | Status | Source | Checked | Used by | Id |
+|---|---|---|---|---|---|---|---|
+| Months after death within which the nursing home loan is repaid, as Revenue states it | 12 months | — | enacted | [Revenue, how the nursing home loan is repaid](https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/) | 2026-10-21 | care_costs | `ie.fair_deal.loan.repay_after_death_months.revenue.2024` |
+| Months after death within which the nursing home loan is repaid, as the HSE states it | 18 months | — | enacted | [HSE, Fair Deal scheme: nursing home loan](https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/) | 2026-10-21 | care_costs | `ie.fair_deal.loan.repay_after_death_months.hse.2024` |
+| Months after a sale or transfer of the home within which the nursing home loan is repaid | 6 months | — | enacted | [Revenue, how the nursing home loan is repaid](https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/) | 2026-10-21 | care_costs | `ie.fair_deal.loan.repay_on_sale_months.2024` |
+| Interest charged a day on a late repayment of the nursing home loan | 0.0219% | — | enacted | [Revenue, how the nursing home loan is repaid](https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/) | 2026-10-21 | care_costs | `ie.fair_deal.loan.late_interest_daily.2024` |
 
 ## House Purchase rules
 
@@ -403,13 +461,13 @@ Catalogue version `house-purchase-rules-2026.10`. 131 figures.
 
 ## Planeir central assumptions
 
-Catalogue version `planeir-assumptions-1.6.0`. 12 figures.
+Catalogue version `planeir-assumptions-1.6.0`. 48 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
 | Long-term investment growth assumed, before inflation | 5% a year | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | pension_projection | `planeir.assumption.investment_growth` |
 | General inflation assumed | 2% a year | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | pension_projection, net_retirement_cashflow, college_funding, future_cost_fund | `planeir.assumption.general_inflation` |
-| Education cost inflation assumed | 4% a year | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, future_cost_fund, goals_and_resources | `planeir.assumption.education_inflation` |
+| Education and care cost inflation assumed | 4% a year | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, future_cost_fund, goals_and_resources, care_costs | `planeir.assumption.education_inflation` |
 | After-tax growth used to work out the fund needed for retirement spending | 4% a year | — | approved | Planeir central planning assumptions, approved 27 October 2026 | 2026-10-27 | net_retirement_cashflow | `planeir.assumption.net_retirement_present_value_rate` |
 | Age a child is assumed to start college | age 18 | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, goals_and_resources | `planeir.assumption.college_start_age` |
 | Years of college assumed for each child | 4 years | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, goals_and_resources | `planeir.assumption.college_duration_years` |
@@ -419,6 +477,42 @@ Catalogue version `planeir-assumptions-1.6.0`. 12 figures.
 | Cash reserve target for a working household, in months of spending | 6 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis, house_purchase | `planeir.assumption.reserve_months.working.target` |
 | Cash reserve floor for a retired household, in months of spending | 12 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis | `planeir.assumption.reserve_months.retired.minimum` |
 | Cash reserve target for a retired household, in months of spending | 24 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis | `planeir.assumption.reserve_months.retired.target` |
+| Number of the HSE list of maximum agreed nursing home prices that the care fees come from | 230 | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.list_number` |
+| Date of that HSE list of maximum agreed nursing home prices | 4 September 2026 | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.list_date` |
+| Homes with a price in that HSE list | 411 | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.homes_in_list` |
+| Average weekly nursing home fee across the list, a simple average of each home’s price | €1,312 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.national_weekly_average` |
+| Lowest weekly nursing home fee in the list | €1,192 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.lowest_weekly` |
+| Highest weekly nursing home fee in the list | €1,508 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.highest_weekly` |
+| Average weekly nursing home fee in Co. Carlow, a simple average of each home’s price in the list | €1,256 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.carlow.average` |
+| Average weekly nursing home fee in Co. Cavan, a simple average of each home’s price in the list | €1,291 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.cavan.average` |
+| Average weekly nursing home fee in Co. Clare, a simple average of each home’s price in the list | €1,260 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.clare.average` |
+| Average weekly nursing home fee in Co. Cork, a simple average of each home’s price in the list | €1,307 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.cork.average` |
+| Average weekly nursing home fee in Co. Donegal, a simple average of each home’s price in the list | €1,259 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.donegal.average` |
+| Average weekly nursing home fee in Co. Dublin, a simple average of each home’s price in the list | €1,414 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.dublin.average` |
+| Average weekly nursing home fee in Co. Galway, a simple average of each home’s price in the list | €1,269 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.galway.average` |
+| Average weekly nursing home fee in Co. Kerry, a simple average of each home’s price in the list | €1,262 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.kerry.average` |
+| Average weekly nursing home fee in Co. Kildare, a simple average of each home’s price in the list | €1,341 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.kildare.average` |
+| Average weekly nursing home fee in Co. Kilkenny, a simple average of each home’s price in the list | €1,274 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.kilkenny.average` |
+| Average weekly nursing home fee in Co. Laois, a simple average of each home’s price in the list | €1,284 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.laois.average` |
+| Average weekly nursing home fee in Co. Leitrim, a simple average of each home’s price in the list | €1,276 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.leitrim.average` |
+| Average weekly nursing home fee in Co. Limerick, a simple average of each home’s price in the list | €1,263 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.limerick.average` |
+| Average weekly nursing home fee in Co. Longford, a simple average of each home’s price in the list | €1,276 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.longford.average` |
+| Average weekly nursing home fee in Co. Louth, a simple average of each home’s price in the list | €1,296 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.louth.average` |
+| Average weekly nursing home fee in Co. Mayo, a simple average of each home’s price in the list | €1,272 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.mayo.average` |
+| Average weekly nursing home fee in Co. Meath, a simple average of each home’s price in the list | €1,313 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.meath.average` |
+| Average weekly nursing home fee in Co. Monaghan, a simple average of each home’s price in the list | €1,289 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.monaghan.average` |
+| Average weekly nursing home fee in Co. Offaly, a simple average of each home’s price in the list | €1,262 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.offaly.average` |
+| Average weekly nursing home fee in Co. Roscommon, a simple average of each home’s price in the list | €1,254 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.roscommon.average` |
+| Average weekly nursing home fee in Co. Sligo, a simple average of each home’s price in the list | €1,332 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.sligo.average` |
+| Average weekly nursing home fee in Co. Tipperary, a simple average of each home’s price in the list | €1,270 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.tipperary.average` |
+| Average weekly nursing home fee in Co. Waterford, a simple average of each home’s price in the list | €1,283 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.waterford.average` |
+| Average weekly nursing home fee in Co. Westmeath, a simple average of each home’s price in the list | €1,241 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.westmeath.average` |
+| Average weekly nursing home fee in Co. Wexford, a simple average of each home’s price in the list | €1,265 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.wexford.average` |
+| Average weekly nursing home fee in Co. Wicklow, a simple average of each home’s price in the list | €1,338 a week | 2026-09-04 | approved | [HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230](https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf) | 2026-10-21 | care_costs | `planeir.assumption.care.agreed_prices.county.wicklow.average` |
+| Years of care shown for a relative by default | 5 years | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | care_costs | `planeir.assumption.care.relative_care.default_years` |
+| Other lengths of care shown beside the default, in years | 3, 10 | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | care_costs | `planeir.assumption.care.relative_care.compare_years` |
+| Age at which the own-care stress test starts | age 85 | — | approved | Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019) | 2026-10-21 | care_costs, plan_pack | `planeir.assumption.care.own_care_stress.start_age` |
+| Years of care in the own-care stress test | 5 years | — | approved | Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019) | 2026-10-21 | care_costs, plan_pack | `planeir.assumption.care.own_care_stress.years` |
 
 ## Market figures
 

@@ -456,7 +456,7 @@ check('the rate in force on a date is the last row on or before it, and a date b
   assert.throws(() => socialWelfareRateOn('ie.social_welfare.nope', '2026-06-01'), /No social welfare rate has the id/);
 });
 
-check('every row is the rate the Department printed, as read from its pages on 22 October 2026', () => {
+check('every row is the rate the Department printed, as read from its pages on 22 and 27 October 2026', () => {
   // Typed here on purpose, from the Budget 2026 table and the scheme pages, so a
   // slip in the catalogue cannot agree with itself. Rows from later Budgets are
   // checked in the same way when they are recorded.
@@ -467,7 +467,9 @@ check('every row is the rate the Department printed, as read from its pages on 2
     'ie.social_welfare.bereaved_partners_contributory.personal_66_to_79': 299.30,
     'ie.social_welfare.bereaved_partners_contributory.personal_80_and_over': 309.30,
     'ie.social_welfare.invalidity_pension.personal': 259.50,
-    'ie.social_welfare.illness_benefit.personal_highest': 254.00
+    'ie.social_welfare.illness_benefit.personal_highest': 254.00,
+    // The scheme page, 27 October 2026: "aged 66 and under 80, the maximum rate is €288 from 2 January 2026".
+    'ie.social_welfare.state_pension_non_contributory.personal_66_to_79': 288
   };
   assert.deepEqual(SOCIAL_WELFARE_SERIES.map((series) => series.id).sort(), Object.keys(printed2026).sort());
   for (const [id, weekly] of Object.entries(printed2026)) {
@@ -481,7 +483,9 @@ check('every row is the rate the Department printed, as read from its pages on 2
     'ie.social_welfare.bereaved_partners_contributory.personal_66_to_79': 309.30,
     'ie.social_welfare.bereaved_partners_contributory.personal_80_and_over': 319.30,
     'ie.social_welfare.invalidity_pension.personal': 269.50,
-    'ie.social_welfare.illness_benefit.personal_highest': 264.00
+    'ie.social_welfare.illness_benefit.personal_highest': 264.00,
+    // Budget 2027 table, Social assistance payments, "Aged 66 and under 80": 298.00.
+    'ie.social_welfare.state_pension_non_contributory.personal_66_to_79': 298
   };
   for (const [id, weekly] of Object.entries(printed2027)) {
     const rate = socialWelfareRateOn(id, '2027-01-01');
@@ -577,7 +581,7 @@ check('the staleness check bites: change one catalogue value and the index and r
 
 check('every catalogue reaches the register, with its version', () => {
   const ids = FIGURES_CATALOGUES.map((catalogue) => catalogue.id).sort();
-  assert.deepEqual(ids, ['house_purchase_rules', 'ie_market', 'ie_planning_rules', 'ie_social_welfare', 'ie_tax_rules', 'planeir_assumptions']);
+  assert.deepEqual(ids, ['house_purchase_rules', 'ie_fair_deal_rules', 'ie_market', 'ie_planning_rules', 'ie_social_welfare', 'ie_tax_rules', 'planeir_assumptions']);
   FIGURES_CATALOGUES.forEach((catalogue) => assert.ok(catalogue.version && catalogue.count > 0, catalogue.id));
   assert.equal(FIGURES_CATALOGUES.reduce((total, catalogue) => total + catalogue.count, 0), FIGURES_INDEX.length);
 });
