@@ -310,7 +310,7 @@ line(`  database ${meeting.databasePath}`);
  * questions make sense to someone who did not read the script.
  */
 const MAX_LIVE_TURNS = Number(flag('turns', '14')) || 14;
-const liveInstructions = MODEL_MODE === 'live' ? buildLiveCataloguePrompt() : '';
+const liveInstructions = MODEL_MODE === 'live' ? buildLiveCataloguePrompt({ planDateIso: new Date().toISOString().slice(0, 10) }) : '';
 const liveInput = [];
 const liveTranscript = [];
 

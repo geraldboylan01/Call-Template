@@ -900,18 +900,14 @@ checkAsync('the pinned design catalogue holds across an async run until it settl
 
 /**
  * Where the State Pension rate is still typed into wording instead of read from the
- * catalogue. They are all the Worker's spoken and prompt text for the live lane, which
- * says the 2026 rate whatever the date. A ratchet like the others: a new copy fails,
- * and so does a listed file once it no longer has one.
+ * catalogue. None: the Worker's spoken and prompt text for the live lane reads the
+ * rate for the plan's own year from `statePensionRuleForYear`. The list stays as a
+ * ratchet, so a copy added anywhere fails here until it is read from the catalogue
+ * too, or named below with the reason it cannot be.
  */
-const KNOWN_STATE_PENSION_COPIES = [
-  'worker/src/consumer/live/compliance.js',
-  'worker/src/consumer/realtime_completion.js',
-  'worker/src/consumer/realtime_planner.js',
-  'worker/src/consumer/realtime_provider.js'
-];
+const KNOWN_STATE_PENSION_COPIES = [];
 
-check('the State Pension rate is typed in nowhere outside the catalogue, apart from the named wording that still says the 2026 rate', () => {
+check('the State Pension rate is typed in nowhere outside the catalogue', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
   const skip = /(^|\/)(tests_[^/]*|figures_index\.generated|social_welfare_ie|playbook_manifest\.generated)\.js$|node_modules/;
   const found = [];

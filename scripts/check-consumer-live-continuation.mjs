@@ -11,6 +11,9 @@ import assert from 'node:assert/strict';
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 import { ConsumerLiveSession } from '../worker/src/consumer/live/live_session.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 function fakeDurableState(initial = {}) {
   const values = new Map(Object.entries(initial));
   const waitUntilPromises = [];
@@ -80,7 +83,7 @@ function assertStringMetadata(metadata) {
     'a reconstructed Durable Object must not repeat an already-requested opening');
 }
 
-const prompt = buildLiveCataloguePrompt();
+const prompt = buildLiveCataloguePrompt({ planDateIso: TEST_PLAN_DATE });
 assert.match(prompt, /Before the client has spoken, open once:/,
   'ORIENT must have an explicit empty-conversation branch');
 assert.match(prompt, /Planeir, an AI\s+planning companion/,
