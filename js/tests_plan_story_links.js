@@ -96,6 +96,9 @@ export async function runPlanStoryLinksTests() {
     const result = await openStoryLink({ chapter: null, panel: 'ledger', caseId: null, focusTargetId: null }, app.deps);
     assertEqual(app.calls, ['panel:ledger'], 'panel only');
     assertEqual(result.moduleId, null, 'no module');
+    app.deps.openPanel = () => false;
+    const unavailable = await openStoryLink({ panel: 'ledger' }, app.deps);
+    assertEqual([unavailable.opened, unavailable.reason], [false, 'panel_missing'], 'unconnected panel is not reported as opened');
   });
 
   await test('changing the case away from the route is noticed, and Back to the route restores it', async () => {
@@ -120,6 +123,29 @@ export async function runPlanStoryLinksTests() {
     for (const chapter of new Set(links.filter((x) => !x.target.caseId).map((x) => x.target.chapter))) {
       assert(!PLAN_STORY_SAMPLE_CATALOGUE.cases[chapter], `${chapter} has cases, so a link to it must name one`);
     }
+  });
+
+  await test('compiled case ids select and restore the native case, preserving focus identity', async () => {
+    const target = { chapter: 'loan_analysis', caseId: 'case-compiled', nativeCaseId: 'clear', focusTargetId: 'loan/interest', figureText: '€1,293' };
+    const app = pretendApp({ modules: { loan_analysis: 'm-loan' } });
+    const result = await openStoryLink(target, app.deps);
+    assertEqual(result.caseId, 'clear', 'native case selected');
+    assert(app.calls.includes('outline:m-loan:loan/interest:€1,293'), 'focus target handed through');
+    assertEqual(evaluateOffRoute({ target, currentCaseId: 'clear' }), { offRoute: false }, 'native case follows');
+    await backToRoute(target, 'm-loan', app.deps);
+    assertEqual(app.calls.at(-1), 'case:m-loan:clear', 'native case restored');
+  });
+
+  await test('a lying case setter or missing presenter target never opens the module', async () => {
+    const app = pretendApp({ modules: { loan_analysis: 'm-loan' } });
+    app.deps.setCase = () => true;
+    const failed = await openStoryLink({ chapter: 'loan_analysis', caseId: 'clear' }, app.deps);
+    assertEqual(failed.reason, 'case_missing', 'getter verifies setter');
+    assert(!app.calls.some((call) => call.startsWith('open:')), 'wrong case never shown');
+    app.deps.validateTarget = () => false;
+    const missing = await openStoryLink({ chapter: 'loan_analysis', caseId: 'clear', focusTargetId: 'missing' }, app.deps);
+    assertEqual(missing.reason, 'target_missing', 'bad target refused');
+    assert(!app.calls.some((call) => call.startsWith('open:')), 'wrong target never shown');
   });
 
   return results;

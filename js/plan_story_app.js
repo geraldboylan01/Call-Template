@@ -9,6 +9,7 @@ import {
 } from './plan_story_view.js';
 import { PLAN_STORY_CASE_BRIDGES, backToRoute, evaluateOffRoute, openStoryLink } from './plan_story_links.js';
 import { clearOutline, outlineFigure } from './plan_story_outline.js';
+import { buildPresentationCatalogue } from './presenter_catalogue.js';
 
 /**
  * THE STORY ON THE OVERVIEW SCREEN.
@@ -86,7 +87,16 @@ export function createPlanStoryController({ ui, app }) {
   }
 
   function makeDeps(target) {
+    let focusTarget = null;
     return {
+      validateTarget: (source, moduleId) => {
+        if (!source.focusTargetId) return true;
+        const catalogue = buildPresentationCatalogue(session());
+        const module = catalogue.modules.find((entry) => entry.moduleId === moduleId);
+        focusTarget = catalogue.targets.find((entry) => entry.id === source.focusTargetId);
+        return Boolean(focusTarget && module && focusTarget.moduleKey === module.key && focusTarget.available && focusTarget.ref.type !== 'chart-point'
+          && (!focusTarget.scenarioId || focusTarget.scenarioId === (source.nativeCaseId ?? source.caseId)));
+      },
       findModule: (chapter) => {
         const id = planStoryOf()?.chapterModules?.[chapter];
         return id && session().modules.some((module) => module.id === id) ? id : null;
@@ -96,10 +106,11 @@ export function createPlanStoryController({ ui, app }) {
       openModule: (moduleId) => app.openModule(moduleId),
       // Nothing to ring if the module did not open (the app ignores an open while a transition is running).
       outline: (_moduleId, _focusTargetId, figureText) => (app.getMode() !== 'focused' ? false : outlineFigure(ui.focusLayer, {
+        focusTarget,
         selector: target.outlineSelector || null,
         text: target.outlineText || figureText || null
       })),
-      openPanel: async () => { app.toast('That part of the plan is not on this screen yet.', 'error'); }
+      openPanel: async () => false
     };
   }
 
@@ -121,9 +132,14 @@ export function createPlanStoryController({ ui, app }) {
       const routeId = planStory.selectedRouteId;
       const result = await openStoryLink(target, makeDeps(target), { routeId });
       if (!result.opened) {
+        if (result.reason === 'panel_missing') {
+          app.toast('That part of the plan is not on this screen yet.', 'error');
+          return;
+        }
         const { module } = titles(result.chapter);
         app.toast(result.reason === 'case_missing'
           ? `That case is not available in ${module}.`
+          : result.reason === 'target_missing' ? `That figure is not available in ${module}.`
           : `${module} is not part of this plan.`, 'error');
         return;
       }

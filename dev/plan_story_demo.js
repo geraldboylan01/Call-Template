@@ -2,6 +2,7 @@ import { createBlankModule, normalizePayload, applyNormalizedPayloadToModule } f
 import { computePersonalBalanceSheet } from '../js/personal_balance_sheet.js';
 import { newSession, importSession, drainSessionImportWarnings } from '../js/state.js';
 import { buildSamplePlanStory } from '../js/tests_plan_story_sample.js';
+import { buildPresentationCatalogue } from '../js/presenter_catalogue.js';
 
 /**
  * A DEMO SESSION FOR THE REAL APP.
@@ -127,6 +128,12 @@ export function buildDemoSession() {
   session.order = session.modules.map((module) => module.id);
   session.activeModuleId = session.order[0];
   session.planStory = buildSamplePlanStory(Object.fromEntries(Object.entries(modules).map(([chapter, module]) => [chapter, module.id])));
+  const catalogue = buildPresentationCatalogue(session);
+  const facts = session.planStory.registries['route-3'];
+  for (const [key, metric] of [['position.savings', 'current-cash'], ['position.reserve', 'target-reserve']]) {
+    const target = catalogue.targets.find((entry) => entry.ref.type === 'liquidity-metric' && entry.ref.key === metric);
+    if (target) facts[key].source.focusTargetId = target.id;
+  }
   return importSession(JSON.stringify(session));
 }
 

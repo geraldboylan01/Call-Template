@@ -52,6 +52,19 @@ try {
 
     await page.goto(`${server.origin}/dev/plan-story-demo.html`);
     await page.waitForSelector('body[data-ready="true"]');
+    // The catalogue target must win over a stale text/selector hint. Also use a
+    // distinct fixture chapter case id so a native-case regression cannot hide.
+    await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem('call_canvas_session_current'));
+      const facts = session.planStory.registries['route-3'];
+      if (!facts['position.savings'].source.focusTargetId) throw new Error('Demo has no presenter focus target.');
+      facts['position.savings'].source.outlineText = 'No such fallback text';
+      facts['position.savings'].source.outlineSelector = '[data-no-such-fallback]';
+      facts['route.goals.mortgage.extraMonthly'].source.caseId = 'case-demo-mortgage-extra';
+      facts['route.goals.mortgage.extraMonthly'].source.nativeCaseId = 'extra';
+      session.planStory.catalogue.cases.mortgage_analysis['case-demo-mortgage-extra'] = 'Pay €371 more a month';
+      localStorage.setItem('call_canvas_session_current', JSON.stringify(session));
+    });
     await page.goto(`${server.origin}/app/index.html`);
     await page.waitForSelector('.ps .ps-headline', { timeout: 20000 });
     await page.waitForTimeout(500);
@@ -64,6 +77,7 @@ try {
       const scroll = document.querySelector('#overviewViewport').scrollTop;
       return { storyBottom: story.bottom + scroll, gridTop: grid.top + scroll, cards: document.querySelectorAll('.overview-card').length, overflow: document.documentElement.scrollWidth - innerWidth };
     });
+    assert.equal(await page.locator('.ps-section').count(), 9, 'all nine B1.5 sections are shown in order');
     assert.equal(layout.cards, 8, 'every module has a card in the grid');
     assert.ok(layout.gridTop >= layout.storyBottom - 5, `the grid sits below the story (${JSON.stringify(layout)})`);
     assert.equal(layout.overflow, 0, 'the page does not scroll sideways');
@@ -78,7 +92,7 @@ try {
 
     // Every linked figure.
     const { chapterModules } = await page.evaluate(() => JSON.parse(localStorage.getItem('call_canvas_session_current')).planStory);
-    const links = await page.$$eval('.ps-link', (nodes) => nodes.map((node) => ({ key: node.dataset.psKey, chapter: node.dataset.psChapter, caseId: node.dataset.psCase, text: node.querySelector('span').textContent })));
+    const links = await page.$$eval('.ps-link', (nodes) => nodes.map((node) => ({ key: node.dataset.psKey, chapter: node.dataset.psChapter, caseId: node.dataset.psCase, nativeCaseId: node.dataset.psNativeCase, focusTargetId: node.dataset.psFocusTarget, text: node.querySelector('span').textContent })));
     assert.ok(links.length >= 15, `the sample story links its figures (${links.length})`);
     for (let index = 0; index < links.length; index += 1) {
       const link = links[index];
@@ -93,6 +107,7 @@ try {
         const active = document.querySelector('.swipe-pane.active');
         return {
           ringText: document.querySelector('.ps-outline').dataset.psFigure || '',
+          focusTargetId: document.querySelector('.ps-outline').dataset.psFocusTarget || '',
           paneText: (active?.innerText || '').replace(/\s+/g, ' ').trim(),
           caseNow: getter ? getter(moduleId) : null,
           activeIsModule: Boolean(active && moduleId),
@@ -108,7 +123,8 @@ try {
       } else {
         assert.ok(seen.ringText.includes(expected), `${link.key}: the ring holds "${expected}", not "${seen.ringText}"`);
       }
-      if (link.caseId) assert.equal(seen.caseNow, link.caseId, `${link.key}: opens ${link.chapter} on ${link.caseId}`);
+      if (link.caseId) assert.equal(seen.caseNow, link.nativeCaseId || link.caseId, `${link.key}: opens ${link.chapter} on its native case`);
+      if (link.focusTargetId) assert.equal(seen.focusTargetId, link.focusTargetId, `${link.key}: focuses the exact registered presenter target`);
       assert.ok(seen.pill && !seen.offRoute, `${link.key}: the pill is there and the screen follows the route`);
       await page.click('.ps-pill');
       await page.waitForFunction(() => !document.body.classList.contains('focus-mode'), null, { timeout: 10000 });
@@ -139,6 +155,30 @@ try {
     await page.click('.ps-pill');
     await page.waitForFunction(() => !document.body.classList.contains('focus-mode'), null, { timeout: 10000 });
     note('off the route shows the note, and Back to the route puts the case back');
+
+    // A missing target is refused before opening any module, even though its
+    // former text still exists. This is navigation validation, not the future
+    // compiled-plan value/unit/formatting checker.
+    const validSession = await page.evaluate(() => localStorage.getItem('call_canvas_session_current'));
+    // Leave the app before changing storage: its unload handler saves the live session.
+    await page.goto(`${server.origin}/dev/plan-story-demo.html`);
+    await page.waitForSelector('body[data-ready="true"]');
+    await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem('call_canvas_session_current'));
+      session.planStory.registries['route-3']['position.savings'].source.focusTargetId = 'missing/target';
+      localStorage.setItem('call_canvas_session_current', JSON.stringify(session));
+    });
+    await page.goto(`${server.origin}/app/index.html`);
+    await page.waitForSelector('.ps .ps-headline');
+    await page.locator('.ps-link[data-ps-key="position.savings"]').click();
+    await page.waitForFunction(() => document.body.innerText.includes('That figure is not available in Cash reserve.'));
+    assert.equal(await page.locator('body.focus-mode').count(), 0, 'missing focus target never opens a module');
+    await page.goto(`${server.origin}/dev/plan-story-demo.html`);
+    await page.waitForSelector('body[data-ready="true"]');
+    await page.evaluate((saved) => localStorage.setItem('call_canvas_session_current', saved), validSession);
+    await page.goto(`${server.origin}/app/index.html`);
+    await page.waitForSelector('.ps .ps-headline');
+    note('native cases and presenter targets are followed; a missing target is refused');
 
     // A route with no story yet, and a reload.
     await page.evaluate(() => { document.querySelector('#overviewViewport').scrollTop = 0; });

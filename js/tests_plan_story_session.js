@@ -94,7 +94,15 @@ export function runPlanStorySessionTests() {
     const planStory = normalize(buildSamplePlanStory(MODULES)).result;
     const screen = buildPlanStoryScreen(planStory, { modules: [] }, 'route-2');
     assertEqual([screen.storyMissing, screen.resolved, screen.route.id], [true, null, 'route-2'], 'missing story');
-    assertEqual(buildPlanStoryScreen(planStory, { modules: [] }, 'route-3').resolved.count, 8, 'route 3 resolves');
+    assertEqual(buildPlanStoryScreen(planStory, { modules: [] }, 'route-3').resolved.count, 9, 'route 3 resolves');
+  });
+
+  test('a story cannot claim a different route from the one it is stored under', () => {
+    const raw = buildSamplePlanStory(MODULES);
+    raw.stories['route-3'].routeId = 'route-1';
+    const { result, warnings } = normalize(raw);
+    assertEqual(result.stories, {}, 'wrong-route story left out');
+    assert(warnings[0].includes('routeId does not match'), 'says why');
   });
 
   return results;

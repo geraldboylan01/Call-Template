@@ -25,7 +25,7 @@ function isVisible(element) {
 }
 
 /** The smallest visible element in `root` whose text holds `text`. */
-export function findElementWithText(root, text) {
+function findElementWithText(root, text) {
   const needle = squash(text);
   if (!needle) return null;
   const hits = [...root.querySelectorAll('*')].filter((element) => (
@@ -37,7 +37,31 @@ export function findElementWithText(root, text) {
   return smallest.find(isVisible) || null;
 }
 
-export function findFigureElement(root, { selector = null, text = null } = {}) {
+function findFigureElement(root, { selector = null, text = null, focusTarget = null } = {}) {
+  if (focusTarget) {
+    const ref = focusTarget.ref;
+    const attr = (value) => CSS.escape(String(value));
+    const block = ref.blockId ? root.querySelector(`[data-report-block-id="${attr(ref.blockId)}"]`) : root;
+    let element = null;
+    switch (ref.type) {
+      case 'module': element = root; break;
+      case 'card': element = root.querySelector(`[data-module-card-id="${attr(ref.cardId)}"], [data-generated-card="${attr(ref.cardId)}"]`); break;
+      case 'pbs-bucket': element = root.querySelector(`.pbs-bucket-card[data-pbs-section-key="${attr(ref.section)}"], .pbs-stacked-card[data-pbs-section-key="${attr(ref.section)}"]`); break;
+      case 'pbs-row': element = root.querySelector(`[data-pbs-section-key="${attr(ref.section)}"][data-pbs-row-label="${attr(ref.rowKey)}"]`); break;
+      case 'liquidity-metric': element = root.querySelector(`[data-presenter-metric="${attr(ref.key)}"]`); break;
+      case 'report-block': element = block; break;
+      case 'report-item': element = block?.querySelector(`[data-report-item-id="${attr(ref.itemId)}"]`); break;
+      case 'output-row': element = root.querySelectorAll('[data-generated-card="outputs"] tbody tr')[ref.row]; break;
+      case 'table-row': element = block?.querySelectorAll('tbody tr')[ref.row]; break;
+      case 'timeline-event': element = block?.querySelector(`[data-timeline-event-id="${attr(ref.eventId)}"]`); break;
+      case 'chart': element = root.querySelector(`[data-chart-index="${ref.chartIndex}"]`); break;
+      // Exact chart-point attention needs the presenter's chart API; never substitute another figure.
+      default: return null;
+    }
+    const disclosure = element?.closest('details');
+    if (disclosure) disclosure.open = true;
+    return element && isVisible(element) ? element : null;
+  }
   if (selector) {
     let found = null;
     try { found = root.querySelector(selector); } catch (_error) { found = null; }
@@ -62,14 +86,14 @@ export function clearOutline() {
  * the middle of the screen, rings it once and takes the ring away again.
  * Resolves true when a ring was drawn.
  */
-export async function outlineFigure(root, { selector = null, text = null, timeoutMs = 3000 } = {}) {
+export async function outlineFigure(root, { selector = null, text = null, focusTarget = null, timeoutMs = 3000 } = {}) {
   clearOutline();
-  if (!root || (!selector && !text)) return false;
+  if (!root || (!focusTarget && !selector && !text)) return false;
 
   const started = Date.now();
   let element = null;
   while (!element && Date.now() - started < timeoutMs) {
-    element = findFigureElement(root, { selector, text });
+    element = findFigureElement(root, { selector, text, focusTarget });
     if (!element) await wait(120);
   }
   if (!element) return false;
@@ -95,6 +119,7 @@ export async function outlineFigure(root, { selector = null, text = null, timeou
   ring.setAttribute('data-ps-chrome', '');
   // What the ring is around, in the module's own words, so a check can compare it with the story.
   ring.setAttribute('data-ps-figure', squash(element.textContent).slice(0, 200));
+  if (focusTarget) ring.setAttribute('data-ps-focus-target', focusTarget.id);
   Object.assign(ring.style, {
     top: `${rect.top - pad}px`,
     left: `${rect.left - pad}px`,

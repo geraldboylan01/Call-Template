@@ -37,17 +37,21 @@ export const PLAN_STORY_CASE_BRIDGES = Object.freeze({
  */
 export async function openStoryLink(target, deps, { routeId = null } = {}) {
   if (target.panel && !target.chapter) {
-    await deps.openPanel(target.panel);
+    if (await deps.openPanel(target.panel) === false) return { opened: false, reason: 'panel_missing', panel: target.panel, routeId };
     return { opened: true, panel: target.panel, moduleId: null, caseId: null, outlined: false, routeId };
   }
   const moduleId = deps.findModule(target.chapter);
   if (!moduleId) return { opened: false, reason: 'module_missing', chapter: target.chapter, routeId };
 
+  const nativeCaseId = target.nativeCaseId ?? target.caseId;
+  if (deps.validateTarget && !deps.validateTarget(target, moduleId)) {
+    return { opened: false, reason: 'target_missing', chapter: target.chapter, routeId };
+  }
   let caseId = null;
-  if (target.caseId) {
-    const set = await deps.setCase(moduleId, target.caseId);
-    if (!set) return { opened: false, reason: 'case_missing', chapter: target.chapter, caseId: target.caseId, routeId };
-    caseId = target.caseId;
+  if (nativeCaseId) {
+    const set = await deps.setCase(moduleId, nativeCaseId);
+    if (!set || (deps.currentCase && deps.currentCase(moduleId) !== nativeCaseId)) return { opened: false, reason: 'case_missing', chapter: target.chapter, caseId: nativeCaseId, routeId };
+    caseId = nativeCaseId;
   } else {
     caseId = deps.currentCase?.(moduleId) ?? null;
   }
@@ -67,13 +71,15 @@ export function evaluateOffRoute({ target, currentCaseId, caseTitles = {} }) {
   if (followsRoute(target, currentCaseId)) return { offRoute: false };
   return {
     offRoute: true,
-    caseWas: caseTitles[target.caseId] ?? target.caseId,
+    caseWas: caseTitles[target.caseId] ?? caseTitles[target.nativeCaseId] ?? target.nativeCaseId ?? target.caseId,
     caseNow: caseTitles[currentCaseId] ?? currentCaseId
   };
 }
 
 /** "Back to the route": put the module back on the case the link opened. */
 export async function backToRoute(target, moduleId, deps) {
-  if (!target.caseId) return true;
-  return Boolean(await deps.setCase(moduleId, target.caseId));
+  const nativeCaseId = target.nativeCaseId ?? target.caseId;
+  if (!nativeCaseId) return true;
+  const set = await deps.setCase(moduleId, nativeCaseId);
+  return Boolean(set && (!deps.currentCase || deps.currentCase(moduleId) === nativeCaseId));
 }

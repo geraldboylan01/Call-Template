@@ -32,7 +32,7 @@ export class PlanStoryError extends Error {
 const fail = (path, message, code) => { throw new PlanStoryError(path, message, code); };
 
 /** Words that rank routes. The plan never ranks, so a story may not either. */
-export const PLAN_STORY_RANKING_WORDS = Object.freeze([
+const PLAN_STORY_RANKING_WORDS = Object.freeze([
   /\bbetter\b/i,
   /\bworse\b/i,
   /\bcheapest\b/i,
@@ -54,11 +54,15 @@ const FORBIDDEN = Object.freeze([
 const PLACEHOLDER = /\{(@?)([a-z][A-Za-z0-9_.-]*)\}/g;
 
 /** The five education-only parts a section may be told in, in the order they read. */
-export const PLAN_STORY_PARTS = Object.freeze(['does', 'why', 'gives', 'costs', 'check']);
+const PLAN_STORY_PARTS = Object.freeze(['does', 'why', 'gives', 'costs', 'check']);
+const SECTION_IDS = Object.freeze([
+  'current_position', 'ledger', 'protecting', 'inefficiencies', 'goals',
+  'cash_flow_after', 'net_worth_after', 'risks', 'check_next'
+]);
 
 /** Words, and only words: a figure, a date or a percentage is always a placeholder. */
 export function findTypedFigures(text) {
-  return String(text).match(/[0-9€%£$]/g) || [];
+  return String(text).match(/[\p{N}€%£$]/gu) || [];
 }
 
 export function findForbiddenWording(text) {
@@ -103,16 +107,22 @@ function checkWords(text, path) {
 function readFact(fact, path) {
   if (!fact || typeof fact !== 'object') fail(path, 'is not a registered fact.', 'unknown_placeholder');
   const text = typeof fact.text === 'string' && fact.text.trim() ? fact.text.trim() : null;
-  const reason = typeof fact.notApplicable === 'string' && fact.notApplicable.trim() ? fact.notApplicable.trim() : null;
-  if (!text && !reason) fail(path, 'has neither a value nor a reason there is none.', 'empty_fact');
-  return { text: text ?? reason, reason: !text };
+  if (!text) fail(path, 'has no computed value. Register a .notApplicable key for a code-produced reason.', 'empty_fact');
+  return { text };
 }
 
 function readSource(source, path) {
   if (!source) return null;
-  if (typeof source !== 'object') fail(path, 'must be an object.');
+  if (typeof source !== 'object' || Array.isArray(source)) fail(path, 'must be an object.', 'bad_source');
   const { chapter = null, caseId = null, nativeCaseId = null, focusTargetId = null, panel = null, outlineText = null, outlineSelector = null } = source;
-  if (!chapter && !panel) fail(path, 'must name a chapter (a module) or a panel of the plan view.', 'bad_source');
+  if (Boolean(chapter) === Boolean(panel)) fail(path, 'must name either a chapter (a module) or a panel of the plan view.', 'bad_source');
+  for (const [name, value] of Object.entries({ chapter, caseId, nativeCaseId, focusTargetId, panel })) {
+    if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 500)) {
+      fail(`${path}.${name}`, 'must be a non-empty source identifier.', 'bad_source');
+    }
+  }
+  if (panel && (caseId || nativeCaseId)) fail(path, 'a plan panel cannot also name a module case.', 'bad_source');
+  if (nativeCaseId && !caseId) fail(path, 'a native case needs its chapter caseId.', 'bad_source');
   for (const [name, value] of [['outlineText', outlineText], ['outlineSelector', outlineSelector]]) {
     if (value !== null && (typeof value !== 'string' || !value.trim() || value.length > 200)) fail(`${path}.${name}`, 'must be a short non-empty string.', 'bad_source');
   }
@@ -122,7 +132,8 @@ function readSource(source, path) {
 /**
  * Turn narration into what the screen draws: text, plain figures, figures that
  * are links, and reasons. `registry` maps a placeholder key to
- * `{ text | notApplicable, source?: { chapter, caseId?, nativeCaseId?, focusTargetId?, panel? } }`.
+ * `{ text, source: { chapter, caseId?, nativeCaseId?, focusTargetId?, panel? } }`.
+ * Code-produced reasons are registered under their explicit `<key>.notApplicable` key.
  */
 export function resolveNarration(text, registry, { path = '/narration', label = () => null } = {}) {
   checkWordsInText(text, path);
@@ -131,10 +142,12 @@ export function resolveNarration(text, registry, { path = '/narration', label = 
     if (token.type === 'text') { segments.push(token); continue; }
     const where = `${path}{${token.link ? '@' : ''}${token.key}}`;
     const fact = readFact(registry?.[token.key], where);
-    if (fact.reason) { segments.push({ type: 'reason', key: token.key, text: fact.text }); continue; }
-    if (!token.link) { segments.push({ type: 'figure', key: token.key, text: fact.text }); continue; }
     const source = readSource(registry[token.key].source, `${where}.source`);
-    if (!source) fail(where, 'is marked as a link but the fact has no source to open.', 'unlinkable_placeholder');
+    if (!source) fail(where, token.link ? 'is marked as a link but the fact has no source to open.' : 'has no registered source.', token.link ? 'unlinkable_placeholder' : 'bad_source');
+    if (!token.link) {
+      segments.push({ type: token.key.endsWith('.notApplicable') ? 'reason' : 'figure', key: token.key, text: fact.text });
+      continue;
+    }
     segments.push({
       type: 'link',
       key: token.key,
@@ -154,11 +167,16 @@ function checkWordsInText(text, path) {
 }
 
 function sectionParagraphs(section, path) {
-  if (Array.isArray(section.paragraphs)) return section.paragraphs;
-  if (section.parts && typeof section.parts === 'object') {
+  if (section.paragraphs && section.parts) fail(path, 'must use paragraphs or parts, not both.');
+  // Paragraphs remain a screen-preview format, not evidence of the B1.5 completeness floor.
+  if (Array.isArray(section.paragraphs) && section.paragraphs.length) return section.paragraphs;
+  if (section.parts && typeof section.parts === 'object' && !Array.isArray(section.parts)) {
     const unknown = Object.keys(section.parts).filter((key) => !PLAN_STORY_PARTS.includes(key));
     if (unknown.length) fail(`${path}/parts`, `has parts the story does not know (${unknown.join(', ')}).`);
-    return PLAN_STORY_PARTS.filter((key) => section.parts[key]).map((key) => section.parts[key]);
+    for (const key of PLAN_STORY_PARTS) {
+      if (typeof section.parts[key] !== 'string' || !section.parts[key].trim()) fail(`${path}/parts/${key}`, 'needs this education-only part.');
+    }
+    return PLAN_STORY_PARTS.map((key) => section.parts[key]);
   }
   return fail(path, 'needs paragraphs, or the five parts (does, why, gives, costs, check).');
 }
@@ -168,7 +186,7 @@ function sectionParagraphs(section, path) {
  * themselves, never written by the analyst, so "See it in" can only name a
  * module the section really linked.
  */
-export function deriveSeeIn(paragraphs) {
+function deriveSeeIn(paragraphs) {
   const seen = new Map();
   for (const paragraph of paragraphs) {
     for (const segment of paragraph.segments) {
@@ -188,10 +206,14 @@ export function deriveSeeIn(paragraphs) {
  */
 export function resolveStory({ story, registry, catalogue = {} }) {
   if (!story || typeof story !== 'object') fail('/story', 'must be an object.');
+  if (typeof story.routeId !== 'string' || !story.routeId.trim()) fail('/story/routeId', 'needs its route id.');
+  if (!Array.isArray(story.sections) || story.sections.length !== SECTION_IDS.length) {
+    fail('/story/sections', 'needs all nine B1.5 sections, in their prescribed order.');
+  }
   const chapters = catalogue.chapters || {};
   const cases = catalogue.cases || {};
   const moduleTitle = (source) => chapters[source.chapter]?.title || source.panel || source.chapter;
-  const caseTitle = (source) => cases[source.chapter]?.[source.caseId] || null;
+  const caseTitle = (source) => cases[source.chapter]?.[source.caseId] || cases[source.chapter]?.[source.nativeCaseId] || null;
   const label = (source, key) => ({
     module: moduleTitle(source),
     case: caseTitle(source),
@@ -203,16 +225,18 @@ export function resolveStory({ story, registry, catalogue = {} }) {
 
   const sections = (story.sections || []).map((section, index) => {
     const path = `/story/sections/${index}`;
-    if (!section.id || !section.title) fail(path, 'needs an id and a title.');
+    if (section?.id !== SECTION_IDS[index]) fail(`${path}/id`, `must be ${SECTION_IDS[index]}; sections cannot be dropped, repeated or reordered.`);
+    const titleSegments = resolve(section.title, `${path}/title`);
     const paragraphs = sectionParagraphs(section, path).map((text, p) => ({
       segments: resolve(text, `${path}/paragraphs/${p}`)
     }));
     return {
       id: section.id,
-      title: section.title,
+      title: titleSegments.map((segment) => segment.text).join(''),
+      titleSegments,
       number: index + 1,
       paragraphs,
-      seeIn: deriveSeeIn(paragraphs).map((entry) => ({
+      seeIn: deriveSeeIn([{ segments: titleSegments }, ...paragraphs]).map((entry) => ({
         ...entry,
         title: chapters[entry.chapter]?.title || entry.panel || entry.chapter,
         glyph: chapters[entry.chapter]?.glyph || null
@@ -264,8 +288,8 @@ export function buildGlance(routes) {
 
 /** A link opens a module on the route's case. If the module is on another case, the screen no longer follows the route. */
 export function followsRoute(target, currentCaseId) {
-  if (!target?.caseId) return true;
-  return currentCaseId === target.caseId;
+  const nativeCaseId = target?.nativeCaseId ?? target?.caseId;
+  return !nativeCaseId || currentCaseId === nativeCaseId;
 }
 
 /** The words a tooltip shows for a link. */

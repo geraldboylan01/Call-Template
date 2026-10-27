@@ -12,14 +12,14 @@ import { buildGlance, resolveStory } from './plan_story_model.js';
  * one is dropped with a warning rather than allowed to stop the session opening.
  */
 
-export const PLAN_STORY_VERSION = 1;
+const PLAN_STORY_VERSION = 1;
 
-const MAX_ROUTES = 6;
+const MAX_ROUTES = 4;
 const MAX_FACTS = 400;
 const MAX_TEXT = 4000;
 
 /** Small marks until each module has an icon of its own. */
-export const PLAN_STORY_DEFAULT_GLYPHS = Object.freeze({
+const PLAN_STORY_DEFAULT_GLYPHS = Object.freeze({
   household_cash_flow: 'flow',
   liquidity_analysis: 'res',
   protection_gap: 'prot',
@@ -95,6 +95,7 @@ export function normalizePlanStory(raw, { warn = () => {} } = {}) {
     if (!story) continue;
     if (!isPlain(story) || !isPlain(registry) || Object.keys(registry).length > MAX_FACTS) { warn(`The story for ${route.id} was left out: it needs its facts.`); continue; }
     try {
+      if (story.routeId !== route.id) throw new Error('the story routeId does not match its route.');
       resolveStory({ story, registry, catalogue });
     } catch (error) {
       warn(`The story for ${route.id} was left out: ${error.message}`);

@@ -11,7 +11,7 @@
  * source, and the analyst writes only the words.
  */
 
-const fact = (text, source) => (source ? { text, source } : { text });
+const fact = (text, source = { panel: 'ledger' }) => ({ text, source });
 
 // A figure is a link only where a module prints it. Three of these have no module that does (what is left over
 // once the whole route is in place, a mortgage after rates rise, a college saving after costs rise), so they stay
@@ -25,12 +25,15 @@ export const PLAN_STORY_SAMPLE_REGISTRY = Object.freeze({
   'position.leftOver': fact('€11,000 a year', { chapter: 'household_cash_flow', caseId: 'today', outlineText: '€11,000' }),
   'position.savings': fact('€90,000', { chapter: 'liquidity_analysis', outlineText: '€90,000' }),
   'position.reserve': fact('€42,000', { chapter: 'liquidity_analysis', outlineText: '€42,000' }),
+  'position.reserveMonths': fact('six months', { chapter: 'liquidity_analysis' }),
+  'route.goals.coverage': fact('all goals are covered'),
+  'route.netWorth.changeWord': fact('Unchanged', { panel: 'net_worth_after' }),
   'protection.niamh.gap': fact('€38,000 a year short', { chapter: 'protection_gap', caseId: 'niamh-cannot-work', outlineText: '€38,000 a year short' }),
   'route.protection.niamh.months': fact('24 months', { chapter: 'protection_gap', caseId: 'niamh-cannot-work', outlineText: '24 months' }),
   'protection.dara.gap': fact('€26,000 a year short', { chapter: 'protection_gap', caseId: 'dara-cannot-work', outlineText: '€26,000 a year short' }),
   'loan.car.rate': fact('6%', { chapter: 'loan_analysis', caseId: 'clear', outlineText: '6%' }),
   'route.loan.car.balance': fact('€15,000 balance', { chapter: 'loan_analysis', caseId: 'clear', outlineText: '€15,000' }),
-  'route.loan.car.interestSaved': fact('€1,300 in interest', { chapter: 'loan_analysis', caseId: 'clear', outlineText: '€1,293' }),
+  'route.loan.car.interestSaved': fact('€1,293 in interest', { chapter: 'loan_analysis', caseId: 'clear', outlineText: '€1,293' }),
   'route.cashFlow.freed': fact('€6,000 a year', { chapter: 'household_cash_flow', caseId: 'clear-car', outlineText: '€6,000 less than today' }),
   'route.cashFlow.freedFrom': fact('2026'),
   'route.goals.college.yearly': fact('€3,600 a year', { chapter: 'future_cost_fund', caseId: 'yearly', outlineText: '€3,600 a year' }),
@@ -38,7 +41,7 @@ export const PLAN_STORY_SAMPLE_REGISTRY = Object.freeze({
   'route.goals.mortgage.clears': fact('2042 instead of 2046', { chapter: 'mortgage_analysis', caseId: 'extra', outlineSelector: '.rcm-hero-figure' }),
   'route.goals.mortgage.extraMonthly': fact('€371 more a month', { chapter: 'mortgage_analysis', caseId: 'extra', outlineText: 'Pay €371 more a month' }),
   'goals.retirement.age': fact('67'),
-  'goals.retirement.state': fact('on track', { chapter: 'pension_projection', outlineText: 'strong position' }),
+  'goals.retirement.state': fact('strong position', { chapter: 'pension_projection', outlineText: 'strong position' }),
   'route.cashFlow.leftOverAfter': fact('€8,900 a year'),
   'route.netWorth.after': fact('€625,000', { chapter: 'personal_balance_sheet', caseId: 'route3', outlineText: '€625,000' }),
   'route.netWorth.moved': fact('€15,000'),
@@ -73,17 +76,22 @@ export const PLAN_STORY_SAMPLE_CATALOGUE = Object.freeze({
 export const PLAN_STORY_SAMPLE_STORY = Object.freeze({
   routeId: 'route-3',
   headline: 'Clear the car loan first: {route.savingsUsed} from savings frees {route.cashFlow.freed}',
-  summary: 'College and the mortgage are paid from income, about {route.cashFlow.leftOverAfter} is left over and all goals are covered.',
+  summary: 'College and the mortgage are paid from income, about {route.cashFlow.leftOverAfter} is left over and {route.goals.coverage}.',
   sections: Object.freeze([
     {
       id: 'current_position',
       title: 'Where you are now',
-      paragraphs: ['You have about {@position.leftOver} left over after everything you pay, and {@position.savings} in savings. {@position.reserve} of that is your emergency fund, six months of spending, and every route leaves it untouched.']
+      paragraphs: ['You have about {@position.leftOver} left over after everything you pay, and {@position.savings} in savings. {@position.reserve} of that is your emergency fund, {position.reserveMonths} of spending, and every route leaves it untouched.']
+    },
+    {
+      id: 'ledger',
+      title: 'The money this route uses',
+      paragraphs: ['This route uses {route.savingsUsed} of savings to clear the car loan. The emergency fund stays set aside; the same money is not offered to another goal.']
     },
     {
       id: 'protecting',
       title: 'Protecting what you have',
-      paragraphs: ['If Niamh couldn’t work, you’d be {@protection.niamh.gap}. In this route your savings would cover that for {@route.protection.niamh.months}. If Dara couldn’t work, {@protection.dara.gap}.']
+      paragraphs: ['Your emergency fund is {position.reserve}, covering {position.reserveMonths} of spending. If Niamh couldn’t work, you’d be {@protection.niamh.gap}. In this route your savings would cover that for {@route.protection.niamh.months}. If Dara couldn’t work, {@protection.dara.gap}.']
     },
     {
       id: 'inefficiencies',
@@ -93,7 +101,7 @@ export const PLAN_STORY_SAMPLE_STORY = Object.freeze({
     {
       id: 'goals',
       title: 'Your goals, soonest first',
-      paragraphs: ['Ella’s college is covered by saving {@route.goals.college.yearly} from {route.goals.college.from}. The mortgage clears in {@route.goals.mortgage.clears} with {@route.goals.mortgage.extraMonthly}. Retirement at {goals.retirement.age} is {@goals.retirement.state}.']
+      paragraphs: ['Ella’s college is covered by saving {@route.goals.college.yearly} from {route.goals.college.from}. The mortgage clears in {@route.goals.mortgage.clears} with {@route.goals.mortgage.extraMonthly}. Retirement at {goals.retirement.age} is in a {@goals.retirement.state}.']
     },
     {
       id: 'cash_flow_after',
@@ -103,7 +111,7 @@ export const PLAN_STORY_SAMPLE_STORY = Object.freeze({
     {
       id: 'net_worth_after',
       title: 'Net worth after',
-      paragraphs: ['Unchanged at {@route.netWorth.after}. {route.netWorth.moved} moves from savings to clear the loan.']
+      paragraphs: ['{route.netWorth.changeWord} at {@route.netWorth.after}. {route.netWorth.moved} moves from savings to clear the loan.']
     },
     {
       id: 'risks',
@@ -126,7 +134,7 @@ export const PLAN_STORY_SAMPLE_ROUTES = Object.freeze([
   { id: 'route-4', number: 4, name: 'Use savings for college', savingsUsed: { text: '€28,700' }, leftOver: { text: '€6,500', approx: true }, goalsCovered: { text: 'All' } }
 ]);
 
-export const PLAN_STORY_SAMPLE_GLANCE_NOTE = 'Partly: Ella’s college is partly covered and the mortgage clears in 2046, after the 2042 goal.';
+const PLAN_STORY_SAMPLE_GLANCE_NOTE = 'Partly: Ella’s college is partly covered and the mortgage clears in 2046, after the 2042 goal.';
 
 /** The sample as a session carries it. `chapterModules` says which session module each chapter became. */
 export function buildSamplePlanStory(chapterModules = {}) {

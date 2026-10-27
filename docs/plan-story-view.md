@@ -50,7 +50,7 @@ planStory { version: 1, routes, selectedRouteId, stories: { [routeId]: story }, 
             catalogue, chapterModules: { [chapterId]: sessionModuleId }, glanceNote }
 story     { routeId, headline, summary, sections: [{ id, title, paragraphs | parts }] }
 registry  { 'position.leftOver': { text: '€11,000 a year', source: { chapter, caseId?, nativeCaseId?, focusTargetId?, panel?, outlineText?, outlineSelector? } }
-            'position.solvency': { notApplicable: 'There are no assets yet to measure against.' } }
+            'position.solvency.notApplicable': { text: 'There are no assets yet to measure against.', source: { panel: 'current_position' } } }
 catalogue { chapters: { household_cash_flow: { title, glyph } }, cases: { household_cash_flow: { today: 'Today' } } }
 routes    [{ id, number, name, savingsUsed, leftOver, goalsCovered }]   // in the plan's order, never ranked
 ```
@@ -59,12 +59,19 @@ This is the same placeholder rule as the B1.5 brief: narration types no figures,
 
 **A figure is a link only where a module prints it.** In the sample story three figures have no module that prints them, so they are plain text: what is left over once the whole route is in place (€8,900), the mortgage after rates rise (€3,700) and the college saving after costs rise (€4,000). The cash flow module can only clear an outgoing or add to a pension, so its own case for clearing the car shows €17,000 left over, not the route's €8,900.
 
-The browser check proves the other fifteen: each link opens the module the story named, on the case it named, and the ring is around the text that module prints for that figure. One of those is rounded in the story (the story says about €1,300 saved, the Car loan module prints €1,293).
+The browser check proves the other fifteen: each link opens the module the story named, on the case it named, and the ring is around the text that module prints for that figure. The sample loan figure now uses the module’s €1,293 and the pension state uses the module’s “strong position”; a successful sample check still does not validate a compiled plan.
 
-## Not done yet
+## B1.5 alignment and remaining work
 
-1. **A B1.5 checker rule that a linked figure equals what its module shows.** The browser check does this for the demo session. In the product the chapters are built from the same household facts, so they should agree by construction, but nothing proves it for a real plan: for every figure with a module source, compare it with the module's own output for that case. Decide at the same time how a rounded story figure ("about €1,300") is allowed to differ from the module's (€1,293).
-2. **Module icons.** The marks in `PLAN_STORY_GLYPHS` are stand-ins.
-3. **Route switching.** Choosing a route that has a story draws it; one without says it is updating. The recalculation that produces the other routes' stories is the analyst's side.
-4. **Plan panels.** A link whose source is a `panel` (a part of the plan view rather than a module) says it is not on this screen yet.
-5. **The ring uses the words the module prints.** `focusTargetId` is carried but not yet used; the presenter's focus targets could replace `outlineText` and `outlineSelector`.
+The [full comparison with B1.5 sections 1 and 3](plan-story-b15-alignment.md) lists every difference, the small fixes made here and the larger work left to connect.
+
+The model now requires all nine sections in order, including `ledger`. A declared `parts` object needs all five education-only parts. Paragraphs remain a preview format; resolving a preview is not a passed B1.5 completeness check. Section headings obey the same placeholder and no-typed-figures rules as the body. Every referenced placeholder has a module or plan-panel source; reasons use explicit `{key.notApplicable}` keys.
+
+Links use the registered `nativeCaseId` to select a module case where supplied, preserving the chapter’s `caseId`. Supplied presenter target IDs are validated against their module and native scenario and take precedence over text/selector hints. Existing holdings, metrics, rows, timeline events and disclosures can be outlined. Exact chart-point attention and plan-panel navigation are still unavailable and are refused rather than replaced with an unrelated figure. Links without presenter targets still use the sample display hints.
+
+The two main connections remain:
+
+1. Build the session’s story, facts, sources, chapter modules and route summaries from a **compiled plan**, including current-position facts and each route’s `chapterCases`. Today the app demo uses separately authored sample inputs and registry text.
+2. Implement the B1.5 checker rule that **every linked figure equals the linked module’s figure for the compiled route’s case**, including its native case, focus target, underlying value, unit, rounding and formatting. Use compiled inputs, results and versions; samples are not evidence for this rule.
+
+The comparison also records the content/what-if/limitation floor, ordered goal subsections, all five parts throughout the authored story, semantic wording checks, registered figures, plan panels, chart points and route recalculation. The module glyphs remain stand-ins.

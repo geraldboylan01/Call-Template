@@ -16,7 +16,7 @@ import { describeLink } from './plan_story_model.js';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Small module marks, stand-ins until each module has an icon of its own. */
-export const PLAN_STORY_GLYPHS = Object.freeze({
+const PLAN_STORY_GLYPHS = Object.freeze({
   flow: 'M2 5h10M9 2l3 3-3 3M14 11H4M7 8l-3 3 3 3',
   res: 'M3 4.5c0-1 2.2-1.8 5-1.8s5 .8 5 1.8-2.2 1.8-5 1.8-5-.8-5-1.8zM3 4.5v3c0 1 2.2 1.8 5 1.8s5-.8 5-1.8v-3M3 7.5v3c0 1 2.2 1.8 5 1.8s5-.8 5-1.8v-3',
   prot: 'M8 1.8l5 1.8v4.2c0 3-2.2 5-5 6.4-2.8-1.4-5-3.4-5-6.4V3.6z',
@@ -45,7 +45,7 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-export function buildGlyph(name, className = 'ps-g') {
+function buildGlyph(name, className = 'ps-g') {
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', className);
   svg.setAttribute('viewBox', '0 0 16 16');
@@ -75,7 +75,9 @@ function renderSegments(segments, context) {
       'aria-describedby': tipId,
       'data-ps-key': segment.key,
       'data-ps-chapter': segment.target.chapter || '',
-      'data-ps-case': segment.target.caseId || ''
+      'data-ps-case': segment.target.caseId || '',
+      'data-ps-native-case': segment.target.nativeCaseId || '',
+      'data-ps-focus-target': segment.target.focusTargetId || ''
     }, el('span', { text: segment.text }), glyph ? buildGlyph(glyph, 'ps-g ps-g-hover') : null);
     link.addEventListener('click', (event) => {
       event.preventDefault();
@@ -101,7 +103,7 @@ function buildSection(section, count, { updating, context }) {
     'aria-busy': updating ? 'true' : null
   },
   el('p', { class: 'ps-eyebrow' }, `Section ${section.number} of ${count}`, updating ? el('span', { class: 'ps-tag', text: 'Updating' }) : null),
-  el('h2', { id: `ps-h-${section.id}`, text: section.title }));
+  el('h2', { id: `ps-h-${section.id}` }, renderSegments(section.titleSegments, { ...context, sectionId: section.id, paragraphIndex: 0 })));
   if (updating) {
     node.append(el('div', { class: 'ps-sk', 'aria-hidden': 'true' }, el('i'), el('i'), el('i')));
     return node;
