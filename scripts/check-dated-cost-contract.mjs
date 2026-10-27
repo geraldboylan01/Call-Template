@@ -10,6 +10,7 @@ import { referenceDatedCostFunding } from './references/dated-cost-funding.mjs';
 import { createDatedCost } from '../js/planning/dated_costs/contract.js';
 import { produceCollegeCost } from '../js/planning/dated_costs/college_funding.js';
 import { produceFutureCostFundCost } from '../js/planning/dated_costs/future_cost_fund.js';
+import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
 
 let total = 0, failures = 0;
 async function test(name, fn) {
@@ -200,6 +201,92 @@ await test('A producer passes its explicit plan date and never falls back to the
 await test('The future-cost producer supports an internal cost starting now without widening its payload', () => {
   const result = produceFutureCostFundCost({ ...producerBase, input: { ...FUTURE_COST_FUND_SAMPLE, startsInYears: 0 } });
   assert.equal(result.moneyEachYear[0].year, 2026); close(result.moneyEachYear[0].amount, 15000);
+});
+
+function datedPack({ start = 2, duration = 5, funding = 'each_year', pension = false } = {}) {
+  const p = JSON.parse(readFileSync(new URL('./fixtures/plan-packs/valid-b1.json', import.meta.url)));
+  p.narration = {}; p.routes = [{ id: 'current' }, { id: 'fund' }]; p.goalFlexibility = {};
+  p.chapters = ['household_cash_flow', 'liquidity_analysis'];
+  p.household.goals = p.household.goals.filter(goal => pension && goal.goalId === 'goal_retirement');
+  p.planningInputs.goalBindings = p.planningInputs.goalBindings.filter(goal => pension && goal.goalId === 'goal_retirement');
+  p.planningInputs.goalFundingFacts = [];
+  p.household.goals.push({ goalId: 'cost', type: 'assess_decision', title: 'School fees', priority: 'low', status: 'active',
+    targetDate: `${2026 + start}-11-01`, targetAmount: { amount: 1000, currency: 'EUR' } });
+  p.planningInputs.goalFundingFacts.push({ goalId: 'cost', kind: 'dated_cost', costKind: 'general', durationYears: duration,
+    currentAnnualSaving: 0, funding });
+  return p;
+}
+const compile = async p => {
+  const info = console.info; console.info = () => {};
+  try {
+    const result = await compilePlanPack(p, { resourceLedger: true });
+    assert.equal(result.status, 'compiled', JSON.stringify(result.diagnostics)); return result;
+  } finally { console.info = info; }
+};
+const ledgerFor = (r, id = 'fund') => r.resourceLedger.routes.find(row => row.routeId === id);
+await test('The ledger takes each producer year once, including a cost starting now', async () => {
+  for (const start of [0, 2]) {
+    const result = await compile(datedPack({ start })), ledger = ledgerFor(result), contract = ledger.datedCosts[0];
+    for (const row of ledger.years) {
+      const bill = contract.moneyEachYear.find(cost => cost.year === row.year)?.amount ?? 0;
+      close(row.goals.find(goal => goal.goalId === 'cost').required, bill);
+      close(row.planned, bill); // moneyNow is an alternative, never added
+    }
+    assert.notEqual(contract.costByYear[0].amountAfterRelief, contract.costByYear[1].amountAfterRelief);
+  }
+});
+await test('Route useCash reprices the same contract; whole cash leaves no yearly requirement', async () => {
+  const p = datedPack();
+  p.routes = [{ id: 'current' }, { id: 'part', changes: [{ type: 'useCash', goalId: 'cost', amount: 1000 }] },
+    { id: 'whole', changes: [{ type: 'useCash', goalId: 'cost', amount: 'whole' }] }];
+  const result = await compile(p), original = ledgerFor(result, 'current').datedCosts[0];
+  const part = ledgerFor(result, 'part'), whole = ledgerFor(result, 'whole');
+  close(part.datedCosts[0].moneyNow, original.moneyNow - 1000);
+  close(whole.cashAllocated, original.moneyNow); close(whole.datedCosts[0].moneyNow, 0);
+  assert(whole.years.every(row => row.planned < 0.01));
+  assert(part.years.some(row => row.planned > 0));
+});
+await test('Later needs move under retirement as named capital and are funded before the last payer stops', async () => {
+  const p = datedPack({ start: 1, duration: 6 });
+  p.household.primaryPerson.intendedRetirementAge = 47; // 2028
+  p.household.partner.intendedRetirementAge = 46; // 2029
+  const result = await compile(p), ledger = ledgerFor(result), cost = ledger.datedCosts[0];
+  assert.equal(cost.retirementSplit.year, 2029);
+  const retirement = ledger.pricing.find(row => row.kind === 'retirement_capital');
+  const addition = retirement.priced.datedCostsAfterRetirement[0];
+  assert.equal(addition.title, 'School fees after retirement');
+  close(addition.capitalNeededAtRetirement, cost.retirementSplit.capitalNeededAtRetirement);
+  assert(addition.fundingByYear.every(row => row.year < 2029));
+  for (const row of ledger.years.filter(row => row.year >= 2029)) {
+    assert.equal(row.goals.find(goal => goal.goalId === 'cost').required, 0);
+    assert.equal(row.planned, 0);
+  }
+  assert(ledger.goals.every(row => row.state === 'covered'));
+  const future = cost.retirementSplit.after.map(row => ({ yearIndex: row.year - 2029, cost: row.amount }));
+  close(addition.capitalNeededAtRetirement, referenceDatedCostFunding({ startsInYears: future[0].yearIndex, costYears: future,
+    rate, funding: 'lump_sum_now' }).requiredToday);
+});
+await test('An existing retirement goal owns the added capital without changing the pension-income target', async () => {
+  const p = datedPack({ start: 21, duration: 5, pension: true });
+  p.household.expenses.annualTotal.amount = 30000;
+  const target = p.household.goals.find(goal => goal.goalId === 'goal_retirement').targetAmount.amount;
+  const before = structuredClone(p), result = await compile(p), ledger = ledgerFor(result);
+  const retirement = ledger.pricing.find(row => row.goalId === 'goal_retirement');
+  assert(retirement.priced.datedCostsAfterRetirement.length > 0);
+  assert.equal(retirement.priced.plannedInput.targetIncomeToday, target);
+  assert(!ledger.pricing.some(row => row.kind === 'retirement_capital'));
+  assert.deepEqual(p, before);
+});
+await test('Explicit payer IDs select that payer’s boundary and invalid or duplicate IDs fail', async () => {
+  const p = datedPack({ start: 1, duration: 6 });
+  p.household.primaryPerson.intendedRetirementAge = 47;
+  p.planningInputs.goalFundingFacts[0].payerIds = ['niamh'];
+  const result = await compile(p);
+  assert.equal(ledgerFor(result).datedCosts[0].retirementSplit.year, 2028);
+  for (const payerIds of [['absent'], ['niamh', 'niamh']]) {
+    const invalid = structuredClone(p); invalid.planningInputs.goalFundingFacts[0].payerIds = payerIds;
+    assert.equal((await compilePlanPack(invalid, { resourceLedger: true })).status, 'invalid');
+  }
 });
 
 console.log(`Dated-cost contract checks: ${total - failures}/${total} passed.`);

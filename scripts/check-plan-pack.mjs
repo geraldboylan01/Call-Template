@@ -38,7 +38,12 @@ try {
       console.log(ledger.routeId + ': ' + (ledger.balanced ? 'funding balances' : 'funding does not balance') + '; reserve ' + ledger.reserve.protectedAmount.toFixed(2)
         + '; cash left ' + ledger.cashRemaining.toFixed(2));
       for (const row of ledger.years) console.log('  ' + row.year + ': available ' + row.available.toFixed(2) + ', planned ' + row.planned.toFixed(2) + ', left ' + row.remaining.toFixed(2));
-      for (const goal of ledger.goals) console.log('  ' + goal.goalId + ': ' + goal.stateWord);
+      for (const goal of ledger.goals) {
+        console.log('  ' + goal.goalId + ': ' + goal.stateWord);
+        const retirementCosts = ledger.pricing.find(row => row.goalId === goal.goalId)?.priced.datedCostsAfterRetirement ?? [];
+        for (const cost of retirementCosts) console.log('    ' + cost.title + ': '
+          + cost.capitalNeededAtRetirement.toFixed(2) + ' capital needed in ' + cost.year);
+      }
       for (const event of ledger.freedCash ?? []) console.log('  ' + (event.kind === 'loan_ends' ? 'Repayment ends' : 'Goal saving ends') + ': ' + (event.label ?? event.goalId) + ', '
         + event.annualAmount.toFixed(2) + ' a year ' + (event.fromYear === null ? 'has no contractual end' : 'from ' + event.fromYear));
       for (const person of ledger.earners ?? []) if (person.stopsFromYear !== null) console.log('  ' + person.personId + '\'s share of left over stops from ' + person.stopsFromYear);

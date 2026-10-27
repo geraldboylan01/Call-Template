@@ -16,7 +16,8 @@ export class LaterStage extends PlanPackError {
   }
 }
 export function missing(path, message) { throw new PlanPackError(path, message, 'missing_information'); }
-export function people(profile) { return [profile.primaryPerson, profile.partner].filter(Boolean); }
+export { people, ownerBankPay } from './working_shares.js';
+import { people, ownerBankPay } from './working_shares.js';
 function amount(value, path) {
   if (!value || value.currency !== 'EUR' || !Number.isFinite(value.amount)) missing(path, 'A stated EUR amount is required; no currency conversion or missing value is inferred.');
   return value.amount;
@@ -172,18 +173,6 @@ function currentPension(profile, pack, personId) {
   }
   if (hasOwnerConfirmedNone(profile, '/pensions', personId) || profile.assumptions.values.completionFacts?.confirmedNonePaths?.['/pensions'] === true) return 0;
   missing('/planningInputs/personalPensionContributions', 'Confirm the current personal contribution for ' + personId + ', including explicit zero.');
-}
-export function ownerBankPay(profile, personId, { optional = false } = {}) {
-  const owned = profile.incomeSources.filter(i => i.ownerIds.includes(personId));
-  if (!owned.length) {
-    if (hasOwnerConfirmedNone(profile, '/incomeSources', personId) || profile.assumptions.values.completionFacts?.confirmedNonePaths?.['/incomeSources'] === true) return 0;
-    missing('/household/incomeSources', 'State income or confirm no income for ' + personId + '; an absent record does not establish zero bank pay.');
-  }
-  if (owned.some(i => i.ownerIds.length !== 1 || !i.netAnnual)) {
-    if (optional) return null;
-    missing('/household/incomeSources', 'Per-person bank take-home is missing or jointly owned. It is not inferred from gross income or split between people.');
-  }
-  return owned.reduce((sum, i) => sum + amount(i.netAnnual, '/household/incomeSources/' + profile.incomeSources.indexOf(i) + '/netAnnual'), 0);
 }
 function outgoings(profile, pack) {
   const spending = amount(profile.expenses.annualTotal, '/household/expenses/annualTotal');
