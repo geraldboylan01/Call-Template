@@ -396,7 +396,9 @@ export function computeDatedCostFunding({ costKind, startsInYears, costYears, ca
   if (!Number.isInteger(startsInYears) || startsInYears < 0 || startsInYears > MAX_STARTS_IN_YEARS) {
     throw new Error('Dated-cost startsInYears must be a whole number from 0 to 40.');
   }
-  if (!Array.isArray(costYears) || costYears.length < 1 || costYears.length > MAX_DURATION_YEARS
+  // Internal schedules also price the saving years transferred to retirement;
+  // those can span the full lead time as well as the cost's duration.
+  if (!Array.isArray(costYears) || costYears.length < 1 || costYears.length > MAX_STARTS_IN_YEARS + MAX_DURATION_YEARS
     || costYears.some((row, index) => row?.yearIndex !== startsInYears + index || !isFiniteNumber(row.cost) || row.cost < 0)) {
     throw new Error('Dated-cost costYears must contain consecutive, finite non-negative yearly costs.');
   }

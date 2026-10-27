@@ -7,6 +7,7 @@ import { FUTURE_COST_FUND_SAMPLE } from '../js/tests_future_cost_fund_math.js';
 import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/planeir_assumptions.js';
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 import { referenceDatedCostFunding } from './references/dated-cost-funding.mjs';
+import { createDatedCost } from '../js/planning/dated_costs/contract.js';
 
 let total = 0, failures = 0;
 async function test(name, fn) {
@@ -109,6 +110,45 @@ await test('The college sample retains every native yearly cost to the cent', ()
     close(entry.costToday, baseline[i].costToday); close(entry.nominalCost, baseline[i].nominalCost);
     entry.yearRows.forEach((row, j) => close(row.annualFamilyCost, baseline[i].costByYear[j].cost));
   });
+});
+
+const contractInput = () => ({ costId: 'cost', goalId: 'goal', title: 'Dated cost',
+  producer: { module: 'test', version: '1.0.0' }, payerIds: ['one', 'two'],
+  payerRetirements: [{ personId: 'one', stopsFromYear: 2028 }, { personId: 'two', stopsFromYear: 2030 }],
+  calculationDate: '2026-11-01', costKind: 'general', funding: 'each_year',
+  costByYear: [2027, 2028, 2029, 2030, 2031].map(year => ({ year, amountBeforeRelief: 10000,
+    reliefAmount: 3000, amountAfterRelief: 7000, reliefClaims: [{ claimantId: 'one', amount: 3000, rulesVersion: 'test-tax-1' }] })) });
+await test('The three yearly amounts reconcile with named tax-engine claims, counted once', () => {
+  const input = contractInput(), before = structuredClone(input), result = createDatedCost(input);
+  assert.deepEqual(input, before); assert.equal(result.moneyEachYear[1].amount, 7000);
+  assert.deepEqual(result.costByYear[0], input.costByYear[0]);
+  for (const patch of [{ reliefAmount: 4000 }, { amountAfterRelief: 6000 }, { reliefClaims: [] },
+    { reliefClaims: [{ claimantId: 'unknown', amount: 3000, rulesVersion: 'v1' }] },
+    { reliefClaims: [{ claimantId: 'one', amount: 3000 }] }]) {
+    const invalid = contractInput(); Object.assign(invalid.costByYear[0], patch);
+    assert.throws(() => createDatedCost(invalid), /datedCost\/costByYear/);
+  }
+});
+await test('The split waits for every payer and prices the later annual amounts at that year', () => {
+  const result = createDatedCost(contractInput()), split = result.retirementSplit;
+  assert.equal(split.year, 2030); assert.deepEqual(split.before.map(row => row.year), [2026, 2027, 2028, 2029]);
+  assert.deepEqual(split.after.map(row => row.year), [2030, 2031]);
+  close(split.capitalNeededAtRetirement, 7000 + 7000 / (1 + rate));
+  assert.deepEqual([...split.before, ...split.after], result.moneyEachYear);
+});
+await test('Already-retired payers retain their continuing B1.1 share and never split it again', () => {
+  const input = contractInput(); input.payerRetirements[1].stopsFromYear = null;
+  const split = createDatedCost(input).retirementSplit;
+  assert.equal(split.year, null); assert.equal(split.after.length, 0); assert.equal(split.capitalNeededAtRetirement, 0);
+  delete input.payerRetirements;
+  assert.throws(() => createDatedCost(input), /retirement boundary/);
+});
+await test('An early retirement can transfer forty future saving years without changing payload limits', () => {
+  const input = contractInput(); input.funding = 'save_then_pay';
+  input.payerRetirements.forEach(row => { row.stopsFromYear = 2026; });
+  input.costByYear = [{ ...input.costByYear[0], year: 2066 }];
+  const split = createDatedCost(input).retirementSplit;
+  assert.equal(split.after.length, 40); close(split.capitalNeededAtRetirement, createDatedCost(input).moneyNow);
 });
 
 console.log(`Dated-cost contract checks: ${total - failures}/${total} passed.`);
