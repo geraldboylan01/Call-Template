@@ -28,6 +28,7 @@ const SEMANTIC_FACT_IDS = Object.freeze(
   listSemanticFactDefinitions().map((definition) => definition.factId).sort()
 );
 import { buildRealtimeFactReadBack } from './realtime_fact_mapper.js';
+import { statePensionWording } from './state_pension_wording.js';
 import { hmacSha256Base64Url, stableStringify } from './crypto.js';
 import { ConsumerError } from './errors.js';
 import {
@@ -1385,7 +1386,14 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
         ? 'adviser_boundary'
       : extractedQuestion.topic || 'why_information';
   const clientQuestion = extractedQuestion.present
-    ? { ...extractedQuestion, reviewedAnswer: intakeExplanation(reviewedQuestionTopic, { stillNeeded: missingFacts }) }
+    ? {
+        ...extractedQuestion,
+        reviewedAnswer: intakeExplanation(
+          reviewedQuestionTopic,
+          { stillNeeded: missingFacts },
+          { planDateIso: context.profile?.assumptions?.calculationDateIso }
+        )
+      }
     : extractedQuestion;
   // Assumptions taken from a stated range. The meeting speaks these in the same
   // breath as its next question, so the client always knows which single figure
@@ -1513,7 +1521,7 @@ export async function composeMeetingBrief({ env, context, extraction, sourceTurn
       : null;
   const statePensionRule = modules.some((module) => module.moduleId === 'pension_projection')
     ? {
-        ...publicIrishStatePensionRule(),
+        ...publicIrishStatePensionRule(context.profile?.assumptions?.calculationDateIso),
         perPersonAssumptions: statePensionMemberAssumptions(context.profile)
       }
     : null;
@@ -1870,15 +1878,31 @@ export const REALTIME_EDUCATION_V1 = Object.freeze({
   net_worth: 'Net worth is a snapshot of what you own minus what you owe. Here it is educational context only; the confirmed figures and deterministic review of your overall financial picture provide the actual calculation.',
   mortgage_balance: 'The mortgage balance lets a review of your overall financial picture distinguish the home’s value from the debt secured against it, and it helps show which mortgage facts are still missing.',
   pension_value: 'A current pension value gives the projection a starting point. It is recorded as a reviewable fact, and the projection of whether your pension may be on track remains deterministic and visible.',
-  state_pension: 'For this illustration, the maximum Irish State Pension (Contributory) rate effective January 2026 is €299.30 a week, or €15,563.60 gross a year, normally from age 66. The editable assumption escalates by 2% a year. The actual contributory rate depends on the person’s PRSI record.',
   why_information: 'I only ask for facts used by the analyses shown on screen. Each missing fact is tied to a deterministic readiness reason, and you can review every captured value before anything runs.',
   recommendation_boundary: 'I can explain the information and the analyses being prepared, but I cannot recommend products or actions or decide eligibility. Those need an adviser review.',
   eligibility_boundary: 'I cannot recommend products or actions, decide eligibility, or make approval claims in this meeting. I can capture the relevant facts for adviser review.',
   adviser_boundary: 'I cannot provide regulated advice or rely on live, time-sensitive rules in this meeting. I can explain the reviewed educational material and capture the relevant facts for an adviser.'
 });
 
-export function intakeExplanation(topic, brief) {
+/**
+ * The reviewed State Pension explanation for a plan, with the rate for the plan's
+ * own year: the amount, when it is effective and, while it is only announced, the
+ * Budget that announced it. None of it is typed here, so it is not part of the
+ * fixed reviewed text above.
+ */
+function statePensionEducation(planDateIso) {
+  const rule = publicIrishStatePensionRule(planDateIso);
+  const wording = statePensionWording(rule);
+  return `For this illustration, the maximum Irish State Pension (Contributory) rate is ${wording.weekly} a week, or ${wording.annual} gross a year (${wording.effective}), normally from age ${wording.startAge}. The editable assumption escalates by ${wording.escalation} a year. The actual contributory rate depends on the person’s PRSI record.`;
+}
+
+/**
+ * `planDateIso` is the plan's own date, `profile.assumptions.calculationDateIso`.
+ * Only the State Pension explanation needs it, and it is required there.
+ */
+export function intakeExplanation(topic, brief, { planDateIso } = {}) {
   const normalized = String(topic || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (normalized === 'state_pension') return statePensionEducation(planDateIso);
   if (REALTIME_EDUCATION_V1[normalized]) return REALTIME_EDUCATION_V1[normalized];
   const composite = [];
   if (normalized.includes('net_worth')) composite.push(REALTIME_EDUCATION_V1.net_worth);

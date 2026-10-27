@@ -27,7 +27,7 @@ Build the tax engine once, as a standalone deterministic library with a dated ru
 These are settled. If one blocks you, stop and say so instead of working around it.
 
 1. **Deterministic code only.** No model-generated arithmetic anywhere in this path.
-2. **Projection policy** (section 5). Parameters that each Budget sets are frozen at their latest enacted values and never indexed, because Budgets often leave them unchanged (Budget 2026 did). Changes already legislated with fixed dates and amounts are applied. Where the law ties a future figure to data that does not exist yet, as it does for the SFT from 2030, the engine holds the last known value and says so.
+2. **Projection policy** (section 5). Parameters that each Budget sets are frozen at their latest enacted or announced values and never indexed, because Budgets often leave them unchanged (Budget 2026 did). Changes already legislated with fixed dates and amounts are applied. Where the law ties a future figure to data that does not exist yet, as it does for the SFT from 2030, the engine holds the last known value and says so.
 3. **Sources.** Values come from Revenue guidance and legislation (4.10), never from third-party calculators. The PwC, Deloitte and KPMG calculators are references for stating assumptions and for manual spot checks only. No scraping and no network calls.
 4. **Assumptions travel with the numbers.** Disclosures are generated from the rules actually applied, plus a standing list of what is not modelled (section 8).
 5. **One implementation.** JS for the app, exposed through a Node CLI so Python scripts such as `bridge_model.py` call it instead of reimplementing tax.
@@ -178,7 +178,7 @@ Not modelled: Class K, minimum contributions, the PRSI credit for low earners an
 | `employment` | Yes, after `employmentPensionContribution` | Yes, on the full salary | Per 4.5, on the full salary | Yes |
 | `rentalProfit` | Yes | Yes, and counts for the surcharge | Per 4.5 | No |
 | `lumpSumScheduleE` (lump sum above a cumulative €500,000) | Yes, at the marginal rate | Yes | No (assumption, see 12) | Yes |
-| `nursingHomeExpenses` (fees the household pays itself, never the HSE's share) | A deduction from total income, so relieved at the marginal rate (added 22 October 2026, rule `ie.income_tax.nursing_home_expenses.2026`, `ie-tax-2026.6`) | No | No | No |
+| `nursingHomeExpenses` (fees the household pays itself, never the HSE's share) | A deduction from total income, so relieved at the marginal rate (added 22 October 2026, rule `ie.income_tax.nursing_home_expenses.2026`, `ie-tax-2026.7`) | No | No | No |
 
 `nursingHomeExpenses` is the one deduction a caller enters for a person. It comes off the assessment's total income and never below nothing, so it cannot make tax negative. For a jointly assessed couple it comes off their combined income. The over-65 exemption and the band increase for a second income are tested on income before it. Sources: Revenue's nursing home expenses page and Tax and Duty Manual Part 15-01-12, section 4 (its Examples 1 and 2 are tests). The care costs module asks the engine twice for the same year, with and without the fees, and takes the relief as the difference.
 
@@ -538,6 +538,8 @@ ARF checks (opening value, attained age):
 ## 14. Keeping it current
 
 1. **Budget day.** Budget 2027 is due on Tuesday 6 October 2026. Add a `2027` block with `status: 'announced'` and switch it to `'enacted'` once the Finance Act passes. Never edit a past year's block. Update the legislated schedules if the Budget changes them.
+   - **Done for Budget 2027 on 22 October 2026.** `TAX_YEAR_2027` in `rules_ie.js` is announced, from the Department of Finance's tax policy book and the Finance (No. 2) Bill 2026 (Bill No. 98 of 2026). It changes the standard-rate bands (single and widowed €46,500, married €55,500 with up to €37,500 more for a second income), the personal, employee and earned income credits (€2,125, married €4,250), the home carer credit (€2,050) and the USC 2% ceiling (€30,300). The widowed credit is the €2,125 plus the separate €540 in s.461A, because the Bill amends s.461(c) and leaves s.461A alone. Every rule the Budget leaves alone is the 2026 object itself. The engine reproduces the Department's Table 2 (single PAYE earner) to the euro for 2026 and 2027, and `check:figures` fails if a Budget is recorded with no block for its year.
+   - **Budget 2027 changes this brief's engine does not model:** the CAT thresholds (Group A €420,000, B €44,000, C €22,000), the Rent Tax Credit (€1,150, or €2,300 for a couple, for 2027 and 2028), Rent a Room relief (€16,000), employer PRSI (threshold €552 to €600 a week) and revised age-related valuation factors for defined-benefit pensions under the SFT. None has a figure in this catalogue.
 2. **Official SFT.** The 2030 figure depends on CSO earnings for Q3 2029, which are first published in late November 2029. When Revenue publishes the SFT for 2030 or any later year, record it as a fixed amount with its source. Later years then hold that figure until the next one is published.
 3. After any update: update `verifiedOn`, bump `IE_TAX_RULES_VERSION`, rerun the golden cases (they pin their tax year, so they stay valid) and add at least one case for the new year.
 

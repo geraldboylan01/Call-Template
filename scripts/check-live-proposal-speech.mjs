@@ -29,8 +29,11 @@ import assert from 'node:assert/strict';
 import { createSourcedFigureSet, scanAssistantSpeech } from '../worker/src/consumer/live/compliance.js';
 import { buildLiveCataloguePrompt } from '../worker/src/consumer/live/catalogue_prompt.js';
 
+// A fixed plan date, so nothing here depends on the day the suite runs.
+const TEST_PLAN_DATE = '2026-06-15';
+
 let checks = 0;
-const figures = createSourcedFigureSet();
+const figures = createSourcedFigureSet(TEST_PLAN_DATE);
 const speakable = (text) => !scanAssistantSpeech(text, figures).tripped;
 function ok(condition, message) {
   checks += 1;
@@ -49,7 +52,7 @@ const TAUGHT_PROPOSALS = [
   'Would it help if I looked at your mortgage alongside that?',
   'Shall I include a pension projection as well?'
 ];
-const prompt = buildLiveCataloguePrompt({ directModulePlanning: true });
+const prompt = buildLiveCataloguePrompt({ directModulePlanning: true, planDateIso: TEST_PLAN_DATE });
 for (const proposal of TAUGHT_PROPOSALS) {
   ok(speakable(proposal), `a taught proposal must be speakable: ${proposal}`);
   ok(prompt.includes(proposal), `the prompt must actually teach: ${proposal}`);

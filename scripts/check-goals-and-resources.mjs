@@ -21,7 +21,8 @@ import { computeGoalsAndResourcesProjection } from '../js/goals_and_resources_ma
 import {
   GOALS_AND_RESOURCES_EXPECTED,
   GOALS_AND_RESOURCES_SAMPLE,
-  runGoalsAndResourcesTests
+  runGoalsAndResourcesTests,
+  withDesignTaxRules
 } from '../js/tests_goals_and_resources_math.js';
 import { runGoalsAndResourcesModuleTests } from '../js/tests_goals_and_resources_module.js';
 import { runGoalsAndResourcesViewTests } from '../js/tests_goals_and_resources_view.js';
@@ -328,14 +329,27 @@ check('states: the yearly money handed out by hand, year by year, in the plannin
   });
 });
 
-check('the brief\'s tables are reproduced to the euro', () => {
+check('the brief\'s tables are reproduced to the euro, on the rules the brief was drawn on', () => {
+  // The brief's household was priced on the 2026 rules held forward. Everything above this check runs on the
+  // rules in force now, and proves the engine against an independent reference there.
+  const { debug: designed } = withDesignTaxRules(() => computeGoalsAndResourcesProjection(H));
   GOALS_AND_RESOURCES_EXPECTED.cases.forEach((want, index) => {
-    const entry = debug.cases[index];
+    const entry = designed.cases[index];
     assert.equal(entry.id, want.id);
     assert.equal(Math.round(entry.neededThisYear), want.needed, `${want.id}: needed this year`);
     assert.equal(Math.round(entry.paidOutOverLife.total), want.life, `${want.id}: paid out over the life`);
     assert.equal(Math.round(entry.laterRetirement.neededThisYear), want.laterNeeded, `${want.id}: later needed`);
     assert.equal(Math.round(entry.laterRetirement.paidOutOverLife.total), want.laterLife, `${want.id}: later paid out`);
+  });
+});
+
+check('on the rules in force now the same household needs less each year, because Budget 2027 raises net pay', () => {
+  const { debug: designed } = withDesignTaxRules(() => computeGoalsAndResourcesProjection(H));
+  debug.cases.forEach((entry, index) => {
+    const before = designed.cases[index];
+    assert.ok(entry.neededThisYear < before.neededThisYear, `${entry.id}: needed ${Math.round(entry.neededThisYear)} against ${Math.round(before.neededThisYear)} on the 2026 rules`);
+    assert.equal(Math.round(entry.mortgageLump), Math.round(before.mortgageLump), `${entry.id}: the mortgage lump does not depend on income tax`);
+    assert.equal(Math.round(entry.collegeLump), Math.round(before.collegeLump), `${entry.id}: the college lump does not depend on income tax`);
   });
 });
 

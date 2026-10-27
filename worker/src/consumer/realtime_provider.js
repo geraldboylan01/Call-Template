@@ -2,6 +2,7 @@ import { GOAL_TYPES } from '../../../js/planning/contracts.js';
 import { MODULE_MANIFEST } from '../../../js/planning/module_manifest.generated.js';
 import { hmacSha256Base64Url } from './crypto.js';
 import { ConsumerError, badRequest } from './errors.js';
+import { statePensionWording } from './state_pension_wording.js';
 
 const OPENAI_REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 const MAX_PROVIDER_SDP_BYTES = 32_768;
@@ -426,6 +427,19 @@ export function extractionOutcomeInstructions(outcome = {}) {
   return [];
 }
 
+/**
+ * What the model is told about the State Pension. The rate is the one in the
+ * signed brief, which holds the rate for the plan's own year; a brief without the
+ * rule (a plan with no pension projection) gives the model no amount to state.
+ */
+function statePensionInstruction(rule) {
+  const wording = statePensionWording(rule);
+  const rate = wording
+    ? `maximum ${wording.weekly} a week or ${wording.annual} gross a year ${wording.effective}, default age ${wording.startAge}, escalated ${wording.escalation} annually after applying the per-person fraction`
+    : 'the signed brief carries it only when the plan includes a pension projection, so state no State Pension amount without it';
+  return `Use only the server-owned Irish State Pension rule in the signed brief: ${rate}. Always say it is an editable assumption and actual entitlement depends on the person’s PRSI record.`;
+}
+
 export function buildRealtimeConversationV2Instructions(state = {}, allowedModuleIds = [], outcome = null) {
   const brief = state.meetingBrief && typeof state.meetingBrief === 'object'
     ? JSON.stringify(state.meetingBrief).slice(0, 12_000)
@@ -439,7 +453,7 @@ export function buildRealtimeConversationV2Instructions(state = {}, allowedModul
     'Answer a client question first in one to three sentences, then bridge naturally back to the current objective. When MeetingBriefV2.clientQuestion.reviewedAnswer is present, stay within that reviewed answer.',
     'Ask one thing at a time, except for a tightly related pair such as a loan balance and rate. Accept volunteered facts in any order and never ask for a fact already present in the brief.',
     'The signed jurisdiction is Ireland (IE). Use occupational pension, PRSA, personal pension, AVC and defined-benefit pension. Never introduce IRA, Roth IRA, 401(k), ISA or any foreign account menu. If the client volunteers a foreign holding, describe it generically with its country.',
-    'Use only the server-owned Irish State Pension rule in the signed brief: maximum €299.30 a week or €15,563.60 gross a year effective January 2026, default age 66, escalated 2% annually after applying the per-person fraction. Always say it is an editable assumption and actual entitlement depends on the person’s PRSI record.',
+    statePensionInstruction(state.meetingBrief?.statePensionRule),
     'The silent planner extracts draft facts automatically after each finalized client turn. Do not call a fact-proposal tool and do not claim a fact is saved or confirmed.',
     'The signed meeting brief is steering context, not permission to calculate. Deterministic code controls goal routing, the one-to-three selected analyses, readiness, facts, calculations, and visual confirmation.',
     'Never recommend a product or action, decide eligibility, make approval or regulatory claims, project values, or invent calculations. Use get_intake_explanation for those boundaries and reviewed education.',

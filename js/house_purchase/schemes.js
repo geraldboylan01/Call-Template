@@ -90,6 +90,17 @@ function allApplicantState(applicants, predicate) {
   return true;
 }
 
+/**
+ * The most Help to Buy can refund for a contract signed on a date: the earlier cap
+ * before the day the increase took effect, the current cap from then. A date not
+ * yet known gets the current cap, which is what a new purchase would get.
+ */
+function maximumReliefFor(htbRules, purchaseDate) {
+  return purchaseDate && purchaseDate < htbRules.maximumReliefFrom
+    ? htbRules.earlierMaximumRelief
+    : htbRules.maximumRelief;
+}
+
 export function screenHelpToBuy(rawInputs, options = {}) {
   const inputs = normalizeForScreen(rawInputs);
   const rules = options.rules || DEFAULT_HOUSE_PURCHASE_RULES;
@@ -183,7 +194,7 @@ export function screenHelpToBuy(rawInputs, options = {}) {
     ? 'unlikely_eligible'
     : (summary.unknown.length > 0 ? 'more_information_required' : 'potentially_eligible');
   const valueCap = typeof targetPrice === 'number'
-    ? Math.min(htbRules.maximumRelief, targetPrice * htbRules.priceShare)
+    ? Math.min(maximumReliefFor(htbRules, inputs.targetPurchaseDate), targetPrice * htbRules.priceShare)
     : 0;
   const taxPaid = inputs.helpToBuy.expectedIncomeTaxAndDirtPaidPriorFourYears;
   const maximumAmount = taxPaid === null ? null : roundHousePurchaseMoney(Math.min(valueCap, taxPaid));

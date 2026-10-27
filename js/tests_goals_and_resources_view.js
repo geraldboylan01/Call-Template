@@ -1,5 +1,5 @@
 import { projectGoalsAndResources } from './goals_and_resources_math.js';
-import { GOALS_AND_RESOURCES_SAMPLE } from './tests_goals_and_resources_math.js';
+import { GOALS_AND_RESOURCES_SAMPLE, withDesignTaxRules } from './tests_goals_and_resources_math.js';
 import {
   GAR_WORDS,
   PAIR_MIN_WIDTH,
@@ -97,7 +97,12 @@ function modelFor(payload) {
 
 const byId = (model, id) => model.cases.find((entry) => entry.id === id);
 
+/** The frames are drawn on the rules in force when they were approved. */
 export function runGoalsAndResourcesViewTests() {
+  return withDesignTaxRules(runGoalsAndResourcesViewTestsOnDesignRules);
+}
+
+function runGoalsAndResourcesViewTestsOnDesignRules() {
   const cases = [];
 
   cases.push(runCase('The cases carry the engine\'s figures to the euro, as the approved frames show them', () => {

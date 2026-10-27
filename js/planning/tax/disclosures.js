@@ -113,10 +113,13 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
   TAX_RULES_HELD: {
     kind: 'standing',
     label: 'Tax rules used',
-    render: ({ params, rules }) => (
-      `They use Irish tax rules for ${params?.rulesYear ?? rules.rulesYear} (${params?.enactedBy ?? rules.enactedBy}). `
-      + 'Later years keep the same bands, credits and thresholds in euro terms, so if future Budgets raise them your tax would be lower than shown.'
-    )
+    render: ({ params, rules }) => {
+      // A year's rules are law once an Act has passed. Before that they are the Budget's, and the text says so.
+      const enactedBy = params?.enactedBy ?? rules.enactedBy;
+      const basis = enactedBy ?? `announced in ${params?.announcedBy ?? rules.announcedBy}, not yet law`;
+      return `They use Irish tax rules for ${params?.rulesYear ?? rules.rulesYear} (${basis}). `
+        + 'Later years keep the same bands, credits and thresholds in euro terms, so if future Budgets raise them your tax would be lower than shown.';
+    }
   },
   TAX_LEGISLATED_CHANGES: {
     kind: 'standing',
