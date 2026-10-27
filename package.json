@@ -163,10 +163,13 @@
     "check:plan-pack-fixtures": "node ./scripts/check-plan-pack-fixtures.mjs",
     "check:plan-resource-ledger": "node ./scripts/check-plan-resource-ledger.mjs",
     "check:figures": "node ./scripts/check-figures.mjs",
-    "build:figures": "node ./scripts/build-figures-index.mjs"
+    "build:figures": "node ./scripts/build-figures-index.mjs",
+    "refresh:market-figures": "node ./scripts/refresh-market-figures.mjs",
+    "check:market-refresh": "node ./scripts/check-market-refresh.mjs"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
+    "pdfjs-dist": "5.4.149",
     "playwright-core": "1.64.1"
   },
   "dependencies": {

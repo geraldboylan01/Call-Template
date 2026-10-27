@@ -12,7 +12,7 @@
  * audit trail. A label, a plain-language basis or anything else a client could
  * see or hear never names one (`check:figures` enforces it).
  *
- * Keeping it current:
+ * Keeping it current (the weekly job is described in docs/figures-market-refresh.md):
  * - A job adds or replaces observations, sets `checkedOn` to the day it read
  *   them, and sets `changedOn` when the worked-out value changed.
  * - Change `version` whenever a value changes. The register records it.
