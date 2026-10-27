@@ -317,8 +317,7 @@ export function normalizeCareCostInputs(raw, { assumptions = null } = {}) {
   });
   rejectUnknownKeys(raw, TOP_LEVEL_FIELDS, FIELD);
 
-  const central = assumptions ?? resolvePlanningAssumptions();
-  const care = central.care;
+  const care = assumptions?.care ?? resolvePlanningAssumptions().care;
 
   const personLabel = typeof raw.personLabel === 'string' ? raw.personLabel.trim() : '';
   if (personLabel.length < 1 || personLabel.length > MAX_LABEL_LENGTH) {

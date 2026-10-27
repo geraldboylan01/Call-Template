@@ -44,7 +44,7 @@ const PRINTED_RULES = Object.freeze({
 
 
 /** Every run is dated, so a test never depends on the day it is run. */
-const CARE_TODAY = '2026-10-28';
+export const CARE_TODAY = '2026-10-28';
 
 const NON_CONTRIBUTORY_66_TO_79 = 'ie.social_welfare.state_pension_non_contributory.personal_66_to_79';
 
@@ -68,7 +68,7 @@ const FOUR_CASES = Object.freeze([
  * home worth €320,000. The fee is the €1,313 the brief used; a stated fee
  * replaces the county average, so these figures do not move with the HSE's list.
  */
-const CARE_SAMPLE = Object.freeze({
+export const CARE_SAMPLE = Object.freeze({
   personLabel: 'Mam',
   age: 84,
   county: 'Meath',
@@ -82,7 +82,7 @@ const CARE_SAMPLE = Object.freeze({
 });
 
 /** A wealthy single person whose contribution is above the fee while the home counts. */
-const CARE_WEALTHY = Object.freeze({
+export const CARE_WEALTHY = Object.freeze({
   personLabel: 'Dad',
   age: 85,
   incomes: Object.freeze([
@@ -101,7 +101,7 @@ const CARE_WEALTHY = Object.freeze({
 });
 
 /** One of a couple, the partner staying at home, on a low income so the retained-income threshold binds. */
-const CARE_COUPLE = Object.freeze({
+export const CARE_COUPLE = Object.freeze({
   personLabel: 'Dad',
   age: 80,
   weeklyFee: 1315,
