@@ -4819,7 +4819,7 @@ assert.match(wranglerSource, /^CONSUMER_REALTIME_CONVERSATION_V2_ENABLED\s*=\s*"
 assert.match(wranglerSource, /^CONSUMER_REALTIME_SPOKEN_COMPLETION_ENABLED\s*=\s*"false"\s*$/m);
 assert.match(wranglerSource, /CONSUMER_REALTIME_SESSIONS[^\n]*ConsumerRealtimeSession/);
 assert.match(wranglerSource, /tag\s*=\s*"consumer_realtime_sessions_v1"/);
-assert.match(workflowSource, /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.activate_realtime_adviser_canary == true/);
+assert.match(workflowSource, /CONSUMER_REALTIME_ADVISER_CANARY_SOURCE_APPROVED:\s*"false"/);
 assert.match(workflowSource, /Realtime activation requires the paid SDP, sideband-tool, and server-hangup proof in the same manual deployment/);
 assert.match(workflowSource, /cancel-in-progress:\s*false/);
 assert.match(workflowSource, /CONSUMER_REALTIME_ACTIVATION_DEPLOY_ATTEMPTED=true[\s\S]*wrangler deploy --config wrangler\.production\.generated\.toml/);

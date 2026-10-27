@@ -64,7 +64,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 
 /**
  * What to have to hand, by what the person has told us so far. The wording
- * follows the voice briefing's "What to have ready" list (plan/index.html).
+ * preserves the historical intake field order; the active journey uses forms.
  */
 const TO_HAND = [
   { title: 'A recent payslip', detail: 'Gross pay and take-home pay', when: () => true },

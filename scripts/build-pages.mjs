@@ -239,6 +239,10 @@ async function build() {
     await cp(inputPath, outputPath);
   }
 
+  // Historical conversation code stays in source, never in the published app.
+  await rm(path.join(DIST_DIR, 'js/plan'), { recursive: true, force: true });
+  await rm(path.join(DIST_DIR, 'js/analytics_manager.js'), { force: true });
+
   const distFiles = await listFiles(DIST_DIR);
   for (const filePath of distFiles) {
     const extension = path.extname(filePath).toLowerCase();
