@@ -18,6 +18,11 @@ import { join } from 'node:path';
 
 const USER_AGENT = 'PlaneirFiguresJob/1.0 (+https://github.com/geraldboylan01/Call-Template; weekly read of published rates)';
 
+/** What went wrong with a request, in plain words. */
+function describeFailure(error) {
+  return error?.name === 'TimeoutError' ? 'the request timed out' : `the request failed (${error?.cause?.code ?? error?.message ?? 'unknown error'})`;
+}
+
 /** A page that could not be read. The message is for the PR, so it says why in plain words. */
 export class ReadError extends Error {}
 
@@ -87,19 +92,23 @@ async function pageFromPdf(url, bytes, how = 'network PDF') {
     throw new ReadError(`the PDF could not be opened (${error.message})`);
   }
   const cells = [];
-  for (let number = 1; number <= document.numPages; number += 1) {
-    const content = await (await document.getPage(number)).getTextContent();
-    const pieces = content.items
-      .filter((item) => typeof item.str === 'string' && item.str.trim() !== '')
-      .map((item) => ({ text: item.str, x: item.transform[4], y: item.transform[5] }))
-      .sort((left, right) => right.y - left.y || left.x - right.x);
-    const lines = [];
-    for (const piece of pieces) {
-      const line = lines.find((candidate) => Math.abs(candidate.y - piece.y) <= 2);
-      if (line) line.pieces.push(piece);
-      else lines.push({ y: piece.y, pieces: [piece] });
+  try {
+    for (let number = 1; number <= document.numPages; number += 1) {
+      const content = await (await document.getPage(number)).getTextContent();
+      const pieces = content.items
+        .filter((item) => typeof item.str === 'string' && item.str.trim() !== '')
+        .map((item) => ({ text: item.str, x: item.transform[4], y: item.transform[5] }))
+        .sort((left, right) => right.y - left.y || left.x - right.x);
+      const lines = [];
+      for (const piece of pieces) {
+        const line = lines.find((candidate) => Math.abs(candidate.y - piece.y) <= 2);
+        if (line) line.pieces.push(piece);
+        else lines.push({ y: piece.y, pieces: [piece] });
+      }
+      for (const line of lines) cells.push(...line.pieces.sort((left, right) => left.x - right.x).map((piece) => piece.text));
     }
-    for (const line of lines) cells.push(...line.pieces.sort((left, right) => left.x - right.x).map((piece) => piece.text));
+  } catch (error) {
+    throw new ReadError(`the PDF could not be read through (${error.message})`);
   }
   return toPage(url, cells, how);
 }
@@ -186,13 +195,19 @@ export function createPageLoader({
         signal: AbortSignal.timeout(timeoutMs)
       });
     } catch (error) {
-      throw new ReadError(error?.name === 'TimeoutError' ? 'the request timed out' : `the request failed (${error?.cause?.code ?? error?.message ?? 'unknown error'})`);
+      throw new ReadError(describeFailure(error));
     }
     if (!response.ok) {
       const refused = response.status === 401 || response.status === 403;
       throw new ReadError(`HTTP ${response.status}${refused ? ' (the site refuses plain requests; a browser-saved copy is needed)' : ''}`);
     }
-    const bytes = Buffer.from(await response.arrayBuffer());
+    // Headers can arrive and the body still time out or drop: that is an unread page too.
+    let bytes;
+    try {
+      bytes = Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      throw new ReadError(describeFailure(error));
+    }
     if (as === 'pdf') {
       if (bytes.subarray(0, 5).toString('latin1') !== '%PDF-') throw new ReadError('the address did not return a PDF');
       return pageFromPdf(url, bytes);

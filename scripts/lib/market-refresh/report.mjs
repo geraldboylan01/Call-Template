@@ -12,6 +12,8 @@ import { savedPageName } from './pages.mjs';
 
 /** The checks that pin the central cash rate. The job never edits them. */
 export const CASH_RATE_ID = 'ie.market.cash.instant_access_gross_rate';
+/** Where the client-facing words about the cash rate live. The job reports it and never edits it. */
+export const CASH_RATE_WORDING = 'js/planning/planeir_assumptions.js';
 export const CASH_RATE_GOLDENS = Object.freeze([
   'scripts/check-future-cost-fund.mjs',
   'scripts/check-goals-and-resources.mjs',
@@ -120,6 +122,7 @@ export function renderReport({ plan, decision, registerFigures, mode = 'dry-run'
   if (cashRate?.valueChanged) {
     attention.push(
       `**The central cash rate moves from ${shown(cashRate, cashRate.valueBefore)} to ${shown(cashRate, cashRate.valueAfter)}.** These checks pin the old rate and will fail on this branch until a person reviews them: ${CASH_RATE_GOLDENS.map((file) => `\`${file}\``).join(', ')}. The job does not edit them.`
+      + ` **The client-facing wording of the cash assumption also needs a person:** \`${CASH_RATE_WORDING}\` (\`cash.basis\`) states the old rate and the month the banks quoted it, and the job does not edit Planeir's assumptions. Update it in this PR so the explanation matches the calculation.`
     );
   }
   for (const figure of plan.figures.filter((candidate) => candidate.valueChanged && candidate.id !== CASH_RATE_ID)) {

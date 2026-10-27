@@ -23,7 +23,7 @@ import { QUOTE_SOURCES, findRow, parseRate, printedEffectiveDate, readQuote, sou
 import {
   LARGE_MOVE, applyPlanToSource, bumpCatalogueVersion, bumpFigureVersion, decideOnPullRequest, planRefresh, summarisePlan, verifyEditedSource
 } from './lib/market-refresh/plan.mjs';
-import { CASH_RATE_GOLDENS, CASH_RATE_ID, registerWarningsAfter, renderReport, staleQuotes } from './lib/market-refresh/report.mjs';
+import { CASH_RATE_GOLDENS, CASH_RATE_ID, CASH_RATE_WORDING, registerWarningsAfter, renderReport, staleQuotes } from './lib/market-refresh/report.mjs';
 import { BRANCH_PREFIX, GENERATED_FILES, GOLDEN_CHECKS, MARKET_FILE, readAll, refreshMarketFigures } from './lib/market-refresh/run.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -63,6 +63,7 @@ function fakeFetch(extra = {}, calls = []) {
     if (entry instanceof Error) throw entry;
     if (entry === undefined) return new Response('<HTML><TITLE>Access Denied</TITLE></HTML>', { status: 403 });
     if (typeof entry === 'number') return new Response('', { status: entry });
+    if (entry?.bodyError) return { ok: true, status: 200, arrayBuffer: async () => { throw entry.bodyError; } };
     if (entry && typeof entry === 'object') return new Response(entry.body, { status: 200 });
     return new Response(readFileSync(join(FIXTURES, entry)), { status: 200 });
   };
@@ -254,6 +255,34 @@ test('network failures and the wrong kind of answer are reported in plain words'
   }));
   assert.equal(notPdf.ok, false);
   assert.match(notPdf.reason, /did not return a PDF/);
+});
+
+test('a body that fails after the headers arrive, and a PDF that will not open, leave that quote unread and the run goes on', async () => {
+  const { figure, observation } = observationNamed('Bank of Ireland, 3 Year Fixed, first-time buyer, BER C');
+  const dropped = await readQuote(observation, sourceOf(figure, observation), createPageLoader({
+    fetchImpl: fakeFetch({ [observation.url]: { bodyError: Object.assign(new Error('terminated'), { cause: { code: 'ECONNRESET' } }) } }),
+    pagesDir: null
+  }));
+  assert.equal(dropped.ok, false);
+  assert.match(dropped.reason, /the request failed \(ECONNRESET\)/);
+  const slow = await readQuote(observation, sourceOf(figure, observation), createPageLoader({
+    fetchImpl: fakeFetch({ [observation.url]: { bodyError: Object.assign(new Error('timed out'), { name: 'TimeoutError' }) } }),
+    pagesDir: null
+  }));
+  assert.match(slow.reason, /the request timed out/);
+  const pdfUrl = EXPECTED['Bank of Ireland, Instant Access Demand (balances up to €5,000)'].url;
+  const { figure: cash, observation: pdfObservation } = observationNamed('Bank of Ireland, Instant Access Demand (balances up to €5,000)');
+  const broken = await readQuote(pdfObservation, sourceOf(cash, pdfObservation), createPageLoader({ fetchImpl: fakeFetch({ [pdfUrl]: { body: '%PDF-1.4\nnot really a pdf' } }), pagesDir: null }));
+  assert.equal(broken.ok, false);
+  assert.match(broken.reason, /the PDF could not be (opened|read through)/);
+  // The whole run still reads the other quotes.
+  const reads = await readAll(FIGURES, createPageLoader({
+    fetchImpl: fakeFetch({ [observation.url]: { bodyError: new Error('terminated') } }),
+    pagesDir: join(FIXTURES, 'browser'),
+    maxSavedAgeHours: Infinity
+  }));
+  assert.equal(reads.filter((entry) => entry.result.ok).length, 7);
+  assert.equal(reads.find((entry) => entry.sourceLabel === observation.sourceLabel).result.ok, false);
 });
 
 test('a page whose wording or layout has moved is never read through', async () => {
@@ -536,9 +565,12 @@ test('a move of the cash rate says which golden checks pin it and that the job d
   for (const file of CASH_RATE_GOLDENS) assert.ok(report.includes(`\`${file}\``), file);
   assert.match(report, /will fail on this branch until a person reviews them/);
   assert.match(report, /does not edit them/);
+  assert.match(report, /client-facing wording of the cash assumption also needs a person/);
+  assert.ok(report.includes(`\`${CASH_RATE_WORDING}\` (\`cash.basis\`)`));
+  assert.equal(CASH_RATE_WORDING, 'js/planning/planeir_assumptions.js');
   assert.deepEqual([...CASH_RATE_GOLDENS], ['scripts/check-future-cost-fund.mjs', 'scripts/check-goals-and-resources.mjs', 'js/tests_future_cost_fund_math.js']);
   const quiet = renderReport({ plan: plan({}), decision: decideOnPullRequest(plan({})), registerFigures: REGISTER });
-  assert.ok(!quiet.includes('central cash rate moves'));
+  assert.ok(!quiet.includes('central cash rate moves') && !quiet.includes('cash.basis'));
 });
 
 test('the report says where a reviewed figure\'s evidence now points, and that moving the held value is a decision', () => {
@@ -729,7 +761,8 @@ test('the job writes to the data file and the two generated files, and nowhere e
   assert.deepEqual([...GENERATED_FILES], ['js/planning/figures/figures_index.generated.js', 'docs/figures-register.md']);
   const sources = ['scripts/refresh-market-figures.mjs', ...['pages', 'readers', 'plan', 'report', 'run'].map((name) => `scripts/lib/market-refresh/${name}.mjs`)]
     .map((file) => readFileSync(join(root, file), 'utf8')).join('\n');
-  assert.ok(!/planeir_assumptions|docs\/prompt-pack|check-future-cost-fund|check-goals-and-resources/.test(sources.replace(/CASH_RATE_GOLDENS[\s\S]*?\]\);/, '')), 'nothing here names Planeir\'s own assumptions, the prompt pack or a golden file to edit');
+  assert.ok(!/import[^;]*planeir_assumptions|docs\/prompt-pack/.test(sources), 'nothing here reads Planeir\'s own assumptions or touches the prompt pack');
+  assert.ok(!/check-future-cost-fund|check-goals-and-resources/.test(sources.replace(/CASH_RATE_GOLDENS[\s\S]*?\]\);/, '')), 'a golden file is named only to be reported');
   assert.ok(!/writeFile\([^)]*(check-|tests_)/.test(sources));
 });
 

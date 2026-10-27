@@ -17,7 +17,7 @@ For each quote in `market_ie.js` it:
 It never:
 
 - rewrites a `reviewed` value (the mortgage illustration). It records the quotes as evidence and reports where they now point;
-- touches Planeir's own assumptions, `docs/prompt-pack/`, or any golden check. When the central cash rate moves, the three checks that pin 0.002 (`scripts/check-future-cost-fund.mjs`, `scripts/check-goals-and-resources.mjs`, `js/tests_future_cost_fund_math.js`) fail on the PR branch until a person reviews them, and the PR body says so;
+- touches Planeir's own assumptions, `docs/prompt-pack/`, or any golden check. When the central cash rate moves, the three checks that pin 0.002 (`scripts/check-future-cost-fund.mjs`, `scripts/check-goals-and-resources.mjs`, `js/tests_future_cost_fund_math.js`) fail on the PR branch until a person reviews them, and the PR body says so. The PR body also says that the client-facing wording of the cash assumption (`cash.basis` in `js/planning/planeir_assumptions.js`, which names the rate and the month the banks quoted it) needs a person to update it, since the job does not edit Planeir's assumptions;
 - fills a quote it could not read. The quote stays exactly as it was and the PR says why;
 - merges anything, or force-pushes.
 
