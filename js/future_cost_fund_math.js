@@ -387,7 +387,7 @@ function solveFunding(costs, rate, { startsInYears, cashToday, funding, savingSt
  * first; `save_then_pay` saves before it starts; `lump_sum_now` funds it today.
  * A caller MUST supply the calculation year: plan calculations never read a clock.
  */
-export function computeDatedCostFunding({ costKind, startsInYears, costYears, cashToday = 0,
+export function computeDatedCostFunding({ costKind, startsInYears, costYears, annualCostToday, durationYears, cashToday = 0,
   funding = 'save_then_pay', savingStartsInYears = 0 }, options = {}) {
   if (!COST_KINDS.includes(costKind)) throw new Error('Dated-cost costKind must be education or general.');
   if (!Number.isInteger(options.calculationYear) || options.calculationYear < IE_TAX_FIRST_YEAR) {
@@ -396,6 +396,12 @@ export function computeDatedCostFunding({ costKind, startsInYears, costYears, ca
   if (!Number.isInteger(startsInYears) || startsInYears < 0 || startsInYears > MAX_STARTS_IN_YEARS) {
     throw new Error('Dated-cost startsInYears must be a whole number from 0 to 40.');
   }
+  const rates = resolveRates({ costKind }, options);
+  if (costYears === undefined) {
+    if (!isFiniteNumber(annualCostToday) || annualCostToday <= 0 || !Number.isInteger(durationYears)
+      || durationYears < 1 || durationYears > MAX_DURATION_YEARS) throw new Error('A dated cost needs a positive annual cost and a duration from 1 to 30.');
+    costYears = buildCostYears({ startsInYears, annualCostToday, durationYears }, rates);
+  } else if (annualCostToday !== undefined || durationYears !== undefined) throw new Error('Supply a nominal schedule or an inflated annual cost, not both.');
   // Internal schedules also price the saving years transferred to retirement;
   // those can span the full lead time as well as the cost's duration.
   if (!Array.isArray(costYears) || costYears.length < 1 || costYears.length > MAX_STARTS_IN_YEARS + MAX_DURATION_YEARS
@@ -407,9 +413,8 @@ export function computeDatedCostFunding({ costKind, startsInYears, costYears, ca
     || (funding === 'save_then_pay' && savingStartsInYears >= startsInYears)) {
     throw new Error('Saving must start before the dated cost; a cost starting now cannot use save_then_pay.');
   }
-  const rates = resolveRates({ costKind }, options);
   return { ...solveFunding(costYears, rates.cashRateNet, { startsInYears, cashToday, funding, savingStartsInYears }),
-    assumptions: { ...rates, timing: 'start-of-year' } };
+    costYears: costYears.map(row => ({ ...row })), assumptions: { ...rates, timing: 'start-of-year' } };
 }
 
 function buildAssumptionsTable(inputs, rates) {

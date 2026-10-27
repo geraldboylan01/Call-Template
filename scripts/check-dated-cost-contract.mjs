@@ -8,6 +8,8 @@ import { PLANEIR_ASSUMPTIONS, approvedCollegeScenarios } from '../js/planning/pl
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 import { referenceDatedCostFunding } from './references/dated-cost-funding.mjs';
 import { createDatedCost } from '../js/planning/dated_costs/contract.js';
+import { produceCollegeCost } from '../js/planning/dated_costs/college_funding.js';
+import { produceFutureCostFundCost } from '../js/planning/dated_costs/future_cost_fund.js';
 
 let total = 0, failures = 0;
 async function test(name, fn) {
@@ -149,6 +151,55 @@ await test('An early retirement can transfer forty future saving years without c
   input.costByYear = [{ ...input.costByYear[0], year: 2066 }];
   const split = createDatedCost(input).retirementSplit;
   assert.equal(split.after.length, 40); close(split.capitalNeededAtRetirement, createDatedCost(input).moneyNow);
+});
+
+const payer = { payerIds: ['parent'], payerRetirements: [{ personId: 'parent', stopsFromYear: 2050 }] };
+const producerBase = { ...payer, calculationDate: '2026-11-01', costId: 'cost', goalId: 'college' };
+const collegeInput = () => ({ currentYear: 2026, inflationRate: PLANEIR_ASSUMPTIONS.inflation.educationRate,
+  children: [{ id: 'child', title: 'Child', currentAge: 10, collegeStartAge: 18, collegeDurationYears: 4 }], scenarios: approvedCollegeScenarios() });
+await test('The future-cost producer pins the full sample schedule, present value and each funding case to the cent', () => {
+  const baseline = JSON.parse(readFileSync(new URL('./fixtures/dated-cost-sample-baseline.json', import.meta.url))).future;
+  for (const [i, scenario] of FUTURE_COST_FUND_SAMPLE.scenarios.entries()) {
+    const result = produceFutureCostFundCost({ ...producerBase, input: FUTURE_COST_FUND_SAMPLE,
+      cashToday: baseline.requiredToday * scenario.lumpShare, savingStartsInYears: scenario.savingStartsInYears ?? 0,
+      funding: scenario.lumpShare === 1 ? 'lump_sum_now' : 'save_then_pay' });
+    close(result.provenance.requiredToday, baseline.requiredToday);
+    result.costByYear.forEach((row, j) => close(row.amountAfterRelief, baseline.costYears[j].cost));
+    result.moneyEachYear.filter(row => row.year >= 2026 + (scenario.savingStartsInYears ?? 0))
+      .forEach(row => close(row.amount, baseline.cases[i].yearlyAmount));
+  }
+});
+await test('The college producer returns the native sample bills to the cent, without a second inflation step', () => {
+  const baseline = JSON.parse(readFileSync(new URL('./fixtures/dated-cost-sample-baseline.json', import.meta.url))).college;
+  for (const expected of baseline) {
+    const result = produceCollegeCost({ ...producerBase, title: 'College', input: collegeInput(), scenarioId: expected.id });
+    result.costByYear.forEach((row, i) => close(row.amountAfterRelief, expected.costByYear[i].cost));
+    close(result.costByYear.reduce((n, row) => n + row.amountAfterRelief, 0), expected.nominalCost);
+  }
+});
+await test('Part of a lump sum gives the same yearly funding whichever module produces the same cost', () => {
+  for (const cashToday of [0, 10000, 30000, 86066.1822762033]) {
+    const fund = produceFutureCostFundCost({ ...producerBase, input: FUTURE_COST_FUND_SAMPLE, cashToday });
+    const college = produceCollegeCost({ ...producerBase, title: 'College', input: collegeInput(), scenarioId: 'living_away', cashToday });
+    assert.deepEqual(fund.costByYear, college.costByYear);
+    fund.moneyEachYear.forEach((row, i) => close(row.amount, college.moneyEachYear[i].amount));
+    close(fund.moneyNow, college.moneyNow);
+  }
+});
+await test('A producer passes its explicit plan date and never falls back to the clock', () => {
+  const OriginalDate = globalThis.Date;
+  globalThis.Date = class extends OriginalDate { constructor(...args) { if (!args.length) throw new Error('Clock read'); super(...args); } };
+  try {
+    const fund = produceFutureCostFundCost({ ...producerBase, input: FUTURE_COST_FUND_SAMPLE });
+    const college = produceCollegeCost({ ...producerBase, title: 'College', input: collegeInput(), scenarioId: 'living_away' });
+    assert.equal(fund.assumptions.calculationYear, 2026); assert.equal(college.assumptions.calculationYear, 2026);
+    assert.throws(() => produceFutureCostFundCost({ ...producerBase, calculationDate: undefined, input: FUTURE_COST_FUND_SAMPLE }));
+    assert.throws(() => produceCollegeCost({ ...producerBase, title: 'College', input: { ...collegeInput(), currentYear: 2027 }, scenarioId: 'living_away' }), /match calculationDate/);
+  } finally { globalThis.Date = OriginalDate; }
+});
+await test('The future-cost producer supports an internal cost starting now without widening its payload', () => {
+  const result = produceFutureCostFundCost({ ...producerBase, input: { ...FUTURE_COST_FUND_SAMPLE, startsInYears: 0 } });
+  assert.equal(result.moneyEachYear[0].year, 2026); close(result.moneyEachYear[0].amount, 15000);
 });
 
 console.log(`Dated-cost contract checks: ${total - failures}/${total} passed.`);
