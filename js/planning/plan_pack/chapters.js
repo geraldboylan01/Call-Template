@@ -7,6 +7,8 @@ import { computeProtectionGapProjection } from '../../protection_gap_math.js';
 import { computeMortgageComparison } from '../../mortgage_math.js';
 import { computePensionProjection } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
+import { computeFutureCostFundProjection } from '../../future_cost_fund_math.js';
+import { planDatedCostProducer } from '../dated_costs/plan_producers.js';
 import { finiteJson, PlanPackError, fail } from './schema.js';
 
 export class LaterStage extends PlanPackError {
@@ -255,7 +257,37 @@ export async function buildChapter(context, pack, chapter) {
       : 'The goals engine derives its own funding cases. Mapping a plan route requires B1; no nearest or relabelled case is substituted.', context.ledgerFunding ? 'B2' : 'B1', context.ledgerFunding ? 'requires_profile_adapter' : 'requires_resource_ledger');
   }
   if (chapter === 'future_cost_fund') {
-    throw new LaterStage('/chapters', 'The existing fund pipeline has no explicit pack calculation-date input. Its dated-cost builder must be added before this chapter can compile.', 'B2', 'requires_profile_adapter');
+    const candidates = context.profile.goals.filter(goal => !['paused', 'completed'].includes(goal.status)
+      && (goal.type === 'fund_education' || pack.planningInputs.goalFundingFacts.some(fact => fact.goalId === goal.goalId && fact.kind === 'dated_cost')));
+    const selectedId = pack.planningInputs.chapterGoals[chapter];
+    const goal = selectedId ? candidates.find(row => row.goalId === selectedId) : candidates.length === 1 ? candidates[0] : null;
+    if (!goal) missing('/planningInputs/chapterGoals/future_cost_fund', 'Select one dated cost for the future-cost-fund chapter.');
+    const producer = planDatedCostProducer(context, pack, goal);
+    const recorded = context.resourceLedger?.datedCosts.find(cost => cost.goalId === goal.goalId);
+    // B0 can compile a funding requirement too, without applying B1 route cash.
+    // Assigned investments still need a valuation contract before counting here.
+    const held = pack.planningInputs.assetAssignments.filter(row => row.goalId === goal.goalId).reduce((sum, row) => {
+      const asset = context.profile.assets.find(asset => asset.assetId === row.assetId);
+      if (asset.type !== 'cash') throw new LaterStage('/planningInputs/assetAssignments', 'An assigned investment needs its goal-specific valuation before it can count as cash.', 'B2', 'requires_goal_asset_adapter');
+      return sum + amount(asset.currentValue, '/household/assets/currentValue');
+    }, 0);
+    const contract = recorded ?? producer.produce(held);
+    if (producer.input.startsInYears === 0 || contract.provenance.funding !== 'save_then_pay' || contract.retirementSplit.capitalNeededAtRetirement > 0.005) {
+      throw new LaterStage('/chapters', 'The dated-cost contract is priced, but this unchanged screen only shows saving before a future cost; immediate, each-year and retirement-split funding need their screen adapter.', 'B2', 'requires_profile_adapter');
+    }
+    const requiredToday = contract.provenance.requiredToday;
+    const input = { ...producer.input, scenarios: [{ id: 'funding', lumpShare: requiredToday > 0 ? contract.provenance.cashToday / requiredToday : 0 }] };
+    const projection = computeFutureCostFundProjection(input, { calculationYear: year });
+    const priced = projection.debug, fundingCase = priced.cases[0];
+    if (Math.abs(priced.requiredToday - requiredToday) > 0.005 || priced.costYears.some((row, i) => Math.abs(row.cost - contract.costByYear[i].amountAfterRelief) > 0.005)) {
+      throw new LaterStage('/chapters', 'This cost’s nominal schedule needs an exact screen adapter; the existing fixed-growth screen is not substituted.', 'B2', 'requires_profile_adapter');
+    }
+    return { input, payload: { title: goal.title, generated: { futureCostFundInputs: input,
+      summaryHtml: '<p>What this route would need to fund this cost, distinct from its current saving.</p>' } },
+    nativeCaseId: 'funding', metrics: { requiredToday, moneyNow: contract.moneyNow, lumpSumToday: fundingCase.lumpSumToday,
+      yearlyAmount: fundingCase.yearlyAmount, totalCost: priced.totalCost }, builderHousehold: context.profile,
+    assumptionsUsed: [{ key: 'datedCost', value: contract }, { key: 'calculationYear', value: year }], warnings: [],
+    basis: 'dated_cost_contract_funding_requirement' };
   }
   if (['household_cash_flow', 'protection_gap'].includes(chapter)) {
     if (pack.planningInputs.takeHomeBasis !== 'after_personal_pension') missing('/planningInputs/takeHomeBasis', 'Confirm that stated net income is bank pay after personal pension deductions.');

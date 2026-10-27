@@ -187,6 +187,14 @@ await test('Part of a lump sum gives the same yearly funding whichever module pr
     close(fund.moneyNow, college.moneyNow);
   }
 });
+await test('A named child keeps their own start and duration in a mixed-age college projection', () => {
+  const input = collegeInput(); input.children.push({ ...input.children[0], id: 'younger', currentAge: 8 });
+  const result = produceCollegeCost({ ...producerBase, title: 'Younger child college', input, scenarioId: 'living_at_home', childId: 'younger' });
+  assert.equal(result.costByYear[0].year, 2036); assert.equal(result.costByYear.at(-1).year, 2039);
+  assert.equal(result.moneyEachYear.length, 10);
+  const native = computeCollegeFundingProjection(input).debug.scenarios.find(row => row.id === 'living_at_home');
+  result.costByYear.forEach(row => close(row.amountAfterRelief, native.yearRows.find(year => year.year === row.year).children.find(child => child.id === 'younger').cost));
+});
 await test('A producer passes its explicit plan date and never falls back to the clock', () => {
   const OriginalDate = globalThis.Date;
   globalThis.Date = class extends OriginalDate { constructor(...args) { if (!args.length) throw new Error('Clock read'); super(...args); } };
@@ -286,6 +294,55 @@ await test('Explicit payer IDs select that payer’s boundary and invalid or dup
   for (const payerIds of [['absent'], ['niamh', 'niamh']]) {
     const invalid = structuredClone(p); invalid.planningInputs.goalFundingFacts[0].payerIds = payerIds;
     assert.equal((await compilePlanPack(invalid, { resourceLedger: true })).status, 'invalid');
+  }
+});
+
+await test('The future-cost chapter compiles in B0 and B1 using the explicit pack date', async () => {
+  const p = datedPack({ start: 2, funding: 'save_then_pay' });
+  p.chapters.push('future_cost_fund');
+  const b0 = structuredClone(p); b0.routes = [{ id: 'current' }];
+  assert.equal((await compilePlanPack(b0)).status, 'compiled');
+  p.routes.push({ id: 'part', changes: [{ type: 'useCash', goalId: 'cost', amount: 1000 }] });
+  const result = await compile(p);
+  for (const route of result.routes) {
+    const entry = result.chapters.find(row => row.id === 'future_cost_fund').cases.find(row => row.id === route.chapterCases.future_cost_fund);
+    assert.equal(entry.nativeCaseId, 'funding');
+    const direct = computeFutureCostFundProjection(entry.input, { calculationYear: 2026 }).debug;
+    close(entry.metrics.requiredToday, direct.requiredToday);
+    close(entry.metrics.yearlyAmount, direct.cases[0].yearlyAmount);
+    close(entry.metrics.moneyNow, ledgerFor(result, route.id).datedCosts[0].moneyNow);
+    assert.deepEqual(entry.derived.outputs, computeFutureCostFundProjection(entry.input, { calculationYear: 2026 }).outputsTable);
+  }
+});
+await test('The compiler and both module-check passes never read the current year for a dated cost', async () => {
+  const p = datedPack({ start: 2, funding: 'save_then_pay' });
+  p.calculationDate = p.household.assumptions.calculationDateIso = '2031-11-01';
+  p.household.goals[0].targetDate = '2033-11-01';
+  p.chapters = ['future_cost_fund'];
+  p.planningInputs.leftOverEachYear = 11000;
+  const OriginalDate = globalThis.Date;
+  globalThis.Date = class extends OriginalDate {
+    constructor(...args) { super(...args); this.clockDerived = args.length === 0; }
+    getFullYear() { if (this.clockDerived) throw new Error('Calculation read the system year'); return super.getFullYear(); }
+  };
+  try {
+    const b0 = structuredClone(p); b0.routes = [{ id: 'current' }];
+    const result = await compilePlanPack(b0);
+    assert.equal(result.status, 'compiled', JSON.stringify(result.diagnostics));
+    const entry = result.chapters[0].cases[0];
+    assert.equal(entry.assumptionsUsed.find(row => row.key === 'calculationYear').value, 2031);
+    const b1 = await compile(p);
+    assert.equal(ledgerFor(b1).datedCosts[0].assumptions.calculationYear, 2031);
+    assert.equal(entry.provenance.calculationDateSource, '/calculationDate');
+  } finally { globalThis.Date = OriginalDate; }
+});
+await test('Internal immediate and each-year funding do not masquerade as an unchanged future-fund screen', async () => {
+  for (const config of [{ start: 0, funding: 'each_year' }, { start: 2, funding: 'each_year' }]) {
+    const p = datedPack(config); p.chapters.push('future_cost_fund');
+    const result = await compilePlanPack(p, { resourceLedger: true });
+    assert.equal(result.status, 'requires_later_stage');
+    assert(result.diagnostics.some(row => row.code === 'requires_profile_adapter'));
+    assert.equal(result.resourceLedger.routes[0].datedCosts.length, 1);
   }
 });
 

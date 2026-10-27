@@ -357,7 +357,7 @@ await test('A stated-left-over pack can price the ledger but cannot show stale p
   p.chapters.push('protection_gap');r=await refuses(p,'missing_information');assert(r.diagnostics.some(d=>d.message.includes('household_cash_flow')));
 });
 await test('A priced ledger does not pretend incomplete screen adapters are route-exact',async()=>{
-  for (const chapter of ['college_funding','net_retirement_cashflow','goals_and_resources','future_cost_fund']) {
+  for (const chapter of ['college_funding','net_retirement_cashflow','goals_and_resources']) {
     const p=base();p.routes=[{id:'current'}];p.narration={};p.chapters=['household_cash_flow',chapter];
     const r=await refuses(p,'requires_profile_adapter');assert.equal(r.status,'requires_later_stage');assert.equal(ledger(r).status,'priced');
   }
