@@ -314,51 +314,13 @@ function buildCostYears(inputs, rates) {
 }
 
 function solveCase(inputs, scenario, rates, costs, requiredToday) {
-  const r = rates.cashRateNet;
-  const totalCost = costs.reduce((sum, entry) => sum + entry.cost, 0);
-
   const lumpSumToday = scenario.lumpShare * requiredToday;
-  const savingYears = scenario.lumpShare >= 1
-    ? 0
-    : inputs.startsInYears - scenario.savingStartsInYears;
-  const yearlyAmount = savingYears > 0
-    ? ((1 - scenario.lumpShare) * requiredToday)
-      / annuityPresentValue(r, scenario.savingStartsInYears, inputs.startsInYears)
-    : 0;
-
-  const lastYear = inputs.startsInYears + inputs.durationYears - 1;
-  const rows = [];
-  let carried = 0;
-  for (let yearIndex = 0; yearIndex <= lastYear; yearIndex += 1) {
-    const openingBalance = yearIndex === 0 ? 0 : carried * (1 + r);
-    const payment = (yearIndex === 0 ? lumpSumToday : 0)
-      + (savingYears > 0
-        && yearIndex >= scenario.savingStartsInYears
-        && yearIndex < inputs.startsInYears
-        ? yearlyAmount
-        : 0);
-    const cost = costs.find((entry) => entry.yearIndex === yearIndex)?.cost ?? 0;
-    const closingBalance = openingBalance + payment - cost;
-    rows.push({ yearIndex, openingBalance, payment, cost, closingBalance });
-    carried = closingBalance;
-  }
-
-  const finalClosing = rows[rows.length - 1].closingBalance;
-  if (Math.abs(finalClosing) > CLOSING_BALANCE_TOLERANCE_EUR) {
-    throw new Error(
-      `${FIELD}.scenarios (${scenario.title}): the fund does not close at zero (${finalClosing.toFixed(4)}).`
-    );
-  }
-  rows.forEach((row) => {
-    if (row.closingBalance < -CLOSING_BALANCE_TOLERANCE_EUR) {
-      throw new Error(
-        `${FIELD}.scenarios (${scenario.title}): the fund goes below zero in year ${row.yearIndex}.`
-      );
-    }
+  const funding = solveFunding(costs, rates.cashRateNet, {
+    startsInYears: inputs.startsInYears, cashToday: lumpSumToday,
+    funding: scenario.lumpShare >= 1 ? 'lump_sum_now' : 'save_then_pay',
+    savingStartsInYears: scenario.savingStartsInYears
   });
-
-  const paidIn = lumpSumToday + savingYears * yearlyAmount;
-  const growth = totalCost - paidIn;
+  const { savingYears, yearlyAmount, paidIn, growth, totalCost, rows } = funding;
   const costStart = rows[inputs.startsInYears];
 
   return {
@@ -377,6 +339,75 @@ function solveCase(inputs, scenario, rates, costs, requiredToday) {
     peakOpeningBalance: Math.max(...rows.map((row) => row.openingBalance)),
     rows
   };
+}
+
+// One funding calculation for the screen and the internal dated-cost producers.
+// The schedule is already in each year's euros; inflation is never applied twice.
+function solveFunding(costs, rate, { startsInYears, cashToday, funding, savingStartsInYears = 0 }) {
+  const totalCost = costs.reduce((sum, entry) => sum + entry.cost, 0);
+  const requiredToday = costs.reduce((sum, entry) => sum + entry.cost * (1 + rate) ** -entry.yearIndex, 0);
+  if (!Number.isFinite(requiredToday) || !Number.isFinite(totalCost)) throw new Error('Dated-cost amounts overflow.');
+  if (!isFiniteNumber(cashToday) || cashToday < 0 || cashToday > requiredToday + 1e-8) {
+    throw new Error('Dated-cost cashToday must be between zero and the cost present value.');
+  }
+  const moneyNow = Math.max(0, requiredToday - cashToday);
+  const savingYears = funding === 'save_then_pay' ? startsInYears - savingStartsInYears : 0;
+  const yearlyAmount = savingYears > 0 ? moneyNow / annuityPresentValue(rate, savingStartsInYears, startsInYears) : 0;
+  const initialCash = funding === 'lump_sum_now' ? requiredToday : cashToday;
+  const lastYear = costs.at(-1).yearIndex;
+  const rows = [];
+  const moneyEachYear = [];
+  let carried = 0;
+  for (let yearIndex = 0; yearIndex <= lastYear; yearIndex += 1) {
+    const openingBalance = yearIndex === 0 ? 0 : carried * (1 + rate);
+    const cost = costs.find((entry) => entry.yearIndex === yearIndex)?.cost ?? 0;
+    const openingPayment = yearIndex === 0 ? initialCash : 0;
+    const annual = funding === 'each_year' ? Math.max(0, cost - openingBalance - openingPayment)
+      : savingYears > 0 && yearIndex >= savingStartsInYears && yearIndex < startsInYears ? yearlyAmount : 0;
+    const payment = openingPayment + annual;
+    const closingBalance = openingBalance + payment - cost;
+    rows.push({ yearIndex, openingBalance, payment, cost, closingBalance });
+    if (funding === 'each_year' || (funding === 'save_then_pay' && yearIndex < startsInYears)) {
+      moneyEachYear.push({ yearIndex, amount: annual });
+    }
+    carried = closingBalance;
+  }
+  if (rows.some(row => !Object.values(row).every(Number.isFinite) || row.closingBalance < -CLOSING_BALANCE_TOLERANCE_EUR)
+    || Math.abs(carried) > CLOSING_BALANCE_TOLERANCE_EUR) throw new Error('The dated-cost fund does not pay every cost and close at zero.');
+  const paidIn = initialCash + moneyEachYear.reduce((sum, row) => sum + row.amount, 0);
+  return {
+    requiredToday, moneyNow, moneyEachYear, savingYears, yearlyAmount,
+    paidIn, growth: totalCost - paidIn, totalCost, rows
+  };
+}
+
+/**
+ * Internal seam, never a module payload. All costs are nominal start-of-year
+ * amounts. `each_year` pays the bill as it falls due, using any earmarked cash
+ * first; `save_then_pay` saves before it starts; `lump_sum_now` funds it today.
+ * A caller MUST supply the calculation year: plan calculations never read a clock.
+ */
+export function computeDatedCostFunding({ costKind, startsInYears, costYears, cashToday = 0,
+  funding = 'save_then_pay', savingStartsInYears = 0 }, options = {}) {
+  if (!COST_KINDS.includes(costKind)) throw new Error('Dated-cost costKind must be education or general.');
+  if (!Number.isInteger(options.calculationYear) || options.calculationYear < IE_TAX_FIRST_YEAR) {
+    throw new Error('Dated-cost funding requires an explicit calculationYear.');
+  }
+  if (!Number.isInteger(startsInYears) || startsInYears < 0 || startsInYears > MAX_STARTS_IN_YEARS) {
+    throw new Error('Dated-cost startsInYears must be a whole number from 0 to 40.');
+  }
+  if (!Array.isArray(costYears) || costYears.length < 1 || costYears.length > MAX_DURATION_YEARS
+    || costYears.some((row, index) => row?.yearIndex !== startsInYears + index || !isFiniteNumber(row.cost) || row.cost < 0)) {
+    throw new Error('Dated-cost costYears must contain consecutive, finite non-negative yearly costs.');
+  }
+  if (!['each_year', 'save_then_pay', 'lump_sum_now'].includes(funding)) throw new Error('Unknown dated-cost funding mode.');
+  if (!Number.isInteger(savingStartsInYears) || savingStartsInYears < 0
+    || (funding === 'save_then_pay' && savingStartsInYears >= startsInYears)) {
+    throw new Error('Saving must start before the dated cost; a cost starting now cannot use save_then_pay.');
+  }
+  const rates = resolveRates({ costKind }, options);
+  return { ...solveFunding(costYears, rates.cashRateNet, { startsInYears, cashToday, funding, savingStartsInYears }),
+    assumptions: { ...rates, timing: 'start-of-year' } };
 }
 
 function buildAssumptionsTable(inputs, rates) {
