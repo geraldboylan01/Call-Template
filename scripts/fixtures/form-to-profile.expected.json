@@ -1,0 +1,5252 @@
+[
+  {
+    "id": "fictional-single-renter",
+    "description": "Entirely invented: a single renter building a reserve.",
+    "profile": {
+      "profileId": "profile_fictional-single-renter",
+      "schemaVersion": 1,
+      "revision": 7,
+      "source": "consumer",
+      "primaryPerson": {
+        "personId": "primary",
+        "role": "primary",
+        "age": 31,
+        "employmentStatus": "employee",
+        "intendedRetirementAge": 67
+      },
+      "dependants": [],
+      "assets": [
+        {
+          "assetId": "asset_application_cash",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "cash",
+          "label": "Cash",
+          "currentValue": {
+            "amount": 12000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_investments",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "investment",
+          "label": "Investments and shares",
+          "currentValue": {
+            "amount": 5000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_employerShares",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "investment",
+          "label": "Shares in employer",
+          "currentValue": {
+            "amount": 0,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "liabilities": [],
+      "incomeSources": [
+        {
+          "incomeId": "income_application_primary",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "employment",
+          "label": "Applicant gross pay",
+          "grossAnnual": {
+            "amount": 54000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "householdIncome": {
+        "netMonthly": {
+          "amount": 3200,
+          "currency": "EUR"
+        },
+        "netAnnual": {
+          "amount": 38400,
+          "currency": "EUR"
+        }
+      },
+      "expenses": {
+        "annualTotal": {
+          "amount": 33600,
+          "currency": "EUR"
+        },
+        "monthlyEssential": {
+          "amount": 1600,
+          "currency": "EUR"
+        },
+        "currentMonthlyRent": {
+          "amount": 1200,
+          "currency": "EUR"
+        }
+      },
+      "pensions": [],
+      "properties": [],
+      "businesses": [],
+      "goals": [
+        {
+          "goalId": "goal_application_maintain_liquidity",
+          "type": "maintain_liquidity",
+          "title": "Maintain an emergency cash reserve",
+          "priority": "medium",
+          "status": "active"
+        },
+        {
+          "goalId": "goal_application_retire",
+          "type": "retire",
+          "title": "Plan for retirement",
+          "priority": "medium",
+          "status": "active"
+        }
+      ],
+      "preferences": {
+        "baseCurrency": "EUR",
+        "riskDiscussionCompleted": false
+      },
+      "assumptions": {
+        "calculationDateIso": "2026-10-27",
+        "values": {
+          "persona": {},
+          "planning": {},
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "mappingVersion": "1.0.0",
+            "snapshotBound": true,
+            "revision": 7,
+            "unsurePaths": [],
+            "unmappedFields": [
+              {
+                "path": "question",
+                "reason": "Free text needs the later analyst; it is not parsed into facts.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "income.sector",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "spending.pattern",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              }
+            ]
+          },
+          "completionFacts": {
+            "confirmedNonePaths": {
+              "/dependants": true,
+              "/properties": true,
+              "/pensions": true,
+              "/liabilities/loan": true,
+              "/liabilities/credit_card": true
+            }
+          },
+          "retirement": {
+            "targetIncomeToday": 30000,
+            "statePensionFraction": {
+              "primary": 1
+            }
+          },
+          "housePurchase": {
+            "currentMonthlySavings": 400
+          }
+        }
+      },
+      "fieldMetadata": {
+        "/household/planningWithPartner": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/hasChildren": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/goals/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/goals/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1dependants": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1properties": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.2"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1pensions": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1liabilities~1loan": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/age": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/incomeSources/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross",
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/incomeSources/0/grossAnnual": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/employmentStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netMonthly": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/monthlyEssential": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/currentMonthlyRent": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/1/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/2/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/intendedRetirementAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netAnnual": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
+          }
+        },
+        "/assumptions/values/retirement/targetIncomeToday": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.income"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/retirement/statePensionFraction/primary": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.statePension"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The applicant expects the full State Pension: fraction 1. This says nothing about the partner."
+          }
+        },
+        "/assumptions/values/housePurchase/currentMonthlySavings": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.saved"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1liabilities~1credit_card": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "creditCard.clears"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/annualTotal": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        }
+      },
+      "missingInformation": [
+        {
+          "fieldPath": "/household/married",
+          "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/expenses/monthlyEssential",
+          "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/goalFlexibility/goal_application_retire",
+          "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goals",
+          "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/illnessScenario",
+          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        }
+      ],
+      "consent": [],
+      "createdAt": "2026-10-20T12:00:00.000Z",
+      "updatedAt": "2026-10-20T12:00:00.000Z",
+      "confirmedAt": "2026-10-20T12:00:00.000Z",
+      "household": {
+        "planningWithPartner": false,
+        "hasChildren": false
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "married_or_civil_partners",
+        "fieldPath": "/household/married",
+        "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_retire",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_contract",
+        "fieldPath": "/assumptions/values/protection/illnessScenario",
+        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ]
+  },
+  {
+    "id": "fictional-mortgage-college-family",
+    "description": "Entirely invented: married partners with a mortgage and two children planning for college.",
+    "profile": {
+      "profileId": "profile_fictional-mortgage-college-family",
+      "schemaVersion": 1,
+      "revision": 7,
+      "source": "consumer",
+      "primaryPerson": {
+        "personId": "primary",
+        "role": "primary",
+        "age": 44,
+        "employmentStatus": "employee",
+        "intendedRetirementAge": 63
+      },
+      "dependants": [
+        {
+          "dependantId": "child_application_0",
+          "currentAge": 15
+        },
+        {
+          "dependantId": "child_application_1",
+          "currentAge": 12
+        }
+      ],
+      "assets": [
+        {
+          "assetId": "asset_application_cash",
+          "ownerIds": [],
+          "type": "cash",
+          "label": "Cash",
+          "currentValue": {
+            "amount": 50000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_investments",
+          "ownerIds": [],
+          "type": "investment",
+          "label": "Investments and shares",
+          "currentValue": {
+            "amount": 18000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_employerShares",
+          "ownerIds": [],
+          "type": "investment",
+          "label": "Shares in employer",
+          "currentValue": {
+            "amount": 0,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "liabilities": [
+        {
+          "liabilityId": "liability_application_home_mortgage",
+          "ownerIds": [],
+          "type": "mortgage",
+          "label": "Home mortgage",
+          "currentBalance": {
+            "amount": 230000,
+            "currency": "EUR"
+          },
+          "annualInterestRate": 0.036000000000000004,
+          "monthlyPayment": {
+            "amount": 1600,
+            "currency": "EUR"
+          },
+          "remainingTermMonths": 228
+        }
+      ],
+      "incomeSources": [
+        {
+          "incomeId": "income_application_primary",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "employment",
+          "label": "Applicant gross pay",
+          "grossAnnual": {
+            "amount": 82000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "incomeId": "income_application_partner",
+          "ownerIds": [
+            "partner"
+          ],
+          "type": "employment",
+          "label": "Partner gross pay",
+          "grossAnnual": {
+            "amount": 48000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "householdIncome": {
+        "netMonthly": {
+          "amount": 7400,
+          "currency": "EUR"
+        },
+        "netAnnual": {
+          "amount": 88800,
+          "currency": "EUR"
+        }
+      },
+      "expenses": {
+        "annualTotal": {
+          "amount": 68400,
+          "currency": "EUR"
+        },
+        "monthlyEssential": {
+          "amount": 3900,
+          "currency": "EUR"
+        }
+      },
+      "pensions": [
+        {
+          "pensionId": "pension_application_0",
+          "ownerId": "primary",
+          "type": "occupational",
+          "currentValue": {
+            "amount": 180000,
+            "currency": "EUR"
+          },
+          "employeeContributionRate": 0.08,
+          "employerContributionRate": 0.05,
+          "contributionStatus": "active"
+        },
+        {
+          "pensionId": "pension_application_1",
+          "ownerId": "partner",
+          "type": "prsa",
+          "currentValue": {
+            "amount": 65000,
+            "currency": "EUR"
+          },
+          "employeeContributionRate": 0.05,
+          "employerContributionRate": 0.03,
+          "contributionStatus": "active"
+        }
+      ],
+      "properties": [
+        {
+          "propertyId": "property_application_home",
+          "ownerIds": [],
+          "use": "home",
+          "associatedLiabilityIds": [
+            "liability_application_home_mortgage"
+          ],
+          "currentValue": {
+            "amount": 470000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "businesses": [],
+      "goals": [
+        {
+          "goalId": "goal_application_optimise_mortgage",
+          "type": "optimise_mortgage",
+          "title": "Review the mortgage path",
+          "priority": "medium",
+          "status": "active"
+        },
+        {
+          "goalId": "goal_application_fund_education",
+          "type": "fund_education",
+          "title": "Fund children’s education",
+          "priority": "medium",
+          "status": "active"
+        },
+        {
+          "goalId": "goal_application_retire",
+          "type": "retire",
+          "title": "Plan for retirement",
+          "priority": "medium",
+          "status": "active"
+        },
+        {
+          "goalId": "goal_application_understand_position",
+          "type": "understand_position",
+          "title": "Understand my current position",
+          "priority": "medium",
+          "status": "active"
+        }
+      ],
+      "preferences": {
+        "baseCurrency": "EUR",
+        "riskDiscussionCompleted": false
+      },
+      "assumptions": {
+        "calculationDateIso": "2026-10-27",
+        "values": {
+          "persona": {},
+          "planning": {},
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "mappingVersion": "1.0.0",
+            "snapshotBound": true,
+            "revision": 7,
+            "unsurePaths": [],
+            "unmappedFields": [
+              {
+                "path": "question",
+                "reason": "Free text needs the later analyst; it is not parsed into facts.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "children.0.saved",
+                "reason": "No profile earmarking field; this may already be included in total cash, so it is not added again.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "children.1.saved",
+                "reason": "No profile earmarking field; this may already be included in total cash, so it is not added again.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "income.sector",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "income.partnerSector",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "spending.pattern",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "mortgage.rateType",
+                "reason": "No mortgage rate-type field in HouseholdProfile v1.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "mortgage.fixedEnds",
+                "reason": "No fixed-rate expiry field in HouseholdProfile v1.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "cover.life",
+                "reason": "Cover presence does not establish whether this mortgage clears on death.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "cover.incomeProtection",
+                "reason": "Cover presence does not specify an insured benefit.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              }
+            ]
+          },
+          "completionFacts": {
+            "confirmedNonePaths": {
+              "/properties": true,
+              "/liabilities/loan": true,
+              "/liabilities/credit_card": true
+            }
+          },
+          "retirement": {
+            "targetIncomeToday": 50000,
+            "statePensionFraction": {
+              "primary": 1
+            }
+          },
+          "housePurchase": {
+            "currentMonthlySavings": 800
+          },
+          "mortgage": {
+            "fixedPaymentAmount": 1600,
+            "annualOverpayment": 2400
+          },
+          "collegeFunding": {
+            "scenarioByChild": {
+              "child_application_0": "living_away",
+              "child_application_1": "living_at_home"
+            }
+          }
+        }
+      },
+      "fieldMetadata": {
+        "/partner": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The form explicitly includes a separate partner."
+          }
+        },
+        "/household/planningWithPartner": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/hasChildren": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/married": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.married"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/goals/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/goals/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/goals/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.2"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/goals/3": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.3"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1properties": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1liabilities~1loan": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/dependants/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.0.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/dependants/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.1.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/pensions/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.owner",
+              "pensions.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/pensions/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.owner",
+              "pensions.1.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/properties/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/liabilities/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/primaryPerson/age": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/partner/age": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partnerAge"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/dependants/0/currentAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.0.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/dependants/1/currentAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.1.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/incomeSources/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross",
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/incomeSources/0/grossAnnual": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/incomeSources/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.partnerGross",
+              "income.partnerWork"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/incomeSources/1/grossAnnual": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.partnerGross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/employmentStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/partner/employmentStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.partnerWork"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netMonthly": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/monthlyEssential": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/properties/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.value"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/0/currentBalance": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "mortgage.balance"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/0/annualInterestRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "mortgage.rate"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form percentage / 100; even rates below 1 are percentages."
+          }
+        },
+        "/liabilities/0/remainingTermMonths": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "mortgage.yearsLeft"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Remaining years × 12, rounded to the nearest whole month."
+          }
+        },
+        "/liabilities/0/monthlyPayment": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "mortgage.repayment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/1/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/2/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/0/type": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form pension type company mapped to canonical type occupational."
+          }
+        },
+        "/pensions/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.value"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/0/employeeContributionRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.youPay",
+              "pensions.0.youPayUnit"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Explicit percentage contribution / 100."
+          }
+        },
+        "/pensions/0/employerContributionRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.employerPays",
+              "pensions.0.employerPaysUnit"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Explicit percentage contribution / 100."
+          }
+        },
+        "/pensions/0/contributionStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.contributing"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/1/type": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form pension type prsa mapped to canonical type prsa."
+          }
+        },
+        "/pensions/1/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.value"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/1/employeeContributionRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.youPay",
+              "pensions.1.youPayUnit",
+              "income.partnerGross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Monthly contribution × 12 / this pension owner’s gross annual pay."
+          }
+        },
+        "/pensions/1/employerContributionRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.employerPays",
+              "pensions.1.employerPaysUnit"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Explicit percentage contribution / 100."
+          }
+        },
+        "/pensions/1/contributionStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.contributing"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/intendedRetirementAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/partner/intendedRetirementAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.partnerAge"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netAnnual": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
+          }
+        },
+        "/assumptions/values/retirement/targetIncomeToday": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.income"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/retirement/statePensionFraction/primary": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.statePension"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The applicant expects the full State Pension: fraction 1. This says nothing about the partner."
+          }
+        },
+        "/assumptions/values/housePurchase/currentMonthlySavings": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.saved"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/mortgage/fixedPaymentAmount": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "mortgage.repayment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/mortgage/annualOverpayment": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "mortgage.overpaying",
+              "mortgage.overpayment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stated monthly extra mortgage payment × 12."
+          }
+        },
+        "/assumptions/values/collegeFunding/scenarioByChild/child_application_0": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.0.collegePlan"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/collegeFunding/scenarioByChild/child_application_1": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.1.collegePlan"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/properties/0/associatedLiabilityIds": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The mortgage section describes this home’s mortgage."
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1liabilities~1credit_card": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "creditCard.clears"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/annualTotal": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "mortgage.repayment",
+              "mortgage.overpayment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        }
+      },
+      "missingInformation": [
+        {
+          "fieldPath": "/assumptions/values/retirement/statePensionFraction/partner",
+          "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/expenses/monthlyEssential",
+          "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/goals/0/targetDate",
+          "reason": "The mortgage goal needs a chosen payoff age/date. The contractual term is not the household’s desired clearance date.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/0/clearedOnDeath",
+          "reason": "Whether this mortgage clears on death changes the survivor’s spending need. Having life cover alone does not establish this.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goalFlexibility/goal_application_optimise_mortgage",
+          "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goalFlexibility/goal_application_fund_education",
+          "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goalFlexibility/goal_application_retire",
+          "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goals",
+          "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/illnessScenario",
+          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/survivorPayment",
+          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        }
+      ],
+      "consent": [],
+      "createdAt": "2026-10-20T12:00:00.000Z",
+      "updatedAt": "2026-10-20T12:00:00.000Z",
+      "partner": {
+        "personId": "partner",
+        "role": "partner",
+        "age": 42,
+        "employmentStatus": "employee",
+        "intendedRetirementAge": 65
+      },
+      "confirmedAt": "2026-10-20T12:00:00.000Z",
+      "household": {
+        "married": true,
+        "planningWithPartner": true,
+        "hasChildren": true
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/assumptions/values/retirement/statePensionFraction/partner",
+        "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_clear_by",
+        "fieldPath": "/goals/0/targetDate",
+        "reason": "The mortgage goal needs a chosen payoff age/date. The contractual term is not the household’s desired clearance date.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_cleared_on_death",
+        "fieldPath": "/liabilities/0/clearedOnDeath",
+        "reason": "Whether this mortgage clears on death changes the survivor’s spending need. Having life cover alone does not establish this.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_optimise_mortgage",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_fund_education",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_retire",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_contract",
+        "fieldPath": "/assumptions/values/protection/illnessScenario",
+        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "survivor_payment",
+        "fieldPath": "/assumptions/values/protection/survivorPayment",
+        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ]
+  },
+  {
+    "id": "fictional-near-retirement-couple",
+    "description": "Entirely invented: unmarried partners near retirement with funded, defined-benefit and preserved pensions.",
+    "profile": {
+      "profileId": "profile_fictional-near-retirement-couple",
+      "schemaVersion": 1,
+      "revision": 7,
+      "source": "consumer",
+      "primaryPerson": {
+        "personId": "primary",
+        "role": "primary",
+        "age": 61,
+        "employmentStatus": "employee",
+        "intendedRetirementAge": 65
+      },
+      "dependants": [],
+      "assets": [
+        {
+          "assetId": "asset_application_cash",
+          "ownerIds": [],
+          "type": "cash",
+          "label": "Cash",
+          "currentValue": {
+            "amount": 90000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_investments",
+          "ownerIds": [],
+          "type": "investment",
+          "label": "Investments and shares",
+          "currentValue": {
+            "amount": 50000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_employerShares",
+          "ownerIds": [],
+          "type": "investment",
+          "label": "Shares in employer",
+          "currentValue": {
+            "amount": 10000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "liabilities": [],
+      "incomeSources": [
+        {
+          "incomeId": "income_application_primary",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "employment",
+          "label": "Applicant gross pay",
+          "grossAnnual": {
+            "amount": 76000,
+            "currency": "EUR"
+          }
+        },
+        {
+          "incomeId": "income_application_partner",
+          "ownerIds": [
+            "partner"
+          ],
+          "type": "employment",
+          "label": "Partner gross pay",
+          "grossAnnual": {
+            "amount": 58000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "householdIncome": {
+        "netMonthly": {
+          "amount": 7200,
+          "currency": "EUR"
+        },
+        "netAnnual": {
+          "amount": 86400,
+          "currency": "EUR"
+        }
+      },
+      "expenses": {
+        "annualTotal": {
+          "amount": 42000,
+          "currency": "EUR"
+        },
+        "monthlyEssential": {
+          "amount": 3500,
+          "currency": "EUR"
+        }
+      },
+      "pensions": [
+        {
+          "pensionId": "pension_application_0",
+          "ownerId": "primary",
+          "type": "occupational",
+          "currentValue": {
+            "amount": 480000,
+            "currency": "EUR"
+          },
+          "employeeContributionRate": 0.12631578947368421,
+          "employerContributionRate": 0.05,
+          "contributionStatus": "active"
+        },
+        {
+          "pensionId": "pension_application_1",
+          "ownerId": "partner",
+          "type": "defined_benefit",
+          "projectedAnnualIncome": {
+            "amount": 22000,
+            "currency": "EUR"
+          },
+          "retirementLumpSum": {
+            "amount": 66000,
+            "currency": "EUR"
+          },
+          "benefitStartAge": 65,
+          "contributionStatus": "not_applicable"
+        },
+        {
+          "pensionId": "pension_application_2",
+          "ownerId": "primary",
+          "type": "buyout_bond",
+          "currentValue": {
+            "amount": 60000,
+            "currency": "EUR"
+          },
+          "contributionStatus": "not_applicable"
+        }
+      ],
+      "properties": [
+        {
+          "propertyId": "property_application_home",
+          "ownerIds": [],
+          "use": "home",
+          "associatedLiabilityIds": [],
+          "currentValue": {
+            "amount": 390000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "businesses": [],
+      "goals": [
+        {
+          "goalId": "goal_application_retire",
+          "type": "retire",
+          "title": "Plan for retirement",
+          "priority": "medium",
+          "status": "active"
+        },
+        {
+          "goalId": "goal_application_understand_position",
+          "type": "understand_position",
+          "title": "Understand my current position",
+          "priority": "medium",
+          "status": "active"
+        }
+      ],
+      "preferences": {
+        "baseCurrency": "EUR",
+        "riskDiscussionCompleted": false
+      },
+      "assumptions": {
+        "calculationDateIso": "2026-10-27",
+        "values": {
+          "persona": {},
+          "planning": {},
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "mappingVersion": "1.0.0",
+            "snapshotBound": true,
+            "revision": 7,
+            "unsurePaths": [],
+            "unmappedFields": [
+              {
+                "path": "question",
+                "reason": "Free text needs the later analyst; it is not parsed into facts.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "income.sector",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "income.partnerSector",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "spending.pattern",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "retirement.statePension",
+                "reason": "Partly/not sure does not specify a numeric State Pension fraction.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              }
+            ]
+          },
+          "completionFacts": {
+            "confirmedNonePaths": {
+              "/dependants": true,
+              "/properties": true,
+              "/liabilities/loan": true,
+              "/liabilities/credit_card": true
+            }
+          },
+          "retirement": {
+            "targetIncomeToday": 45000
+          },
+          "housePurchase": {
+            "currentMonthlySavings": 1500
+          }
+        }
+      },
+      "fieldMetadata": {
+        "/partner": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The form explicitly includes a separate partner."
+          }
+        },
+        "/household/planningWithPartner": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/hasChildren": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/married": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.married"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/goals/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/goals/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1dependants": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1properties": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1liabilities~1loan": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.owner",
+              "pensions.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/pensions/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.owner",
+              "pensions.1.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/pensions/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.2.owner",
+              "pensions.2.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/properties/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/primaryPerson/age": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/partner/age": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partnerAge"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/incomeSources/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross",
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/incomeSources/0/grossAnnual": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/incomeSources/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.partnerGross",
+              "income.partnerWork"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/incomeSources/1/grossAnnual": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.partnerGross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/employmentStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/partner/employmentStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.partnerWork"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netMonthly": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/monthlyEssential": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/properties/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.value"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/1/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/2/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/0/type": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form pension type company mapped to canonical type occupational."
+          }
+        },
+        "/pensions/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.value"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/0/employeeContributionRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.youPay",
+              "pensions.0.youPayUnit",
+              "income.gross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Monthly contribution × 12 / this pension owner’s gross annual pay."
+          }
+        },
+        "/pensions/0/employerContributionRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.employerPays",
+              "pensions.0.employerPaysUnit"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Explicit percentage contribution / 100."
+          }
+        },
+        "/pensions/0/contributionStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.contributing"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/1/type": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form pension type public mapped to canonical type defined_benefit."
+          }
+        },
+        "/pensions/1/projectedAnnualIncome": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.dbPension"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/1/retirementLumpSum": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.dbLumpSum"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/1/benefitStartAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.dbAge"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/2/type": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.2.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form pension type bond mapped to canonical type buyout_bond."
+          }
+        },
+        "/pensions/2/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.2.value"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/intendedRetirementAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/partner/intendedRetirementAge": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.partnerAge"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netAnnual": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
+          }
+        },
+        "/assumptions/values/retirement/targetIncomeToday": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "retirement.income"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/housePurchase/currentMonthlySavings": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.saved"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/pensions/1/contributionStatus": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.1.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The existing pension contract excludes contributions to defined-benefit pensions and buy-out bonds."
+          }
+        },
+        "/pensions/2/contributionStatus": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.2.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The existing pension contract excludes contributions to defined-benefit pensions and buy-out bonds."
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1liabilities~1credit_card": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "creditCard.clears"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/annualTotal": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        }
+      },
+      "missingInformation": [
+        {
+          "fieldPath": "/assumptions/values/retirement/statePensionFraction/primary",
+          "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/retirement/statePensionFraction/partner",
+          "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/expenses/monthlyEssential",
+          "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/goalFlexibility/goal_application_retire",
+          "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goals",
+          "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/illnessScenario",
+          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/survivorPayment",
+          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        }
+      ],
+      "consent": [],
+      "createdAt": "2026-10-20T12:00:00.000Z",
+      "updatedAt": "2026-10-20T12:00:00.000Z",
+      "partner": {
+        "personId": "partner",
+        "role": "partner",
+        "age": 59,
+        "employmentStatus": "employee",
+        "intendedRetirementAge": 65
+      },
+      "confirmedAt": "2026-10-20T12:00:00.000Z",
+      "household": {
+        "married": false,
+        "planningWithPartner": true,
+        "hasChildren": false
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/assumptions/values/retirement/statePensionFraction/primary",
+        "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/assumptions/values/retirement/statePensionFraction/partner",
+        "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_retire",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_contract",
+        "fieldPath": "/assumptions/values/protection/illnessScenario",
+        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "survivor_payment",
+        "fieldPath": "/assumptions/values/protection/survivorPayment",
+        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ]
+  },
+  {
+    "id": "fictional-borrower-with-card",
+    "description": "Entirely invented: a self-employed renter with two loans and an uncleared credit card.",
+    "profile": {
+      "profileId": "profile_fictional-borrower-with-card",
+      "schemaVersion": 1,
+      "revision": 7,
+      "source": "consumer",
+      "primaryPerson": {
+        "personId": "primary",
+        "role": "primary",
+        "age": 38,
+        "employmentStatus": "self_employed"
+      },
+      "dependants": [],
+      "assets": [
+        {
+          "assetId": "asset_application_cash",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "cash",
+          "label": "Cash",
+          "currentValue": {
+            "amount": 0,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_investments",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "investment",
+          "label": "Investments and shares",
+          "currentValue": {
+            "amount": 0,
+            "currency": "EUR"
+          }
+        },
+        {
+          "assetId": "asset_application_employerShares",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "investment",
+          "label": "Shares in employer",
+          "currentValue": {
+            "amount": 0,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "liabilities": [
+        {
+          "liabilityId": "liability_application_loan_0",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "loan",
+          "label": "car loan",
+          "currentBalance": {
+            "amount": 9500,
+            "currency": "EUR"
+          },
+          "annualInterestRate": 0.075,
+          "monthlyPayment": {
+            "amount": 280,
+            "currency": "EUR"
+          },
+          "remainingTermMonths": 42
+        },
+        {
+          "liabilityId": "liability_application_loan_1",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "loan",
+          "label": "personal loan",
+          "currentBalance": {
+            "amount": 4200,
+            "currency": "EUR"
+          },
+          "annualInterestRate": 0.005,
+          "monthlyPayment": {
+            "amount": 190,
+            "currency": "EUR"
+          },
+          "remainingTermMonths": 24
+        },
+        {
+          "liabilityId": "liability_application_credit_card",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "credit_card",
+          "label": "Uncleared credit card",
+          "currentBalance": {
+            "amount": 3200,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "incomeSources": [
+        {
+          "incomeId": "income_application_primary",
+          "ownerIds": [
+            "primary"
+          ],
+          "type": "self_employment",
+          "label": "Applicant gross pay",
+          "grossAnnual": {
+            "amount": 46000,
+            "currency": "EUR"
+          }
+        }
+      ],
+      "householdIncome": {
+        "netMonthly": {
+          "amount": 2700,
+          "currency": "EUR"
+        },
+        "netAnnual": {
+          "amount": 32400,
+          "currency": "EUR"
+        }
+      },
+      "expenses": {
+        "annualTotal": {
+          "amount": 27000,
+          "currency": "EUR"
+        },
+        "monthlyEssential": {
+          "amount": 1450,
+          "currency": "EUR"
+        },
+        "currentMonthlyRent": {
+          "amount": 800,
+          "currency": "EUR"
+        }
+      },
+      "pensions": [],
+      "properties": [],
+      "businesses": [],
+      "goals": [
+        {
+          "goalId": "goal_application_manage_loan",
+          "type": "manage_loan",
+          "title": "Review or repay a non-housing loan",
+          "priority": "medium",
+          "status": "active"
+        }
+      ],
+      "preferences": {
+        "baseCurrency": "EUR",
+        "riskDiscussionCompleted": false
+      },
+      "assumptions": {
+        "calculationDateIso": "2026-10-27",
+        "values": {
+          "persona": {},
+          "planning": {},
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "mappingVersion": "1.0.0",
+            "snapshotBound": true,
+            "revision": 7,
+            "unsurePaths": [],
+            "unmappedFields": [
+              {
+                "path": "question",
+                "reason": "Free text needs the later analyst; it is not parsed into facts.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "spending.pattern",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "creditCard.clears",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              }
+            ]
+          },
+          "completionFacts": {
+            "confirmedNonePaths": {
+              "/dependants": true,
+              "/properties": true,
+              "/pensions": true
+            }
+          },
+          "housePurchase": {
+            "currentMonthlySavings": 100
+          }
+        }
+      },
+      "fieldMetadata": {
+        "/household/planningWithPartner": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/hasChildren": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/goals/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1dependants": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1properties": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.1"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assumptions/values/completionFacts/confirmedNonePaths/~1pensions": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "none.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.0.type",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/liabilities/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.1.type",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/primaryPerson/age": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.age"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/incomeSources/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross",
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/incomeSources/0/grossAnnual": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.gross"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/primaryPerson/employmentStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.work"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netMonthly": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/monthlyEssential": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/currentMonthlyRent": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/0/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.cash"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/1/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.investments"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/assets/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/assets/2/currentValue": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "savings.employerShares"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/0/currentBalance": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.0.balance"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/0/annualInterestRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.0.rate"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form percentage / 100; even rates below 1 are percentages."
+          }
+        },
+        "/liabilities/0/remainingTermMonths": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.0.yearsLeft"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Remaining years × 12, rounded to the nearest whole month."
+          }
+        },
+        "/liabilities/0/monthlyPayment": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.0.payment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/1/currentBalance": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.1.balance"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/1/annualInterestRate": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.1.rate"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form percentage / 100; even rates below 1 are percentages."
+          }
+        },
+        "/liabilities/1/remainingTermMonths": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.1.yearsLeft"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Remaining years × 12, rounded to the nearest whole month."
+          }
+        },
+        "/liabilities/1/monthlyPayment": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.1.payment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/householdIncome/netAnnual": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "income.takeHome"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
+          }
+        },
+        "/assumptions/values/housePurchase/currentMonthlySavings": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.saved"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/0/label": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/1/label": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "loans.1.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/liabilities/2": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "creditCard.clears",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/liabilities/2/currentBalance": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "creditCard.balance"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/expenses/annualTotal": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        }
+      },
+      "missingInformation": [
+        {
+          "fieldPath": "/household/married",
+          "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/primaryPerson/intendedRetirementAge",
+          "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/retirement/statePensionFraction/primary",
+          "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/expenses/monthlyEssential",
+          "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/assumptions/values/retirement/targetIncomeToday",
+          "reason": "The household target annual retirement income in today’s money sets the retirement goal; current spending is not a stated target.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/2/annualInterestRate",
+          "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/2/remainingTermMonths",
+          "reason": "The remaining term sets the repayment horizon.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/2/monthlyPayment",
+          "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goalFlexibility/goal_application_manage_loan",
+          "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goals",
+          "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/illnessScenario",
+          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        }
+      ],
+      "consent": [],
+      "createdAt": "2026-10-20T12:00:00.000Z",
+      "updatedAt": "2026-10-20T12:00:00.000Z",
+      "confirmedAt": "2026-10-20T12:00:00.000Z",
+      "household": {
+        "planningWithPartner": false,
+        "hasChildren": false
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "married_or_civil_partners",
+        "fieldPath": "/household/married",
+        "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "intended_retirement_age",
+        "fieldPath": "/primaryPerson/intendedRetirementAge",
+        "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/assumptions/values/retirement/statePensionFraction/primary",
+        "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "target_retirement_income",
+        "fieldPath": "/assumptions/values/retirement/targetIncomeToday",
+        "reason": "The household target annual retirement income in today’s money sets the retirement goal; current spending is not a stated target.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_annualInterestRate",
+        "fieldPath": "/liabilities/2/annualInterestRate",
+        "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_remainingTermMonths",
+        "fieldPath": "/liabilities/2/remainingTermMonths",
+        "reason": "The remaining term sets the repayment horizon.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_monthlyPayment",
+        "fieldPath": "/liabilities/2/monthlyPayment",
+        "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_manage_loan",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_scope",
+        "fieldPath": "/assumptions/values/protection/illnessScenario",
+        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ]
+  },
+  {
+    "id": "fictional-mostly-blank",
+    "description": "Entirely invented: most answers blank or explicitly unsure, including a mortgage without figures.",
+    "profile": {
+      "profileId": "profile_fictional-mostly-blank",
+      "schemaVersion": 1,
+      "revision": 7,
+      "source": "consumer",
+      "primaryPerson": {
+        "personId": "primary",
+        "role": "primary",
+        "employmentStatus": "unknown"
+      },
+      "dependants": [
+        {
+          "dependantId": "child_application_0"
+        }
+      ],
+      "assets": [],
+      "liabilities": [
+        {
+          "liabilityId": "liability_application_home_mortgage",
+          "ownerIds": [],
+          "type": "mortgage",
+          "label": "Home mortgage"
+        },
+        {
+          "liabilityId": "liability_application_credit_card",
+          "ownerIds": [],
+          "type": "credit_card",
+          "label": "Uncleared credit card"
+        }
+      ],
+      "incomeSources": [],
+      "householdIncome": {},
+      "expenses": {},
+      "pensions": [
+        {
+          "pensionId": "pension_application_0",
+          "ownerId": "partner",
+          "type": "other",
+          "contributionStatus": "active"
+        }
+      ],
+      "properties": [
+        {
+          "propertyId": "property_application_home",
+          "ownerIds": [],
+          "use": "home",
+          "associatedLiabilityIds": [
+            "liability_application_home_mortgage"
+          ]
+        }
+      ],
+      "businesses": [],
+      "goals": [
+        {
+          "goalId": "goal_application_understand_position",
+          "type": "understand_position",
+          "title": "Understand my current position",
+          "priority": "medium",
+          "status": "active"
+        }
+      ],
+      "preferences": {
+        "baseCurrency": "EUR",
+        "riskDiscussionCompleted": false
+      },
+      "assumptions": {
+        "calculationDateIso": "2026-10-27",
+        "values": {
+          "persona": {},
+          "planning": {},
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "mappingVersion": "1.0.0",
+            "snapshotBound": true,
+            "revision": 7,
+            "unsurePaths": [
+              "household.age",
+              "income.gross",
+              "spending.spend",
+              "mortgage.balance"
+            ],
+            "unmappedFields": [
+              {
+                "path": "question",
+                "reason": "Free text needs the later analyst; it is not parsed into facts.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "children.0.collegePlan",
+                "reason": "Not sure does not select living at home or away; no scenario is chosen.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "pensions.0.youPay",
+                "reason": "Monthly euro contributions need the owner’s positive annual salary and a derived rate no greater than 100%.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "creditCard.clears",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              },
+              {
+                "path": "anythingElse",
+                "reason": "No unambiguous canonical profile field for this answer.",
+                "schema": "planeir.application.v1",
+                "version": 1,
+                "revision": 7
+              }
+            ]
+          }
+        }
+      },
+      "fieldMetadata": {
+        "/partner": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The form explicitly includes a separate partner."
+          }
+        },
+        "/household/planningWithPartner": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/household/hasChildren": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.children"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/goals/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "topics.0"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/dependants/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "children.0.collegePlan"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/pensions/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.owner",
+              "pensions.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/properties/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/liabilities/0": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        },
+        "/pensions/0/type": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.type"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Form pension type unsure mapped to canonical type other."
+          }
+        },
+        "/pensions/0/contributionStatus": {
+          "source": "imported",
+          "confidence": "high",
+          "certainty": "exact",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": true,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "pensions.0.contributing"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        },
+        "/properties/0/associatedLiabilityIds": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "home.status"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "The mortgage section describes this home’s mortgage."
+          }
+        },
+        "/liabilities/1": {
+          "source": "calculated",
+          "confidence": "high",
+          "certainty": "inferred",
+          "capturedAt": "2026-10-20T12:00:00.000Z",
+          "confirmedByUser": false,
+          "application": {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "creditCard.clears",
+              "household.partner"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
+          }
+        }
+      },
+      "missingInformation": [
+        {
+          "fieldPath": "/household/married",
+          "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/primaryPerson/age",
+          "reason": "Current age sets pension, mortgage and dependant timelines.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/primaryPerson/employmentStatus",
+          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/incomeSources",
+          "reason": "Gross annual income for primary is needed for tax and pension relief, including an explicit zero where appropriate.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/primaryPerson/intendedRetirementAge",
+          "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/pensions/owner/primary",
+          "reason": "Pension holdings for primary or an explicit confirmation of none are needed; an empty section does not establish that there are no pensions.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/retirement/statePensionFraction/primary",
+          "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/partner/age",
+          "reason": "Current age sets pension, mortgage and dependant timelines.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/partner/employmentStatus",
+          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/incomeSources",
+          "reason": "Gross annual income for partner is needed for tax and pension relief, including an explicit zero where appropriate.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/partner/intendedRetirementAge",
+          "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/retirement/statePensionFraction/partner",
+          "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/expenses/annualTotal",
+          "reason": "Total spending including rent or mortgage is needed for left over each year. Both non-housing spending and the applicable housing payment must be known.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/expenses/monthlyEssential",
+          "reason": "Essential spending sets the protected emergency cash reserve.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assets",
+          "reason": "Cash available, including an explicit zero, sets the emergency reserve and the money available once it is protected.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/dependants/0/currentAge",
+          "reason": "Each child’s current age sets when college costs begin.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/collegeFunding/scenarioByChild/child_application_0",
+          "reason": "Living at home or away selects the college cost basis; not sure must stay unresolved.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/retirement/targetIncomeToday",
+          "reason": "The household target annual retirement income in today’s money sets the retirement goal; current spending is not a stated target.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/pensions/0/type",
+          "reason": "Pension type determines whether to grow a pot or use promised benefits.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/pensions/0/currentValue",
+          "reason": "The current pension pot is needed to project retirement resources.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/pensions/0/employeeContributionRate",
+          "reason": "Personal contributions, including zero, affect pension growth, tax relief and current cash flow.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/pensions/0/employerContributionRate",
+          "reason": "Employer contributions, including zero, affect pension growth.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities",
+          "reason": "Loan records or explicit no loans are needed; an unanswered section cannot be treated as debt-free.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/0/currentBalance",
+          "reason": "Debt balance sets the money required to clear it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/0/annualInterestRate",
+          "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/0/remainingTermMonths",
+          "reason": "The remaining term sets the repayment horizon.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/0/monthlyPayment",
+          "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goals",
+          "reason": "The mortgage goal needs a chosen payoff age/date. The contractual term is not the household’s desired clearance date.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/0/clearedOnDeath",
+          "reason": "Whether this mortgage clears on death changes the survivor’s spending need. Having life cover alone does not establish this.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/1/currentBalance",
+          "reason": "Debt balance sets the money required to clear it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/1/annualInterestRate",
+          "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/1/remainingTermMonths",
+          "reason": "The remaining term sets the repayment horizon.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/liabilities/1/monthlyPayment",
+          "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/goals",
+          "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+          "blockingModuleIds": [],
+          "importance": "recommended"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/illnessScenario",
+          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        },
+        {
+          "fieldPath": "/assumptions/values/protection/survivorPayment",
+          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+          "blockingModuleIds": [],
+          "importance": "required"
+        }
+      ],
+      "consent": [],
+      "createdAt": "2026-10-20T12:00:00.000Z",
+      "updatedAt": "2026-10-20T12:00:00.000Z",
+      "partner": {
+        "personId": "partner",
+        "role": "partner"
+      },
+      "confirmedAt": "2026-10-20T12:00:00.000Z",
+      "household": {
+        "planningWithPartner": true,
+        "hasChildren": true
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "married_or_civil_partners",
+        "fieldPath": "/household/married",
+        "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_current_age",
+        "fieldPath": "/primaryPerson/age",
+        "reason": "Current age sets pension, mortgage and dependant timelines.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "employment_tax_basis",
+        "fieldPath": "/primaryPerson/employmentStatus",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_gross_income",
+        "fieldPath": "/incomeSources",
+        "reason": "Gross annual income for primary is needed for tax and pension relief, including an explicit zero where appropriate.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "intended_retirement_age",
+        "fieldPath": "/primaryPerson/intendedRetirementAge",
+        "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_positions",
+        "fieldPath": "/pensions/owner/primary",
+        "reason": "Pension holdings for primary or an explicit confirmation of none are needed; an empty section does not establish that there are no pensions.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/assumptions/values/retirement/statePensionFraction/primary",
+        "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_current_age",
+        "fieldPath": "/partner/age",
+        "reason": "Current age sets pension, mortgage and dependant timelines.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "employment_tax_basis",
+        "fieldPath": "/partner/employmentStatus",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_gross_income",
+        "fieldPath": "/incomeSources",
+        "reason": "Gross annual income for partner is needed for tax and pension relief, including an explicit zero where appropriate.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "intended_retirement_age",
+        "fieldPath": "/partner/intendedRetirementAge",
+        "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/assumptions/values/retirement/statePensionFraction/partner",
+        "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "total_spending",
+        "fieldPath": "/expenses/annualTotal",
+        "reason": "Total spending including rent or mortgage is needed for left over each year. Both non-housing spending and the applicable housing payment must be known.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending",
+        "fieldPath": "/expenses/monthlyEssential",
+        "reason": "Essential spending sets the protected emergency cash reserve.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "cash_savings",
+        "fieldPath": "/assets",
+        "reason": "Cash available, including an explicit zero, sets the emergency reserve and the money available once it is protected.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "dependant_current_age",
+        "fieldPath": "/dependants/0/currentAge",
+        "reason": "Each child’s current age sets when college costs begin.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "college_plan",
+        "fieldPath": "/assumptions/values/collegeFunding/scenarioByChild/child_application_0",
+        "reason": "Living at home or away selects the college cost basis; not sure must stay unresolved.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "target_retirement_income",
+        "fieldPath": "/assumptions/values/retirement/targetIncomeToday",
+        "reason": "The household target annual retirement income in today’s money sets the retirement goal; current spending is not a stated target.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_type",
+        "fieldPath": "/pensions/0/type",
+        "reason": "Pension type determines whether to grow a pot or use promised benefits.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_current_value",
+        "fieldPath": "/pensions/0/currentValue",
+        "reason": "The current pension pot is needed to project retirement resources.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_employee_contribution_rate",
+        "fieldPath": "/pensions/0/employeeContributionRate",
+        "reason": "Personal contributions, including zero, affect pension growth, tax relief and current cash flow.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_employer_contribution_rate",
+        "fieldPath": "/pensions/0/employerContributionRate",
+        "reason": "Employer contributions, including zero, affect pension growth.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "loans_presence",
+        "fieldPath": "/liabilities",
+        "reason": "Loan records or explicit no loans are needed; an unanswered section cannot be treated as debt-free.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_currentBalance",
+        "fieldPath": "/liabilities/0/currentBalance",
+        "reason": "Debt balance sets the money required to clear it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_annualInterestRate",
+        "fieldPath": "/liabilities/0/annualInterestRate",
+        "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_remainingTermMonths",
+        "fieldPath": "/liabilities/0/remainingTermMonths",
+        "reason": "The remaining term sets the repayment horizon.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_monthlyPayment",
+        "fieldPath": "/liabilities/0/monthlyPayment",
+        "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_clear_by",
+        "fieldPath": "/goals",
+        "reason": "The mortgage goal needs a chosen payoff age/date. The contractual term is not the household’s desired clearance date.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_cleared_on_death",
+        "fieldPath": "/liabilities/0/clearedOnDeath",
+        "reason": "Whether this mortgage clears on death changes the survivor’s spending need. Having life cover alone does not establish this.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_currentBalance",
+        "fieldPath": "/liabilities/1/currentBalance",
+        "reason": "Debt balance sets the money required to clear it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_annualInterestRate",
+        "fieldPath": "/liabilities/1/annualInterestRate",
+        "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_remainingTermMonths",
+        "fieldPath": "/liabilities/1/remainingTermMonths",
+        "reason": "The remaining term sets the repayment horizon.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_monthlyPayment",
+        "fieldPath": "/liabilities/1/monthlyPayment",
+        "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_scope",
+        "fieldPath": "/assumptions/values/protection/illnessScenario",
+        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "survivor_payment",
+        "fieldPath": "/assumptions/values/protection/survivorPayment",
+        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ]
+  }
+]

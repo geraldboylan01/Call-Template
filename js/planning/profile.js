@@ -513,6 +513,21 @@ export function normalizeFieldProvenance(value, fieldName = 'provenance', defaul
   const note = optionalString(value?.note ?? defaults.note, `${fieldName}.note`);
   if (conversationTurnId) provenance.conversationTurnId = conversationTurnId;
   if (note) provenance.note = note;
+  // A form snapshot is a different source from a conversation turn. Keep the
+  // concrete answer paths and schema/revision through normalization and patches.
+  if (value?.application) {
+    const application = value.application;
+    provenance.application = {
+      schema: nonEmptyString(application.schema, `${fieldName}.application.schema`),
+      version: finiteNumber(application.version, `${fieldName}.application.version`, { min: 1, integer: true }),
+      paths: normalizeStringIds(application.paths, `${fieldName}.application.paths`, { allowEmpty: false }),
+      mappingVersion: nonEmptyString(application.mappingVersion, `${fieldName}.application.mappingVersion`)
+    };
+    if (application.revision !== undefined) {
+      provenance.application.revision = finiteNumber(application.revision, `${fieldName}.application.revision`, { min: 1, integer: true });
+    }
+    if (application.derivation) provenance.application.derivation = nonEmptyString(application.derivation, `${fieldName}.application.derivation`);
+  }
   const range = value?.range ?? defaults.range;
   if (typeof range !== 'undefined') {
     if (!isPlainObject(range)) throw new Error(`${fieldName}.range must be an object.`);
@@ -644,6 +659,15 @@ export function normalizeHouseholdProfile(raw) {
     }
   }
   if (raw.confirmedAt) profile.confirmedAt = assertIsoDateTime(raw.confirmedAt, 'confirmedAt');
+  if (raw.household !== undefined) {
+    if (!isPlainObject(raw.household)) throw new Error('household must be an object.');
+    profile.household = {};
+    for (const key of ['married', 'planningWithPartner', 'hasChildren']) {
+      if (raw.household[key] === undefined) continue;
+      if (typeof raw.household[key] !== 'boolean') throw new Error(`household.${key} must be a boolean.`);
+      profile.household[key] = raw.household[key];
+    }
+  }
   const personIds = new Set([profile.primaryPerson.personId, profile.partner?.personId].filter(Boolean));
   const assertOwners = (items, fieldName, ownerKey = 'ownerIds') => items.forEach((item, index) => {
     const ownerIds = ownerKey === 'ownerId' ? [item[ownerKey]] : item[ownerKey];
