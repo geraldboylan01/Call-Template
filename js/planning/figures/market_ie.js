@@ -36,11 +36,11 @@ export const MARKET_FIGURES = Object.freeze([
     observations: Object.freeze([
       Object.freeze({
         sourceLabel: 'Bank of Ireland, Instant Access Demand (balances up to €5,000)',
-        url: 'https://personalbanking.bankofireland.com/app/uploads/Deposits-Interest-Rate-Table-14th-September-2026-A.pdf',
+        url: 'https://personalbanking.bankofireland.com/app/uploads/Deposit-Interest-Rates-Table-22nd-October-2026-A.pdf',
         value: 0.001,
         quotedAs: 'AER, variable, before DIRT',
-        effective: '2026-09-14',
-        retrievedOn: '2026-10-22'
+        effective: '2026-10-22',
+        retrievedOn: '2026-10-27'
       }),
       Object.freeze({
         sourceLabel: 'AIB, Personal Demand Deposit Account',
@@ -51,7 +51,7 @@ export const MARKET_FIGURES = Object.freeze([
         retrievedOn: '2026-10-22'
       })
     ]),
-    checkedOn: '2026-10-22',
+    checkedOn: '2026-10-27',
     changedOn: '2026-10-13',
     reviewEveryDays: 35,
     usedBy: Object.freeze(['future_cost_fund', 'goals_and_resources']),
@@ -70,11 +70,11 @@ export const MARKET_FIGURES = Object.freeze([
     observations: Object.freeze([
       Object.freeze({
         sourceLabel: 'Bank of Ireland, SuperSaver Standard Regular Saver (balances up to €29,999)',
-        url: 'https://personalbanking.bankofireland.com/app/uploads/Deposits-Interest-Rate-Table-14th-September-2026-A.pdf',
+        url: 'https://personalbanking.bankofireland.com/app/uploads/Deposit-Interest-Rates-Table-22nd-October-2026-A.pdf',
         value: 0.02,
         quotedAs: 'AER, variable, before DIRT',
-        effective: '2026-09-14',
-        retrievedOn: '2026-10-22'
+        effective: '2026-10-22',
+        retrievedOn: '2026-10-27'
       }),
       Object.freeze({
         sourceLabel: 'AIB, Online Regular Saver (up to €1,000 a month)',
@@ -93,7 +93,7 @@ export const MARKET_FIGURES = Object.freeze([
         retrievedOn: '2026-10-22'
       })
     ]),
-    checkedOn: '2026-10-22',
+    checkedOn: '2026-10-27',
     changedOn: '2026-07-12',
     reviewEveryDays: 35,
     usedBy: Object.freeze(['house_purchase']),
@@ -105,16 +105,16 @@ export const MARKET_FIGURES = Object.freeze([
     label: 'Interest rate used to illustrate mortgage repayments',
     unit: 'rate_a_year',
     /**
-     * An illustration, not a quote. A person chose 3.75% on 27 October 2026, the
+     * An illustration, not a quote. A person chose 4.00% on 27 October 2026, the
      * median of the published three-year fixed rates up to 80% of the home's value
-     * that the observations below record. Before that it was 3.5%, the House
-     * Purchase standard planning assumption in place since the module was built
-     * (as of 11 July 2026). The weekly job records the quotes and reports where
-     * they now point; it never changes this value.
+     * that the observations below record, read that day. It was 3.5% before, the
+     * House Purchase standard planning assumption since the module was built (as
+     * of 11 July 2026). The weekly job records the quotes and reports where they
+     * now point; it never changes this value.
      */
     method: Object.freeze({
       kind: 'reviewed',
-      value: 0.0375,
+      value: 0.04,
       reviewedOn: '2026-10-27',
       driftWarnAt: 0.002
     }),
@@ -124,8 +124,8 @@ export const MARKET_FIGURES = Object.freeze([
         url: 'https://personalbanking.bankofireland.com/borrow/mortgages/mortgage-interest-rates/',
         value: 0.04,
         quotedAs: 'interest rate, fixed for three years',
-        effective: null,
-        retrievedOn: '2026-10-22'
+        effective: '2025-11-26',
+        retrievedOn: '2026-10-27'
       }),
       Object.freeze({
         sourceLabel: 'AIB, 3 Year LTV Fixed, over 50% and up to 80%',
@@ -133,18 +133,18 @@ export const MARKET_FIGURES = Object.freeze([
         value: 0.036,
         quotedAs: 'interest rate, fixed for three years',
         effective: null,
-        retrievedOn: '2026-10-22'
+        retrievedOn: '2026-10-27'
       }),
       Object.freeze({
         sourceLabel: 'PTSB, 3 Year Fixed Rate New Business, over 60% and up to 80%',
         url: 'https://www.ptsb.ie/mortgages/mortgage-interest-rates/',
-        value: 0.0375,
+        value: 0.0405,
         quotedAs: 'borrowing rate, fixed for three years',
-        effective: '2026-01-20',
-        retrievedOn: '2026-10-22'
+        effective: '2026-10-22',
+        retrievedOn: '2026-10-27'
       })
     ]),
-    checkedOn: '2026-10-22',
+    checkedOn: '2026-10-27',
     changedOn: '2026-10-27',
     reviewEveryDays: 35,
     usedBy: Object.freeze(['house_purchase']),

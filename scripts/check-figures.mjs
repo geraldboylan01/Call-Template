@@ -684,8 +684,10 @@ check('warnings: a market figure past its review interval, a reviewed rate its q
   assert.ok(figureWarnings([stale], later).some((warning) => /last checked \d+ days ago/.test(warning)), 'one day over the interval warns');
   const onTime = new Date(Date.parse(`${stale.checkedOn}T00:00:00Z`) + stale.reviewEveryDays * 86_400_000).toISOString().slice(0, 10);
   assert.equal(figureWarnings([{ ...stale, evidence: undefined }], onTime).length, 0, 'on the last day it does not');
+  // Built from the live figure rather than read from it, so this does not depend on where this week's quotes point.
   const reviewed = market.find((figure) => figure.evidence);
-  assert.equal(figureWarnings([reviewed], reviewed.checkedOn).some((warning) => /quotes now point to/.test(warning)), false, 'a reviewed rate its quotes agree with does not');
+  const agreeing = { ...reviewed, evidence: { ...reviewed.evidence, median: reviewed.value, drifted: false } };
+  assert.equal(figureWarnings([agreeing], agreeing.checkedOn).some((warning) => /quotes now point to/.test(warning)), false, 'a reviewed rate its quotes agree with does not');
   const drifted = { ...reviewed, evidence: { ...reviewed.evidence, median: Number((reviewed.value + 0.0025).toPrecision(12)), drifted: true } };
   assert.ok(figureWarnings([drifted], drifted.checkedOn).some((warning) => /quotes now point to/.test(warning)), 'a reviewed rate the evidence has left warns');
   const announced = collected.find((figure) => figure.kind === 'announced_law');
