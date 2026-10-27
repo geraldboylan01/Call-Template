@@ -29,7 +29,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "ie_market",
-    "version": "ie-market-2026.1",
+    "version": "ie-market-2026.2",
     "count": 3
   }
 ].map(Object.freeze));
@@ -9979,7 +9979,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_market",
-      "version": "ie-market-2026.1"
+      "version": "ie-market-2026.2"
     },
     "usedBy": [
       "future_cost_fund",
@@ -10035,7 +10035,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_market",
-      "version": "ie-market-2026.1"
+      "version": "ie-market-2026.2"
     },
     "usedBy": [
       "house_purchase"
@@ -10078,12 +10078,12 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "ie.market.mortgage.illustration_rate",
     "quantity": "ie.market.mortgage.illustration_rate",
     "label": "Interest rate used to illustrate mortgage repayments",
-    "value": 0.035,
-    "valueShown": "3.5% a year",
+    "value": 0.0375,
+    "valueShown": "3.75% a year",
     "unit": "rate_a_year",
     "kind": "market",
     "status": "current",
-    "effectiveFrom": "2026-07-12",
+    "effectiveFrom": "2026-10-27",
     "source": {
       "title": "Published rates of large Irish banks and lenders",
       "url": null
@@ -10098,20 +10098,20 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_market",
-      "version": "ie-market-2026.1"
+      "version": "ie-market-2026.2"
     },
     "usedBy": [
       "house_purchase"
     ],
     "method": {
       "kind": "reviewed",
-      "value": 0.035,
-      "reviewedOn": "2026-07-11",
+      "value": 0.0375,
+      "reviewedOn": "2026-10-27",
       "driftWarnAt": 0.002
     },
-    "changedOn": "2026-07-12",
+    "changedOn": "2026-10-27",
     "reviewEveryDays": 35,
-    "figureVersion": "1.0.0",
+    "figureVersion": "1.1.0",
     "observations": [
       {
         "sourceLabel": "Bank of Ireland, 3 Year Fixed, first-time buyer, BER C",
@@ -10140,8 +10140,8 @@ export const FIGURES_INDEX = Object.freeze([
     ],
     "evidence": {
       "median": 0.0375,
-      "gap": 0.0025,
-      "drifted": true
+      "gap": 0,
+      "drifted": false
     }
   }
 ].map(Object.freeze));

@@ -17,7 +17,7 @@ Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Tot
 
 **From.** The day the value takes effect. A dash means the source states no date. A rule that a later tax year carries over unchanged is listed once, for the year it first took effect.
 
-Catalogues: Irish tax rules `ie-tax-2026.6`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.5.0`; Market figures `ie-market-2026.1`.
+Catalogues: Irish tax rules `ie-tax-2026.6`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.5.0`; Market figures `ie-market-2026.2`.
 
 ## Irish tax rules
 
@@ -422,13 +422,13 @@ Catalogue version `planeir-assumptions-1.5.0`. 12 figures.
 
 ## Market figures
 
-Catalogue version `ie-market-2026.1`. 3 figures.
+Catalogue version `ie-market-2026.2`. 3 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
 | Interest on money kept in an instant-access cash account, before DIRT | 0.2% a year | 2026-10-13 | current | Published rates of large Irish banks and lenders | 2026-10-22 | future_cost_fund, goals_and_resources | `ie.market.cash.instant_access_gross_rate` |
 | Interest on money put into a regular savings account each month, before DIRT | 2% a year | 2026-07-12 | current | Published rates of large Irish banks and lenders | 2026-10-22 | house_purchase | `ie.market.cash.regular_saver_gross_rate` |
-| Interest rate used to illustrate mortgage repayments | 3.5% a year | 2026-07-12 | current | Published rates of large Irish banks and lenders | 2026-10-22 | house_purchase | `ie.market.mortgage.illustration_rate` |
+| Interest rate used to illustrate mortgage repayments | 3.75% a year | 2026-10-27 | current | Published rates of large Irish banks and lenders | 2026-10-22 | house_purchase | `ie.market.mortgage.illustration_rate` |
 
 ## Market figures: how each value is worked out
 
@@ -455,9 +455,9 @@ Internal provenance. The provider names below are for the audit trail and are ne
 
 ### Interest rate used to illustrate mortgage repayments
 
-`ie.market.mortgage.illustration_rate` is **3.5% a year**. Held as a standard planning assumption, 3.5% a year, as of 2026-07-11; not worked out from the quotes. The quotes below are the evidence for it. Checked 2026-10-22, last changed 2026-07-12, reviewed every 35 days. Figure version `1.0.0`.
+`ie.market.mortgage.illustration_rate` is **3.75% a year**. Held as a standard planning assumption, 3.75% a year, as of 2026-10-27; not worked out from the quotes. The quotes below are the evidence for it. Checked 2026-10-22, last changed 2026-10-27, reviewed every 35 days. Figure version `1.1.0`.
 
-Evidence median 3.75%, 0.25 points above the chosen value (past the drift limit, so the check warns).
+Evidence median 3.75%, 0.00 points above the chosen value.
 
 | Quote | Value | Quoted as | Effective | Read on |
 |---|---|---|---|---|

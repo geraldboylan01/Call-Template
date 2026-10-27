@@ -24,7 +24,7 @@
  * figures and do not belong here: a job never changes them.
  */
 
-export const MARKET_FIGURES_VERSION = 'ie-market-2026.1';
+export const MARKET_FIGURES_VERSION = 'ie-market-2026.2';
 
 export const MARKET_FIGURES = Object.freeze([
   Object.freeze({
@@ -105,18 +105,17 @@ export const MARKET_FIGURES = Object.freeze([
     label: 'Interest rate used to illustrate mortgage repayments',
     unit: 'rate_a_year',
     /**
-     * An illustration, not a quote: 3.5% is the House Purchase standard planning
-     * assumption, in place since the module was built (as of 11 July 2026) and not
-     * moved since. The observations are today's published
-     * three-year fixed rates up to 80% of the home's value. Their median is
-     * 3.75%, which is 0.25 points above the chosen rate, so `check:figures`
-     * warns. Moving to the median is a decision for Gerry because it moves
-     * every House Purchase repayment figure.
+     * An illustration, not a quote. A person chose 3.75% on 27 October 2026, the
+     * median of the published three-year fixed rates up to 80% of the home's value
+     * that the observations below record. Before that it was 3.5%, the House
+     * Purchase standard planning assumption in place since the module was built
+     * (as of 11 July 2026). The weekly job records the quotes and reports where
+     * they now point; it never changes this value.
      */
     method: Object.freeze({
       kind: 'reviewed',
-      value: 0.035,
-      reviewedOn: '2026-07-11',
+      value: 0.0375,
+      reviewedOn: '2026-10-27',
       driftWarnAt: 0.002
     }),
     observations: Object.freeze([
@@ -146,9 +145,9 @@ export const MARKET_FIGURES = Object.freeze([
       })
     ]),
     checkedOn: '2026-10-22',
-    changedOn: '2026-07-12',
+    changedOn: '2026-10-27',
     reviewEveryDays: 35,
     usedBy: Object.freeze(['house_purchase']),
-    version: '1.0.0'
+    version: '1.1.0'
   })
 ]);
