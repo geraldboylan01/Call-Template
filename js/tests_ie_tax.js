@@ -929,11 +929,92 @@ export function runIeTaxTests() {
     assert(alone.disclosureCodes.includes('STATUS_SPOUSE_NO_INCOME'), 'STATUS_SPOUSE_NO_INCOME');
   }));
 
+  /**
+   * Nursing home fees, relieved at the payer's marginal rate (Revenue, Tax and
+   * Duty Manual Part 15-01-12, section 4). The first two are the Manual's own
+   * Examples 1 and 2, with the figures for the nursing home fees alone: the
+   * Manual adds a 20% credit on its other health expenses, which is not here.
+   */
+  const nursingHome = (people, items, fees, status = 'single') => {
+    const year = (extra) => computeTaxYear({ input: { year: 2026, status, people, items: [...items, ...extra] } }).result;
+    const without = year([]);
+    const withFees = year(fees === 0 ? [] : [item(people[0].id, 'nursingHomeExpenses', fees)]);
+    return {
+      without,
+      withFees,
+      relief: without.totals.incomeTax - withFees.totals.incomeTax
+    };
+  };
+
+  cases.push(runCase('Nursing home fees come off income at the highest rate of tax paid, as in Revenue’s Manual', () => {
+    const higher = nursingHome([single('a', 55)], [item('a', 'employment', 60_000)], 3_000);
+    assertCents(higher.without.totals.incomeTax, 11_200, 'the Manual: tax paid before relief on 60,000 is 11,200');
+    assertCents(higher.withFees.totals.incomeTax, 10_000, 'taxable income 57,000, tax 14,000, less 4,000 of credits');
+    assertCents(higher.relief, 1_200, 'Example 1: 3,000 of fees at 40%');
+    const straddling = nursingHome([single('a', 55)], [item('a', 'employment', 46_000)], 9_000);
+    assertCents(straddling.without.totals.incomeTax, 5_600, 'the Manual: tax paid before relief on 46,000 is 5,600');
+    assertCents(straddling.relief, 2_200, 'Example 2: 2,000 at 40% and 7,000 at 20%');
+    const standard = nursingHome([single('a', 55)], [item('a', 'employment', 30_000)], 5_000);
+    assertCents(standard.relief, 1_000, 'a standard-rate payer gets 20%');
+  }));
+
+  cases.push(runCase('Nursing home fee relief is never more than the income tax there is to relieve', () => {
+    const exempt = nursingHome([single('a', 70)], [item('a', 'occupationalPension', 15_000)], 8_000);
+    assertCents(exempt.without.totals.incomeTax, 0, 'under the over-65 exemption there is no tax');
+    assertCents(exempt.relief, 0, 'so no relief');
+    const covered = nursingHome([single('a', 55)], [item('a', 'employment', 20_000)], 5_000);
+    assertCents(covered.without.totals.incomeTax, 0, 'credits cover the tax on 20,000');
+    assertCents(covered.relief, 0, 'so no relief');
+    const huge = nursingHome([single('a', 55)], [item('a', 'employment', 30_000)], 50_000);
+    assertCents(huge.withFees.totals.incomeTax, 0, 'fees above income leave no tax');
+    assertCents(huge.relief, huge.without.totals.incomeTax, 'the relief is exactly the tax that was due, never more');
+    assertCents(huge.withFees.assessments[0].incomeAfterNursingHome, 0, 'taxable income floors at nothing');
+  }));
+
+  cases.push(runCase('Nursing home fees change income tax only: USC and PRSI do not move', () => {
+    const mixed = nursingHome([single('a', 55)], [item('a', 'employment', 60_000), item('a', 'rentalProfit', 12_000)], 20_000);
+    assert(mixed.relief > 0, 'there is relief');
+    assertCents(mixed.withFees.totals.usc, mixed.without.totals.usc, 'USC is charged on income before the deduction');
+    assertCents(mixed.withFees.totals.prsi, mixed.without.totals.prsi, 'PRSI is charged on income before the deduction');
+    assert(mixed.withFees.assessments[0].nursingHomeExpenses === 20_000, 'the assessment records the fees');
+  }));
+
+  cases.push(runCase('A jointly assessed couple’s nursing home fees come off their combined income', () => {
+    const joint = nursingHome(
+      [single('a', 60), single('b', 58)],
+      [item('a', 'employment', 70_000), item('b', 'employment', 20_000)],
+      10_000,
+      'married_or_civil_partners'
+    );
+    assert(joint.withFees.assessments[0].basis === 'joint', 'one joint assessment');
+    assertCents(joint.without.totals.incomeTax - joint.withFees.totals.incomeTax, 4_000, '10,000 of fees at 40% on the couple’s total');
+    const byOther = computeTaxYear({
+      input: {
+        year: 2026, status: 'married_or_civil_partners', people: [single('a', 60), single('b', 58)],
+        items: [item('a', 'employment', 70_000), item('b', 'employment', 20_000), item('b', 'nursingHomeExpenses', 10_000)]
+      }
+    }).result;
+    assertCents(byOther.totals.incomeTax, joint.withFees.totals.incomeTax, 'either partner can pay and the relief is the same');
+  }));
+
+  cases.push(runCase('Nursing home fees are an income tax rule with a source, a disclosure and a refusal of negative amounts', () => {
+    const rules = resolveTaxRules(2026);
+    assert(rules.incomeTax.nursingHomeExpenses.ruleId === 'ie.income_tax.nursing_home_expenses.2026', 'the rule has an id');
+    assert(rules.incomeTax.nursingHomeExpenses.sources.length === 2, 'Revenue’s page and the Manual are the sources');
+    assert(resolveTaxRules(2031).incomeTax.nursingHomeExpenses.ruleId === rules.incomeTax.nursingHomeExpenses.ruleId, 'held forward');
+    const withFees = nursingHome([single('a', 55)], [item('a', 'employment', 60_000)], 3_000);
+    assert(withFees.withFees.disclosureCodes.includes('IT_NURSING_HOME_RELIEF'), 'the relief is disclosed');
+    assert(!withFees.without.disclosureCodes.includes('IT_NURSING_HOME_RELIEF'), 'and only when fees are paid');
+    assertThrows(() => nursingHome([single('a', 55)], [item('a', 'employment', 60_000)], -1), /greater than or equal to 0/, 'negative fees');
+    assert(!/medical expenses/.test(taxNotIncludedLine()), 'medical expenses are no longer listed as not modelled in full');
+  }));
+
   cases.push(runCase('Every disclosure renders in plain words, with its figures filled in and no em dashes', () => {
     const rules = resolveTaxRules(2031);
     const params = {
       IT_AGE_EXEMPTION: { years: [2031, 2032, 2033, 2035] },
       IT_MARGINAL_RELIEF: { years: [2031] },
+      IT_NURSING_HOME_RELIEF: { years: [2031] },
       OTHER_INCOME_AS_PENSION: { title: 'Land lease income' },
       LUMP_SUM_PRIOR: { amount: 150_000 },
       SFT_THRESHOLD: { amount: 2_800_000, years: [2031] },

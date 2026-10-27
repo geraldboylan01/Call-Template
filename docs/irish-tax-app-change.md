@@ -178,6 +178,9 @@ Not modelled: Class K, minimum contributions, the PRSI credit for low earners an
 | `employment` | Yes, after `employmentPensionContribution` | Yes, on the full salary | Per 4.5, on the full salary | Yes |
 | `rentalProfit` | Yes | Yes, and counts for the surcharge | Per 4.5 | No |
 | `lumpSumScheduleE` (lump sum above a cumulative €500,000) | Yes, at the marginal rate | Yes | No (assumption, see 12) | Yes |
+| `nursingHomeExpenses` (fees the household pays itself, never the HSE's share) | A deduction from total income, so relieved at the marginal rate (added 22 October 2026, rule `ie.income_tax.nursing_home_expenses.2026`, `ie-tax-2026.7`) | No | No | No |
+
+`nursingHomeExpenses` is the one deduction a caller enters for a person. It comes off the assessment's total income and never below nothing, so it cannot make tax negative. For a jointly assessed couple it comes off their combined income. The over-65 exemption and the band increase for a second income are tested on income before it. Sources: Revenue's nursing home expenses page and Tax and Duty Manual Part 15-01-12, section 4 (its Examples 1 and 2 are tests). The care costs module asks the engine twice for the same year, with and without the fees, and takes the relief as the difference.
 
 ### 4.7 Retirement lump sums
 
@@ -429,7 +432,7 @@ What we took from the Big Four calculators: open by saying results are approxima
 
 ### 8.3 Not included (standing list)
 
-1. Other tax credits and reliefs, including medical expenses, rent, mortgage interest, home carer, dependent relative, blind person and single person child carer credits, and higher exemption limits for dependent children.
+1. Other tax credits and reliefs, including health expenses other than nursing home fees, rent, mortgage interest, home carer, dependent relative, blind person and single person child carer credits, and higher exemption limits for dependent children.
 2. The reduced USC rate for medical card holders.
 3. The higher State Pension for claiming after 66, and the Qualified Adult Increase.
 4. Tax on savings and investments outside pensions: DIRT, exit tax, capital gains tax and dividends.
