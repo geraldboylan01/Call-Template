@@ -1,6 +1,6 @@
 # The plan and its routes: implementation plan
 
-Written 13 October 2026, with the four decisions in section 4 settled that evening. Status refreshed 20 October 2026; the central illness-scenario assumption was approved on 17 October. This sets the order of work for the module screens and the plan layer over them. It is a plan, not a brief. Each step gets its own brief before it is built; B0 merged in #80; B1 is implemented for review against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md).
+Written 13 October 2026, with the four decisions in section 4 settled that evening. Status and order refreshed 27 October 2026, covering work through #95 and distinguishing merged work from open PRs. The central illness-scenario assumption was approved on 17 October. This sets the order for the module screens and the plan layer; each step gets its own brief before it is built. B0, B1 and B1.1 are merged (#80, #85 and #87), against the [v1 contract](plan-pack-v1.md) and [B1 brief](plan-pack-b1-brief.md). The [B1.5 brief](plan-pack-b15-story-brief.md) records Gerry's five settled decisions, the confirmed-form journey and the shared tool interface. #88 remains open for his review; this PR changes documentation and the private-case ignore rule only.
 
 ## 1. Where things stand
 
@@ -11,16 +11,28 @@ Written 13 October 2026, with the four decisions in section 4 settled that eveni
 | Goals and resources | `main` (#58, #67, #70, #75, #76) | Engine, calendar-year wording, Proposal A screen, app wiring and conditional relief footnotes merged. |
 | Protection gap | `main` (#61, #65, #77) | Engine, screen, wiring and prompt-pack entry built. Confirmed €0 State payments and sourced Irish payment references merged. The approved central assumption for hypothetical illness scenarios is specified below; its adapter and tax support remain to be built. |
 | Property decisions | Rental on `main` (#64, #66); home trade down on `main` (#72) | Both modules built and wired. Shared phone grids also include #73. Property chapters remain outside the first version of the plan. |
+| Plan pack and ledger | `main` (#80, #85, #87) | B0's format, compiler and checker, B1's allocation, protected reserve, sale proceeds and balance test, and B1.1's freed cash and each person's retirement boundary are merged. |
+| Story screen | `plan-pack-story-view` | Local screen work exists; tidy and push it together first. Reading any compiled plan and then opening checked story links remain separate steps in section 7. |
+| B1.5 brief | #88, `plan-pack-b15-brief` | Open for Gerry's review. The five decisions are settled below and in the brief. Build in two parts, followed by the tool interface and matching links; no analyst or generation job is built by this PR. |
+| Care brief and calculations | Brief #89 open; central figures and nursing-home tax relief on `main` (#91) | Finish the care brief. #91 builds rows 1 and 2 only: central prices and care assumptions, plus income-tax relief through the shared tax engine. Fair Deal rules, care calculations, funding and the screen remain to build; the complete care engine is not yet available. |
+| Figures register | `main` (#90) | One generated register of law, market figures and central assumptions, with sources, dates and versions. `getFigures` and `{figure.<id>}` narration are built; B1.5 adds `read_figures` to the shared tool interface (section 11). The 2027 announced tax and welfare records are included. |
+| Market refresh job | `main` (#92) | Quote-reading script, dry-run/apply/PR modes and checks are merged. Unread pages remain unchanged and reviewed values need a person. Scheduling the weekly run is still a separate action. |
+| State Pension by plan year | `main` (#93) | The retained worker code reads the rate for the plan's year and uses shared wording, source and status; typed copies are removed. This does not reconnect the retired conversation UI. |
+| Form-to-analysis journey | `main` (#94, merged 27 October) | Conversation intake, adviser test launchers and call navigation are retired. The form schema is `js/case_application/schema.js`; `worker/src/demo/` saves revisions and confirmation on the private page. Generation is not connected. The first analyses run in Claude Code, checked and reviewed by Gerry before release. |
+| Walkthrough check | `main` (#86) | The booking check's time-of-day failure is fixed. It adds no analysis-generation path. |
+| Mortgage illustration and assumption approvals | #95 open, `figures/mortgage-illustration-rate` | Proposes 4.00% from the 27 October quotes, the reviewed-date rule, two-decimal chart labels and the recorded approval of the 4% after-tax growth and enacted-or-announced tax wording. These changes are not on `main` yet; do not describe them as merged or copy their values into narration. |
 | On `main` | | Mortgage, loan, pension, net retirement, college cost, cash reserve and balance sheet engines. The Irish tax engine, now with CGT on property. Household profile v1 with its adapters, module registry and orchestrator. Case packs and the presenter. |
 
-Module briefs accompany the code. The module follow-ups above are merged. #83 includes the final cash-flow and home-trade-down prompt contracts. B0 uses those engine contracts without changing consumer activation.
+Module briefs accompany the code. #83 includes the final cash-flow and home-trade-down prompt contracts. The remaining plan work is the form-to-profile conversion and adapters (B2), B1.5's shared pieces and story checks, care, the compiled-plan screen and links, then B4's analyst. Website generation comes last as a tracked job with Gerry's release step. Section 7 sets that order; no live intake is restored.
 
 ## 2. What the first version does, end to end
 
-1. **An author writes one plan pack.** The author is Claude, in a chat or in Claude Code, so no API is spent. The pack holds the household's facts once, how far each goal could move, and up to three routes beside the current position.
-2. **`npm run check:plan-pack` compiles and prices it.** Every chapter's module payload is built from the household facts and the route's changes, every engine runs, and the resource ledger prices each route, taking goals in the planning method's order. The check prints each route's ledger. It fails a route that does not balance, a change outside a goal's stated flexibility, and narration that types a figure.
-3. **The app loads the pack like a case pack.** The plan view shows the current position first and the routes beside it, each with its money-now and money-each-year picture and the goals it moves. Picking a route selects the matching case in every chapter. Choosing a different case inside a chapter shows a note that the screen no longer follows the route.
-4. **Later, on the website,** an AI analyst writes the same plan pack from the intake, and the same check verifies it before anything runs. The format and the check are the contract, so moving to the API changes who writes the pack, not what the app does with it.
+1. **Start from a confirmed form.** A person gives their details in the application form, saved by `worker/src/demo/`, confirms the saved revision and chooses **Generate my analysis**. B2 converts that confirmed version to the household profile and then the plan's household. The generation action is not connected yet.
+2. **First, the analyst runs in Claude Code.** It reads that confirmed household, decides which routes and what-ifs matter, sets them from the facts, and runs the engines through the same tools the later website analyst will use; it never does maths. The pack holds the household's facts once, how far each goal could move, and up to three routes beside the current position. Rates, bands, limits and payments come from `read_figures`, with `{figure.<id>}` in narration.
+3. **A missing fact stops the first run for one follow-up form.** `missing_facts` returns either an existing application-schema path or a new question with its proposed path, label and type, and the affected result. The person gets a short follow-up form on their private page and confirms a new revision; the analysis starts afresh from that version. Only one round is allowed per analysis request. After that, it runs on what it has and says what it could not show. A run never guesses a missing fact, treats an unanswered fact as zero or asks it in live chat.
+4. **The same plan-pack check compiles and prices it.** `npm run check:plan-pack -- <pack.json> --ledger` builds chapter payloads from household facts and route changes, runs the engines and prices the ledger in the method's order. It refuses unbalanced routes, changes outside stated flexibility and typed figures. B1.5 adds story completeness and wording checks and requires every linked figure to equal what the linked module shows in the compiled route case, using the compiled plan rather than samples.
+5. **Gerry reviews each checked analysis before release.** The app loads the released compiled plan like a case pack. The story screen shows the current position and routes, their money-now and money-each-year pictures and goals. Picking a route selects the matching chapter cases; a story figure opens its source module and focus target. Choosing another chapter case shows that the screen no longer follows the route.
+6. **Later, Generate my analysis starts a tracked website job.** It is pinned to the confirmed revision, uses the same tools, one-follow-up rule and plan-pack check, and waits for Gerry to release the result. A passing check is not publication. The format, tools and check stay the same for Claude Code and website runs.
 
 ## 3. Rules the code carries
 
@@ -33,6 +45,13 @@ Module briefs accompany the code. The module follow-ups above are merged. #83 in
 - **Routes are never ranked.** They are ordered by how much they change from the current position and named neutrally. Each says what it changes, above all a goal that moves.
 - **Money now and money each year are never drawn on one scale or added together.** As in the method's ledger, alternatives are never totalled: a route picks one way of funding each goal and only that is added up.
 - **Narration types no figures.** Every amount in it is a placeholder the ledger fills, and every rate, band, limit or weekly payment is a `{figure.<id>}` placeholder the figures register fills (section 11).
+- **Every linked story figure matches its module.** The checker reads the compiled route's `chapterCases`, compiled chapter input and result, and `nativeCaseId`; the value, unit and displayed rounding must equal what the linked module shows for that case and focus target. The evidence comes from the compiled plan, never module samples. Wrong cases, missing targets and unequal figures are refused, including a wrong case with a coincidentally equal value ([B1.5 brief](plan-pack-b15-story-brief.md), section 1).
+- **Confirmed facts only, with one follow-up round.** A missing fact becomes a form question, the analysis stops and runs afresh after confirmation. Remaining gaps are explicit limitations, never invented values; a modelling default is labelled as an assumption and never substitutes for a household fact.
+- **Checked and reviewed before release.** Claude Code and the later website job use one tool interface and the same plan-pack check. Gerry reviews each analysis before it is released.
+- **Every dated cost reaches the ledger in one shape.** College, the future cost fund and care all produce the same dated-cost contract: money each year, money now, the split before and after the payers' retirement, and any tax relief with who claims it. The ledger has one path for dated costs, never a branch per module ([B1.5 brief](plan-pack-b15-story-brief.md), section 6a).
+- **There is one retirement-years run.** One projection to age 100, drawing pension, ARF and savings, serves every later-life story. A later-life what-if is a change to that run (an extra outgoing, an income change or a return change), never a model of its own, so two answers cannot disagree (section 6b).
+- **Every what-if is a tool, not a fixed scenario.** Each has a typed parameter schema generated from its engine's normaliser, bounds and central defaults, and returns code facts. Every parameter is a household fact, a central default or a bounded value with a reason that cites a fact; anything else is refused (sections 6c and 6d).
+- **Every engine built from now on is exposed as a tool in the catalogue.**
 - **Education only.** No "you should", "we recommend", "best", or a product or provider name. The words checks the modules already run apply to every plan screen.
 
 ## 4. Decisions, settled 13 October 2026
@@ -64,8 +83,8 @@ The modules stay separate. This is only about what a plan passes them. In a rout
 The resource ledger takes goals in the order the CFP planning method uses (wealth preservation, then removing inefficiencies, then wealth accumulation, shortest horizon first). Nothing in the plan pack or a payload sets the order.
 
 1. **Cash flow first.** A deficit is dealt with before any goal. In the ledger it sits on the "required" side.
-2. **Wealth preservation.** The emergency reserve is set aside from cash before anything else. Protection comes next: shown as the gap and the months savings last, never a cover amount, premium or product, so it takes no money in the ledger.
-3. **Removing inefficiencies.** Where a route clears an expensive loan from spare cash, that comes before the goals.
+2. **Wealth preservation.** The emergency reserve is set aside from cash before anything else. Protection comes next: the income gap and how long savings last, counting stated existing cover. A payout is money received and a protected mortgage is cleared; the screen never shows a cover amount needed, a gap against cover, a premium, a product or a provider. No purchase of cover takes money in the ledger.
+3. **Removing inefficiencies.** List all loans and cards other than the mortgage, dearest first, with rate, balance and yearly cost under `debts_other_than_mortgage`, without a rate threshold. Where a route clears one from spare cash, that comes before the goals. `idle_cash_vs_debt` already shows where cash earns less than a loan costs; no arrears, penalties or promotional-rate facts are added.
 4. **Wealth accumulation, soonest first.** Dated costs (each child's college, care for a parent) in order of when they start, then the mortgage, then retirement.
 
 The ledger's assumptions say this order in plain words. The goals module uses the same order, so a goal never reads covered in a chapter and short in the plan. `goalPriorities` is removed from the goals payload, and `goalOrder` is not in the plan pack.
@@ -84,23 +103,25 @@ Small changes to modules already briefed, needed before the plan can use them fo
 
 **For the module screens, nothing new.** In Stage 1 they are adviser-only and their inputs are typed into the Dev Panel or a case pack, as the pension and mortgage modules were at first.
 
-**For a plan built from the household profile**, most of what is needed is already collected: each person, their age and income (gross, and net where given), pension pots and contribution rates, retirement age and target income, the State Pension fraction, the mortgage and loans (balance, rate, term, monthly payment), cash, children's ages and college plans, and essential spending.
+**The form and the household profile are different contracts.** The current form is defined in `js/case_application/schema.js`, saved and confirmed by `worker/src/demo/`; it already collects many ages, incomes, pensions, debts, assets and goals. Its `profilePath` hints are not a converter. B2 step 1 converts a confirmed form revision into a household profile, step 2 makes that profile the plan's household and connects cash flow and goals, and step 3 completes protection and college adapters and the illness scenario. Reuse existing form paths before proposing new questions.
 
 Missing, and needed before a plan can run from the profile alone:
 
 | Gap | Why it matters | Where it goes |
 |---|---|---|
 | Total spending, not only essentials | The app asks essential spending excluding housing debt, which is right for the cash reserve. Left over each year needs everything spent, or it is overstated. | A question, `expenses.annualTotal` already exists in the profile |
-| Married or civil partners, or not | Decides joint assessment, which changes take-home a lot. The profile has no field for it; only the pension payload carries it. | A new profile field and question |
+| Married or civil partners, or not | Decides joint assessment. The form already collects `household.married`; the profile binding is still needed. | Carry the confirmed existing answer into a profile field; do not ask a duplicate question |
 | When the mortgage should be cleared | The mortgage goal needs an age. | A goal target date, which the profile already holds; nothing asks for it yet |
 | How far each goal could move | Routes may only move a goal within what the client said is possible (a later retirement, a lower target, a longer mortgage). | A question per goal, kept in the plan pack |
 | Other dated costs | Care for a parent or school fees need a start, a number of years and a yearly cost. | Goal target date and amount exist; the number of years does not |
 | State payment in a hypothetical illness scenario | Standard personal Illness Benefit rate for an employed person assumed to qualify. | A central, sourced, dated planning assumption; never a question asking the client to predict an entitlement. See the contract below. |
 | Survivor's payment after a death | A separate scenario with different eligibility and tax treatment. | Keep the existing stated-input contract until its own assumption is designed; the illness default does not select a survivor's payment. |
 | Whether the mortgage would be cleared on a death | The protection chapter's need after a death depends on it. | A question |
+| Existing cover and sick pay | The form has broad `cover.life` and `cover.incomeProtection` answers; the what-ifs also need stated amounts, terms, whose life, mortgage bindings, death-in-service, benefit/waiting period and sick pay. Personal cover and employer death-in-service stay separate; an unstated fact is never zero. | Extend the form with optional detail questions, initially or in the one private-page follow-up ([B1.5 brief](plan-pack-b15-story-brief.md), sections 7 and 8) |
+| Investment preference | Growth stories run only in investment mixes at or below the mix the client says they are comfortable with; without an answer they stay at the base case. | One optional question, recorded as stated, never as a suitability assessment ([B1.5 brief](plan-pack-b15-story-brief.md), section 5) |
 | Property (later) | Rent, running costs, purchase date and price, how it was acquired, whether it was ever a home. | Questions, when property joins the plan |
 
-In the hand-authored version the author writes these straight into the plan pack's household, so B0 and B1 can start now. The profile fields arrive with the adapters (B2), and the consumer questions before the website version.
+B0, B1 and B1.1 already support authored packs. For the first real analyses in Claude Code, the form's newly confirmed revision supplies the facts through B2; missing facts follow the one-round form contract in the B1.5 brief. After that round the run states what it could not show and carries those limitations in `check_next`, including any required what-if it could not calculate. The question/schema additions come in section 7's third group, before website generation is connected. Approved central what-if defaults and bounds are in the B1.5 brief's section 6c, dated and versioned; the home's share of net worth uses its value less its mortgage over net worth.
 
 ### Approved illness-scenario assumption
 
@@ -130,38 +151,33 @@ Expense-label phrasing belongs to the final AI authoring stage, with no determin
 
 ## 7. The order of work
 
-Two tracks run side by side. Track A builds the module screens, one Claude Code chat per module as now. Track B builds the plan layer in one new chat. Design tasks sit between them.
+The order below is settled by Gerry on 27 October. Work in each group can proceed together; move to the next group when the contracts it needs are ready. Section 1 holds the completed work, including B0, B1 and B1.1, so none of those is a new gate here.
 
-| Step | What | Waits for | Who |
-|---|---|---|---|
-| D1 | Red "short" state merged in #71 and #76 | Complete | Module work |
-| A1 | Future cost fund screen and wiring complete on `main`; its updated wiring list remains the pattern | Complete | Future cost fund module |
-| A2 | Cash flow, short state and today's pension contributions merged (#71/#82/#83) | Complete | Cash flow module |
-| A3 | Protection gap and confirmed zero-payment extension merged (#77) | Complete | Protection module |
-| A4 | Goals engine, timeline fields, app wiring and relief footnotes merged (#75/#76) | Complete | Goals module |
-| P | Existing module prompt contracts merged, including cash flow and home trade down (#83) | Complete for current modules | Claude |
-| B0 | Plan pack v1: format, validator, compiler and `check:plan-pack`; implementation in #80 | Merged in #80; supported/deferred builders in the v1 contract | Plan chat |
-| B1 | The resource ledger: resources available and required, goal states in the method's order, the balance test, route order and what each route changes | Implemented for review after #80. Cash flow owns left over; a separate stated amount is allowed only without that chapter. | Plan chat |
-| B2 | Adapters from the household profile for cash flow, protection gap, future cost fund and goals, with the profile fields from section 6; central Illness Benefit assumption, shared-engine tax treatment and duration contract | Each module's engine; versioned assumptions and tax support for illness scenarios | Plan chat |
-| D2 | The plan view: the current position and the routes side by side | B1's output shape | Claude Design |
-| B3 | The plan view built, route-to-case selection, the "not following the route" note, presenter beats | D2, B1, B2 | Plan chat |
-| B4 | The plan playbook (how an author writes a plan pack) and two golden plan packs | B1 | Gerry and Claude |
-| Later | Property chapters as routes, where a sale's proceeds become money now. The consumer questions from section 6. The website version through the API. | B3 | |
+| Order | Work, in order within the group | What this establishes |
+|---|---|---|
+| First, together | Tidy and push the story screen; this B1.5 brief; finish the care brief (#89); form to household profile (**B2 step 1**). | The screen and both briefs are reviewable, and a confirmed form revision can become a household profile without invented facts. |
+| Then | **B1.5 build part 1:** shared pieces and what-if tools; **B2 step 2:** cash-flow and goals adapters, with the plan's household from the profile; Fair Deal rules and care calculations; the story screen showing any compiled plan. | The dated-cost contract, parameter checks and what-if catalogue have the shared shape in brief section 6. The screen reads compiled plans rather than a fixed sample. #91's central care figures and nursing-home tax relief are reused; it did not build the complete care calculation. |
+| Then | New form questions; **B1.5 build part 2:** story facts, issue list, link sources and checker; **B2 step 3:** protection-gap and college-fund adapters, the Illness Benefit default, and the protection playbook stops stating rates; care funding and screen. | Required facts have schema paths or validated proposed questions. The checker specifies the matching rule for linked figures. Protection uses the income/tax/duration contract in section 6, reads figures from the register and counts stated existing cover without showing a cover need. |
+| Then | The tool interface; story links from compiled plans with the matching check. | One schema and executor per tool serve Claude Code and the later website job, including `read_figures` and `missing_facts`. Every story link opens the compiled route's module case and target, and its figure equals what that module shows. |
+| Then | **The analyst (B4)**, run from Claude Code, with golden plans from the course cases kept only in `private/cfp-cases/` on Gerry's Mac. | Build the prompt and loop over the tools; test locally against the private goldens and publicly against made-up examples. Gerry reviews each checked analysis before release. |
+| Last | Connect **Generate my analysis** to a tracked job that Gerry releases; then a whole-journey test with made-up households. | The job uses a confirmed revision, the same tools and plan-pack check, and at most one follow-up form. A checked result waits for Gerry's release. The journey test covers confirmation, follow-up and fresh rerun, remaining limitations, review, release, route selection and matching story links. |
 
-B0 merged in #80. B1 adds allocation, the protected reserve, ordinary-CGT sale proceeds and the balance test. Its implementation is ready for review; B2 completes the missing screen/profile adapters and illness-tax contracts.
+B1.5's overall scope remains story facts, the what-if catalogue, the tool interface and the checker; the rows split that build without changing its contract. D2/B3 is now staged as the tidy story screen, then any compiled plan, then checked module links, rather than waiting for every plan feature before showing anything.
 
-The module screens stay adviser-only (`consumer: false`) as their briefs say. The plan view starts the same way.
+**Extensions kept on the plan.** B1.6 remains the later-life run to age 100 and the growth, gift and later-life stories in brief sections 5 and 6b, with the four investment mixes, preference ceiling and disclosure, gift-tax rules and DB assumptions. Entries waiting for those engines stay unavailable. It is not an extra gate inserted into the first-release order above. Property chapters as routes and the fund/ETF sale adapter remain later work; the ordinary-CGT sale path is already in B1.
+
+The module screens stay adviser-only (`consumer: false`) as their briefs say. The plan view starts the same way. The retired conversation intake is not part of this order. Prompt-pack changes named above get their own later change; this PR leaves `docs/prompt-pack/` untouched.
 
 ## 8. The prompt pack
 
-Every new module needs its place in `docs/prompt-pack/`, so an author can write its payload from a call: a playbook, its spoken names in `01_playbook_aliases.md`, its row in `02_schema_capability_matrix.md`, the assembled `MASTER_PROJECT_PROMPT.md`, and examples in `90_` and `91_`. The plan adds one more playbook, for writing a plan pack; that is B4.
+Every new module needs its place in `docs/prompt-pack/`, so an author can write its payload from confirmed facts: a playbook, its spoken names in `01_playbook_aliases.md`, its row in `02_schema_capability_matrix.md`, the assembled `MASTER_PROJECT_PROMPT.md`, and examples in `90_` and `91_`. B4 adds the analyst's plan-pack authoring prompt; the first runs are in Claude Code.
 
 - **When:** after each module's code is merged, never before, so the playbook describes what the code does. Each brief ends with a "contract summary for the prompt pack" for exactly this.
 - **Who:** Claude, one pull request per module. No app code changes.
 - **The module chats do not touch `docs/prompt-pack/`.** Their briefs already say so.
 - **Consumer routing stays off.** Playbooks carry a `planeir-planning-module` marker that feeds `js/planning/playbook_manifest.generated.js`. A new module's playbook leaves that marker out until the module has a registry entry and an adapter (B2), so the consumer pipeline never routes to a module it cannot run.
 
-The module prompt contracts above are merged, including cash flow and home trade down in #83 and the protection zero-payment contract. B4 adds the plan-pack authoring playbook. Keep prompt-pack updates separate from module-code changes.
+The module prompt contracts above are merged, including cash flow and home trade down in #83 and the protection zero-payment contract. In section 7's B2 step 3, a separate change makes the protection playbook stop stating rates itself and read them through the figures register. Keep prompt-pack updates separate from module-code changes. This PR does not edit `docs/prompt-pack/`.
 
 ## 9. The plan pack and the ledger, in outline
 
@@ -202,9 +218,9 @@ The B0 and B1 briefs set these out in full. The shape, for review:
 
 ## 10. Next
 
-1. Review B1 and its resource-ledger examples; its merge is a separate decision from the authorized #80 merge.
-2. Build B2: complete exact goals/future-cost screen adapters, automatic profile facts and the approved illness payment, tax and duration contracts. Add the optional investment-sale intake facts and the fund/ETF sale adapter where needed.
-3. Design/build the linked plan view (D2/B3), then write B4’s AI authoring playbook and golden plans. Consumer activation remains off until its adapters and questions are complete.
+Start section 7's first group together: tidy and push the story screen, review this B1.5 brief, finish the care brief and convert the confirmed form to a household profile (B2 step 1). B1.1 (#87) is already merged. The five decisions in the B1.5 brief are settled; #88 remains open for Gerry to review the updated brief and this plan.
+
+Follow section 7 for the build order rather than starting website generation early. The first analyst is B4 in Claude Code, with local CFP golden plans only in ignored `private/cfp-cases/` and made-up public examples. `.gitignore` does not untrack an earlier commit: `git ls-files -- private/cfp-cases/` must return nothing before a commit or push. Website generation remains unconnected until the final tracked-job step, and every result waits for Gerry's release.
 
 ## 11. The figures register, and the analyst loop
 
@@ -212,5 +228,5 @@ Every figure that can change sits in one register: law, market prices and Planei
 
 - **Narration.** The plan pack resolves `{figure.<id>}` from the register the same way it resolves engine figures, showing the value as the register shows it (20%, €44,000, age 65). A figure typed into narration is still refused, and so is an id the register does not hold. A compiled plan records the register's version with its other versions.
 - **Reading.** `getFigures({ ids, kinds, module, onDate })` in `js/planning/figures/get_figures.js` is read-only. It refuses an unknown id rather than leaving a figure out, returns the value in force on `onDate` when asked, and carries no bank or lender name: a market figure's quotes are internal provenance.
-- **The analyst loop.** The B1.5 analyst (PR [#88](https://github.com/geraldboylan01/Call-Template/pull/88)) gets a `read_figures` tool backed by `getFigures`, next to `read_position`, `price_route` and the others, with one interface for the command line and the Worker. The analyst states a rate, a band, a limit or a weekly payment only by reading it there, and cites the figure's `source` and `checkedOn`, never memory. Its parameters are the same four. A figure the register does not hold is a missing fact to report, not something to estimate. This adds one tool to #88's catalogue, for confirming when #88 is reviewed; the loop, its checker and its interface are otherwise as #88 describes them.
+- **The analyst loop.** The B1.5 brief (PR [#88](https://github.com/geraldboylan01/Call-Template/pull/88), section 7) includes `read_figures`, backed by `getFigures`, next to `read_position`, `price_route` and the others. Its parameters are the same four. The first analyst runs in Claude Code; the later tracked website job calls the same interface and uses the same plan-pack check before Gerry's review and release. The analyst states a rate, band, limit or weekly payment only by reading it there, retains its `source`, `checkedOn` and version, and uses `{figure.<id>}` in narration. A quantity absent from the register is reported for source review, never estimated or turned into a household question. Missing household facts instead use `missing_facts` and the one private-page follow-up form; the analysis then starts afresh from the newly confirmed revision. After that round, still-missing facts produce explicit limitations.
 - **What it does not do.** The register holds no client's data and the repository is public, so nothing about a client goes in it.
