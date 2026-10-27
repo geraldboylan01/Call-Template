@@ -9690,17 +9690,17 @@ export const FIGURES_INDEX = Object.freeze([
     "status": "approved",
     "effectiveFrom": null,
     "source": {
-      "title": "Planeir central planning assumptions, approved 13 October 2026",
+      "title": "Planeir central planning assumptions, approved 27 October 2026",
       "url": null
     },
     "sources": [
       {
-        "title": "Planeir central planning assumptions, approved 13 October 2026",
+        "title": "Planeir central planning assumptions, approved 27 October 2026",
         "url": null
       }
     ],
-    "checkedOn": "2026-10-13",
-    "checkedOnFrom": "catalogue",
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
       "version": "planeir-assumptions-1.5.0"
