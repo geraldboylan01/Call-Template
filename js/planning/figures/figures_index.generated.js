@@ -29,7 +29,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "planeir_assumptions",
-    "version": "planeir-assumptions-1.6.0",
+    "version": "planeir-assumptions-1.7.0",
     "count": 48
   },
   {
@@ -10265,7 +10265,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "pension_projection"
@@ -10295,7 +10295,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "pension_projection",
@@ -10328,7 +10328,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -10361,7 +10361,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "net_retirement_cashflow"
@@ -10391,7 +10391,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -10422,7 +10422,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -10453,7 +10453,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -10484,7 +10484,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -10515,7 +10515,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -10546,7 +10546,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -10577,7 +10577,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -10607,7 +10607,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -10617,27 +10617,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.list_number",
     "quantity": "planeir.assumption.care.agreed_prices.list_number",
     "label": "Number of the HSE list of maximum agreed nursing home prices that the care fees come from",
-    "value": 230,
-    "valueShown": "230",
+    "value": 231,
+    "valueShown": "231",
     "unit": "count",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10647,27 +10647,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.list_date",
     "quantity": "planeir.assumption.care.agreed_prices.list_date",
     "label": "Date of that HSE list of maximum agreed nursing home prices",
-    "value": "2026-09-04",
-    "valueShown": "4 September 2026",
+    "value": "2026-10-14",
+    "valueShown": "14 October 2026",
     "unit": "date",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10682,22 +10682,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "count",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10707,27 +10707,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.national_weekly_average",
     "quantity": "planeir.assumption.care.agreed_prices.national_weekly_average",
     "label": "Average weekly nursing home fee across the list, a simple average of each home’s price",
-    "value": 1312,
-    "valueShown": "€1,312 a week",
+    "value": 1315,
+    "valueShown": "€1,315 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10737,27 +10737,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.lowest_weekly",
     "quantity": "planeir.assumption.care.agreed_prices.lowest_weekly",
     "label": "Lowest weekly nursing home fee in the list",
-    "value": 1192,
-    "valueShown": "€1,192 a week",
+    "value": 1200,
+    "valueShown": "€1,200 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10772,22 +10772,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10797,27 +10797,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.carlow.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.carlow.average",
     "label": "Average weekly nursing home fee in Co. Carlow, a simple average of each home’s price in the list",
-    "value": 1256,
-    "valueShown": "€1,256 a week",
+    "value": 1264,
+    "valueShown": "€1,264 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10827,27 +10827,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.cavan.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.cavan.average",
     "label": "Average weekly nursing home fee in Co. Cavan, a simple average of each home’s price in the list",
-    "value": 1291,
-    "valueShown": "€1,291 a week",
+    "value": 1295,
+    "valueShown": "€1,295 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10857,27 +10857,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.clare.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.clare.average",
     "label": "Average weekly nursing home fee in Co. Clare, a simple average of each home’s price in the list",
-    "value": 1260,
-    "valueShown": "€1,260 a week",
+    "value": 1264,
+    "valueShown": "€1,264 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10887,27 +10887,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.cork.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.cork.average",
     "label": "Average weekly nursing home fee in Co. Cork, a simple average of each home’s price in the list",
-    "value": 1307,
-    "valueShown": "€1,307 a week",
+    "value": 1311,
+    "valueShown": "€1,311 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10922,22 +10922,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10947,27 +10947,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.dublin.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.dublin.average",
     "label": "Average weekly nursing home fee in Co. Dublin, a simple average of each home’s price in the list",
-    "value": 1414,
-    "valueShown": "€1,414 a week",
+    "value": 1416,
+    "valueShown": "€1,416 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -10982,22 +10982,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11007,27 +11007,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.kerry.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.kerry.average",
     "label": "Average weekly nursing home fee in Co. Kerry, a simple average of each home’s price in the list",
-    "value": 1262,
-    "valueShown": "€1,262 a week",
+    "value": 1263,
+    "valueShown": "€1,263 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11037,27 +11037,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.kildare.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.kildare.average",
     "label": "Average weekly nursing home fee in Co. Kildare, a simple average of each home’s price in the list",
-    "value": 1341,
-    "valueShown": "€1,341 a week",
+    "value": 1346,
+    "valueShown": "€1,346 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11072,22 +11072,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11102,22 +11102,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11132,22 +11132,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11157,27 +11157,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.limerick.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.limerick.average",
     "label": "Average weekly nursing home fee in Co. Limerick, a simple average of each home’s price in the list",
-    "value": 1263,
-    "valueShown": "€1,263 a week",
+    "value": 1270,
+    "valueShown": "€1,270 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11192,22 +11192,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11217,27 +11217,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.louth.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.louth.average",
     "label": "Average weekly nursing home fee in Co. Louth, a simple average of each home’s price in the list",
-    "value": 1296,
-    "valueShown": "€1,296 a week",
+    "value": 1302,
+    "valueShown": "€1,302 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11252,22 +11252,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11277,27 +11277,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.meath.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.meath.average",
     "label": "Average weekly nursing home fee in Co. Meath, a simple average of each home’s price in the list",
-    "value": 1313,
-    "valueShown": "€1,313 a week",
+    "value": 1318,
+    "valueShown": "€1,318 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11312,22 +11312,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11342,22 +11342,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11372,22 +11372,22 @@ export const FIGURES_INDEX = Object.freeze([
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11397,27 +11397,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.sligo.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.sligo.average",
     "label": "Average weekly nursing home fee in Co. Sligo, a simple average of each home’s price in the list",
-    "value": 1332,
-    "valueShown": "€1,332 a week",
+    "value": 1333,
+    "valueShown": "€1,333 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11427,27 +11427,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.tipperary.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.tipperary.average",
     "label": "Average weekly nursing home fee in Co. Tipperary, a simple average of each home’s price in the list",
-    "value": 1270,
-    "valueShown": "€1,270 a week",
+    "value": 1273,
+    "valueShown": "€1,273 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11457,27 +11457,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.waterford.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.waterford.average",
     "label": "Average weekly nursing home fee in Co. Waterford, a simple average of each home’s price in the list",
-    "value": 1283,
-    "valueShown": "€1,283 a week",
+    "value": 1289,
+    "valueShown": "€1,289 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11487,27 +11487,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.westmeath.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.westmeath.average",
     "label": "Average weekly nursing home fee in Co. Westmeath, a simple average of each home’s price in the list",
-    "value": 1241,
-    "valueShown": "€1,241 a week",
+    "value": 1253,
+    "valueShown": "€1,253 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11517,27 +11517,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.wexford.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.wexford.average",
     "label": "Average weekly nursing home fee in Co. Wexford, a simple average of each home’s price in the list",
-    "value": 1265,
-    "valueShown": "€1,265 a week",
+    "value": 1274,
+    "valueShown": "€1,274 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11547,27 +11547,27 @@ export const FIGURES_INDEX = Object.freeze([
     "id": "planeir.assumption.care.agreed_prices.county.wicklow.average",
     "quantity": "planeir.assumption.care.agreed_prices.county.wicklow.average",
     "label": "Average weekly nursing home fee in Co. Wicklow, a simple average of each home’s price in the list",
-    "value": 1338,
-    "valueShown": "€1,338 a week",
+    "value": 1339,
+    "valueShown": "€1,339 a week",
     "unit": "eur_a_week",
     "kind": "planeir_assumption",
     "status": "approved",
-    "effectiveFrom": "2026-09-04",
+    "effectiveFrom": "2026-10-14",
     "source": {
-      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
     },
     "sources": [
       {
-        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230",
-        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf"
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
       }
     ],
-    "checkedOn": "2026-10-21",
+    "checkedOn": "2026-10-27",
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11597,7 +11597,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11627,7 +11627,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs"
@@ -11657,7 +11657,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs",
@@ -11688,7 +11688,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "care_costs",
