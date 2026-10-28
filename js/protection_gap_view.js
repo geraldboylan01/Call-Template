@@ -176,13 +176,13 @@ export function buildProtectionGapCopy(projection, caseId, { narrow = false } = 
     let text;
     if (entry.beyond) {
       text = 'Beyond three years';
-    } else if (inputs.savings > 0 && entry.months === 0) {
+    } else if (entry.savingsAvailable > 0 && entry.months === 0) {
       text = 'Less than a month';
     } else {
       text = monthsPhrase(entry.months);
     }
     end = {
-      lead: narrow ? 'Your savings last' : `Your savings of ${savings} would last`,
+      lead: narrow ? entry.savingsLeadNarrow : entry.savingsLead,
       text
     };
   }
@@ -218,7 +218,7 @@ export function buildProtectionGapCopy(projection, caseId, { narrow = false } = 
     strip: {
       filled: ['Filled by your savings', 'Filled'],
       short: ['Short'],
-      nothing: 'Nothing to fill',
+      nothing: entry.nothingText,
       startText: hasEvent ? 'Income stops' : 'Today',
       axis: ['1 year', '2 years', '3 years'],
       end,

@@ -1,5 +1,5 @@
 import { computeProtectionGapProjection } from './protection_gap_math.js';
-import { PROTECTION_GAP_SAMPLE } from './tests_protection_gap_math.js';
+import { PROTECTION_GAP_ILLNESS_CASE, PROTECTION_GAP_SAMPLE } from './tests_protection_gap_math.js';
 import {
   HYSTERESIS_PX,
   RAIL_MIN_WIDTH,
@@ -106,6 +106,28 @@ const SHAPES = Object.freeze({
     needed: 2_400_000,
     savings: 3_000_000,
     scenarios: [{ id: 'base' }, { id: 'a-stops', event: { type: 'cannotWork', personId: 'a', statePayment: 15_000 } }]
+  },
+  // A recalculated income-stops case (a year of Illness Benefit, then none).
+  illness: {
+    ...JSON.parse(JSON.stringify(PROTECTION_GAP_SAMPLE)),
+    scenarios: [{ id: 'today' }, JSON.parse(JSON.stringify(PROTECTION_GAP_ILLNESS_CASE))]
+  },
+  // Stated money received: a lump sum on a death, and a regular payment for six months.
+  received: {
+    ...JSON.parse(JSON.stringify(PROTECTION_GAP_SAMPLE)),
+    scenarios: [
+      { id: 'today' },
+      {
+        id: 'niamh-died',
+        event: { type: 'dies', personId: 'niamh', survivorsPension: 13_500, neededAfter: 60_000, neededBecause: ['mortgageCleared'] },
+        received: [{ type: 'lumpSum', amount: 100_000 }]
+      },
+      {
+        id: 'dara-cannot-work',
+        event: { type: 'cannotWork', personId: 'dara', statePayment: 13_000 },
+        received: [{ type: 'regularPayment', amount: 24_000, months: 6 }]
+      }
+    ]
   }
 });
 
@@ -221,7 +243,7 @@ export function runProtectionGapViewTests() {
   }));
 
   cases.push(runCase('Geometry: one scale, everything inside the chart, the bar and the strip share an edge', () => {
-    ['sample', 'onePerson', 'noSavings', 'tight', 'longNames', 'large'].forEach((shape) => {
+    ['sample', 'onePerson', 'noSavings', 'tight', 'longNames', 'large', 'illness', 'received'].forEach((shape) => {
       const projection = project(shape);
       [...WIDTHS, ...MORE_WIDTHS].forEach((width) => {
         const layout = layoutProtectionGap(projection, { width });
@@ -339,6 +361,22 @@ export function runProtectionGapViewTests() {
     assertEqual(stateLabel.title, 'State payment', 'named in full');
     assertEqual(stateLabel.left, 0, 'at the start of its segment');
     assert(phone.below.find((item) => item.key === 'need'), 'and the need label is there too');
+  }));
+
+  cases.push(runCase('A recalculated case and stated money received: the strip leads with the right savings, and says nothing is to fill only at first', () => {
+    const illness = project('illness');
+    const covered = computeProtectionGapProjection({ ...SHAPES.illness, needed: 54_000 });
+    const lead = buildProtectionGapCopy(illness, 'niamh-ill', { narrow: false }).strip.end.lead;
+    assertEqual(lead, 'Your savings of €60,000 would last', 'savings alone');
+    assertEqual(buildProtectionGapCopy(covered, 'niamh-ill').strip.nothing, 'Nothing to fill at first', 'covered at first');
+    assertEqual(buildProtectionGapCopy(covered, 'today').strip.nothing, 'Nothing to fill', 'today has nothing to fill at all');
+    const received = project('received');
+    assertEqual(buildProtectionGapCopy(received, 'niamh-died', { narrow: false }).strip.end.lead, 'Your savings and a lump sum of €100,000 would last', 'savings and the lump sum');
+    assertEqual(buildProtectionGapCopy(received, 'niamh-died', { narrow: true }).strip.end.lead, 'Savings and lump sum last', 'on a phone');
+    const copy = buildProtectionGapCopy(received, 'dara-cannot-work');
+    assertEqual(copy.segments.map((segment) => segment.id).join(','), 'floor,paid,niamh,dara', 'the payment has its own part');
+    assertEqual(copy.segments[1].label, 'Payment you told us about', 'named');
+    assertEqual(copy.segments[1].kind, 'floor', 'drawn like the State payment');
   }));
 
   cases.push(runCase('The same height in every case, and a row reserved when labels would collide', () => {

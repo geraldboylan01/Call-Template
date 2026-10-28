@@ -194,6 +194,69 @@ function clientFacingStrings(projection) {
   });
 }
 
+
+/**
+ * A recalculated case, as the planning layer hands it over: Niamh cannot work,
+ * the standard personal rate of Illness Benefit counts for a year (shown after
+ * estimated tax), and the tax is calculated afresh for the whole household in
+ * each phase. After the year there is no payment, and Dara's tax is higher
+ * because the extra band that came with Niamh's benefit has gone.
+ */
+export const PROTECTION_GAP_ILLNESS_CASE = Object.freeze({
+  id: 'niamh-ill',
+  event: Object.freeze({ type: 'cannotWork', personId: 'niamh' }),
+  income: Object.freeze({
+    basis: 'estimated',
+    calculationYear: 2026,
+    versions: Object.freeze({ taxRules: 'ie-tax-2026.7', socialWelfare: 'ie-social-welfare-2026.2' }),
+    creditAllocation: 'allocated',
+    phases: Object.freeze([
+      Object.freeze({
+        months: 12,
+        takeHome: Object.freeze({ niamh: 0, dara: 44_000 }),
+        statePayment: Object.freeze({
+          personId: 'niamh',
+          scheme: 'illnessBenefit',
+          amount: 12_508,
+          grossAmount: 13_208,
+          estimatedTax: 700,
+          weeklyRate: 254,
+          weeks: 52,
+          figure: Object.freeze({ id: 'ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01', status: 'in_force' })
+        }),
+        householdNetIncome: 56_508
+      }),
+      Object.freeze({
+        takeHome: Object.freeze({ niamh: 0, dara: 43_200 }),
+        statePayment: null,
+        householdNetIncome: 43_200
+      })
+    ])
+  })
+});
+
+function withIllness(overrides = {}, base = PROTECTION_GAP_SAMPLE) {
+  const scenario = JSON.parse(JSON.stringify(PROTECTION_GAP_ILLNESS_CASE));
+  Object.assign(scenario, overrides);
+  return { ...JSON.parse(JSON.stringify(base)), scenarios: [{ id: 'today' }, scenario] };
+}
+
+/** Independent reference: drain savings one month at a time through the two phases. */
+function referenceMonths({ needed, savings, firstIn, firstMonths, laterIn }) {
+  let balance = savings;
+  let months = 0;
+  while (months < 2_000) {
+    const moneyIn = months < firstMonths ? firstIn : laterIn;
+    const gapThisMonth = Math.max(0, needed - moneyIn) / 12;
+    if (gapThisMonth > 0 && balance < gapThisMonth) {
+      return months + balance / gapThisMonth;
+    }
+    balance -= gapThisMonth;
+    months += 1;
+  }
+  return Infinity;
+}
+
 export function runProtectionGapTests() {
   const cases = [];
   const sample = () => computeProtectionGapProjection(PROTECTION_GAP_SAMPLE);
@@ -638,6 +701,313 @@ export function runProtectionGapTests() {
       assert(!/\byou should\b/i.test(spoken), `${entry.id}: never "you should"`);
     });
     assert(/\byour\b/.test(sample().debug.footnote), 'the footnote speaks to you');
+  }));
+
+
+  cases.push(runCase('An income-stops case with recalculated take-home and the State payment kept apart: every figure', () => {
+    const projection = computeProtectionGapProjection(withIllness());
+    const entry = projection.debug.cases[1];
+    assertEqual(entry.title, 'Niamh cannot work', 'the title');
+    assertEqual(entry.segments.map((segment) => segment.amount).join(','), '12508,0,44000', 'State payment, Niamh, Dara');
+    assertEqual(entry.segments[0].label, 'State payment', 'the payment is its own part, labelled as one');
+    assertEqual(entry.moneyIn, 56_508, 'money in is the first phase');
+    assertEqual(entry.gap, 39_492, 'the gap is the first phase’s');
+    assertEqual(entry.status, 'short', 'short');
+    assertEqual(entry.intervals.map((stretch) => `${stretch.start}:${stretch.length}:${stretch.moneyIn}:${stretch.gap}`).join(' '),
+      '0:12:56508:39492 12:null:43200:52800', 'two stretches');
+    assertEqual(entry.months, 17, 'rounded months');
+    assertWithin(entry.exactMonths, 12 + (((60_000 * 12) - (39_492 * 12)) / 52_800), 1e-9, 'unrounded months, by hand');
+    assertEqual(entry.headline.line1, 'You are €39,492 a year short.', 'line 1');
+    assertEqual(entry.headline.line2, 'Your savings would last 17 months.', 'line 2');
+    assertEqual(entry.sentence,
+      'Niamh’s take-home stops and a State payment starts, shown after estimated tax. '
+      + 'Assumes the standard personal rate of Illness Benefit. '
+      + 'You still need €96,000. After a year, the State payment is not counted, and you would be €52,800 a year short.',
+      'the sentence says what was assumed and for how long');
+  }));
+
+  cases.push(runCase('The runway is not extended: a full year at the rate, then nothing, checked month by month against an independent loop', () => {
+    [0, 5_000, 20_000, 60_000, 90_000, 150_000].forEach((savings) => {
+      const projection = computeProtectionGapProjection({ ...withIllness(), savings });
+      const entry = projection.debug.cases[1];
+      const expected = referenceMonths({ needed: 96_000, savings, firstIn: 56_508, firstMonths: 12, laterIn: 43_200 });
+      if (Number.isFinite(expected)) {
+        assertWithin(entry.exactMonths, expected, 1e-6, `savings ${savings}: months`);
+      }
+      assertEqual(entry.beyond, expected >= PROTECTION_GAP_HORIZON_MONTHS, `savings ${savings}: beyond three years`);
+    });
+    // Had the payment carried on, 60,000 of savings would last longer. It must not.
+    const carried = computeProtectionGapProjection({ ...withIllness(), scenarios: [{ id: 'today' }, {
+      id: 'carried',
+      event: { type: 'cannotWork', personId: 'niamh', statePayment: 12_508 }
+    }] }).debug.cases[1];
+    const counted = computeProtectionGapProjection(withIllness()).debug.cases[1];
+    assert(carried.exactMonths > counted.exactMonths, 'a payment that went on for ever would show longer, and is not shown');
+  }));
+
+  cases.push(runCase('Covered for the year, short afterwards: the answer says when, the strip says why it is empty', () => {
+    const covered = withIllness({}, { ...PROTECTION_GAP_SAMPLE, needed: 54_000 });
+    const entry = computeProtectionGapProjection(covered).debug.cases[1];
+    assertEqual(entry.status, 'left_over', 'the first stretch has money to spare');
+    assertEqual(entry.gap, 0, 'no gap at first');
+    assertEqual(entry.headline.line1, 'You have €2,508 a year left over.', 'line 1');
+    assertEqual(entry.headline.line2, 'After a year you would be €10,800 a year short, and your savings would last beyond three years.', 'line 2');
+    assertEqual(entry.nothingText, 'Nothing to fill at first', 'the strip says it is only at first');
+    assertEqual(entry.beyond, true, 'beyond three years');
+    const shorter = computeProtectionGapProjection({ ...covered, savings: 10_000 }).debug.cases[1];
+    assertEqual(shorter.headline.line2, 'After a year you would be €10,800 a year short, and your savings would last 23 months in all.', 'months run from the day income stops');
+    assertWithin(shorter.exactMonths, 12 + ((10_000 * 12) / 10_800), 1e-9, 'twelve covered months, then savings over the later gap');
+    const none = computeProtectionGapProjection({ ...covered, savings: 0 }).debug.cases[1];
+    assertEqual(none.headline.line2, 'After a year you would be €10,800 a year short, and you have no savings to fill it.', 'no savings');
+  }));
+
+  cases.push(runCase('Each case keeps its own contract: version, year, basis and allocation are returned, and reordering cases changes no answer', () => {
+    const input = withIllness();
+    input.scenarios.push({
+      ...JSON.parse(JSON.stringify(PROTECTION_GAP_ILLNESS_CASE)),
+      id: 'dara-ill',
+      event: { type: 'cannotWork', personId: 'dara' },
+      income: {
+        ...JSON.parse(JSON.stringify(PROTECTION_GAP_ILLNESS_CASE.income)),
+        phases: [
+          { months: 12, takeHome: { niamh: 55_000, dara: 0 },
+            statePayment: { personId: 'dara', scheme: 'illnessBenefit', amount: 12_508, grossAmount: 13_208, estimatedTax: 700, weeklyRate: 254, weeks: 52 },
+            householdNetIncome: 67_508 },
+          { takeHome: { niamh: 54_000, dara: 0 }, statePayment: null, householdNetIncome: 54_000 }
+        ]
+      }
+    });
+    const frozen = JSON.stringify(input);
+    const forward = computeProtectionGapProjection(input);
+    assertEqual(JSON.stringify(input), frozen, 'the input is untouched');
+    const reversed = computeProtectionGapProjection({ ...input, scenarios: [input.scenarios[0], input.scenarios[2], input.scenarios[1]] });
+    const byId = (projection) => Object.fromEntries(projection.debug.cases.map((entry) => [entry.id, JSON.stringify(entry)]));
+    assertEqual(byId(reversed)['niamh-ill'], byId(forward)['niamh-ill'], 'Niamh’s case after Dara’s');
+    assertEqual(byId(reversed)['dara-ill'], byId(forward)['dara-ill'], 'Dara’s case before Niamh’s');
+    const again = computeProtectionGapProjection(input);
+    assertEqual(JSON.stringify(again.debug.cases), JSON.stringify(forward.debug.cases), 'and again');
+    assertEqual(JSON.stringify(forward.debug.assumptionsUsed.incomeContracts[0]),
+      JSON.stringify({ caseId: 'niamh-ill', basis: 'estimated', calculationYear: 2026,
+        versions: { taxRules: 'ie-tax-2026.7', socialWelfare: 'ie-social-welfare-2026.2' }, creditAllocation: 'allocated' }),
+      'the contract is returned with the year, versions, basis and allocation');
+    assertEqual(forward.debug.assumptionsUsed.taxRecalculated, true, 'and the module says tax was recalculated');
+  }));
+
+  cases.push(runCase('The footnote says tax is recalculated for each case, with the partner sentence only for a couple', () => {
+    const couple = computeProtectionGapProjection(withIllness()).debug.footnote;
+    assert(couple.includes('Tax is recalculated for each case. If one of you stops working, the other person’s take-home may change.'), `the approved wording: ${couple}`);
+    assert(couple.includes('State payments are shown after estimated tax and depend on eligibility.'), 'the payment is explained as after tax');
+    assert(couple.includes('A State payment is counted only for the time stated, and not after that.'), 'and for how long');
+    assert(!couple.includes('State payments are as given'), 'the stated wording is replaced');
+    const alone = computeProtectionGapProjection({
+      people: [{ id: 'ann', label: 'Ann', takeHome: 50_000 }],
+      needed: 60_000,
+      savings: 30_000,
+      scenarios: [{ id: 'today' }, {
+        id: 'ann-ill',
+        event: { type: 'cannotWork', personId: 'ann' },
+        income: {
+          basis: 'estimated', calculationYear: 2026, versions: { taxRules: 'ie-tax-2026.7' },
+          phases: [{ months: 12, takeHome: { ann: 0 },
+            statePayment: { personId: 'ann', scheme: 'illnessBenefit', amount: 13_208, grossAmount: 13_208, estimatedTax: 0 },
+            householdNetIncome: 13_208 },
+          { takeHome: { ann: 0 }, statePayment: null, householdNetIncome: 0 }]
+        }
+      }]
+    }).debug.footnote;
+    assert(alone.includes('Tax is recalculated for each case.'), 'a single person still has tax recalculated');
+    assert(!alone.includes('the other person'), 'but there is no partner sentence');
+    assertEqual(sample().debug.footnote, PROTECTION_GAP_EXPECTED.footnote, 'a module with only stated figures keeps its wording');
+  }));
+
+  cases.push(runCase('A zero State payment, a stated payment beside a recalculated case and a mixed module', () => {
+    const zero = withIllness();
+    zero.scenarios[1].income.phases[0].statePayment = { personId: 'niamh', scheme: 'stated', amount: 0 };
+    zero.scenarios[1].income.phases[0].householdNetIncome = 44_000;
+    const entry = computeProtectionGapProjection(zero).debug.cases[1];
+    assertEqual(entry.segments[0].amount, 0, 'no payment');
+    assert(!entry.sentence.includes('a State payment starts'), 'and none announced');
+    assert(!entry.sentence.includes('Illness Benefit'), 'nor any assumed rate');
+    const mixed = computeProtectionGapProjection({ ...withIllness(), scenarios: [...withIllness().scenarios,
+      { id: 'dara-stated', event: { type: 'cannotWork', personId: 'dara', statePayment: 13_000 } }] });
+    assert(mixed.debug.footnote.includes('A State payment you gave us is used as given.'), 'the footnote separates a given payment from a worked-out one');
+    assert(mixed.assumptionsTable.rows.some((row) => row[0] === 'State payments' && row[1].startsWith('Assumes the standard personal rate of Illness Benefit') && row[1].includes('A year, as given')), 'and so do the assumptions');
+  }));
+
+  cases.push(runCase('The assumptions name the rate assumed, the year and versions of the tax, and how long a payment counts', () => {
+    const rows = Object.fromEntries(computeProtectionGapProjection(withIllness()).assumptionsTable.rows);
+    assertEqual(rows['State payments'], 'Assumes the standard personal rate of Illness Benefit for a year, shown after estimated tax', 'the assumed rate');
+    assertEqual(rows['Take-home pay'], 'Net pay a year, recalculated for each case', 'take-home');
+    assert(rows.Tax.includes('2026') && rows.Tax.includes('ie-tax-2026.7') && rows.Tax.includes('ie-social-welfare-2026.2'), `the year and versions: ${rows.Tax}`);
+    assert(rows.Tax.includes('allocated'), 'and that a joint assessment is allocated between the two');
+    assertEqual(rows['How long a payment counts'], 'For the time stated, then not at all', 'the duration');
+  }));
+
+  cases.push(runCase('A death with a survivor’s pension from the register’s rate shown after tax, and one stated as given', () => {
+    const dies = {
+      id: 'niamh-died',
+      event: { type: 'dies', personId: 'niamh' },
+      income: {
+        basis: 'estimated', calculationYear: 2026, versions: { taxRules: 'ie-tax-2026.7', socialWelfare: 'ie-social-welfare-2026.2' },
+        phases: [{ takeHome: { niamh: 0, dara: 42_000 },
+          statePayment: { personId: 'dara', scheme: 'bereavedPartnerPension', amount: 13_194, grossAmount: 13_494, estimatedTax: 300, weeklyRate: 259.5, weeks: 52 },
+          householdNetIncome: 55_194 }]
+      }
+    };
+    const entry = computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, dies] }).debug.cases[1];
+    assertEqual(entry.segments[0].label, 'Survivor’s pension', 'the label');
+    assertEqual(entry.segments[0].amount, 13_194, 'the amount, after tax');
+    assert(entry.sentence.startsWith('Niamh’s take-home stops and a survivor’s pension starts, shown after estimated tax. Assumes the standard personal rate of the Bereaved Partner’s Contributory Pension.'), entry.sentence);
+    assertEqual(entry.intervals.length, 1, 'a survivor’s pension carries on, so one stretch');
+    const stated = computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, {
+      ...dies,
+      income: { ...dies.income, phases: [{ takeHome: { niamh: 0, dara: 42_000 }, statePayment: { personId: 'dara', scheme: 'stated', amount: 15_000 }, householdNetIncome: 57_000 }] }
+    }] }).debug.cases[1];
+    assertEqual(stated.segments[0].amount, 15_000, 'a stated survivor’s pension is used as given');
+    assert(!stated.sentence.includes('Assumes the standard'), 'with no assumed rate');
+  }));
+
+  cases.push(runCase('Stated money received: a lump sum joins the savings and a mortgage protected on that death is cleared', () => {
+    const base = { ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, {
+      id: 'niamh-died',
+      event: { type: 'dies', personId: 'niamh', survivorsPension: 13_500, neededAfter: 60_000, neededBecause: ['mortgageCleared'] },
+      received: [{ type: 'lumpSum', amount: 100_000 }]
+    }] };
+    const entry = computeProtectionGapProjection(base).debug.cases[1];
+    assertEqual(entry.savingsAvailable, 160_000, 'savings and the lump sum');
+    assertEqual(entry.headline.line2, 'Your savings and the lump sum would last beyond three years.', 'the answer counts it');
+    assert(entry.sentence.includes('A lump sum of €100,000, as you told us, is counted with your savings.'), entry.sentence);
+    assert(entry.sentence.includes('You need €60,000, because your mortgage is cleared.'), 'the mortgage appears as cleared');
+    assertEqual(entry.savingsLead, 'Your savings and a lump sum of €100,000 would last', 'the strip’s lead');
+    assert(!/cover|premium|policy|insur|provider|product/i.test(`${entry.sentence} ${entry.headline.line2} ${entry.savingsLead}`), 'never cover wording');
+    // Nothing stated, nothing counted: a missing fact is never a zero that is shown.
+    const none = computeProtectionGapProjection({ ...base, scenarios: [{ id: 'today' }, base.scenarios[1] && { ...base.scenarios[1], received: undefined }] }).debug.cases[1];
+    assertEqual(none.savingsAvailable, 60_000, 'no lump sum is added');
+    assert(!none.sentence.includes('lump sum'), 'and none is mentioned');
+  }));
+
+  cases.push(runCase('Stated money received: a regular payment while someone cannot work counts for its months only', () => {
+    const input = {
+      ...PROTECTION_GAP_SAMPLE,
+      scenarios: [{ id: 'today' }, {
+        id: 'niamh-cannot-work',
+        event: { type: 'cannotWork', personId: 'niamh', statePayment: 13_000 },
+        received: [{ type: 'regularPayment', amount: 24_000, months: 6 }]
+      }]
+    };
+    const entry = computeProtectionGapProjection(input).debug.cases[1];
+    assertEqual(entry.segments.map((segment) => segment.id).join(','), 'floor,paid,niamh,dara', 'a slot for the payment, in a fixed place');
+    assertEqual(entry.segments[1].amount, 24_000, 'it is money in');
+    assertEqual(entry.moneyIn, 82_000, 'at the start');
+    assertEqual(entry.intervals.map((stretch) => `${stretch.start}:${stretch.moneyIn}`).join(' '), '0:82000 6:58000', 'and it stops after six months');
+    assertWithin(entry.exactMonths, referenceMonths({ needed: 96_000, savings: 60_000, firstIn: 82_000, firstMonths: 6, laterIn: 58_000 }), 1e-6, 'savings against the reference');
+    assert(entry.sentence.includes('A payment of €24,000 a year, as you told us, is counted for 6 months.'), entry.sentence);
+    assert(entry.sentence.includes('After 6 months, the payment you told us about stops, and you would be €38,000 a year short.'), entry.sentence);
+    // Every case in the module keeps the same slots.
+    assertEqual(computeProtectionGapProjection(input).debug.cases[0].segments.length, 4, 'today has the slot too, at 0');
+  }));
+
+  cases.push(runCase('An income block is refused when it does not add up, is incomplete or mixes the two ways of giving a payment', () => {
+    const fail = (mutate, expected, label) => {
+      const input = withIllness();
+      mutate(input.scenarios[1]);
+      assertThrows(() => normalizeProtectionGapInputs(input), `${FIELD}.scenarios[1] (Niamh cannot work): ${expected}`, label);
+    };
+    fail((c) => { c.income.phases[0].householdNetIncome = 60_000; },
+      'income.phases[0]: the take-home and the State payment add up to 56508, but the household’s net income is 60000. They must reconcile.', 'does not reconcile');
+    fail((c) => { delete c.income.phases[0].householdNetIncome; },
+      'income.phases[0]: an estimated income needs householdNetIncome from the shared tax engine, so its parts can be checked against it.', 'no household net income');
+    fail((c) => { delete c.income.versions.taxRules; },
+      'an estimated income needs income.versions.taxRules, the version of the tax rules it was calculated with.', 'no tax rules version');
+    fail((c) => { c.event.statePayment = 1; },
+      'the State payment is given in income.phases[].statePayment; do not give it in the event as well.', 'both ways');
+    fail((c) => { c.income.phases[0].takeHome.niamh = 5; c.income.phases[0].householdNetIncome = 56_513; },
+      'income.phases[0]: takeHome.niamh must be 0, because that take-home stops in this case.', 'the stopped take-home');
+    fail((c) => { c.income.phases[0].statePayment.estimatedTax = 100; },
+      'income.phases[0]: statePayment.amount (12508) is not the gross amount (13208) less the estimated tax (100).', 'gross less tax');
+    fail((c) => { c.income.phases[0].statePayment.weeks = 40; },
+      'income.phases[0]: statePayment.grossAmount (13208) is not the weekly rate (254) for 40 weeks.', 'weekly rate');
+    fail((c) => { c.income.phases[0].statePayment.personId = 'dara'; },
+      'income.phases[0]: the State payment is paid to the person who cannot work.', 'paid to the wrong person');
+    fail((c) => { c.income.phases[1].months = 6; },
+      'income.phases[1]: the last phase carries on, so it has no months.', 'a last phase with months');
+    fail((c) => { c.income.phases[0].months = 0; },
+      'income.phases[0]: months must be a whole number of months from 1 to 120.', 'zero months');
+    fail((c) => { c.income.basis = 'guessed'; },
+      'income.basis must be "stated" or "estimated".', 'basis');
+    fail((c) => { c.income.phases.push(c.income.phases[1]); },
+      'income.phases must list 1 or 2 phases.', 'three phases');
+    fail((c) => { c.income.calculationYear = 26; },
+      'income.calculationYear must be a whole year.', 'year');
+    fail((c) => { delete c.income.phases[0].takeHome.dara; },
+      'income.phases[0]: takeHome needs dara.', 'a missing person');
+    fail((c) => { c.income.phases[0].statePayment = null; c.income.phases[0].householdNetIncome = 44_000; },
+      'income needs the State payment in its first phase, even when it is 0.', 'an income-stops case with no payment given');
+    fail((c) => { c.income.phases[0].statePayment.scheme = 'wage'; },
+      'income.phases[0]: statePayment.scheme must be one of illnessBenefit, bereavedPartnerPension, stated.', 'scheme');
+  }));
+
+  cases.push(runCase('The hard limit holds inside an income block and in money received', () => {
+    const forbidden = (mutate, label) => {
+      const input = withIllness();
+      mutate(input.scenarios[1]);
+      let message = '';
+      try { normalizeProtectionGapInputs(input); } catch (error) { message = error.message; }
+      assert(/never a cover amount, a premium or a product\./.test(message), `${label}: ${message}`);
+    };
+    forbidden((c) => { c.income.coverAmount = 1; }, 'income');
+    forbidden((c) => { c.income.phases[0].premium = 1; }, 'phase');
+    forbidden((c) => { c.income.versions.provider = 'x'; }, 'versions');
+    forbidden((c) => { c.income.phases[0].takeHome.policy = 1; }, 'take-home');
+    forbidden((c) => { c.received = [{ type: 'lumpSum', amount: 1, insurer: 'x' }]; }, 'received');
+    const calculated = withIllness();
+    calculated.scenarios[1].income.gap = 5;
+    assertThrows(() => normalizeProtectionGapInputs(calculated), `${FIELD}.scenarios[1].income.gap is not accepted. It is calculated.`, 'a typed gap in income');
+    const badReceived = (received, expected, label) => {
+      const input = { ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, { id: 'd', event: { type: 'dies', personId: 'niamh', survivorsPension: 1 }, received }] };
+      assertThrows(() => normalizeProtectionGapInputs(input), `${FIELD}.scenarios[1] (If Niamh died): ${expected}`, label);
+    };
+    badReceived([{ type: 'regularPayment', amount: 1, months: 3 }], 'received[0]: a regular payment is money paid while someone cannot work.', 'a regular payment on a death');
+    badReceived([{ type: 'lumpSum', amount: 0 }], 'received[0]: amount must be a whole number of euros greater than 0.', 'a zero lump sum');
+    badReceived([], 'received must list 1 to 3 payments.', 'an empty list');
+    badReceived([{ type: 'lumpSum', amount: 1 }, { type: 'lumpSum', amount: 1 }, { type: 'lumpSum', amount: 1 }, { type: 'lumpSum', amount: 1 }], 'received must list 1 to 3 payments.', 'four payments');
+    assertThrows(
+      () => normalizeProtectionGapInputs({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today', received: [{ type: 'lumpSum', amount: 1 }] }] }),
+      `${FIELD}.scenarios[0] (Today): money received belongs to a case with an event.`,
+      'received on a case with no event'
+    );
+  }));
+
+  cases.push(runCase('Normalising a recalculated case twice changes nothing', () => {
+    const once = normalizeProtectionGapInputs(withIllness());
+    const twice = normalizeProtectionGapInputs(JSON.parse(JSON.stringify(once)));
+    assertEqual(JSON.stringify(twice), JSON.stringify(once), 'idempotent');
+    assertEqual(once.scenarios[1].income.phases[1].months, null, 'the last phase has no months, written as null');
+  }));
+
+  cases.push(runCase('Words in a recalculated, received-money and survivor module: no banned phrase, and every amount separated', () => {
+    const variants = [
+      computeProtectionGapProjection(withIllness()),
+      computeProtectionGapProjection(withIllness({}, { ...PROTECTION_GAP_SAMPLE, needed: 54_000 })),
+      computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, {
+        id: 'd', event: { type: 'dies', personId: 'niamh', survivorsPension: 13_500, neededAfter: 60_000, neededBecause: ['mortgageCleared'] },
+        received: [{ type: 'lumpSum', amount: 100_000 }]
+      }, { id: 'w', event: { type: 'cannotWork', personId: 'dara', statePayment: 0 }, received: [{ type: 'regularPayment', amount: 20_000, months: 6, afterMonths: 3 }] }] })
+    ];
+    variants.forEach((projection, index) => {
+      clientFacingStrings(projection).forEach((text) => {
+        assert(!bannedWording(text), `variant ${index + 1}: banned wording in "${text}"`);
+        assert(!/€\d{4,}/.test(text), `variant ${index + 1}: amount without a thousands separator in "${text}"`);
+      });
+      projection.debug.cases.forEach((entry) => {
+        [entry.savingsLead, entry.savingsLeadNarrow, entry.nothingText].forEach((text) => assert(!bannedWording(text), `variant ${index + 1}: banned wording in "${text}"`));
+      });
+    });
+  }));
+
+  cases.push(runCase('The summary opens with the recalculated wording when tax was recalculated', () => {
+    assert(protectionGapSummaryHtml(computeProtectionGapProjection(withIllness())).includes('Tax is recalculated for each case, and State payments are shown after estimated tax.'), 'recalculated');
+    assert(protectionGapSummaryHtml(sample()).includes('Take-home pay and State payments are as given.'), 'stated');
   }));
 
   const passed = cases.filter((entry) => entry.pass).length;
