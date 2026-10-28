@@ -158,11 +158,15 @@ await test('Current aliases preserve current sources; differences and direction 
     assert.equal(r.facts['current.position.netWorth'].source.caseId, entry(compiled, 'personal_balance_sheet').id);
     for (const [name, amount] of Object.entries(entry(compiled, 'protection_gap', r.routeId).metrics)) {
       assert.equal(r.facts['protection.' + name].value, amount);
+      assert.equal(r.facts['protection.' + name].source.nativeCaseId, name.split('.')[0]);
       if (name.endsWith('.months') && typeof value(stories, 'protection.' + name) === 'number') {
         close(r.facts['vsCurrent.protection.' + name].value, amount - value(stories, 'protection.' + name));
       }
     }
   }
+  assert.ok(fact(stories, 'position.netWorth').source.focusTargetId);
+  assert.ok(fact(stories, 'position.grossAssets').source.focusTargetId);
+  assert.ok(fact(stories, 'protection.niamh_stops.months').source.focusTargetId);
 });
 await test('Home share uses home equity; mortgage share uses bank take-home', async () => {
   const p = base(); p.household.properties.push({ propertyId: 'home', label: 'Home', use: 'home', ownerIds: ['niamh', 'dara'], currentValue: eur(450000), associatedLiabilityIds: ['home_loan'] });

@@ -42,10 +42,10 @@ export class StoryRegistry {
     return { kind: 'plan', chapter: null, routeId: this.route.id, caseId: null, nativeCaseId: null, focusTargetId: null,
       panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.0.0' }, ...extra };
   }
-  chapterSource(chapter, relative, value) {
+  chapterSource(chapter, relative, value, requestedCaseId = chapter.entry.nativeCaseId) {
     const { entry } = chapter;
     const source = this.source(chapter.path + relative, { kind: 'chapter', chapter: chapter.id, caseId: entry.id,
-      nativeCaseId: entry.nativeCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.0.0' },
+      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.0.0' },
       basis: entry.basis, inputHash: entry.inputHash });
     // Discover actual existing targets from the compiled payload and outputs.
     // No target is invented when the catalogue offers no corresponding figure.
@@ -55,7 +55,7 @@ export class StoryRegistry {
     }
     const catalogue = this.catalogues.get(entry.id);
     const module = catalogue.modules[0];
-    const native = module?.scenarios.find(row => row.id === entry.nativeCaseId)
+    const native = module?.scenarios.find(row => row.id === requestedCaseId)
       ?? module?.scenarios.find(row => row.id === module.defaultScenarioId);
     source.nativeCaseId = native?.id ?? null;
     if (entry.nativeCaseId !== source.nativeCaseId) source.compiledNativeCaseId = entry.nativeCaseId;
@@ -65,7 +65,8 @@ export class StoryRegistry {
     const liquidityKey = { currentCash: 'current-cash', targetCash: 'target-reserve' }[metric];
     const target = chapter.id === 'liquidity_analysis'
       ? candidates.find(row => liquidityKey && row.ref.key === liquidityKey && row.value === value)
-      : candidates.find(row => row.kind === 'table-row' && String(row.cells?.[0]).toLowerCase() === labels && row.cells.some(cell => cell === value))
+      : candidates.find(row => row.kind === 'holding' && row.label.toLowerCase() === labels && row.value === value)
+        ?? candidates.find(row => row.kind === 'table-row' && String(row.cells?.[0]).toLowerCase() === labels && row.cells.some(cell => cell === value))
         ?? candidates.find(row => row.kind === 'table-row' && native && row.cells?.[0] === native.label && row.cells.some(cell => cell === value));
     if (target) {
       source.focusTargetId = target.id;
@@ -86,7 +87,8 @@ export class StoryRegistry {
     const chapter = this.chapter(id);
     if (!chapter) return this.unavailable(key, 'This plan has no compiled ' + id.replaceAll('_', ' ') + ' chapter.');
     const value = chapter.entry.metrics[metric];
-    return this.add(key, value, unit, this.chapterSource(chapter, '/metrics/' + pointerPart(metric), value));
+    return this.add(key, value, unit, this.chapterSource(chapter, '/metrics/' + pointerPart(metric), value,
+      id === 'protection_gap' ? metric.split('.')[0] : chapter.entry.nativeCaseId));
   }
   calculated(key, value, unit, inputs, calculation, extra = {}) {
     return this.add(key, value, unit, this.source(null, { kind: 'calculation', inputs, calculation, panel: 'plan_facts', ...extra }));
