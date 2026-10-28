@@ -67,7 +67,7 @@ npm run --silent analyst:open -- private/analyses/<requestId>/<runId>
 
 reads the run's case file (it never changes it), compiles the pinned plan with the current position and every route the analyst submitted a story for, builds the session, and writes `session.json` beside the case file (private, git-ignored). It prints how to open it: serve the folder (`node scripts/dev-static-server.mjs`), run the local worker as the README describes, and open `dev/plan-story-open.html?session=/private/analyses/<requestId>/<runId>/session.json`, which puts the session into the app's browser storage (asking first if one is there) and opens the story.
 
-**Known gap.** `submit_story` still checks a story against the analyst tools' older fact registry (`compiledFacts`), whose keys differ from `readPlanPosition`'s. A story that passes `submit_story` today can therefore be refused here with `unknown_placeholder`. The two agree once the `read_position` executor is wired to `readPlanPosition`, as `docs/analyst-architecture.md` plans.
+**One set of keys.** `read_position` and `price_route` list `storyFacts`, the keys a story may use, and `submit_story` checks a story against the same facts the screen opens (`js/plan_story_registry.js`), including `{figure.<id>}` and explainers. A key from the older metrics registry (`facts`) still passes the older checks, but submission says `openOnStoryScreen: false` and lists `keysNotOnStoryScreen`, and `analyst:open` refuses it with the path.
 
 ## Files
 
@@ -75,6 +75,7 @@ reads the run's case file (it never changes it), compiles the pinned plan with t
 |---|---|
 | `js/plan_story_model.js` | Pure. Parses `{key}`, `{@key}` and `{?explainer.<id>}`, fills them from the registry, refuses typed figures, ranking and advice wording, derives "See it in", builds the glance table. |
 | `js/plan_story_basis.js` | Pure. The words for where a figure comes from, from its basis. |
+| `js/plan_story_registry.js` | Pure. A plan's facts as the registry the screen resolves against; the placeholders a story names. Shared by `buildPlanStory` and the analyst's `submit_story`. |
 | `js/plan_story_compiled.js` | `buildPlanStory` and `buildSessionFromPlan`: a compiled plan and a story become what the app opens. |
 | `js/plan_story_session.js` | Pure. Normalises the `planStory` on a session; builds what the screen needs for one route (chapter titles come from the session's own modules). |
 | `js/plan_story_view.js` | DOM: the page, the pill, the off-route note, the switch, and the return to a paragraph. |
@@ -122,4 +123,4 @@ The first of the two main connections is made (see Reading a compiled plan above
 
 The comparison also records the content/what-if/limitation floor, ordered goal subsections, all five parts throughout the authored story, semantic wording checks, registered figures, plan panels, chart points and route recalculation. The module glyphs remain stand-ins.
 
-Also still open: the balance sheet's summary row (net worth) is in the presenter catalogue but the live balance sheet does not mark it, so a net-worth link opens the balance sheet on its case and rings nothing; plan-view panels for plan-owned figures; the `submit_story` key gap above; and the analyst skills' `{?explainer.state_pension_not_inherited}` example, whose catalogue id is `state_pension_not_passed_on`.
+Also still open: the balance sheet's summary row (net worth) is in the presenter catalogue but the live balance sheet does not mark it, so a net-worth link opens the balance sheet on its case and rings nothing; plan-view panels for plan-owned figures; and the analyst skills' `{?explainer.state_pension_not_inherited}` example, whose catalogue id is `state_pension_not_passed_on`.

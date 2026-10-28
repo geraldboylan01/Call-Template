@@ -3,7 +3,7 @@
 // every kind of basis, explainers and the refusals. No browser.
 
 import assert from 'node:assert/strict';
-import { readFile, writeFile, rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +16,7 @@ import { describeBasis } from '../../js/plan_story_basis.js';
 import { buildPlanStory, buildSessionFromPlan } from '../../js/plan_story_compiled.js';
 import { buildPlanStoryScreen, planStoryChapterOf, planStoryModuleFor } from '../../js/plan_story_session.js';
 import { buildPresentationCatalogue } from '../../js/presenter_catalogue.js';
-import { createLocalCase, ANALYSES_ROOT } from '../analyst-local-store.mjs';
+import { callLocalTool, createLocalCase, ANALYSES_ROOT } from '../analyst-local-store.mjs';
 import { compileMadeUpBorrower, compileMadeUpCouple, madeUpBorrowerStory, madeUpCoupleStory } from './plan-story-compiled.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
@@ -229,20 +229,48 @@ export async function runPlanStoryCompiledTests() {
     assert.equal(screen('clear_car').resolved.sections.find((section) => section.id === 'goals').goals.length, 4, 'a subsection for each goal');
   });
 
-  await test('analyst:open writes a session from a case folder, and refuses a case with no story', async () => {
+  await test('a story accepted at submission opens on the screen: read_position, price_route and submit_story use the keys the screen reads', async () => {
     const fixture = fixtures.find((row) => row.id === 'fictional-borrower-with-card');
     const requestId = `plan-story-check-${process.pid}`;
     const created = await createLocalCase({ requestId, runId: 'run1', revision: 7, confirmedRevision: 7, confirmedAt: '2026-10-20T12:00:00.000Z',
       information: fixture.information, clientLabel: fixture.id });
     try {
       const run = (...args) => spawnSync(process.execPath, ['scripts/analyst-open.mjs', created.directory, ...args], { cwd: root, encoding: 'utf8' });
+      const submit = (story) => callLocalTool(created.directory, 'submit_story', { story });
+
+      // The analyst is told the keys the screen can open.
+      const position = await callLocalTool(created.directory, 'read_position', {});
+      assert.equal(position.ok, true);
+      assert.ok(position.data.storyFacts['position.netWorth'] && position.data.storyFacts['issues.debts_other_than_mortgage.liability_application_loan_0.balance'], 'the story facts are listed');
+      assert.equal(position.data.storyFacts['position.netWorth'].opens, 'module');
+      assert.equal(position.data.storyFacts['position.spareCash'].opens, 'plan');
+
       const empty = run();
       assert.equal(empty.status, 1);
       assert.match(empty.stderr, /No story has been submitted/);
-      const file = join(created.directory, 'case.json');
-      const caseFile = JSON.parse(await readFile(file, 'utf8'));
-      caseFile.storyDrafts = { current: madeUpBorrowerStory() };
-      await writeFile(file, JSON.stringify(caseFile, null, 2));
+
+      // A key the screen cannot open passes the older checks, and submission says so.
+      const legacy = { ...madeUpBorrowerStory(), summary: 'Your cash is {ledger.cashRemaining}.' };
+      const legacyResult = await submit(legacy);
+      assert.equal(legacyResult.ok, true);
+      assert.equal(legacyResult.data.openOnStoryScreen, false);
+      assert.deepEqual(legacyResult.data.keysNotOnStoryScreen, ['ledger.cashRemaining']);
+      const stuck = run();
+      assert.equal(stuck.status, 1);
+      assert.match(stuck.stderr, /unknown_placeholder|ledger\.cashRemaining/);
+
+      // An invented key, and an explainer the catalogue does not hold, are refused at submission, with their paths.
+      const invented = await submit({ ...madeUpBorrowerStory(), summary: 'Your net worth is {position.invented}.' });
+      assert.equal(invented.ok, false);
+      assert.match(invented.refusals[0].path, /\/story\/summary/);
+      const badExplainer = madeUpBorrowerStory();
+      badExplainer.sections[0].parts.why = 'A rule{?explainer.state_pension_not_inherited}.';
+      assert.equal((await submit(badExplainer)).refusals[0].code, 'unknown_explainer');
+
+      // A story using the screen's keys, with an explainer, is accepted and opens.
+      const accepted = await submit(madeUpBorrowerStory());
+      assert.equal(accepted.ok, true, JSON.stringify(accepted));
+      assert.equal(accepted.data.openOnStoryScreen, true);
       const opened = run();
       assert.equal(opened.status, 0, opened.stderr);
       assert.match(opened.stdout, /Wrote private\/analyses\/.*\/run1\/session\.json/);
@@ -251,11 +279,7 @@ export async function runPlanStoryCompiledTests() {
       assert.deepEqual(Object.keys(written.planStory.stories), ['current']);
       assert.ok(written.modules.length > 0 && written.modules.length === Object.keys(written.planStory.caseModules).length, 'a module for every compiled case');
       assert.equal(written.planStory.registries.current['issues.debts_other_than_mortgage.liability_application_loan_0.balance'].basis.kind, 'stated');
-      caseFile.storyDrafts.current.summary = 'Your net worth is {position.invented}.';
-      await writeFile(file, JSON.stringify(caseFile, null, 2));
-      const refused = run();
-      assert.equal(refused.status, 1);
-      assert.match(refused.stderr, /The story cannot be shown: current: \/story\/summary\{position\.invented\}/);
+      assert.ok(written.planStory.explainers.dirt, 'the explainer travels with the story');
     } finally {
       await rm(join(ANALYSES_ROOT, requestId), { recursive: true, force: true });
     }

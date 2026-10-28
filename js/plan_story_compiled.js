@@ -1,7 +1,7 @@
 import { readPlanPosition } from './planning/plan_pack/story_facts.js';
-import { getFigures } from './planning/figures/get_figures.js';
 import { getExplainers } from './planning/figures/get_explainers.js';
-import { PlanStoryError, parseNarration, resolveStory } from './plan_story_model.js';
+import { PlanStoryError, resolveStory } from './plan_story_model.js';
+import { FIGURE_PREFIX, factEntry, figureEntry, referencedPlaceholders } from './plan_story_registry.js';
 import { PLAN_STORY_DEFAULT_GLYPHS } from './plan_story_session.js';
 import { checkModulePayload } from './module_pipeline.js';
 import { buildPresentationCatalogue } from './presenter_catalogue.js';
@@ -27,70 +27,9 @@ import { importSession, newSession, drainSessionImportWarnings } from './state.j
  * one story object with its own `routeId`.
  */
 
-const PARTS = ['does', 'why', 'gives', 'costs', 'check'];
-const FIGURE_PREFIX = 'figure.';
-
 const isPlain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const euro = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
-
-/** Every narration string in a story (headline, summary, section titles, parts, goal subsections). */
-function* narrations(story) {
-  yield story.headline;
-  yield story.summary;
-  const parts = (holder) => [...(holder.paragraphs ?? []), ...PARTS.map((part) => holder.parts?.[part])];
-  for (const section of story.sections ?? []) {
-    yield section.title;
-    yield* parts(section);
-    for (const goal of section.goals ?? []) {
-      yield goal.title;
-      yield* parts(goal);
-    }
-  }
-}
-
-/** The placeholders a story names, so only those facts travel with it. Bad text is left for resolveStory to refuse, with its path. */
-function referenced(story) {
-  const keys = new Set();
-  const explainers = new Set();
-  for (const text of narrations(story)) {
-    let tokens = [];
-    try { tokens = parseNarration(text); } catch (_error) { continue; }
-    for (const token of tokens) {
-      if (token.type !== 'placeholder') continue;
-      if (token.explainer) explainers.add(token.key.slice('explainer.'.length));
-      else keys.add(token.key);
-    }
-  }
-  return { keys, explainers };
-}
-
-/** Where a fact opens: the module and case it came from, or the part of the plan view that worked it out. */
-function linkSource(source) {
-  if (source?.chapter) {
-    return {
-      chapter: source.chapter,
-      caseId: source.caseId ?? null,
-      nativeCaseId: source.nativeCaseId ?? null,
-      focusTargetId: source.focusTargetId ?? null
-    };
-  }
-  return { panel: source?.panel ?? 'plan_facts' };
-}
-
-function figureFact(id, calculationDate) {
-  let figure;
-  try { [figure] = getFigures({ ids: [id], onDate: calculationDate }); } catch (_error) { return null; }
-  if (!figure) return null;
-  return {
-    text: figure.valueShown,
-    source: { panel: 'figures' },
-    basis: {
-      kind: 'official', registerId: figure.id, value: figure.value, source: { ...figure.source },
-      checkedOn: figure.checkedOn, catalogueVersion: figure.catalogueVersion
-    }
-  };
-}
 
 function humanise(id) {
   const words = String(id).replace(/[_-]+/g, ' ').trim();
@@ -167,18 +106,13 @@ export function buildPlanStory(compiled, story, { selectedRouteId = null } = {})
   const explainerIds = new Set();
   for (const [routeId, routeStory] of Object.entries(stories)) {
     const facts = position.routes.find((entry) => entry.routeId === routeId).facts;
-    const { keys, explainers } = referenced(routeStory);
+    const { keys, explainers } = referencedPlaceholders(routeStory);
     const registry = {};
     for (const key of keys) {
-      if (key.startsWith(FIGURE_PREFIX)) {
-        const figure = figureFact(key.slice(FIGURE_PREFIX.length), compiled.calculationDate);
-        if (figure) registry[key] = figure;
-        continue;
-      }
-      const fact = facts[key];
-      if (fact?.status !== 'available') continue;
-      registry[key] = { text: fact.display, source: linkSource(fact.source), basis: fact.basis, ...(fact.explainerId ? { explainerId: fact.explainerId } : {}) };
-      if (fact.explainerId) explainerIds.add(fact.explainerId);
+      const entry = key.startsWith(FIGURE_PREFIX) ? figureEntry(key.slice(FIGURE_PREFIX.length), compiled.calculationDate) : factEntry(facts[key]);
+      if (!entry) continue;
+      registry[key] = entry;
+      if (entry.explainerId) explainerIds.add(entry.explainerId);
     }
     registries[routeId] = registry;
     for (const id of explainers) explainerIds.add(id);
