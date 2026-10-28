@@ -28,6 +28,7 @@ import {
 } from './planning/tax/disclosures.js';
 import { PLANEIR_ASSUMPTIONS, assumptionLabel, assumptionRecord } from './planning/planeir_assumptions.js';
 import { monthYearText } from './planning/utils.js';
+import { estimateStateContributoryPension } from './planning/social_welfare_rules.js';
 
 // Defaults come from the central assumptions, never a copy. Pay is assumed to
 // grow with general prices, which is how the retirement adapter has always set it.
@@ -571,6 +572,47 @@ function normalizeLumpSumOption(rawValue, fieldName) {
   };
 }
 
+/**
+ * Where a member's State Pension fraction comes from, recorded with it.
+ *
+ * A fraction that is given is used as it is (and the basis a caller gives for it
+ * is kept). Where none is given and the member has years of contributions
+ * (`statePensionYears`: years paying PRSI and years caring at home), the fraction
+ * is the estimate under the Total Contributions Approach, with that method's
+ * basis recorded. With neither, the fraction stays the full maximum the engine
+ * has always assumed, and the basis says that years of contributions were not
+ * known, so the full rate is a stated default and not a finding.
+ */
+function applyStatePensionBasis(member, rawMember, legacyIncluded, prefix) {
+  if (typeof rawMember.statePensionBasis === 'string' && rawMember.statePensionBasis.trim()) {
+    member.statePensionBasis = rawMember.statePensionBasis.trim();
+  }
+  const years = rawMember.statePensionYears;
+  if (typeof years === 'undefined' || years === null) {
+    return;
+  }
+  if (typeof years !== 'object' || Array.isArray(years)) {
+    throw new Error(`generated.pensionInputs.${prefix}.statePensionYears must be an object with yearsPayingPrsi and yearsCaring.`);
+  }
+  member.statePensionYears = { yearsPayingPrsi: years.yearsPayingPrsi, yearsCaring: years.yearsCaring };
+  if (!legacyIncluded || typeof rawMember.statePensionFraction !== 'undefined') {
+    return;
+  }
+  const estimate = estimateStateContributoryPension({
+    yearsPayingPrsi: years.yearsPayingPrsi,
+    yearsCaring: years.yearsCaring,
+    currentAge: member.currentAge,
+    workStopAge: member.retirementAge
+  });
+  if (estimate.status === 'estimated') {
+    member.statePensionFraction = estimate.fraction;
+    member.includeStatePension = estimate.fraction > 0;
+    member.statePensionBasis = estimate.basis;
+  } else {
+    member.statePensionBasis = `The full maximum is assumed, not estimated. ${estimate.basis}`;
+  }
+}
+
 function normalizePensionMember(rawMember, index, defaults, prefix) {
   if (!rawMember || typeof rawMember !== 'object' || Array.isArray(rawMember)) {
     throw new Error(`generated.pensionInputs.${prefix} must be an object.`);
@@ -623,6 +665,7 @@ function normalizePensionMember(rawMember, index, defaults, prefix) {
   if (member.retirementAge < member.currentAge) {
     throw new Error(`generated.pensionInputs.${prefix}.retirementAge must be greater than or equal to currentAge.`);
   }
+  applyStatePensionBasis(member, rawMember, legacyIncluded, prefix);
   if (member.growthRate <= -1) {
     throw new Error(`generated.pensionInputs.${prefix}.growthRate must be greater than -1.`);
   }
@@ -672,6 +715,8 @@ function normalizePensionMembers(raw, defaults) {
     statePensionFraction: raw.statePensionFraction,
     statePensionStartAge: raw.statePensionStartAge,
     statePensionEscalationRate: raw.statePensionEscalationRate,
+    statePensionYears: raw.statePensionYears,
+    statePensionBasis: raw.statePensionBasis,
     lumpSum: raw.lumpSum,
     priorLumpSumsSince2005: raw.priorLumpSumsSince2005,
     sftAlreadyUsed: raw.sftAlreadyUsed,
@@ -3546,8 +3591,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
         [`${member.title} personal contribution`, toPercentText(member.personalPct)],
         [`${member.title} employer contribution`, toPercentText(member.employerPct)],
         [`${member.title} State Pension`, member.includeStatePension
-          ? `${toPercentText(member.statePensionFraction, 0)} of maximum from age ${member.statePensionStartAge}`
-          : 'Excluded']
+          ? `${toPercentText(member.statePensionFraction, 0)} of maximum from age ${member.statePensionStartAge}${member.statePensionBasis ? `. ${member.statePensionBasis}` : ''}`
+          : `Excluded${member.statePensionBasis ? `. ${member.statePensionBasis}` : ''}`]
       ]))
     ]
     : [
@@ -3558,8 +3603,8 @@ export function computePensionProjection(rawInputs, { scenarioId = '' } = {}) {
       ['Personal contribution', toPercentText(inputs.primaryPension.personalPct)],
       ['Employer contribution', toPercentText(inputs.primaryPension.employerPct)],
       ['State Pension', inputs.primaryPension.includeStatePension
-        ? `${toPercentText(inputs.primaryPension.statePensionFraction, 0)} of maximum from age ${inputs.primaryPension.statePensionStartAge}`
-        : 'Excluded']
+        ? `${toPercentText(inputs.primaryPension.statePensionFraction, 0)} of maximum from age ${inputs.primaryPension.statePensionStartAge}${inputs.primaryPension.statePensionBasis ? `. ${inputs.primaryPension.statePensionBasis}` : ''}`
+        : `Excluded${inputs.primaryPension.statePensionBasis ? `. ${inputs.primaryPension.statePensionBasis}` : ''}`]
     ];
 
   // In affordable mode the path on screen is the affordable one, so its tax is

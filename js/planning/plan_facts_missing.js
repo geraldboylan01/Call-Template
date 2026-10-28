@@ -47,7 +47,10 @@ export function planFactsMissing(profile) {
       if (!profile.pensions.some(pension => pension.ownerId === person.personId) && none['/pensions'] !== true) add('pension_positions', ownerConfirmedNonePath('/pensions', person.personId),
         `Pension holdings for ${person.personId} or an explicit confirmation of none are needed; an empty section does not establish that there are no pensions.`);
     }
-    if (person.employmentStatus !== 'retired' || profile.pensions.some(pension => pension.ownerId === person.personId)) {
+    // Years paying PRSI and years caring at home give an estimate of the fraction, so a person who has told us both is not missing it.
+    const contributions = profile.assumptions?.values?.retirement?.statePensionContributions?.[person.personId];
+    const hasContributionYears = Number.isFinite(contributions?.yearsPayingPrsi) && Number.isFinite(contributions?.yearsCaring);
+    if (!hasContributionYears && (person.employmentStatus !== 'retired' || profile.pensions.some(pension => pension.ownerId === person.personId))) {
       requireValue('state_pension_fraction', semanticPath('state_pension_fraction').replace('*', person.personId),
         `A numeric State Pension fraction for ${person.personId} is needed. Partly/not sure, or the other person’s expectation, cannot establish it.`);
     }
