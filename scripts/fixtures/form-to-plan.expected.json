@@ -82,9 +82,9 @@
         "chapter": "protection_gap",
         "reasons": [
           {
-            "fieldPath": "/chapters/protection_gap",
-            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/planningInputs/householdTaxStatus",
+            "reason": "State the tax assessment status; the compiler does not infer it from a partner record.",
+            "code": "missing_information"
           }
         ]
       },
@@ -92,9 +92,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -201,7 +201,8 @@
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": [
-          "household_cash_flow"
+          "household_cash_flow",
+          "protection_gap"
         ]
       },
       {
@@ -226,14 +227,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
         "blockingModuleIds": []
       },
       {
@@ -264,26 +257,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "goals_and_resources"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/protection_gap",
-        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       },
       {
@@ -343,7 +316,7 @@
               "home.status",
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -364,7 +337,7 @@
               "home.status",
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -455,7 +428,8 @@
       "household_cash_flow",
       "mortgage_analysis",
       "pension_projection",
-      "college_funding"
+      "college_funding",
+      "protection_gap"
     ],
     "chaptersLeftOut": [
       {
@@ -494,22 +468,12 @@
         ]
       },
       {
-        "chapter": "protection_gap",
-        "reasons": [
-          {
-            "fieldPath": "/chapters/protection_gap",
-            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-            "code": "requires_profile_adapter"
-          }
-        ]
-      },
-      {
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -581,6 +545,9 @@
             "takeHome": 61542.99923076923,
             "bankTakeHome": 54982.99923076923,
             "estimatedBankTakeHome": 54982.99923076923,
+            "pensionGross": 6560,
+            "pensionRelief": 2260.676923076924,
+            "pensionCost": 4299.323076923076,
             "taxSource": "estimated",
             "basis": "allocated",
             "estimatedTakeHome": 61542.99923076923
@@ -592,6 +559,9 @@
             "takeHome": 36568.81076923077,
             "bankTakeHome": 34168.81076923077,
             "estimatedBankTakeHome": 34168.81076923077,
+            "pensionGross": 2400,
+            "pensionRelief": 1323.3230769230777,
+            "pensionCost": 1076.6769230769223,
             "taxSource": "estimated",
             "basis": "allocated",
             "estimatedTakeHome": 36568.81076923077
@@ -699,22 +669,6 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "missing_information",
         "fieldPath": "/household/incomeSources/0/netAnnual",
         "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
@@ -742,26 +696,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "goals_and_resources"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/protection_gap",
-        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       }
     ],
@@ -822,7 +756,7 @@
             "paths": [
               "household.married"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         ]
@@ -843,7 +777,7 @@
               "mortgage.repayment",
               "mortgage.overpayment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -865,7 +799,7 @@
               "mortgage.repayment",
               "mortgage.overpayment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -961,7 +895,7 @@
           },
           {
             "key": "assumptionsVersion",
-            "value": "planeir-assumptions-1.6.0"
+            "value": "planeir-assumptions-1.8.0"
           },
           {
             "key": "taxStatus",
@@ -1002,12 +936,12 @@
           {
             "key": "investmentGrowthRate",
             "value": 0.05,
-            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.8.0)"
           },
           {
             "key": "inflationRate",
             "value": 0.02,
-            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.8.0)"
           },
           {
             "key": "statePensionContributory",
@@ -1031,26 +965,218 @@
           {
             "key": "collegeAnnualCostsToday",
             "value": "Living at home: €5,000 a year per child; Living away from home: €15,000 a year per child",
-            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.6.0)"
+            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.8.0)"
           },
           {
             "key": "educationInflationRate",
             "value": 0.04,
-            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.6.0)"
+            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.8.0)"
           },
           {
             "key": "collegeStartAge",
             "value": 18,
-            "reason": "Standard assumed college start age (planeir-assumptions-1.6.0)."
+            "reason": "Standard assumed college start age (planeir-assumptions-1.8.0)."
           },
           {
             "key": "collegeDurationYears",
             "value": 4,
-            "reason": "Four years of college for each child (planeir-assumptions-1.6.0)."
+            "reason": "Four years of college for each child (planeir-assumptions-1.8.0)."
           }
         ],
         "warnings": [
           "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances."
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "assumptions": [
+          {
+            "key": "protectionInputRounding",
+            "value": "Estimated amounts rounded to whole euros for the native protection illustration."
+          },
+          {
+            "key": "protectionIncome",
+            "value": {
+              "today": {
+                "year": 2026,
+                "versions": {
+                  "taxRules": "ie-tax-2026.7",
+                  "assumptions": "planeir-assumptions-1.8.0"
+                },
+                "creditAllocation": "allocated"
+              },
+              "cases": [
+                {
+                  "id": "primary-cannot-work",
+                  "basis": "estimated",
+                  "calculationYear": 2026,
+                  "versions": {
+                    "taxRules": "ie-tax-2026.7",
+                    "assumptions": "planeir-assumptions-1.8.0",
+                    "socialWelfare": "ie-social-welfare-2026.3"
+                  },
+                  "creditAllocation": "allocated",
+                  "reconciliation": {
+                    "engineNetIncome": 54439.58,
+                    "personalPension": 2400,
+                    "statedPayAdjustment": -1184.1800000000003,
+                    "statedPaymentAdded": 0
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.3",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
+                },
+                {
+                  "id": "partner-cannot-work",
+                  "basis": "estimated",
+                  "calculationYear": 2026,
+                  "versions": {
+                    "taxRules": "ie-tax-2026.7",
+                    "assumptions": "planeir-assumptions-1.8.0",
+                    "socialWelfare": "ie-social-welfare-2026.3"
+                  },
+                  "creditAllocation": "allocated",
+                  "reconciliation": {
+                    "engineNetIncome": 74925.03,
+                    "personalPension": 6560,
+                    "statedPayAdjustment": 1184.3699999999953,
+                    "statedPaymentAdded": 0
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.3",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
+                },
+                {
+                  "id": "primary-died",
+                  "basis": "estimated",
+                  "calculationYear": 2026,
+                  "versions": {
+                    "taxRules": "ie-tax-2026.7",
+                    "assumptions": "planeir-assumptions-1.8.0",
+                    "socialWelfare": "ie-social-welfare-2026.3"
+                  },
+                  "creditAllocation": "own",
+                  "reconciliation": {
+                    "engineNetIncome": 48189.58,
+                    "personalPension": 2400,
+                    "statedPayAdjustment": -1184.1800000000003,
+                    "statedPaymentAdded": 0
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+                      "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, under 66",
+                      "valueShown": "€259.50 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.3",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.qualifies",
+                      "label": "Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension",
+                      "valueShown": "Assumed to qualify, at the standard personal rate for their age band",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.diedStops",
+                      "label": "The person who died: their pay, pensions and State Pension",
+                      "valueShown": "They stop",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.statePensionNotPassed",
+                      "label": "A State Pension is passed to a partner",
+                      "valueShown": "Never",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+                      "label": "A survivor who would also have their own State Pension",
+                      "valueShown": "Only the higher of the two is paid, which only arises once they are retired",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+                      "label": "A defined contribution pot not yet drawn, and an ARF",
+                      "valueShown": "Pass to the spouse",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    }
+                  ],
+                  "notes": []
+                }
+              ],
+              "notShown": []
+            }
+          }
+        ],
+        "warnings": [
+          "Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated."
         ]
       }
     ]
@@ -1063,7 +1189,8 @@
       "personal_balance_sheet",
       "liquidity_analysis",
       "household_cash_flow",
-      "pension_projection"
+      "pension_projection",
+      "protection_gap"
     ],
     "chaptersLeftOut": [
       {
@@ -1122,22 +1249,12 @@
         ]
       },
       {
-        "chapter": "protection_gap",
-        "reasons": [
-          {
-            "fieldPath": "/chapters/protection_gap",
-            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-            "code": "requires_profile_adapter"
-          }
-        ]
-      },
-      {
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -1201,6 +1318,9 @@
             "takeHome": 56908.880000000005,
             "bankTakeHome": 47308.880000000005,
             "estimatedBankTakeHome": 47308.880000000005,
+            "pensionGross": 9600,
+            "pensionRelief": 3840,
+            "pensionCost": 5760,
             "taxSource": "estimated",
             "basis": "own",
             "estimatedTakeHome": 56908.880000000005
@@ -1212,6 +1332,9 @@
             "takeHome": 43869.43,
             "bankTakeHome": 43869.43,
             "estimatedBankTakeHome": 43869.43,
+            "pensionGross": 0,
+            "pensionRelief": 0,
+            "pensionCost": 0,
             "taxSource": "estimated",
             "basis": "own",
             "estimatedTakeHome": 43869.43
@@ -1295,22 +1418,6 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "missing_information",
         "fieldPath": "/household/incomeSources/0/netAnnual",
         "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
@@ -1338,26 +1445,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "goals_and_resources"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/protection_gap",
-        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       }
     ],
@@ -1403,7 +1490,7 @@
             "paths": [
               "household.married"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         ]
@@ -1422,7 +1509,7 @@
               "spending.spend",
               "home.status"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -1442,7 +1529,7 @@
               "spending.spend",
               "home.status"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -1540,7 +1627,7 @@
           },
           {
             "key": "assumptionsVersion",
-            "value": "planeir-assumptions-1.6.0"
+            "value": "planeir-assumptions-1.8.0"
           },
           {
             "key": "taxStatus",
@@ -1568,12 +1655,12 @@
           {
             "key": "investmentGrowthRate",
             "value": 0.05,
-            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.8.0)"
           },
           {
             "key": "inflationRate",
             "value": 0.02,
-            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.8.0)"
           },
           {
             "key": "statePensionContributory",
@@ -1596,6 +1683,198 @@
           "Defined-benefit income is included at its stated annual amount without inventing an escalation rate.",
           "The State Pension fraction for primary is an illustration assumption, not a confirmed entitlement.",
           "The State Pension fraction for partner is an illustration assumption, not a confirmed entitlement."
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "assumptions": [
+          {
+            "key": "protectionInputRounding",
+            "value": "Estimated amounts rounded to whole euros for the native protection illustration."
+          },
+          {
+            "key": "protectionIncome",
+            "value": {
+              "today": {
+                "year": 2026,
+                "versions": {
+                  "taxRules": "ie-tax-2026.7",
+                  "assumptions": "planeir-assumptions-1.8.0"
+                },
+                "creditAllocation": "own"
+              },
+              "cases": [
+                {
+                  "id": "primary-cannot-work",
+                  "basis": "estimated",
+                  "calculationYear": 2026,
+                  "versions": {
+                    "taxRules": "ie-tax-2026.7",
+                    "assumptions": "planeir-assumptions-1.8.0",
+                    "socialWelfare": "ie-social-welfare-2026.3"
+                  },
+                  "creditAllocation": "own",
+                  "reconciliation": {
+                    "engineNetIncome": 57077.43,
+                    "personalPension": 0,
+                    "statedPayAdjustment": -0.43000000000029104,
+                    "statedPaymentAdded": 0
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.3",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
+                },
+                {
+                  "id": "partner-cannot-work",
+                  "basis": "estimated",
+                  "calculationYear": 2026,
+                  "versions": {
+                    "taxRules": "ie-tax-2026.7",
+                    "assumptions": "planeir-assumptions-1.8.0",
+                    "socialWelfare": "ie-social-welfare-2026.3"
+                  },
+                  "creditAllocation": "own",
+                  "reconciliation": {
+                    "engineNetIncome": 70116.88,
+                    "personalPension": 9600,
+                    "statedPayAdjustment": 0.11999999999534339,
+                    "statedPaymentAdded": 0
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.3",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
+                },
+                {
+                  "id": "primary-died",
+                  "basis": "estimated",
+                  "calculationYear": 2026,
+                  "versions": {
+                    "taxRules": "ie-tax-2026.7",
+                    "assumptions": "planeir-assumptions-1.8.0",
+                    "socialWelfare": "ie-social-welfare-2026.3"
+                  },
+                  "creditAllocation": "own",
+                  "reconciliation": {
+                    "engineNetIncome": 52505.83,
+                    "personalPension": 0,
+                    "statedPayAdjustment": -0.43000000000029104,
+                    "statedPaymentAdded": 0
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+                      "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, under 66",
+                      "valueShown": "€259.50 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.3",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.qualifies",
+                      "label": "Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension",
+                      "valueShown": "Assumed to qualify, at the standard personal rate for their age band",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.diedStops",
+                      "label": "The person who died: their pay, pensions and State Pension",
+                      "valueShown": "They stop",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.statePensionNotPassed",
+                      "label": "A State Pension is passed to a partner",
+                      "valueShown": "Never",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+                      "label": "A survivor who would also have their own State Pension",
+                      "valueShown": "Only the higher of the two is paid, which only arises once they are retired",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+                      "label": "A defined contribution pot not yet drawn, and an ARF",
+                      "valueShown": "Pass to the spouse",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.8.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    }
+                  ],
+                  "notes": []
+                }
+              ],
+              "notShown": []
+            }
+          }
+        ],
+        "warnings": [
+          "Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated."
         ]
       }
     ]
@@ -1683,9 +1962,9 @@
         "chapter": "protection_gap",
         "reasons": [
           {
-            "fieldPath": "/chapters/protection_gap",
-            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/planningInputs/householdTaxStatus",
+            "reason": "State the tax assessment status; the compiler does not infer it from a partner record.",
+            "code": "missing_information"
           }
         ]
       },
@@ -1693,9 +1972,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -1802,7 +2081,8 @@
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": [
-          "household_cash_flow"
+          "household_cash_flow",
+          "protection_gap"
         ]
       },
       {
@@ -1878,14 +2158,6 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "missing_information",
         "fieldPath": "/planningInputs/goalBindings",
         "reason": "Identify the liability for goal_application_manage_loan; there is no unique loan record.",
@@ -1913,26 +2185,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "goals_and_resources"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/protection_gap",
-        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       },
       {
@@ -1995,7 +2247,7 @@
               "home.status",
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -2016,7 +2268,7 @@
               "home.status",
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -2232,9 +2484,9 @@
         "chapter": "protection_gap",
         "reasons": [
           {
-            "fieldPath": "/chapters/protection_gap",
-            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/planningInputs/takeHomeBasis",
+            "reason": "Confirm that stated net income is bank pay after personal pension deductions.",
+            "code": "missing_information"
           }
         ]
       },
@@ -2242,9 +2494,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -2274,7 +2526,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/household/primaryPerson/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -2322,7 +2574,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/household/partner/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -2528,22 +2780,6 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "missing_information",
         "fieldPath": "/planningInputs/householdTaxStatus",
         "reason": "Establish whether the couple are married or civil partners before calculating tax.",
@@ -2690,7 +2926,8 @@
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": [
-          "household_cash_flow"
+          "household_cash_flow",
+          "protection_gap"
         ]
       },
       {
@@ -2761,26 +2998,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "goals_and_resources"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/protection_gap",
-        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       },
       {

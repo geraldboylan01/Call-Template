@@ -14,8 +14,13 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "ie_social_welfare",
-    "version": "ie-social-welfare-2026.2",
-    "count": 14
+    "version": "ie-social-welfare-2026.3",
+    "count": 22
+  },
+  {
+    "id": "ie_fair_deal_rules",
+    "version": "ie-fair-deal-2026.1",
+    "count": 17
   },
   {
     "id": "house_purchase_rules",
@@ -24,8 +29,8 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "planeir_assumptions",
-    "version": "planeir-assumptions-1.6.0",
-    "count": 12
+    "version": "planeir-assumptions-1.8.0",
+    "count": 59
   },
   {
     "id": "ie_market",
@@ -73,6 +78,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -113,6 +121,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -153,6 +164,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -193,6 +207,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -233,6 +250,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -273,6 +293,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -313,6 +336,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -353,6 +379,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -393,6 +422,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -433,6 +465,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -473,6 +508,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1715,6 +1753,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "plan_pack"
+    ],
+    "explainers": [
+      "cgt_and_your_home"
     ]
   },
   {
@@ -1747,6 +1788,9 @@ export const FIGURES_INDEX = Object.freeze([
       "future_cost_fund",
       "goals_and_resources",
       "house_purchase"
+    ],
+    "explainers": [
+      "dirt"
     ]
   },
   {
@@ -1791,6 +1835,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1835,6 +1882,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1879,6 +1929,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1923,6 +1976,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1967,6 +2023,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2011,6 +2070,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2055,6 +2117,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2099,6 +2164,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2144,7 +2212,10 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "plan_pack"
     ],
-    "note": "Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend."
+    "note": "Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend.",
+    "explainers": [
+      "income_tax_bands_and_credits"
+    ]
   },
   {
     "id": "ie.income_tax.employee_credit.2027.amount",
@@ -2188,6 +2259,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2232,6 +2306,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2830,6 +2907,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "plan_pack"
+    ],
+    "explainers": [
+      "cgt_and_your_home"
     ]
   },
   {
@@ -2860,6 +2940,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "plan_pack"
+    ],
+    "explainers": [
+      "cgt_and_your_home"
     ]
   },
   {
@@ -4446,6 +4529,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4482,6 +4568,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4518,6 +4607,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4554,6 +4646,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4590,6 +4685,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4626,6 +4724,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4662,6 +4763,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4873,6 +4977,9 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
+    ],
+    "explainers": [
+      "state_pension_contributions"
     ]
   },
   {
@@ -4904,6 +5011,9 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
+    ],
+    "explainers": [
+      "state_pension_contributions"
     ]
   },
   {
@@ -4934,13 +5044,17 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
@@ -4966,13 +5080,17 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2026_01_01",
@@ -4998,13 +5116,17 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
@@ -5030,13 +5152,17 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
@@ -5066,7 +5192,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5074,6 +5200,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner under 66 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5100,7 +5230,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5108,6 +5238,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner under 66 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5138,7 +5272,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5146,6 +5280,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 66 to 79 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5172,7 +5310,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5180,6 +5318,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 66 to 79 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5206,7 +5348,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5214,6 +5356,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 80 or over with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5240,7 +5386,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5248,6 +5394,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 80 or over with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5278,12 +5428,15 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI."
+    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
   },
   {
     "id": "ie.social_welfare.invalidity_pension.personal.from_2027_01_01",
@@ -5309,12 +5462,77 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI."
+    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79.from_2026_01_02",
+    "quantity": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79",
+    "label": "State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79",
+    "value": 288,
+    "valueShown": "€288 a week",
+    "unit": "eur_a_week",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": "2026-01-02",
+    "source": {
+      "title": "Department of Social Protection, State Pension (Non-Contributory)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-non-contributory/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Non-Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-non-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "care_costs"
+    ],
+    "appliesTo": "A person aged 66 to 79 who passes the means test and has no income from any source. The Nursing Homes Support Scheme measures what a person keeps against it. Gross: it is taxable."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79.from_2027_01_01",
+    "quantity": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79",
+    "label": "State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79",
+    "value": 298,
+    "valueShown": "€298 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "care_costs"
+    ],
+    "appliesTo": "A person aged 66 to 79 who passes the means test and has no income from any source. The Nursing Homes Support Scheme measures what a person keeps against it. Gross: it is taxable."
   },
   {
     "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
@@ -5344,12 +5562,15 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI."
+    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
   },
   {
     "id": "ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01",
@@ -5375,12 +5596,829 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI."
+    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.pension_age",
+    "quantity": "ie.social_welfare.state_pension_contributory.pension_age",
+    "label": "Age from which the State Pension (Contributory) is paid",
+    "value": 66,
+    "valueShown": "age 66",
+    "unit": "age",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      },
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "A person born on or after 1 January 1958 can choose a date between 66 and 70, with a higher rate for starting later.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+    "quantity": "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+    "label": "Contributions for the maximum State Pension (Contributory) rate, under the Total Contributions Approach",
+    "value": 2080,
+    "valueShown": "2080",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      },
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "Paid contributions, HomeCaring periods and credited contributions together. 2,080 is 40 years. With fewer, the rate is that share of the maximum.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.contributions_a_year",
+    "quantity": "ie.social_welfare.state_pension_contributory.contributions_a_year",
+    "label": "Contributions in a full year of social insurance (PRSI) payments",
+    "value": 52,
+    "valueShown": "52",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "2,080 contributions are 40 years, which is 52 a year.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+    "quantity": "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+    "label": "Fewest paid (full-rate) contributions that qualify for a State Pension (Contributory)",
+    "value": 520,
+    "valueShown": "520",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "A person needs at least 520 reckonable contributions, of which 520 must be full-rate social insurance (PRSI) contributions. Class A and Class S both count as full-rate.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+    "quantity": "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+    "label": "Most HomeCaring periods that count towards the State Pension (Contributory) rate",
+    "value": 1040,
+    "valueShown": "1040",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "HomeCaring periods are awarded for time spent caring for a child aged 12 or under, or a person who needed an increased level of care. 1,040 is 20 years.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.credited_contributions_cap",
+    "quantity": "ie.social_welfare.state_pension_contributory.credited_contributions_cap",
+    "label": "Most credited contributions that count towards the State Pension (Contributory) rate",
+    "value": 520,
+    "valueShown": "520",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "Credits are awarded for periods when a person could not work and claimed a payment such as Illness Benefit or Jobseeker’s Benefit.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.income.share.single.2024",
+    "quantity": "ie.fair_deal.income.share.single",
+    "label": "Share of a single person’s income, after tax and deductions, that Fair Deal assesses",
+    "value": 0.8,
+    "valueShown": "80%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.income.share.couple.2024",
+    "quantity": "ie.fair_deal.income.share.couple",
+    "label": "Share of a couple’s combined income, after tax and deductions, that Fair Deal assesses for the person in care",
+    "value": 0.4,
+    "valueShown": "40%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.income.rental_share.2024",
+    "quantity": "ie.fair_deal.income.rental_share",
+    "label": "Share of the rent from a person’s own home that Fair Deal assesses while they are in care",
+    "value": 0,
+    "valueShown": "0%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": "2024-02-01",
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.rate.2024",
+    "quantity": "ie.fair_deal.assets.rate",
+    "label": "Yearly share of a person’s net assets above the disregard that Fair Deal assesses",
+    "value": 0.075,
+    "valueShown": "7.5% a year",
+    "unit": "rate_a_year",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.couple_divisor.2024",
+    "quantity": "ie.fair_deal.assets.couple_divisor",
+    "label": "Number of people a couple’s assessed assets are divided between",
+    "value": 2,
+    "valueShown": "2",
+    "unit": "count",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.disregard.single.2024",
+    "quantity": "ie.fair_deal.assets.disregard.single",
+    "label": "Assets of a single person that Fair Deal does not count",
+    "value": 36000,
+    "valueShown": "€36,000",
+    "unit": "eur",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.disregard.couple.2024",
+    "quantity": "ie.fair_deal.assets.disregard.couple",
+    "label": "Assets of a couple that Fair Deal does not count",
+    "value": 72000,
+    "valueShown": "€72,000",
+    "unit": "eur",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.home.cap_years.2024",
+    "quantity": "ie.fair_deal.home.cap_years",
+    "label": "Years of care after which a person’s home stops counting in the Fair Deal assessment",
+    "value": 3,
+    "valueShown": "3 years",
+    "unit": "years",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: 3-year cap on homes, farms and businesses",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/3-year-cap/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.home.couple_both_in_care_cap.2024",
+    "quantity": "ie.fair_deal.home.couple_both_in_care_cap",
+    "label": "Most a couple’s shared home can add to Fair Deal contributions when both receive care, as a share of its value",
+    "value": 0.225,
+    "valueShown": "22.5%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.retained.single_pension_share.2024",
+    "quantity": "ie.fair_deal.retained.single_pension_share",
+    "label": "Share of the maximum State Pension (Non-Contributory) that a single person keeps at least",
+    "value": 0.2,
+    "valueShown": "20%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.retained.couple_at_home_pension_multiple.2024",
+    "quantity": "ie.fair_deal.retained.couple_at_home_pension_multiple",
+    "label": "Multiple of the maximum State Pension (Non-Contributory) that a couple keeps at least when the partner stays at home",
+    "value": 1.2,
+    "valueShown": "1.2 times",
+    "unit": "multiple",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.transfers.look_back_years.2024",
+    "quantity": "ie.fair_deal.transfers.look_back_years",
+    "label": "Years before a Fair Deal application in which a transfer of assets or income still counts",
+    "value": 5,
+    "valueShown": "5 years",
+    "unit": "years",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.review.earliest_request_months.2024",
+    "quantity": "ie.fair_deal.review.earliest_request_months",
+    "label": "Months after an assessment or review before a person can ask for another review without a material change",
+    "value": 12,
+    "valueShown": "12 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, section 30 (Reviews), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/section/30/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, section 30 (Reviews), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/section/30/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.repay_after_death_months.revenue.2024",
+    "quantity": "ie.fair_deal.loan.repay_after_death_months.revenue",
+    "label": "Months after death within which the nursing home loan is repaid, as Revenue states it",
+    "value": 12,
+    "valueShown": "12 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Revenue, how the nursing home loan is repaid",
+      "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+    },
+    "sources": [
+      {
+        "title": "Revenue, how the nursing home loan is repaid",
+        "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.repay_after_death_months.hse.2024",
+    "quantity": "ie.fair_deal.loan.repay_after_death_months.hse",
+    "label": "Months after death within which the nursing home loan is repaid, as the HSE states it",
+    "value": 18,
+    "valueShown": "18 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "HSE, Fair Deal scheme: nursing home loan",
+      "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/"
+    },
+    "sources": [
+      {
+        "title": "HSE, Fair Deal scheme: nursing home loan",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.repay_on_sale_months.2024",
+    "quantity": "ie.fair_deal.loan.repay_on_sale_months",
+    "label": "Months after a sale or transfer of the home within which the nursing home loan is repaid",
+    "value": 6,
+    "valueShown": "6 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Revenue, how the nursing home loan is repaid",
+      "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+    },
+    "sources": [
+      {
+        "title": "Revenue, how the nursing home loan is repaid",
+        "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: nursing home loan",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.late_interest_daily.2024",
+    "quantity": "ie.fair_deal.loan.late_interest_daily",
+    "label": "Interest charged a day on a late repayment of the nursing home loan",
+    "value": 0.000219,
+    "valueShown": "0.0219%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Revenue, how the nursing home loan is repaid",
+      "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+    },
+    "sources": [
+      {
+        "title": "Revenue, how the nursing home loan is repaid",
+        "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
   },
   {
     "id": "ie.house_purchase.mortgage.first_time_buyer_income_multiple",
@@ -5530,6 +6568,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5560,6 +6601,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5590,6 +6634,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5620,6 +6667,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5650,6 +6700,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -9608,7 +10661,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "pension_projection"
@@ -9638,7 +10691,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "pension_projection",
@@ -9650,7 +10703,7 @@ export const FIGURES_INDEX = Object.freeze([
   {
     "id": "planeir.assumption.education_inflation",
     "quantity": "planeir.assumption.education_inflation",
-    "label": "Education cost inflation assumed",
+    "label": "Education and care cost inflation assumed",
     "value": 0.04,
     "valueShown": "4% a year",
     "unit": "rate_a_year",
@@ -9671,12 +10724,13 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
       "future_cost_fund",
-      "goals_and_resources"
+      "goals_and_resources",
+      "care_costs"
     ]
   },
   {
@@ -9703,7 +10757,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "net_retirement_cashflow"
@@ -9733,7 +10787,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -9764,7 +10818,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -9795,7 +10849,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -9826,11 +10880,197 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
       "goals_and_resources"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_db_spouse_pension_share",
+    "quantity": "planeir.assumption.survivor_db_spouse_pension_share",
+    "label": "Share of a defined benefit pension paid on to the surviving spouse",
+    "value": 0.5,
+    "valueShown": "50%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.qualifies",
+    "quantity": "planeir.assumption.survivor_rule.qualifies",
+    "label": "Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension",
+    "value": "Assumed to qualify, at the standard personal rate for their age band",
+    "valueShown": "Assumed to qualify, at the standard personal rate for their age band",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.diedStops",
+    "quantity": "planeir.assumption.survivor_rule.diedStops",
+    "label": "The person who died: their pay, pensions and State Pension",
+    "value": "They stop",
+    "valueShown": "They stop",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.statePensionNotPassed",
+    "quantity": "planeir.assumption.survivor_rule.statePensionNotPassed",
+    "label": "A State Pension is passed to a partner",
+    "value": "Never",
+    "valueShown": "Never",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+    "quantity": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+    "label": "A survivor who would also have their own State Pension",
+    "value": "Only the higher of the two is paid, which only arises once they are retired",
+    "valueShown": "Only the higher of the two is paid, which only arises once they are retired",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+    "quantity": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+    "label": "A defined contribution pot not yet drawn, and an ARF",
+    "value": "Pass to the spouse",
+    "valueShown": "Pass to the spouse",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
     ]
   },
   {
@@ -9857,11 +11097,14 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis",
       "house_purchase"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -9888,11 +11131,14 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis",
       "house_purchase"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -9919,10 +11165,13 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -9949,10 +11198,1300 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis"
+    ],
+    "explainers": [
+      "emergency_reserve"
+    ]
+  },
+  {
+    "id": "planeir.assumption.property_agent_fee",
+    "quantity": "planeir.assumption.property_agent_fee",
+    "label": "Proposed selling-agent allowance including VAT",
+    "value": 0.01845,
+    "valueShown": "1.845%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.property_sale_legal",
+    "quantity": "planeir.assumption.property_sale_legal",
+    "label": "Proposed sale legal and outlay allowance including VAT",
+    "value": 2500,
+    "valueShown": "€2,500",
+    "unit": "eur",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.replacement_home_minimum_share",
+    "quantity": "planeir.assumption.replacement_home_minimum_share",
+    "label": "Proposed minimum replacement-home share of current value",
+    "value": 0.5,
+    "valueShown": "50%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.replacement_home_maximum_share",
+    "quantity": "planeir.assumption.replacement_home_maximum_share",
+    "label": "Proposed maximum replacement-home share of current value",
+    "value": 0.95,
+    "valueShown": "95%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.property_move_horizon",
+    "quantity": "planeir.assumption.property_move_horizon",
+    "label": "Maximum years ahead in the proposed property-move search",
+    "value": 20,
+    "valueShown": "20 years",
+    "unit": "years",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.list_number",
+    "quantity": "planeir.assumption.care.agreed_prices.list_number",
+    "label": "Number of the HSE list of maximum agreed nursing home prices that the care fees come from",
+    "value": 231,
+    "valueShown": "231",
+    "unit": "count",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.list_date",
+    "quantity": "planeir.assumption.care.agreed_prices.list_date",
+    "label": "Date of that HSE list of maximum agreed nursing home prices",
+    "value": "2026-10-14",
+    "valueShown": "14 October 2026",
+    "unit": "date",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.homes_in_list",
+    "quantity": "planeir.assumption.care.agreed_prices.homes_in_list",
+    "label": "Homes with a price in that HSE list",
+    "value": 411,
+    "valueShown": "411",
+    "unit": "count",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.national_weekly_average",
+    "quantity": "planeir.assumption.care.agreed_prices.national_weekly_average",
+    "label": "Average weekly nursing home fee across the list, a simple average of each home’s price",
+    "value": 1315,
+    "valueShown": "€1,315 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.lowest_weekly",
+    "quantity": "planeir.assumption.care.agreed_prices.lowest_weekly",
+    "label": "Lowest weekly nursing home fee in the list",
+    "value": 1200,
+    "valueShown": "€1,200 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.highest_weekly",
+    "quantity": "planeir.assumption.care.agreed_prices.highest_weekly",
+    "label": "Highest weekly nursing home fee in the list",
+    "value": 1508,
+    "valueShown": "€1,508 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.carlow.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.carlow.average",
+    "label": "Average weekly nursing home fee in Co. Carlow, a simple average of each home’s price in the list",
+    "value": 1264,
+    "valueShown": "€1,264 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.cavan.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.cavan.average",
+    "label": "Average weekly nursing home fee in Co. Cavan, a simple average of each home’s price in the list",
+    "value": 1295,
+    "valueShown": "€1,295 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.clare.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.clare.average",
+    "label": "Average weekly nursing home fee in Co. Clare, a simple average of each home’s price in the list",
+    "value": 1264,
+    "valueShown": "€1,264 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.cork.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.cork.average",
+    "label": "Average weekly nursing home fee in Co. Cork, a simple average of each home’s price in the list",
+    "value": 1311,
+    "valueShown": "€1,311 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.donegal.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.donegal.average",
+    "label": "Average weekly nursing home fee in Co. Donegal, a simple average of each home’s price in the list",
+    "value": 1259,
+    "valueShown": "€1,259 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.dublin.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.dublin.average",
+    "label": "Average weekly nursing home fee in Co. Dublin, a simple average of each home’s price in the list",
+    "value": 1416,
+    "valueShown": "€1,416 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.galway.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.galway.average",
+    "label": "Average weekly nursing home fee in Co. Galway, a simple average of each home’s price in the list",
+    "value": 1269,
+    "valueShown": "€1,269 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.kerry.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.kerry.average",
+    "label": "Average weekly nursing home fee in Co. Kerry, a simple average of each home’s price in the list",
+    "value": 1263,
+    "valueShown": "€1,263 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.kildare.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.kildare.average",
+    "label": "Average weekly nursing home fee in Co. Kildare, a simple average of each home’s price in the list",
+    "value": 1346,
+    "valueShown": "€1,346 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.kilkenny.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.kilkenny.average",
+    "label": "Average weekly nursing home fee in Co. Kilkenny, a simple average of each home’s price in the list",
+    "value": 1274,
+    "valueShown": "€1,274 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.laois.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.laois.average",
+    "label": "Average weekly nursing home fee in Co. Laois, a simple average of each home’s price in the list",
+    "value": 1284,
+    "valueShown": "€1,284 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.leitrim.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.leitrim.average",
+    "label": "Average weekly nursing home fee in Co. Leitrim, a simple average of each home’s price in the list",
+    "value": 1276,
+    "valueShown": "€1,276 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.limerick.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.limerick.average",
+    "label": "Average weekly nursing home fee in Co. Limerick, a simple average of each home’s price in the list",
+    "value": 1270,
+    "valueShown": "€1,270 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.longford.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.longford.average",
+    "label": "Average weekly nursing home fee in Co. Longford, a simple average of each home’s price in the list",
+    "value": 1276,
+    "valueShown": "€1,276 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.louth.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.louth.average",
+    "label": "Average weekly nursing home fee in Co. Louth, a simple average of each home’s price in the list",
+    "value": 1302,
+    "valueShown": "€1,302 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.mayo.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.mayo.average",
+    "label": "Average weekly nursing home fee in Co. Mayo, a simple average of each home’s price in the list",
+    "value": 1272,
+    "valueShown": "€1,272 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.meath.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.meath.average",
+    "label": "Average weekly nursing home fee in Co. Meath, a simple average of each home’s price in the list",
+    "value": 1318,
+    "valueShown": "€1,318 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.monaghan.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.monaghan.average",
+    "label": "Average weekly nursing home fee in Co. Monaghan, a simple average of each home’s price in the list",
+    "value": 1289,
+    "valueShown": "€1,289 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.offaly.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.offaly.average",
+    "label": "Average weekly nursing home fee in Co. Offaly, a simple average of each home’s price in the list",
+    "value": 1262,
+    "valueShown": "€1,262 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.roscommon.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.roscommon.average",
+    "label": "Average weekly nursing home fee in Co. Roscommon, a simple average of each home’s price in the list",
+    "value": 1254,
+    "valueShown": "€1,254 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.sligo.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.sligo.average",
+    "label": "Average weekly nursing home fee in Co. Sligo, a simple average of each home’s price in the list",
+    "value": 1333,
+    "valueShown": "€1,333 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.tipperary.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.tipperary.average",
+    "label": "Average weekly nursing home fee in Co. Tipperary, a simple average of each home’s price in the list",
+    "value": 1273,
+    "valueShown": "€1,273 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.waterford.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.waterford.average",
+    "label": "Average weekly nursing home fee in Co. Waterford, a simple average of each home’s price in the list",
+    "value": 1289,
+    "valueShown": "€1,289 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.westmeath.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.westmeath.average",
+    "label": "Average weekly nursing home fee in Co. Westmeath, a simple average of each home’s price in the list",
+    "value": 1253,
+    "valueShown": "€1,253 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.wexford.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.wexford.average",
+    "label": "Average weekly nursing home fee in Co. Wexford, a simple average of each home’s price in the list",
+    "value": 1274,
+    "valueShown": "€1,274 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.wicklow.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.wicklow.average",
+    "label": "Average weekly nursing home fee in Co. Wicklow, a simple average of each home’s price in the list",
+    "value": 1339,
+    "valueShown": "€1,339 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.relative_care.default_years",
+    "quantity": "planeir.assumption.care.relative_care.default_years",
+    "label": "Years of care shown for a relative by default",
+    "value": 5,
+    "valueShown": "5 years",
+    "unit": "years",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 21 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 21 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "catalogue",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.relative_care.compare_years",
+    "quantity": "planeir.assumption.care.relative_care.compare_years",
+    "label": "Other lengths of care shown beside the default, in years",
+    "value": "3, 10",
+    "valueShown": "3, 10",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 21 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 21 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "catalogue",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.own_care_stress.start_age",
+    "quantity": "planeir.assumption.care.own_care_stress.start_age",
+    "label": "Age at which the own-care stress test starts",
+    "value": 85,
+    "valueShown": "age 85",
+    "unit": "age",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.own_care_stress.years",
+    "quantity": "planeir.assumption.care.own_care_stress.years",
+    "label": "Years of care in the own-care stress test",
+    "value": 5,
+    "valueShown": "5 years",
+    "unit": "years",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "care_costs",
+      "plan_pack"
     ]
   },
   {
@@ -10009,6 +12548,9 @@ export const FIGURES_INDEX = Object.freeze([
         "effective": "2025-05-13",
         "retrievedOn": "2026-10-22"
       }
+    ],
+    "explainers": [
+      "dirt"
     ]
   },
   {
@@ -10072,6 +12614,9 @@ export const FIGURES_INDEX = Object.freeze([
         "effective": null,
         "retrievedOn": "2026-10-22"
       }
+    ],
+    "explainers": [
+      "dirt"
     ]
   },
   {
@@ -10143,5 +12688,402 @@ export const FIGURES_INDEX = Object.freeze([
       "gap": 0,
       "drifted": false
     }
+  }
+].map(Object.freeze));
+
+export const EXPLAINERS_VERSION = "ie-explainers-2026.1";
+
+export const EXPLAINERS_INDEX = Object.freeze([
+  {
+    "id": "state_pension_contributions",
+    "title": "How your contributions set your State Pension",
+    "sentences": [
+      "The State Pension (Contributory) is paid from pension age on your own social insurance record, and it is not means-tested, so other income does not reduce it.",
+      "Under the Total Contributions Approach, your rate depends on the total contributions you have when you start it: paid and voluntary contributions, credited contributions and caring supports all count.",
+      "A full record earns the maximum rate and a shorter one a reduced rate in proportion, and while the older Yearly Average method is phased out you get whichever calculation is higher.",
+      "It is taxable, but you are unlikely to pay tax if it is your only income."
+    ],
+    "text": "The State Pension (Contributory) is paid from pension age on your own social insurance record, and it is not means-tested, so other income does not reduce it. Under the Total Contributions Approach, your rate depends on the total contributions you have when you start it: paid and voluntary contributions, credited contributions and caring supports all count. A full record earns the maximum rate and a shorter one a reduced rate in proportion, and while the older Yearly Average method is phased out you get whichever calculation is higher. It is taxable, but you are unlikely to pay tax if it is your only income.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.state_pension_contributory",
+      "ie.state_pension_contributory"
+    ],
+    "coversFigureIds": [
+      "ie.state_pension_contributory.default_start_age",
+      "ie.state_pension_contributory.default_escalation_rate",
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.pension_age",
+      "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+      "ie.social_welfare.state_pension_contributory.contributions_a_year",
+      "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+      "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+      "ie.social_welfare.state_pension_contributory.credited_contributions_cap"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      },
+      {
+        "title": "Citizens Information, applying for the State Pension (Contributory)",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/older-and-retired-people/state-pension-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "state_pension_not_passed_on",
+    "title": "A State Pension is not passed to a partner",
+    "sentences": [
+      "A State Pension (Contributory) is paid on the record of the person it is paid to, so it stops after a short run-on period when they die, and a partner does not inherit it.",
+      "A partner who is left may instead qualify for the Bereaved Partner’s (Contributory) Pension, which is based on their own contribution record or their late partner’s record.",
+      "Only one social welfare payment is paid at a time, with a few exceptions, so if you qualify for both a State Pension and a bereaved partner’s pension you are paid whichever is higher."
+    ],
+    "text": "A State Pension (Contributory) is paid on the record of the person it is paid to, so it stops after a short run-on period when they die, and a partner does not inherit it. A partner who is left may instead qualify for the Bereaved Partner’s (Contributory) Pension, which is based on their own contribution record or their late partner’s record. Only one social welfare payment is paid at a time, with a few exceptions, so if you qualify for both a State Pension and a bereaved partner’s pension you are paid whichever is higher.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.state_pension_contributory",
+      "ie.social_welfare.bereaved_partners_contributory"
+    ],
+    "coversFigureIds": [
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.pension_age",
+      "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+      "ie.social_welfare.state_pension_contributory.contributions_a_year",
+      "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+      "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+      "ie.social_welfare.state_pension_contributory.credited_contributions_cap"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, Operational Guidelines: State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/operational-guidelines-state-pension-contributory/"
+      },
+      {
+        "title": "Citizens Information, Bereaved Partner’s (Contributory) Pension",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/death-related-benefits/bereaved-partners-contributory-pension/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "bereaved_partners_pension",
+    "title": "The Bereaved Partner’s (Contributory) Pension",
+    "sentences": [
+      "This is a weekly payment to a husband, wife, civil partner or qualified cohabitant after their partner dies, and it replaced the widow’s, widower’s and surviving civil partner’s pension.",
+      "It depends on social insurance contributions: your record or your late partner’s record has to meet the conditions, and the two records cannot be added together.",
+      "It is paid whatever other income you have, and it is taxable, though you are unlikely to pay tax if it is your only income.",
+      "It stops if you marry or start to live with someone else as a couple."
+    ],
+    "text": "This is a weekly payment to a husband, wife, civil partner or qualified cohabitant after their partner dies, and it replaced the widow’s, widower’s and surviving civil partner’s pension. It depends on social insurance contributions: your record or your late partner’s record has to meet the conditions, and the two records cannot be added together. It is paid whatever other income you have, and it is taxable, though you are unlikely to pay tax if it is your only income. It stops if you marry or start to live with someone else as a couple.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.bereaved_partners_contributory"
+    ],
+    "coversFigureIds": [
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2027_01_01"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, Bereaved Partner’s (Contributory) Pension",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/bereaved-partners-contributory-pension/"
+      },
+      {
+        "title": "Citizens Information, Bereaved Partner’s (Contributory) Pension",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/death-related-benefits/bereaved-partners-contributory-pension/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "illness_benefit",
+    "title": "Illness Benefit: who it covers",
+    "sentences": [
+      "Illness Benefit is a weekly payment for people who cannot work because of illness and are certified unfit for work by a doctor, and it does not depend on your employer’s sick pay.",
+      "Only contributions at certain classes count towards it, such as the employee class, and Class S, paid by the self-employed, is not one of them, so people who pay only Class S are not covered.",
+      "It is taxable but paid without tax taken off, and Revenue adjusts your tax credits and rate band to collect any tax due.",
+      "It is paid for a limited time that depends on the contributions you have paid, and a longer illness can move on to longer-term payments such as Invalidity Pension."
+    ],
+    "text": "Illness Benefit is a weekly payment for people who cannot work because of illness and are certified unfit for work by a doctor, and it does not depend on your employer’s sick pay. Only contributions at certain classes count towards it, such as the employee class, and Class S, paid by the self-employed, is not one of them, so people who pay only Class S are not covered. It is taxable but paid without tax taken off, and Revenue adjusts your tax credits and rate band to collect any tax due. It is paid for a limited time that depends on the contributions you have paid, and a longer illness can move on to longer-term payments such as Invalidity Pension.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.illness_benefit",
+      "ie.social_welfare.invalidity_pension"
+    ],
+    "coversFigureIds": [
+      "ie.social_welfare.invalidity_pension.personal.from_2026_01_01",
+      "ie.social_welfare.invalidity_pension.personal.from_2027_01_01",
+      "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+      "ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, Illness Benefit",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/illness-benefit/"
+      },
+      {
+        "title": "Citizens Information, Illness Benefit",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/disability-and-illness/illness-benefit/"
+      },
+      {
+        "title": "Citizens Information, Class S PRSI",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/irish-social-welfare-system/social-insurance-prsi/class-s-prsi/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "pension_tax_relief",
+    "title": "Pension tax relief and the age limits",
+    "sentences": [
+      "Contributions you pay into a pension can get income tax relief at your highest rate of tax, but not relief from the Universal Social Charge or PRSI.",
+      "The relief is limited each year to a share of your earnings, and that share rises with your age in bands.",
+      "There is also a ceiling on the earnings that count, so earnings above it add no further relief."
+    ],
+    "text": "Contributions you pay into a pension can get income tax relief at your highest rate of tax, but not relief from the Universal Social Charge or PRSI. The relief is limited each year to a share of your earnings, and that share rises with your age in bands. There is also a ceiling on the earnings that count, so earnings above it add no further relief.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.pension_relief.limits"
+    ],
+    "coversFigureIds": [
+      "ie.pension_relief.limits.age_band_0",
+      "ie.pension_relief.limits.age_band_30",
+      "ie.pension_relief.limits.age_band_40",
+      "ie.pension_relief.limits.age_band_50",
+      "ie.pension_relief.limits.age_band_55",
+      "ie.pension_relief.limits.age_band_60",
+      "ie.pension_relief.limits.earnings_cap"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, tax relief on pension contributions",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/pension/relief/index.aspx"
+      },
+      {
+        "title": "Revenue, tax relief limits on pension contributions",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/pension/relief/tax-relief-limits.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "dirt",
+    "title": "DIRT on your deposit interest",
+    "sentences": [
+      "Deposit Interest Retention Tax, or DIRT, is tax taken off the interest on your deposit accounts by the financial institution that holds them, before the interest is paid to you.",
+      "It is a final tax on that interest, and Universal Social Charge does not apply to deposit interest, although PRSI can apply in some circumstances.",
+      "Some people can receive interest without DIRT after making a declaration, such as people over a set age whose total income is below a limit and people who are permanently incapacitated."
+    ],
+    "text": "Deposit Interest Retention Tax, or DIRT, is tax taken off the interest on your deposit accounts by the financial institution that holds them, before the interest is paid to you. It is a final tax on that interest, and Universal Social Charge does not apply to deposit interest, although PRSI can apply in some circumstances. Some people can receive interest without DIRT after making a declaration, such as people over a set age whose total income is below a limit and people who are permanently incapacitated.",
+    "figureIds": [
+      "ie.market.cash.instant_access_gross_rate",
+      "ie.market.cash.regular_saver_gross_rate"
+    ],
+    "ruleIds": [
+      "ie.dirt"
+    ],
+    "coversFigureIds": [
+      "ie.dirt.2026.rate",
+      "ie.market.cash.instant_access_gross_rate",
+      "ie.market.cash.regular_saver_gross_rate"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, Deposit Interest Retention Tax (DIRT)",
+        "url": "https://www.revenue.ie/en/additional-incomes/dirt/index.aspx"
+      },
+      {
+        "title": "Revenue, what DIRT rate is applicable",
+        "url": "https://www.revenue.ie/en/additional-incomes/dirt/who-is-charged-dirt.aspx"
+      },
+      {
+        "title": "Revenue, who is exempt from DIRT",
+        "url": "https://www.revenue.ie/en/additional-incomes/dirt/who-is-exempt-from-dirt.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "cgt_and_your_home",
+    "title": "Capital gains tax, and why your home is different",
+    "sentences": [
+      "Capital gains tax is charged on the gain when you sell an asset such as shares or a second property, which is the sale price less what you paid and your allowable costs.",
+      "Each person has a yearly exemption, so a gain below it carries no tax, you still report the sale, and a loss can be set against gains.",
+      "Your home is treated differently: if it has been your only or main home for the whole time you owned it, selling it carries no capital gains tax.",
+      "Some of that relief can be lost if you did not live in all of it or for the whole time, and it does not cover a second property, which is not your only or main home."
+    ],
+    "text": "Capital gains tax is charged on the gain when you sell an asset such as shares or a second property, which is the sale price less what you paid and your allowable costs. Each person has a yearly exemption, so a gain below it carries no tax, you still report the sale, and a loss can be set against gains. Your home is treated differently: if it has been your only or main home for the whole time you owned it, selling it carries no capital gains tax. Some of that relief can be lost if you did not live in all of it or for the whole time, and it does not cover a second property, which is not your only or main home.",
+    "figureIds": [
+      "ie.cgt.2026.annual_exemption"
+    ],
+    "ruleIds": [
+      "ie.cgt.rate"
+    ],
+    "coversFigureIds": [
+      "ie.cgt.2026.annual_exemption",
+      "ie.cgt.rate.2012-12",
+      "ie.cgt.rate.2026-10"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, how to calculate CGT",
+        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/how-to-calculate-cgt.aspx"
+      },
+      {
+        "title": "Revenue, CGT: if you make a loss",
+        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/if-you-make-a-loss.aspx"
+      },
+      {
+        "title": "Revenue, Principal Private Residence (PPR) Relief",
+        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/cgt-reliefs/principal-private-residence-ppr-relief.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "moving_home_costs",
+    "title": "Stamp duty and selling costs when you move home",
+    "sentences": [
+      "Stamp duty is paid by the buyer, on the price of the home being bought, at rates that rise in bands.",
+      "Selling a home has its own costs, including the estate agent’s fee (a share of the sale price plus VAT), advertising, your solicitor’s fees and outlays, and the energy rating certificate that is required before you can list it.",
+      "What is left once the mortgage is repaid and these costs are paid is what the sale releases towards your next home."
+    ],
+    "text": "Stamp duty is paid by the buyer, on the price of the home being bought, at rates that rise in bands. Selling a home has its own costs, including the estate agent’s fee (a share of the sale price plus VAT), advertising, your solicitor’s fees and outlays, and the energy rating certificate that is required before you can list it. What is left once the mortgage is repaid and these costs are paid is what the sale releases towards your next home.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.house_purchase.stamp_duty"
+    ],
+    "coversFigureIds": [
+      "ie.house_purchase.stamp_duty.band_1.rate",
+      "ie.house_purchase.stamp_duty.band_1.upper_limit",
+      "ie.house_purchase.stamp_duty.band_2.rate",
+      "ie.house_purchase.stamp_duty.band_2.upper_limit",
+      "ie.house_purchase.stamp_duty.band_3.rate"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, Stamp Duty and property",
+        "url": "https://www.revenue.ie/en/property/stamp-duty/property/stamp-duty-property/index.aspx"
+      },
+      {
+        "title": "Revenue, residential Stamp Duty rates",
+        "url": "https://www.revenue.ie/en/property/stamp-duty/property/stamp-duty-property/rates.aspx"
+      },
+      {
+        "title": "CCPC, selling a home in Ireland",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "emergency_reserve",
+    "title": "The emergency reserve",
+    "sentences": [
+      "An emergency reserve is money kept easy to reach for urgent or unexpected costs, such as a car repair, a medical bill or a loss of income, so you do not have to borrow.",
+      "It is usually sized in months of your essential spending rather than as a fixed amount, because what you would need to cover depends on your own costs.",
+      "In your plan the reserve is set aside first, with a minimum and a target number of months, and it is kept apart from the cash counted towards a goal such as a deposit."
+    ],
+    "text": "An emergency reserve is money kept easy to reach for urgent or unexpected costs, such as a car repair, a medical bill or a loss of income, so you do not have to borrow. It is usually sized in months of your essential spending rather than as a fixed amount, because what you would need to cover depends on your own costs. In your plan the reserve is set aside first, with a minimum and a target number of months, and it is kept apart from the cash counted towards a goal such as a deposit.",
+    "figureIds": [],
+    "ruleIds": [
+      "planeir.assumption.reserve_months"
+    ],
+    "coversFigureIds": [
+      "planeir.assumption.reserve_months.working.minimum",
+      "planeir.assumption.reserve_months.working.target",
+      "planeir.assumption.reserve_months.retired.minimum",
+      "planeir.assumption.reserve_months.retired.target"
+    ],
+    "sources": [
+      {
+        "title": "MABS, building up savings",
+        "url": "https://www.mabs.ie/en/managing-money/building-up-savings/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "income_tax_bands_and_credits",
+    "title": "Income tax bands and credits",
+    "sentences": [
+      "Income tax works in two steps: income up to your standard-rate band is taxed at the standard rate, and income above it is taxed at the higher rate.",
+      "The size of your band depends on your circumstances, such as being single, married or in a civil partnership, or widowed, and a couple who both have income can have their band increased up to a limit.",
+      "Tax credits are then taken off the tax worked out, which lowers what you pay directly, and the Universal Social Charge is calculated separately."
+    ],
+    "text": "Income tax works in two steps: income up to your standard-rate band is taxed at the standard rate, and income above it is taxed at the higher rate. The size of your band depends on your circumstances, such as being single, married or in a civil partnership, or widowed, and a couple who both have income can have their band increased up to a limit. Tax credits are then taken off the tax worked out, which lowers what you pay directly, and the Universal Social Charge is calculated separately.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.income_tax.2026",
+      "ie.income_tax.2027",
+      "ie.income_tax.employee_credit"
+    ],
+    "coversFigureIds": [
+      "ie.income_tax.2026.standard_rate",
+      "ie.income_tax.2026.higher_rate",
+      "ie.income_tax.2026.standard_rate_band.single",
+      "ie.income_tax.2026.standard_rate_band.widowed",
+      "ie.income_tax.2026.standard_rate_band.married_one_income",
+      "ie.income_tax.2026.standard_rate_band.second_income_increase_max",
+      "ie.income_tax.2026.personal_credit.single",
+      "ie.income_tax.2026.personal_credit.married",
+      "ie.income_tax.2026.personal_credit.widowed",
+      "ie.income_tax.employee_credit.2026.amount",
+      "ie.income_tax.employee_credit.2026.max_share_of_qualifying_income",
+      "ie.income_tax.2027.standard_rate",
+      "ie.income_tax.2027.higher_rate",
+      "ie.income_tax.2027.standard_rate_band.single",
+      "ie.income_tax.2027.standard_rate_band.widowed",
+      "ie.income_tax.2027.standard_rate_band.married_one_income",
+      "ie.income_tax.2027.standard_rate_band.second_income_increase_max",
+      "ie.income_tax.2027.personal_credit.single",
+      "ie.income_tax.2027.personal_credit.married",
+      "ie.income_tax.2027.personal_credit.widowed",
+      "ie.income_tax.employee_credit.2027.amount",
+      "ie.income_tax.employee_credit.2027.max_share_of_qualifying_income"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, how your Income Tax is calculated",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/calculating-your-income-tax/how-income-tax-is-calculated.aspx"
+      },
+      {
+        "title": "Revenue, what is a tax rate band",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/calculating-your-income-tax/tax-rate-band.aspx"
+      },
+      {
+        "title": "Revenue, tax rates, bands and reliefs",
+        "url": "https://www.revenue.ie/en/personal-tax-credits-reliefs-and-exemptions/tax-relief-charts/index.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
   }
 ].map(Object.freeze));

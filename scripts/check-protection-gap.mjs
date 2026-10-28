@@ -21,6 +21,7 @@ import {
 import { runProtectionGapViewTests } from '../js/tests_protection_gap_view.js';
 import { runProtectionGapModuleTests } from '../js/tests_protection_gap_module.js';
 import { runProtectionGapWiringTests } from '../js/tests_protection_gap_wiring.js';
+import { runProtectionIncomeTests } from '../js/tests_protection_income.js';
 
 const HORIZON_MONTHS = 36;
 const MAX_REFERENCE_MONTHS = 100_000;
@@ -205,6 +206,134 @@ check('the scale is the same for every case and covers every case', () => {
   }
 });
 
+/**
+ * A case whose money in changes over time, drained ONE MONTH AT A TIME. The
+ * engine solves the same thing by stretches in closed form; this loop never
+ * does, so agreement is a real check. A month costs a twelfth of the yearly gap.
+ */
+function referenceByMonth(payload, scenario) {
+  const event = scenario.event;
+  const received = scenario.received || [];
+  const phases = scenario.income.phases;
+  const lumpSum = received.filter((entry) => entry.type === 'lumpSum').reduce((sum, entry) => sum + entry.amount, 0);
+  const regular = received.filter((entry) => entry.type === 'regularPayment');
+
+  const moneyInAt = (month) => {
+    const phase = phases.length > 1 && month >= phases[0].months ? phases[1] : phases[0];
+    const takeHome = Object.entries(phase.takeHome).reduce((sum, [id, value]) => sum + (event && id === event.personId ? 0 : value), 0);
+    const paid = regular
+      .filter((entry) => (entry.afterMonths || 0) <= month && month < (entry.afterMonths || 0) + entry.months)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+    return takeHome + (phase.statePayment ? phase.statePayment.amount : 0) + paid;
+  };
+
+  const needed = event && typeof event.neededAfter === 'number' ? event.neededAfter : payload.needed;
+  // Twelfths of a euro, so every step is an integer: the month costs `gap` of them.
+  let balance = (payload.savings + lumpSum) * 12;
+  let anyShort = false;
+  for (let month = 0; month < 600; month += 1) {
+    const gap = Math.max(0, needed - moneyInAt(month));
+    if (gap > 0) {
+      anyShort = true;
+      if (balance < gap) {
+        return { exactMonths: month + balance / gap, moneyIn: moneyInAt(0), needed, anyShort };
+      }
+      balance -= gap;
+    }
+  }
+  return { exactMonths: anyShort ? Infinity : null, moneyIn: moneyInAt(0), needed, anyShort };
+}
+
+function randomIncomePayload(random, number) {
+  const int = (low, high) => low + Math.floor(random() * (high - low + 1));
+  const step = (low, high) => 500 * int(low, high);
+
+  const people = [
+    { id: 'p1', label: 'Person 1', takeHome: step(40, 160) },
+    { id: 'p2', label: 'Person 2', takeHome: step(20, 140) }
+  ];
+  const needed = step(60, 260);
+  const savings = random() < 0.1 ? 0 : step(1, 300);
+  const scenarios = [{ id: 'base' }];
+
+  const stopped = people[int(0, 1)];
+  const other = people.find((person) => person.id !== stopped.id);
+  const payment = step(10, 30);
+  const phases = [{
+    months: int(1, 24),
+    takeHome: { [stopped.id]: 0, [other.id]: step(10, 160) },
+    statePayment: { personId: stopped.id, scheme: 'stated', amount: payment },
+    householdNetIncome: 0
+  }];
+  phases[0].householdNetIncome = phases[0].takeHome[other.id] + payment;
+  if (random() < 0.8) {
+    const later = step(10, 160);
+    phases.push({ takeHome: { [stopped.id]: 0, [other.id]: later }, statePayment: null, householdNetIncome: later });
+  } else {
+    phases[0].months = undefined;
+    delete phases[0].months;
+  }
+  const scenario = {
+    id: `income-${number}`,
+    event: { type: 'cannotWork', personId: stopped.id },
+    income: { basis: 'stated', calculationYear: 2026, phases }
+  };
+  if (random() < 0.4) {
+    scenario.received = [{ type: 'regularPayment', amount: step(5, 60), months: int(1, 18), afterMonths: int(0, 12) }];
+  }
+  scenarios.push(scenario);
+
+  const survivor = people[int(0, 1)];
+  const gone = people.find((person) => person.id !== survivor.id);
+  if (random() < 0.7) {
+    const dies = {
+      id: `dies-${number}`,
+      event: { type: 'dies', personId: gone.id },
+      income: {
+        basis: 'stated',
+        calculationYear: 2026,
+        phases: [{
+          takeHome: { [gone.id]: 0, [survivor.id]: step(10, 160) },
+          statePayment: { personId: survivor.id, scheme: 'stated', amount: step(0, 30) }
+        }]
+      }
+    };
+    if (random() < 0.6) {
+      dies.received = [{ type: 'lumpSum', amount: step(10, 400) }];
+    }
+    scenarios.push(dies);
+  }
+  return { people, needed, savings, scenarios };
+}
+
+check('300 generated phased and received-money households match a month-by-month reference', () => {
+  const random = makeRandom(20261028);
+  for (let number = 1; number <= 300; number += 1) {
+    const payload = randomIncomePayload(random, number);
+    const engine = computeProtectionGapProjection(payload).debug.cases;
+    payload.scenarios.slice(1).forEach((scenario, index) => {
+      const ref = referenceByMonth(payload, scenario);
+      const got = engine[index + 1];
+      const where = `phased ${number}/${scenario.id}`;
+      assert.equal(got.moneyIn, ref.moneyIn, `${where}: money in at the start`);
+      assert.equal(got.needed, ref.needed, `${where}: needed`);
+      if (!ref.anyShort) {
+        assert.equal(got.exactMonths, null, `${where}: nothing short at any time`);
+      } else if (Number.isFinite(ref.exactMonths)) {
+        assert.ok(Math.abs(got.exactMonths - ref.exactMonths) < 1e-9, `${where}: months ${got.exactMonths} vs ${ref.exactMonths}`);
+        assert.equal(got.beyond, ref.exactMonths >= HORIZON_MONTHS, `${where}: beyond three years`);
+      } else {
+        assert.equal(got.beyond, true, `${where}: never runs out is beyond three years`);
+      }
+      assert.equal(
+        got.segments.reduce((sum, segment) => sum + segment.amount, 0),
+        ref.moneyIn,
+        `${where}: segments add up to money in`
+      );
+    });
+  }
+});
+
 check('the published sample table is reproduced', () => {
   const { debug } = computeProtectionGapProjection(PROTECTION_GAP_SAMPLE);
   assert.deepEqual(debug.cases.map((entry) => entry.moneyIn), PROTECTION_GAP_EXPECTED.moneyIn);
@@ -215,13 +344,15 @@ check('the published sample table is reproduced', () => {
 
 // The suites, run here so one command proves the engine, the screen's words and
 // geometry, the module's clock and DOM, and the wiring (paste pipeline, session
-// import and presenter catalogue). The video scene and the codex brief are proved
+// import and presenter catalogue), and the income built for each case from the
+// tax engine and the figures register. The video scene and the codex brief are proved
 // in check-video-scene.mjs and check-codex-video-brief.mjs.
 const suites = [
   ['engine', runProtectionGapTests()],
   ['view', runProtectionGapViewTests()],
   ['module', await runProtectionGapModuleTests()],
-  ['wiring', runProtectionGapWiringTests()]
+  ['wiring', runProtectionGapWiringTests()],
+  ['income (the tax engine and the figures register)', runProtectionIncomeTests()]
 ];
 suites.forEach(([name, summary]) => {
   if (summary.failed > 0) {

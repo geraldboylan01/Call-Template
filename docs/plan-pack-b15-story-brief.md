@@ -211,7 +211,7 @@ For a couple, code works out the survivor's income rather than assuming it stops
 - a DC pot not yet drawn is paid to the spouse as cash, tax-free between spouses (Revenue's death-benefit limits to be confirmed at build);
 - an ARF passes to the spouse as an ARF, keeps paying at least the required minimum each year and grows at the after-retirement rate of the version shown;
 - a DB pension pays the spouse the scheme's spouse's percentage (50% central default);
-- State payments follow the existing stated survivor contract; nothing is assumed.
+- State payments follow fixed rules, so nothing is asked: the person who died stops receiving their own State Pension, which is never passed to a partner; the survivor receives the Bereaved Partner's (Contributory) Pension at the register's rate for their age, as a central assumption that they qualify (like the Illness Benefit assumption); and where the survivor would also have their own State Pension, only the higher of the two is paid. A stated amount is still used where the person gives one, but it is never listed as missing.
 
 The story shows the survivor's yearly surplus or shortfall and how long savings would last. This is the catalogue's `death` what-if (6c) with `when` at retirement or later: an income change to the retirement-years run (6b), never a separate model. For a working couple, use the protection chapter's existing cases with the stated facts and payout treatment in section 8.
 
@@ -372,6 +372,8 @@ The profile holds no existing cover. These optional facts join the application s
 - **income protection:** the benefit, the waiting period, and the age it stops;
 - **employer sick pay:** how long at full pay and at part pay;
 - **married or in a civil partnership:** yes or no. The form already collects `household.married`; B2 carries it into the profile for joint assessment instead of adding a duplicate question.
+
+**Ask as little as possible.** A fact is asked for only when no rule, central assumption or other confirmed fact gives it. Survivor's pensions follow fixed rules (section 5) and are never asked: a DC pot or an ARF passes to the spouse, a DB pension pays the central spouse's percentage, and the State side is the Bereaved Partner's (Contributory) Pension with the one-pension rule. A State Pension is worked out from years of contributions in Ireland (as an employee or self-employed) and years caring at home, under the published contribution rules, rather than asking the person what they expect to receive. No question ever asks the person to predict a State payment.
 
 Personal cover and employer death-in-service are separate facts, never one inferred total. Each fact is stated or confirmed as none; a fact that has not been given is never treated as zero. When a what-if runs without one, its results say so in plain words, and the review section must carry it. A result that cannot be calculated is marked not shown under section 7's follow-up rule. Until B2 moves them into the profile, confirmed facts sit in the plan pack's `planningInputs` with their source revision.
 

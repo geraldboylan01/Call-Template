@@ -409,6 +409,20 @@ function normalizeProperty(value, index) {
   };
   const currentValue = normalizeMoney(value.currentValue, `${fieldName}.currentValue`, { optional: true });
   if (currentValue) property.currentValue = currentValue;
+  for (const key of ['baseCost', 'runningCostsAnnual', 'rentAnnual', 'taxOnRentalProfitAnnual']) {
+    const money = normalizeMoney(value[key], `${fieldName}.${key}`, { optional: true });
+    if (money) property[key] = money;
+  }
+  const acquired = optionalDate(value.acquisitionDate, `${fieldName}.acquisitionDate`);
+  if (acquired) property.acquisitionDate = acquired;
+  for (const [key, choices] of [['acquiredBy', ['purchase', 'gift_or_inheritance']], ['homeUse', ['never', 'part', 'throughout', 'unknown']]]) {
+    if (value[key] !== undefined) property[key] = enumValue(value[key], choices, `${fieldName}.${key}`);
+  }
+  if (value.rentalIncomeSourceIds !== undefined) property.rentalIncomeSourceIds = normalizeStringIds(value.rentalIncomeSourceIds);
+  if (value.jointEqualOwnership !== undefined) {
+    if (typeof value.jointEqualOwnership !== 'boolean') throw new Error(`${fieldName}.jointEqualOwnership must be boolean.`);
+    property.jointEqualOwnership = value.jointEqualOwnership;
+  }
   // THE CLIENT'S OWN NAME FOR IT. Dropping this left the balance sheet calling
   // everything "Home" or "rental property", which is not what they said and
   // not what they would recognise on the page.

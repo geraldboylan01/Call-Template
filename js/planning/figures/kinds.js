@@ -42,7 +42,8 @@ export const FIGURE_MODULES = Object.freeze([
   'goals_and_resources',
   'protection_gap',
   'rental_keep_or_sell',
-  'home_trade_down'
+  'home_trade_down',
+  'care_costs'
 ]);
 
 /**
@@ -76,3 +77,36 @@ export function namesAProvider(text) {
   const withoutRegulator = text.replace(/Central Bank of Ireland/gi, '');
   return PROVIDER_NAMES.find((name) => new RegExp(`(^|[^A-Za-z])${name}([^A-Za-z]|$)`, 'i').test(withoutRegulator)) ?? null;
 }
+
+/**
+ * Hosts an explainer may take its sources from: the State's own pages. These are
+ * the Department of Social Protection and gov.ie, Revenue, Citizens Information
+ * and the state money and consumer services. A host matches itself and its
+ * subdomains.
+ */
+export const OFFICIAL_SOURCE_HOSTS = Object.freeze([
+  'gov.ie',
+  'revenue.ie',
+  'citizensinformation.ie',
+  'welfare.ie',
+  'mabs.ie',
+  'ccpc.ie',
+  'centralbank.ie',
+  'hse.ie',
+  'irishstatutebook.ie',
+  'oireachtas.ie'
+]);
+
+/**
+ * Wording an explainer must not carry. An explainer is education: it says how a
+ * rule works in the "you" voice. It types no figure (the screen fills those in
+ * from the register by id), gives no advice, and speaks for nobody in the first
+ * person.
+ */
+export const EXPLAINER_BANNED_WORDING = Object.freeze([
+  Object.freeze({ name: 'a typed figure', pattern: /[0-9\u20ac\u00a3$%]|\bper ?cent\b/i }),
+  Object.freeze({ name: 'advice', pattern: /\b(should|shouldn't|ought|recommend\w*|advis\w*|best|we suggest|you need to)\b/i }),
+  Object.freeze({ name: 'a guarantee', pattern: /\b(guarantee\w*|definitely)\b/i }),
+  Object.freeze({ name: 'the first person', pattern: /\b(we|our|ours|us)\b/i }),
+  Object.freeze({ name: 'the first person', pattern: /\bI\b/ })
+]);

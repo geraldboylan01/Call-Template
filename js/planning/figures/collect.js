@@ -11,12 +11,19 @@
  * - the Irish planning rules: pension relief limits, imputed distributions
  *   (`ireland_rules.js`)
  * - social welfare rates by effective date (`social_welfare_ie.js`)
+ * - the Fair Deal rules (`care/fair_deal_rules_ie.js`)
  * - the House Purchase rules (`house_purchase/config.js`)
- * - the central Planeir assumptions (`planeir_assumptions.js`)
+ * - the central Planeir assumptions (`planeir_assumptions.js`), which include
+ *   the care costs figures: the HSE price list, relative care lengths and the
+ *   own-care stress sizes
  * - the market figures (`figures/market_ie.js`)
  *
- * A catalogue that lands later (care costs: the Fair Deal rules and the HSE
- * price list) adds a function here and its entries appear in the register.
+ * The explainers (`figures/explainers_ie.js`) are not figures: they say how the
+ * rules behind the figures work. `collectFigures` marks each figure with the
+ * explainers that cover it, and `collectExplainers` lists them.
+ *
+ * A catalogue that lands later adds a function here and its entries appear in
+ * the register.
  *
  * Two things the collector does so a quantity is listed once:
  * - A rule a later tax year carries over unchanged is the same object as the
@@ -25,6 +32,8 @@
  *   Pension view in the Irish rules) is not a second definition and is not listed.
  */
 
+import { attachExplainers, buildExplainers } from './explainers.js';
+import { EXPLAINERS, EXPLAINERS_VERSION } from './explainers_ie.js';
 import { formatFigureValue } from './format.js';
 import { FIGURE_MODULES, figureKindForStatus } from './kinds.js';
 import { MARKET_FIGURES, MARKET_FIGURES_VERSION } from './market_ie.js';
@@ -42,7 +51,8 @@ import {
   IRISH_PENSION_RELIEF_LIMITS,
   IRISH_STATE_PENSION_CONTRIBUTORY
 } from '../ireland_rules.js';
-import { SOCIAL_WELFARE_RATES_VERSION, SOCIAL_WELFARE_SERIES } from '../social_welfare_ie.js';
+import { SOCIAL_WELFARE_RATES_VERSION, SOCIAL_WELFARE_SERIES, SOCIAL_WELFARE_THRESHOLDS } from '../social_welfare_ie.js';
+import { FAIR_DEAL_RULE_BLOCKS, FAIR_DEAL_RULES_VERSION } from '../care/fair_deal_rules_ie.js';
 import {
   FHS_PRICE_CEILINGS,
   HOUSE_PURCHASE_RULES,
@@ -505,7 +515,8 @@ function collectSocialWelfare(out) {
     state_pension_contributory: ['pension_projection', 'net_retirement_cashflow'],
     bereaved_partners_contributory: ['protection_gap'],
     invalidity_pension: ['protection_gap'],
-    illness_benefit: ['protection_gap']
+    illness_benefit: ['protection_gap'],
+    state_pension_non_contributory: ['care_costs']
   };
   for (const series of SOCIAL_WELFARE_SERIES) {
     for (const row of series.rates) {
@@ -521,6 +532,51 @@ function collectSocialWelfare(out) {
         checkedOn: row.verifiedOn,
         usedBy: usedBy[series.schemeId],
         extra: { appliesTo: series.appliesTo, ...(series.aliases ? { aliases: series.aliases } : {}) }
+      });
+    }
+  }
+  for (const rule of SOCIAL_WELFARE_THRESHOLDS) {
+    add({
+      id: rule.id,
+      quantity: rule.id,
+      label: rule.label,
+      value: rule.value,
+      unit: rule.unit,
+      status: rule.status,
+      effectiveFrom: null,
+      sources: rule.sources,
+      checkedOn: rule.verifiedOn,
+      usedBy: ['pension_projection', 'net_retirement_cashflow'],
+      extra: rule.note ? { appliesTo: rule.note } : {}
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fair Deal rules
+// ---------------------------------------------------------------------------
+
+function collectFairDealRules(out) {
+  const add = entryBuilder({ id: 'ie_fair_deal_rules', version: FAIR_DEAL_RULES_VERSION }, out);
+  const seen = new Set();
+  for (const block of FAIR_DEAL_RULE_BLOCKS) {
+    for (const rule of block.rules) {
+      // A rule a later block carries over unchanged is the same object, and is
+      // listed once, for the date it first took effect.
+      if (seen.has(rule)) continue;
+      seen.add(rule);
+      add({
+        id: rule.ruleId,
+        quantity: `ie.fair_deal.${rule.name}`,
+        label: rule.label,
+        value: rule.value,
+        unit: rule.unit,
+        status: block.status,
+        // Set only where the source states a date for this rule; a dash otherwise.
+        effectiveFrom: rule.effectiveFrom,
+        sources: rule.sources,
+        checkedOn: rule.verifiedOn,
+        usedBy: ['care_costs']
       });
     }
   }
@@ -659,12 +715,17 @@ function collectPlaneirAssumptions(out) {
   const approved = approvedText(a.approvedOn);
   row('investment_growth', 'Long-term investment growth assumed, before inflation', a.investment.nominalGrowthRate, 'rate_a_year', approved, ['pension_projection']);
   row('general_inflation', 'General inflation assumed', a.inflation.generalRate, 'rate_a_year', approved, ['pension_projection', 'net_retirement_cashflow', 'college_funding', 'future_cost_fund']);
-  row('education_inflation', 'Education cost inflation assumed', a.inflation.educationRate, 'rate_a_year', approved, ['college_funding', 'future_cost_fund', 'goals_and_resources']);
+  row('education_inflation', 'Education and care cost inflation assumed', a.inflation.educationRate, 'rate_a_year', approved, ['college_funding', 'future_cost_fund', 'goals_and_resources', 'care_costs']);
   row('net_retirement_present_value_rate', 'After-tax growth used to work out the fund needed for retirement spending', a.netRetirement.presentValueRate, 'rate_a_year', approved, ['net_retirement_cashflow'], a.netRetirement.approvedOn);
   row('college_start_age', 'Age a child is assumed to start college', a.collegeFunding.startAge, 'age', approved, ['college_funding', 'goals_and_resources']);
   row('college_duration_years', 'Years of college assumed for each child', a.collegeFunding.durationYears, 'years', approved, ['college_funding', 'goals_and_resources']);
   for (const scenario of a.collegeFunding.scenarios) {
     row(`college_annual_cost.${scenario.id}`, `Yearly college cost per child in today’s money, ${scenario.title.toLowerCase()}`, scenario.annualCostTodayPerChild, 'eur_a_year', approved, ['college_funding', 'goals_and_resources']);
+  }
+  const survivor = a.survivor;
+  row('survivor_db_spouse_pension_share', 'Share of a defined benefit pension paid on to the surviving spouse', survivor.dbSpousePensionShare, 'rate', approved, ['protection_gap', 'net_retirement_cashflow'], survivor.approvedOn);
+  for (const [key, rule] of Object.entries(survivor.rules)) {
+    row(`survivor_rule.${key}`, rule.label, rule.value, 'text', approved, ['protection_gap', 'net_retirement_cashflow'], survivor.approvedOn);
   }
   const reserve = (key, who) => {
     row(`reserve_months.${key}.minimum`, `Cash reserve floor for a ${who} household, in months of spending`, a.liquidity[key].minimumBufferMonths, 'months', approved, ['liquidity_analysis', ...(key === 'working' ? ['house_purchase'] : [])]);
@@ -672,6 +733,79 @@ function collectPlaneirAssumptions(out) {
   };
   reserve('working', 'working');
   reserve('retired', 'retired');
+  const moves = a.routes.propertyMoves;
+  for (const [field, label, value, unit] of [
+    ['property_agent_fee', 'Proposed selling-agent allowance including VAT', moves.agentFeeRate, 'rate'],
+    ['property_sale_legal', 'Proposed sale legal and outlay allowance including VAT', moves.saleLegalCosts, 'eur'],
+    ['replacement_home_minimum_share', 'Proposed minimum replacement-home share of current value', moves.minimumReplacementShare, 'rate'],
+    ['replacement_home_maximum_share', 'Proposed maximum replacement-home share of current value', moves.maximumReplacementShare, 'rate'],
+    ['property_move_horizon', 'Maximum years ahead in the proposed property-move search', moves.maximumYearsAhead, 'years']
+  ]) add({ id: `planeir.assumption.${field}`, quantity: `planeir.assumption.${field}`, label, value, unit,
+    status: moves.approvalStatus, kind: 'planeir_assumption', sources: [PLANEIR_SOURCE(moves.basis), ...moves.sources],
+    checkedOn: moves.checkedOn, usedBy: ['plan_pack', 'home_trade_down', 'rental_keep_or_sell'], extra: { basis: moves.basis } });
+
+  collectCareAssumptions(add, a, approved, row);
+}
+
+/**
+ * The care costs figures in the central assumptions: the HSE price list the fee
+ * defaults come from, the relative care lengths and the own-care stress sizes.
+ * The fee growth rate is the education rate above and is not listed twice.
+ */
+function collectCareAssumptions(add, assumptions, approved, row) {
+  const { care } = assumptions;
+  const prices = care.agreedPrices;
+  const hseSources = [{ title: prices.source, url: prices.url }];
+  const hseRow = (field, label, value, unit) => add({
+    id: `planeir.assumption.care.agreed_prices.${field}`,
+    quantity: `planeir.assumption.care.agreed_prices.${field}`,
+    label,
+    value,
+    unit,
+    status: 'approved',
+    kind: 'planeir_assumption',
+    effectiveFrom: prices.listDate,
+    sources: hseSources,
+    checkedOn: prices.checkedOn,
+    usedBy: ['care_costs']
+  });
+  hseRow('list_number', 'Number of the HSE list of maximum agreed nursing home prices that the care fees come from', prices.listNumber, 'count');
+  hseRow('list_date', 'Date of that HSE list of maximum agreed nursing home prices', prices.listDate, 'date');
+  hseRow('homes_in_list', 'Homes with a price in that HSE list', prices.homesInList, 'count');
+  hseRow('national_weekly_average', 'Average weekly nursing home fee across the list, a simple average of each home’s price', prices.nationalWeeklyAverage, 'eur_a_week');
+  hseRow('lowest_weekly', 'Lowest weekly nursing home fee in the list', prices.lowestWeekly, 'eur_a_week');
+  hseRow('highest_weekly', 'Highest weekly nursing home fee in the list', prices.highestWeekly, 'eur_a_week');
+  for (const [county, entry] of Object.entries(prices.countyWeeklyAverages)) {
+    hseRow(
+      `county.${county.toLowerCase()}.average`,
+      `Average weekly nursing home fee in Co. ${county}, a simple average of each home’s price in the list`,
+      entry.average,
+      'eur_a_week'
+    );
+  }
+
+  row('care.relative_care.default_years', 'Years of care shown for a relative by default', care.relativeCare.defaultYears, 'years', approved, ['care_costs']);
+  row('care.relative_care.compare_years', 'Other lengths of care shown beside the default, in years', care.relativeCare.compareYears.join(', '), 'text', approved, ['care_costs']);
+
+  const stressSource = [{
+    title: `Planeir care stress-test assumption, approved ${dateShown(care.ownCareStress.approvedOn)}, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)`,
+    url: null
+  }];
+  const stressRow = (field, label, value, unit) => add({
+    id: `planeir.assumption.care.own_care_stress.${field}`,
+    quantity: `planeir.assumption.care.own_care_stress.${field}`,
+    label,
+    value,
+    unit,
+    status: 'approved',
+    kind: 'planeir_assumption',
+    effectiveFrom: null,
+    sources: stressSource,
+    checkedOn: care.ownCareStress.approvedOn,
+    usedBy: ['care_costs', 'plan_pack']
+  });
+  stressRow('start_age', 'Age at which the own-care stress test starts', care.ownCareStress.startAge, 'age');
+  stressRow('years', 'Years of care in the own-care stress test', care.ownCareStress.years, 'years');
 }
 
 // ---------------------------------------------------------------------------
@@ -714,6 +848,7 @@ export function collectFigures() {
   collectTaxRules(out);
   collectIrelandRules(out);
   collectSocialWelfare(out);
+  collectFairDealRules(out);
   collectHousePurchase(out);
   collectPlaneirAssumptions(out);
   collectMarket(out);
@@ -721,5 +856,14 @@ export function collectFigures() {
   if (unknown.length > 0) {
     throw new Error(`Figures name modules the register does not know: ${[...new Set(unknown)].join(', ')}.`);
   }
-  return out;
+  return attachExplainers(out, EXPLAINERS);
+}
+
+/**
+ * The explainers, each with the figures it covers. A figure carries the ids of
+ * the explainers that cover it (`explainers`, added by `collectFigures`), so a
+ * figure can name its explainer without a second list to keep in step.
+ */
+export function collectExplainers(figures = collectFigures()) {
+  return buildExplainers(EXPLAINERS, figures, EXPLAINERS_VERSION);
 }

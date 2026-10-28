@@ -26,6 +26,7 @@
     <div id="mount"></div>
     <script type="module">
       import { buildProtectionGapModule } from '../js/protection_gap_module.js';
+      import { buildProtectionIncomeCases } from '../js/planning/protection_income.js';
 
       const params = new URLSearchParams(location.search);
       const preset = params.get('preset') || 'sample';
@@ -142,6 +143,52 @@
           scenarios: [
             { id: 'base' },
             { id: 'a-stops', event: { type: 'cannotWork', personId: 'a', statePayment: 15000 } }
+          ]
+        },
+        // Built from the tax engine and the figures register: Illness Benefit for a year, then none, a joint assessment shared between two.
+        illness: (() => {
+          const built = buildProtectionIncomeCases({
+            year: 2026,
+            taxStatus: 'married_or_civil_partners',
+            people: [
+              { id: 'niamh', label: 'Niamh', age: 45, employment: 'employee' },
+              { id: 'dara', label: 'Dara', age: 45, employment: 'employee' }
+            ],
+            income: [
+              { personId: 'niamh', type: 'employment', amount: 75000 },
+              { personId: 'dara', type: 'employment', amount: 40000 }
+            ]
+          }, [
+            { kind: 'incomeStops', personId: 'niamh' },
+            { kind: 'incomeStops', personId: 'dara' },
+            { kind: 'death', personId: 'niamh' }
+          ]);
+          return {
+            householdLabel: 'Niamh and Dara, both 45',
+            people: [
+              { id: 'niamh', label: 'Niamh', takeHome: Math.round(built.today.takeHome.niamh) },
+              { id: 'dara', label: 'Dara', takeHome: Math.round(built.today.takeHome.dara) }
+            ],
+            needed: 70000,
+            savings: 30000,
+            scenarios: [{ id: 'today' }, ...built.cases.map((entry) => entry.scenario)]
+          };
+        })(),
+        // Money the client has told us about: a lump sum on a death, and a payment for six months.
+        received: {
+          ...sample,
+          scenarios: [
+            { id: 'today' },
+            {
+              id: 'niamh-died',
+              event: { type: 'dies', personId: 'niamh', survivorsPension: 13500, neededAfter: 60000, neededBecause: ['mortgageCleared'] },
+              received: [{ type: 'lumpSum', amount: 100000 }]
+            },
+            {
+              id: 'dara-cannot-work',
+              event: { type: 'cannotWork', personId: 'dara', statePayment: 13000 },
+              received: [{ type: 'regularPayment', amount: 24000, months: 6 }]
+            }
           ]
         },
         // Two cases only: two buttons, not four.

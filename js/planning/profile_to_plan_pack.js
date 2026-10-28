@@ -16,7 +16,7 @@ const RETIREMENT = ['retire', 'retire_early', 'improve_pension'];
 const ready = result => ['ready', 'ready_with_assumptions'].includes(result.status);
 
 /**
- * Pure asynchronous assembly/preflight; no clock, I/O, analyst or route changes.
+ * Pure asynchronous assembly/preflight; no clock, I/O or analyst calls.
  * Returns {planPack, compileOptions, missingFacts, omittedChapters, provenance}.
  * planPack alone is the strict v1 wire object. It is null when confirmation/date
  * is invalid or no chapter can run. Compile with the returned compileOptions.
@@ -24,8 +24,11 @@ const ready = result => ['ready', 'ready_with_assumptions'].includes(result.stat
  * Optional reviewed transition facts live at assumptions.values.planPack:
  * {planningInputs, goalFlexibility}. They use the existing strict pack contract;
  * this function never manufactures those facts from prose or account labels.
+ * Supplying routes (including []) selects full B1 for current and alternatives,
+ * and also returns compilation/routeRefusals. Omitting routes retains #102's
+ * current-resource summary without claiming that goal funding was priced.
  */
-export async function profileToPlanPack(rawProfile, { confirmedRevision, calculationDate, clientLabel } = {}) {
+export async function profileToPlanPack(rawProfile, { confirmedRevision, calculationDate, clientLabel, routes } = {}) {
   const household = normalizeHouseholdProfile(rawProfile);
   const application = household.assumptions.values.application;
   const fromForm = application?.schema === APPLICATION_SCHEMA && application.snapshotBound === true;
@@ -35,7 +38,9 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
   }));
   const omittedChapters = [];
   const provenance = {};
-  const compileOptions = { resourceLedger: true, currentPositionOnly: true };
+  const fullLedger = routes !== undefined;
+  const compileOptions = fullLedger ? { resourceLedger: true } : { resourceLedger: true, currentPositionOnly: true };
+  const nativePreflightOptions = { resourceLedger: true, currentPositionOnly: true };
   const gap = (fieldPath, reason, chapter, code = 'missing_information', kind = 'household_fact') => {
     if (reason.startsWith(fieldPath + ': ')) reason = reason.slice(fieldPath.length + 2);
     const item = { factId: code, fieldPath, reason, kind, importance: 'required', blockingModuleIds: chapter ? [chapter] : [] };
@@ -53,6 +58,10 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
     || (fromForm ? application.revision !== confirmedRevision : household.revision !== confirmedRevision)
     || (application && !fromForm)) {
     return stop('Use the confirmed profile and its matching saved revision; an edited, unbound or mismatched snapshot cannot become a plan.', '/confirmedRevision', 'confirmation_binding');
+  }
+  if (fullLedger && (!Array.isArray(routes) || routes.length > 3 || routes.some(route => route?.id === 'current'))) {
+    return { ...stop('Supply at most three alternatives; current is added by code.', '/routes'),
+      routeRefusals: [{ path: '/routes', code: 'invalid_input', message: 'Supply at most three alternatives; current is added by code.' }] };
   }
   let date;
   try { date = assertIsoDate(calculationDate ?? household.confirmedAt.slice(0, 10), 'calculationDate'); }
@@ -177,8 +186,10 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
     return [];
   }), ['/goals', '/liabilities'], 'unique_matching_debt_or_only_household_person; no_joint_person_selection');
   planningInputs.chapterGoals ??= {};
-  for (const chapter of ['pension_projection', 'net_retirement_cashflow', 'college_funding']) {
-    const matching = goals.filter(goal => (chapter === 'college_funding' ? ['fund_education'] : RETIREMENT).includes(goal.type));
+  for (const chapter of ['pension_projection', 'net_retirement_cashflow', 'college_funding', 'future_cost_fund']) {
+    const matching = goals.filter(goal => chapter === 'future_cost_fund'
+      ? planningInputs.goalFundingFacts?.some(fact => fact.goalId === goal.goalId && fact.kind === 'dated_cost')
+      : (chapter === 'college_funding' ? ['fund_education'] : RETIREMENT).includes(goal.type));
     if (matching.length === 1 && !planningInputs.chapterGoals[chapter]) planningInputs.chapterGoals[chapter] = matching[0].goalId;
   }
   provenance['/planningInputs/chapterGoals'] ??= { profilePaths: ['/goals'], confirmedRevision, basis: 'unique_relevant_goal_only' };
@@ -205,12 +216,16 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
   };
   const omit = (chapter, reasons) => omittedChapters.push({ chapter, reasons });
   for (const chapter of CHAPTERS) {
-    if (['protection_gap', 'future_cost_fund', 'goals_and_resources'].includes(chapter)) {
-      const reason = chapter === 'protection_gap'
-        ? 'The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.'
-        : chapter === 'future_cost_fund' ? 'The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.'
-          : 'B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.';
+    if (chapter === 'goals_and_resources') {
+      const reason = 'B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.';
       omit(chapter, [gap(`/chapters/${chapter}`, reason, chapter, 'requires_profile_adapter', 'implementation')]);
+      continue;
+    }
+    if (chapter === 'future_cost_fund' && !planningInputs.chapterGoals[chapter]) {
+      const candidates = goals.filter(goal => goal.type === 'assess_decision');
+      omit(chapter, candidates.length ? [gap('/planningInputs/chapterGoals/future_cost_fund',
+        'Select one dated cost and establish its amount, date, duration, funding and payers.', chapter)]
+        : [{ fieldPath: '/household/goals', reason: 'No dated cost is recorded for the future-cost-fund chapter.', code: 'not_relevant' }]);
       continue;
     }
     if (['pension_projection', 'net_retirement_cashflow', 'college_funding'].includes(chapter)
@@ -244,7 +259,12 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
         continue;
       }
     }
-    const trial = await compilePlanPack({ ...pack, chapters: [chapter] }, compileOptions);
+    // Dated costs need each payer's bank pay and retirement timeline. Use the
+    // same cash-flow builder already admitted above, rather than splitting the
+    // form's aggregate take-home or refusing calculable per-person pay.
+    const trialChapters = chapter === 'future_cost_fund' && pack.chapters.includes('household_cash_flow')
+      ? ['household_cash_flow', chapter] : [chapter];
+    const trial = await compilePlanPack({ ...pack, chapters: trialChapters }, nativePreflightOptions);
     if (trial.status === 'compiled') pack.chapters.push(chapter);
     else omit(chapter, trial.diagnostics.map(item => gap(item.path, item.message, chapter, item.code,
       item.code.startsWith('requires_') ? 'implementation' : 'household_fact')));
@@ -252,6 +272,26 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
   if (!pack.chapters.includes('household_cash_flow') && planningInputs.leftOverEachYear === undefined) gap('/planningInputs/leftOverEachYear',
     'Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount.', null);
   let planPack = null;
+  if (pack.chapters.length && fullLedger) {
+    pack.routes.push(...cloneJson(routes));
+    let compilation;
+    // Remove only chapters lacking an exact B1 route adapter. Missing ledger
+    // facts and refused routes stay visible; never fall back to B0 pricing.
+    for (let attempt = 0; attempt <= CHAPTERS.length; attempt++) {
+      compilation = await compilePlanPack(pack, compileOptions);
+      const blocked = [...new Set(compilation.diagnostics.filter(row => row.chapter && row.code === 'requires_profile_adapter').map(row => row.chapter))];
+      if (!blocked.length) break;
+      for (const chapter of blocked) {
+        omit(chapter, compilation.diagnostics.filter(row => row.chapter === chapter).map(row => gap(row.path, row.message, chapter, row.code, 'implementation')));
+        pack.chapters = pack.chapters.filter(id => id !== chapter);
+      }
+      if (!pack.chapters.length) break;
+    }
+    try { if (pack.chapters.length) planPack = normalizePlanPack(pack); }
+    catch (error) { gap(error.path ?? '/routes', error.message, null, error.code ?? 'invalid_input'); }
+    for (const error of compilation.diagnostics) gap(error.path, error.message, error.chapter, error.code, error.code.startsWith('requires_') ? 'implementation' : 'household_fact');
+    return { planPack, compileOptions, missingFacts, omittedChapters, provenance, compilation, routeRefusals: compilation.diagnostics };
+  }
   if (pack.chapters.length) planPack = normalizePlanPack(pack);
   return { planPack, compileOptions, missingFacts, omittedChapters, provenance };
 }

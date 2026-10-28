@@ -282,10 +282,10 @@ check('care fee growth is the education rate, with no separate care rate', () =>
 
 check('the agreed prices are the HSE list, with every county and a national average', () => {
   const prices = CARE.agreedPrices;
-  assert.equal(prices.listNumber, 230);
-  assert.equal(prices.listDate, '2026-09-04');
-  assert.equal(prices.nationalWeeklyAverage, 1312);
-  assert.equal(prices.checkedOn, '2026-10-21');
+  assert.equal(prices.listNumber, 231);
+  assert.equal(prices.listDate, '2026-10-14');
+  assert.equal(prices.nationalWeeklyAverage, 1315);
+  assert.equal(prices.checkedOn, '2026-10-27');
   const counties = Object.entries(prices.countyWeeklyAverages);
   assert.equal(counties.length, 26);
   assert.equal(counties.reduce((total, [, county]) => total + county.homes, 0), prices.homesInList);
@@ -298,8 +298,8 @@ check('the agreed prices are the HSE list, with every county and a national aver
   const weighted = counties.reduce((total, [, county]) => total + (county.homes * county.average), 0) / prices.homesInList;
   assert.ok(Math.abs(weighted - prices.nationalWeeklyAverage) < 1, `county averages weigh to ${weighted.toFixed(2)}`);
   const record = assumptionRecord('careWeeklyFee');
-  assert.equal(record.value, 1312);
-  assert.match(record.reason, /list 230/);
+  assert.equal(record.value, 1315);
+  assert.match(record.reason, /list 231/);
   assert.match(record.reason, new RegExp(PLANEIR_ASSUMPTIONS_VERSION));
 });
 

@@ -325,8 +325,10 @@ jobs:
           npm run check:consumer
           npm run check:house-purchase
           npm run check:future-cost-fund
+          npm run check:care-costs
           npm run check:household-cash-flow
           npm run check:protection-gap
+          npm run check:state-pension-estimate
           npm run check:rental-keep-or-sell
           npm run check:home-trade-down
           npm run check:module-media

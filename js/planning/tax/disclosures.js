@@ -219,6 +219,22 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
       + 'so they are relieved at the highest rate of tax paid. USC and PRSI are not reduced, and the HSE’s share gets no relief.'
     )
   },
+  IT_ILLNESS_BENEFIT: {
+    kind: 'applied',
+    label: 'Illness Benefit',
+    render: () => (
+      'Illness Benefit is taxed as the recipient’s own income, with no USC or PRSI. '
+      + 'It earns their Employee Tax Credit and counts towards a couple’s extra standard rate band.'
+    )
+  },
+  IT_BEREAVED_PARTNER_PENSION: {
+    kind: 'applied',
+    label: 'Bereaved Partner’s Pension',
+    render: () => (
+      'The Bereaved Partner’s (Contributory) Pension is taxed as the recipient’s own income, with no USC or PRSI. '
+      + 'It earns their Employee Tax Credit.'
+    )
+  },
   PRSI_UNTIL_SPC: {
     kind: 'applied',
     label: 'PRSI',

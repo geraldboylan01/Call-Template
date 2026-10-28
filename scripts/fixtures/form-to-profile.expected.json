@@ -123,7 +123,7 @@
           "application": {
             "schema": "planeir.application.v1",
             "version": 1,
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "snapshotBound": true,
             "revision": 7,
             "unsurePaths": [],
@@ -184,7 +184,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -200,7 +200,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -216,7 +216,7 @@
             "paths": [
               "topics.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -233,7 +233,7 @@
             "paths": [
               "topics.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -250,7 +250,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -266,7 +266,7 @@
             "paths": [
               "none.2"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -282,7 +282,7 @@
             "paths": [
               "none.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -298,7 +298,7 @@
             "paths": [
               "none.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -314,7 +314,7 @@
             "paths": [
               "household.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -331,7 +331,7 @@
               "income.gross",
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -348,7 +348,7 @@
             "paths": [
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -364,7 +364,7 @@
             "paths": [
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -380,7 +380,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -396,7 +396,7 @@
             "paths": [
               "spending.spend"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -412,7 +412,7 @@
             "paths": [
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -429,7 +429,7 @@
               "savings.cash",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -446,7 +446,7 @@
             "paths": [
               "savings.cash"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -463,7 +463,7 @@
               "savings.investments",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -480,7 +480,7 @@
             "paths": [
               "savings.investments"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -497,7 +497,7 @@
               "savings.employerShares",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -514,7 +514,7 @@
             "paths": [
               "savings.employerShares"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -530,7 +530,7 @@
             "paths": [
               "retirement.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -546,7 +546,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
           }
@@ -563,7 +563,7 @@
             "paths": [
               "retirement.income"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -579,7 +579,7 @@
             "paths": [
               "retirement.statePension"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The applicant expects the full State Pension: fraction 1. This says nothing about the partner."
           }
@@ -596,7 +596,7 @@
             "paths": [
               "spending.saved"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -612,7 +612,7 @@
             "paths": [
               "creditCard.clears"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -630,7 +630,7 @@
               "home.status",
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -660,12 +660,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -708,14 +702,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -924,7 +910,7 @@
           "application": {
             "schema": "planeir.application.v1",
             "version": 1,
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "snapshotBound": true,
             "revision": 7,
             "unsurePaths": [],
@@ -1042,7 +1028,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The form explicitly includes a separate partner."
           }
@@ -1059,7 +1045,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1075,7 +1061,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1091,7 +1077,7 @@
             "paths": [
               "household.married"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1107,7 +1093,7 @@
             "paths": [
               "topics.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1124,7 +1110,7 @@
             "paths": [
               "topics.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1141,7 +1127,7 @@
             "paths": [
               "topics.2"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1158,7 +1144,7 @@
             "paths": [
               "topics.3"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1175,7 +1161,7 @@
             "paths": [
               "none.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1191,7 +1177,7 @@
             "paths": [
               "none.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1207,7 +1193,7 @@
             "paths": [
               "children.0.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1224,7 +1210,7 @@
             "paths": [
               "children.1.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1242,7 +1228,7 @@
               "pensions.0.owner",
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1260,7 +1246,7 @@
               "pensions.1.owner",
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1278,7 +1264,7 @@
               "home.status",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1296,7 +1282,7 @@
               "home.status",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1313,7 +1299,7 @@
             "paths": [
               "household.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1329,7 +1315,7 @@
             "paths": [
               "household.partnerAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1345,7 +1331,7 @@
             "paths": [
               "children.0.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1361,7 +1347,7 @@
             "paths": [
               "children.1.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1378,7 +1364,7 @@
               "income.gross",
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1395,7 +1381,7 @@
             "paths": [
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1412,7 +1398,7 @@
               "income.partnerGross",
               "income.partnerWork"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1429,7 +1415,7 @@
             "paths": [
               "income.partnerGross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1445,7 +1431,7 @@
             "paths": [
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1461,7 +1447,7 @@
             "paths": [
               "income.partnerWork"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1477,7 +1463,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1493,7 +1479,7 @@
             "paths": [
               "spending.spend"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1509,7 +1495,7 @@
             "paths": [
               "home.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1525,7 +1511,7 @@
             "paths": [
               "mortgage.balance"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1541,7 +1527,7 @@
             "paths": [
               "mortgage.rate"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form percentage / 100; even rates below 1 are percentages."
           }
@@ -1558,7 +1544,7 @@
             "paths": [
               "mortgage.yearsLeft"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Remaining years × 12, rounded to the nearest whole month."
           }
@@ -1575,7 +1561,7 @@
             "paths": [
               "mortgage.repayment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1592,7 +1578,7 @@
               "savings.cash",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1609,7 +1595,7 @@
             "paths": [
               "savings.cash"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1626,7 +1612,7 @@
               "savings.investments",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1643,7 +1629,7 @@
             "paths": [
               "savings.investments"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1660,7 +1646,7 @@
               "savings.employerShares",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -1677,7 +1663,7 @@
             "paths": [
               "savings.employerShares"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1693,7 +1679,7 @@
             "paths": [
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type company mapped to canonical type occupational."
           }
@@ -1710,7 +1696,7 @@
             "paths": [
               "pensions.0.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1727,7 +1713,7 @@
               "pensions.0.youPay",
               "pensions.0.youPayUnit"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Explicit percentage contribution / 100."
           }
@@ -1745,7 +1731,7 @@
               "pensions.0.employerPays",
               "pensions.0.employerPaysUnit"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Explicit percentage contribution / 100."
           }
@@ -1762,7 +1748,7 @@
             "paths": [
               "pensions.0.contributing"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1778,7 +1764,7 @@
             "paths": [
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type prsa mapped to canonical type prsa."
           }
@@ -1795,7 +1781,7 @@
             "paths": [
               "pensions.1.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1813,7 +1799,7 @@
               "pensions.1.youPayUnit",
               "income.partnerGross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Monthly contribution × 12 / this pension owner’s gross annual pay."
           }
@@ -1831,7 +1817,7 @@
               "pensions.1.employerPays",
               "pensions.1.employerPaysUnit"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Explicit percentage contribution / 100."
           }
@@ -1848,7 +1834,7 @@
             "paths": [
               "pensions.1.contributing"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1864,7 +1850,7 @@
             "paths": [
               "retirement.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1880,7 +1866,7 @@
             "paths": [
               "retirement.partnerAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1896,7 +1882,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
           }
@@ -1913,7 +1899,7 @@
             "paths": [
               "retirement.income"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1929,7 +1915,7 @@
             "paths": [
               "retirement.statePension"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The applicant expects the full State Pension: fraction 1. This says nothing about the partner."
           }
@@ -1946,7 +1932,7 @@
             "paths": [
               "spending.saved"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1962,7 +1948,7 @@
             "paths": [
               "mortgage.repayment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -1979,7 +1965,7 @@
               "mortgage.overpaying",
               "mortgage.overpayment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stated monthly extra mortgage payment × 12."
           }
@@ -1996,7 +1982,7 @@
             "paths": [
               "children.0.collegePlan"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2012,7 +1998,7 @@
             "paths": [
               "children.1.collegePlan"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2028,7 +2014,7 @@
             "paths": [
               "home.status"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The mortgage section describes this home’s mortgage."
           }
@@ -2045,7 +2031,7 @@
             "paths": [
               "creditCard.clears"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2064,7 +2050,7 @@
               "mortgage.repayment",
               "mortgage.overpayment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -2118,18 +2104,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -2212,22 +2186,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -2407,7 +2365,7 @@
           "application": {
             "schema": "planeir.application.v1",
             "version": 1,
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "snapshotBound": true,
             "revision": 7,
             "unsurePaths": [],
@@ -2478,7 +2436,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The form explicitly includes a separate partner."
           }
@@ -2495,7 +2453,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2511,7 +2469,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2527,7 +2485,7 @@
             "paths": [
               "household.married"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2543,7 +2501,7 @@
             "paths": [
               "topics.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2560,7 +2518,7 @@
             "paths": [
               "topics.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2577,7 +2535,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2593,7 +2551,7 @@
             "paths": [
               "none.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2609,7 +2567,7 @@
             "paths": [
               "none.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2626,7 +2584,7 @@
               "pensions.0.owner",
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2644,7 +2602,7 @@
               "pensions.1.owner",
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2662,7 +2620,7 @@
               "pensions.2.owner",
               "pensions.2.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2680,7 +2638,7 @@
               "home.status",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2697,7 +2655,7 @@
             "paths": [
               "household.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2713,7 +2671,7 @@
             "paths": [
               "household.partnerAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2730,7 +2688,7 @@
               "income.gross",
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2747,7 +2705,7 @@
             "paths": [
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2764,7 +2722,7 @@
               "income.partnerGross",
               "income.partnerWork"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2781,7 +2739,7 @@
             "paths": [
               "income.partnerGross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2797,7 +2755,7 @@
             "paths": [
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2813,7 +2771,7 @@
             "paths": [
               "income.partnerWork"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2829,7 +2787,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2845,7 +2803,7 @@
             "paths": [
               "spending.spend"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2861,7 +2819,7 @@
             "paths": [
               "home.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2878,7 +2836,7 @@
               "savings.cash",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2895,7 +2853,7 @@
             "paths": [
               "savings.cash"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2912,7 +2870,7 @@
               "savings.investments",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2929,7 +2887,7 @@
             "paths": [
               "savings.investments"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2946,7 +2904,7 @@
               "savings.employerShares",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2963,7 +2921,7 @@
             "paths": [
               "savings.employerShares"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2979,7 +2937,7 @@
             "paths": [
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type company mapped to canonical type occupational."
           }
@@ -2996,7 +2954,7 @@
             "paths": [
               "pensions.0.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3014,7 +2972,7 @@
               "pensions.0.youPayUnit",
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Monthly contribution × 12 / this pension owner’s gross annual pay."
           }
@@ -3032,7 +2990,7 @@
               "pensions.0.employerPays",
               "pensions.0.employerPaysUnit"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Explicit percentage contribution / 100."
           }
@@ -3049,7 +3007,7 @@
             "paths": [
               "pensions.0.contributing"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3065,7 +3023,7 @@
             "paths": [
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type public mapped to canonical type defined_benefit."
           }
@@ -3082,7 +3040,7 @@
             "paths": [
               "pensions.1.dbPension"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3098,7 +3056,7 @@
             "paths": [
               "pensions.1.dbLumpSum"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3114,7 +3072,7 @@
             "paths": [
               "pensions.1.dbAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3130,7 +3088,7 @@
             "paths": [
               "pensions.2.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type bond mapped to canonical type buyout_bond."
           }
@@ -3147,7 +3105,7 @@
             "paths": [
               "pensions.2.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3163,7 +3121,7 @@
             "paths": [
               "retirement.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3179,7 +3137,7 @@
             "paths": [
               "retirement.partnerAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3195,7 +3153,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
           }
@@ -3212,7 +3170,7 @@
             "paths": [
               "retirement.income"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3228,7 +3186,7 @@
             "paths": [
               "spending.saved"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3244,7 +3202,7 @@
             "paths": [
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The existing pension contract excludes contributions to defined-benefit pensions and buy-out bonds."
           }
@@ -3261,7 +3219,7 @@
             "paths": [
               "pensions.2.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The existing pension contract excludes contributions to defined-benefit pensions and buy-out bonds."
           }
@@ -3278,7 +3236,7 @@
             "paths": [
               "creditCard.clears"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3295,7 +3253,7 @@
               "spending.spend",
               "home.status"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -3331,18 +3289,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -3401,22 +3347,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -3586,7 +3516,7 @@
           "application": {
             "schema": "planeir.application.v1",
             "version": 1,
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "snapshotBound": true,
             "revision": 7,
             "unsurePaths": [],
@@ -3639,7 +3569,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3655,7 +3585,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3671,7 +3601,7 @@
             "paths": [
               "topics.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3688,7 +3618,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3704,7 +3634,7 @@
             "paths": [
               "none.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3720,7 +3650,7 @@
             "paths": [
               "none.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3737,7 +3667,7 @@
               "loans.0.type",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3755,7 +3685,7 @@
               "loans.1.type",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3772,7 +3702,7 @@
             "paths": [
               "household.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3789,7 +3719,7 @@
               "income.gross",
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3806,7 +3736,7 @@
             "paths": [
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3822,7 +3752,7 @@
             "paths": [
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3838,7 +3768,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3854,7 +3784,7 @@
             "paths": [
               "spending.spend"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3870,7 +3800,7 @@
             "paths": [
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3887,7 +3817,7 @@
               "savings.cash",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3904,7 +3834,7 @@
             "paths": [
               "savings.cash"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3921,7 +3851,7 @@
               "savings.investments",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3938,7 +3868,7 @@
             "paths": [
               "savings.investments"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3955,7 +3885,7 @@
               "savings.employerShares",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -3972,7 +3902,7 @@
             "paths": [
               "savings.employerShares"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3988,7 +3918,7 @@
             "paths": [
               "loans.0.balance"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4004,7 +3934,7 @@
             "paths": [
               "loans.0.rate"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form percentage / 100; even rates below 1 are percentages."
           }
@@ -4021,7 +3951,7 @@
             "paths": [
               "loans.0.yearsLeft"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Remaining years × 12, rounded to the nearest whole month."
           }
@@ -4038,7 +3968,7 @@
             "paths": [
               "loans.0.payment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4054,7 +3984,7 @@
             "paths": [
               "loans.1.balance"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4070,7 +4000,7 @@
             "paths": [
               "loans.1.rate"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form percentage / 100; even rates below 1 are percentages."
           }
@@ -4087,7 +4017,7 @@
             "paths": [
               "loans.1.yearsLeft"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Remaining years × 12, rounded to the nearest whole month."
           }
@@ -4104,7 +4034,7 @@
             "paths": [
               "loans.1.payment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4120,7 +4050,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
           }
@@ -4137,7 +4067,7 @@
             "paths": [
               "spending.saved"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4153,7 +4083,7 @@
             "paths": [
               "loans.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4169,7 +4099,7 @@
             "paths": [
               "loans.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4186,7 +4116,7 @@
               "creditCard.clears",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4203,7 +4133,7 @@
             "paths": [
               "creditCard.balance"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4221,7 +4151,7 @@
               "home.status",
               "home.rent"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -4287,12 +4217,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -4384,14 +4308,6 @@
         "kind": "household_fact",
         "importance": "recommended",
         "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
       }
     ]
   },
@@ -4471,7 +4387,7 @@
           "application": {
             "schema": "planeir.application.v1",
             "version": 1,
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "snapshotBound": true,
             "revision": 7,
             "unsurePaths": [
@@ -4533,7 +4449,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The form explicitly includes a separate partner."
           }
@@ -4550,7 +4466,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4566,7 +4482,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4582,7 +4498,7 @@
             "paths": [
               "topics.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4599,7 +4515,7 @@
             "paths": [
               "children.0.collegePlan"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4617,7 +4533,7 @@
               "pensions.0.owner",
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4635,7 +4551,7 @@
               "home.status",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4653,7 +4569,7 @@
               "home.status",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4670,7 +4586,7 @@
             "paths": [
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type unsure mapped to canonical type other."
           }
@@ -4687,7 +4603,7 @@
             "paths": [
               "pensions.0.contributing"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -4703,7 +4619,7 @@
             "paths": [
               "home.status"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The mortgage section describes this home’s mortgage."
           }
@@ -4721,7 +4637,7 @@
               "creditCard.clears",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -4742,7 +4658,7 @@
         },
         {
           "fieldPath": "/primaryPerson/employmentStatus",
-          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -4778,7 +4694,7 @@
         },
         {
           "fieldPath": "/partner/employmentStatus",
-          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -4931,18 +4847,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -4978,7 +4882,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/primaryPerson/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -5026,7 +4930,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/partner/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -5229,22 +5133,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]

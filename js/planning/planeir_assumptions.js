@@ -15,7 +15,7 @@
 
 import { marketFigure, marketFigureValue } from './figures/market_math.js';
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.6.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.8.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-21';
 
 const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
@@ -23,6 +23,31 @@ const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
   version: PLANEIR_ASSUMPTIONS_VERSION,
   approvedOn: PLANEIR_ASSUMPTIONS_APPROVED_ON,
+
+  routes: Object.freeze({
+    propertyMoves: Object.freeze({
+      approvalStatus: 'proposed', checkedOn: '2026-10-28',
+      agentFeeRate: 0.01845,
+      saleLegalCosts: 2500,
+      minimumReplacementShare: 0.5, maximumReplacementShare: 0.95,
+      maximumYearsAhead: 20,
+      basis: 'Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.',
+      sources: Object.freeze([
+        Object.freeze({ title: 'Published estate-agent commission example', url: 'https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/' }),
+        Object.freeze({ title: 'CCPC: selling a home, variable solicitor fees and outlays', url: 'https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/' })
+      ])
+    }),
+    defaultCashAmount: 'remaining',
+    clearOutgoingPaidFrom: 'savings',
+    majorWorkingLongerYears: 2,
+    workingLongerBasis: 'The analyst architecture classifies working more than two additional years as a major move.',
+    spendLess: Object.freeze({
+      ordinaryFractionOfAnnualSpending: 0.10,
+      approvalStatus: 'proposed',
+      proposedOn: '2026-10-28',
+      basis: 'Proposed editorial boundary for review: a reduction of up to one tenth of stated annual regular spending is labelled ordinary; a larger reduction is labelled major to expose the greater lifestyle change. This is a classification, not evidence that a cut is feasible or accepted. The stated essential-spending floor always applies.'
+    })
+  }),
 
   investment: Object.freeze({
     /** Nominal, before inflation. */
@@ -59,6 +84,43 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
     disclosure: 'This is a planning assumption, not a guaranteed return. It is held separately from the long-term growth assumption used for pension pots.'
   }),
 
+  /**
+   * What a death does to the money a household has: the protection gap's death
+   * case now, and the retirement-years run later. These are fixed rules, not
+   * questions: the household is never asked for any of them. A survivor's share a
+   * person volunteers for their own scheme is used instead of the central one.
+   * Approved 28 October 2026.
+   */
+  survivor: Object.freeze({
+    approvedOn: '2026-10-28',
+    /** The share of a defined benefit pension that is paid on to the spouse. */
+    dbSpousePensionShare: 0.5,
+    rules: Object.freeze({
+      qualifies: Object.freeze({
+        label: 'Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension',
+        value: 'Assumed to qualify, at the standard personal rate for their age band'
+      }),
+      diedStops: Object.freeze({
+        label: 'The person who died: their pay, pensions and State Pension',
+        value: 'They stop'
+      }),
+      statePensionNotPassed: Object.freeze({
+        label: 'A State Pension is passed to a partner',
+        value: 'Never'
+      }),
+      higherOfTwoStatePayments: Object.freeze({
+        label: 'A survivor who would also have their own State Pension',
+        value: 'Only the higher of the two is paid, which only arises once they are retired'
+      }),
+      dcAndArfPassToSpouse: Object.freeze({
+        label: 'A defined contribution pot not yet drawn, and an ARF',
+        value: 'Pass to the spouse'
+      })
+    }),
+    basis: 'When someone dies, their pay, pensions and State Pension stop, and a State Pension is never passed to a partner. The surviving partner is assumed to qualify for the Bereaved Partner’s (Contributory) Pension at the standard personal rate for their age band, and if they also have their own State Pension only the higher of the two is paid. A defined benefit pension pays the surviving spouse 50%, and a defined contribution pot not yet drawn and an ARF pass to the spouse.',
+    disclosure: 'These are planning assumptions, not a statement of what any scheme or the Department will pay. What is paid depends on eligibility and on the rules of each scheme.'
+  }),
+
   cash: Object.freeze({
     /**
      * Gross, before DIRT. DIRT itself lives in the tax catalogue, not here. The
@@ -82,51 +144,51 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
   care: Object.freeze({
     agreedPrices: Object.freeze({
       /** The HSE list of maximum agreed prices with private and voluntary homes. */
-      listNumber: 230,
-      listDate: '2026-09-04',
+      listNumber: 231,
+      listDate: '2026-10-14',
       homesInList: 411,
       /** A week, in euro. */
-      nationalWeeklyAverage: 1312,
-      lowestWeekly: 1192,
+      nationalWeeklyAverage: 1315,
+      lowestWeekly: 1200,
       highestWeekly: 1508,
       /**
        * A simple average of each home's price in the county, our own calculation
-       * from the list on 2026-10-21, not weighted by beds. The list gives none.
+       * from the list on 2026-10-27, not weighted by beds. The list gives none.
        * A county with two or three homes moves a lot with one home's price.
        */
       countyWeeklyAverages: Object.freeze({
-        Carlow: Object.freeze({ homes: 5, average: 1256, lowest: 1220, highest: 1277 }),
-        Cavan: Object.freeze({ homes: 7, average: 1291, lowest: 1228, highest: 1329 }),
-        Clare: Object.freeze({ homes: 12, average: 1260, lowest: 1224, highest: 1304 }),
-        Cork: Object.freeze({ homes: 47, average: 1307, lowest: 1232, highest: 1492 }),
+        Carlow: Object.freeze({ homes: 5, average: 1264, lowest: 1220, highest: 1289 }),
+        Cavan: Object.freeze({ homes: 7, average: 1295, lowest: 1228, highest: 1329 }),
+        Clare: Object.freeze({ homes: 11, average: 1264, lowest: 1230, highest: 1304 }),
+        Cork: Object.freeze({ homes: 47, average: 1311, lowest: 1232, highest: 1492 }),
         Donegal: Object.freeze({ homes: 13, average: 1259, lowest: 1234, highest: 1279 }),
-        Dublin: Object.freeze({ homes: 86, average: 1414, lowest: 1342, highest: 1508 }),
+        Dublin: Object.freeze({ homes: 86, average: 1416, lowest: 1342, highest: 1508 }),
         Galway: Object.freeze({ homes: 31, average: 1269, lowest: 1210, highest: 1319 }),
-        Kerry: Object.freeze({ homes: 15, average: 1262, lowest: 1200, highest: 1310 }),
-        Kildare: Object.freeze({ homes: 20, average: 1341, lowest: 1275, highest: 1388 }),
+        Kerry: Object.freeze({ homes: 16, average: 1263, lowest: 1200, highest: 1310 }),
+        Kildare: Object.freeze({ homes: 20, average: 1346, lowest: 1275, highest: 1393 }),
         Kilkenny: Object.freeze({ homes: 10, average: 1274, lowest: 1245, highest: 1285 }),
         Laois: Object.freeze({ homes: 3, average: 1284, lowest: 1270, highest: 1304 }),
         Leitrim: Object.freeze({ homes: 2, average: 1276, lowest: 1274, highest: 1277 }),
-        Limerick: Object.freeze({ homes: 21, average: 1263, lowest: 1230, highest: 1292 }),
+        Limerick: Object.freeze({ homes: 21, average: 1270, lowest: 1230, highest: 1292 }),
         Longford: Object.freeze({ homes: 3, average: 1276, lowest: 1233, highest: 1320 }),
-        Louth: Object.freeze({ homes: 9, average: 1296, lowest: 1258, highest: 1325 }),
+        Louth: Object.freeze({ homes: 9, average: 1302, lowest: 1258, highest: 1330 }),
         Mayo: Object.freeze({ homes: 17, average: 1272, lowest: 1247, highest: 1333 }),
-        Meath: Object.freeze({ homes: 18, average: 1313, lowest: 1282, highest: 1369 }),
+        Meath: Object.freeze({ homes: 18, average: 1318, lowest: 1287, highest: 1369 }),
         Monaghan: Object.freeze({ homes: 4, average: 1289, lowest: 1276, highest: 1299 }),
         Offaly: Object.freeze({ homes: 5, average: 1262, lowest: 1232, highest: 1281 }),
         Roscommon: Object.freeze({ homes: 8, average: 1254, lowest: 1225, highest: 1278 }),
-        Sligo: Object.freeze({ homes: 6, average: 1332, lowest: 1276, highest: 1414 }),
-        Tipperary: Object.freeze({ homes: 23, average: 1270, lowest: 1235, highest: 1295 }),
-        Waterford: Object.freeze({ homes: 7, average: 1283, lowest: 1262, highest: 1315 }),
-        Westmeath: Object.freeze({ homes: 8, average: 1241, lowest: 1192, highest: 1272 }),
-        Wexford: Object.freeze({ homes: 14, average: 1265, lowest: 1212, highest: 1305 }),
-        Wicklow: Object.freeze({ homes: 17, average: 1338, lowest: 1285, highest: 1373 })
+        Sligo: Object.freeze({ homes: 6, average: 1333, lowest: 1276, highest: 1414 }),
+        Tipperary: Object.freeze({ homes: 23, average: 1273, lowest: 1235, highest: 1300 }),
+        Waterford: Object.freeze({ homes: 7, average: 1289, lowest: 1262, highest: 1315 }),
+        Westmeath: Object.freeze({ homes: 8, average: 1253, lowest: 1201, highest: 1303 }),
+        Wexford: Object.freeze({ homes: 14, average: 1274, lowest: 1212, highest: 1316 }),
+        Wicklow: Object.freeze({ homes: 17, average: 1339, lowest: 1285, highest: 1395 })
       }),
       basis: 'The nursing home fee is the average of the HSE’s maximum agreed prices for private and voluntary nursing homes in the county, or nationally when the county is not known.',
       disclosure: 'This is a planning figure, not a quoted price. A home’s own fee can be higher or lower, and the HSE publishes a new list from time to time.',
-      source: 'HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230',
-      url: 'https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf',
-      checkedOn: '2026-10-21'
+      source: 'HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231',
+      url: 'https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf',
+      checkedOn: '2026-10-27'
     }),
     relativeCare: Object.freeze({
       defaultYears: 5,

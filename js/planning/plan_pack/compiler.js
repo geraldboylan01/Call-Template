@@ -1,5 +1,5 @@
 import { normalizePlanPack, finiteJson, PlanPackError, fail } from './schema.js';
-import { buildChapter, routeContext, LaterStage } from './chapters.js';
+import { buildChapter, routeContext, LaterStage, protectionDefaultRequests } from './chapters.js';
 import { prepareResourceRoute, prepareCurrentPosition } from './resource_ledger.js';
 import { checkCasePack, checkModulePayload } from '../../module_pipeline.js';
 import { cloneJson, sha256Json } from '../utils.js';
@@ -9,7 +9,7 @@ import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.2.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.5.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -17,6 +17,7 @@ const versions = Object.freeze({
   irelandRules: IRELAND_RULES_CATALOGUE_VERSION,
   figures: figuresVersionLabel()
 });
+export { versions as PLAN_PACK_VERSIONS };
 function frozen(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(frozen); Object.freeze(value); }
   return value;
@@ -73,7 +74,7 @@ export function resolvePlanNarration(template, values, path = '/narration') {
   });
   return { text: rendered, html: '<p>' + escapeHtml(rendered) + '</p>' };
 }
-const PLAN_PACK_METRIC_TYPES = frozen({
+export const PLAN_PACK_METRIC_TYPES = frozen({
   household_cash_flow: { income: 'money', bankTakeHome: 'money', tax: 'money', pensions: 'money', leftOver: 'money' },
   liquidity_analysis: { currentCash: 'money', monthlyExpenditure: 'money', monthsCovered: 'number', minimumCash: 'money', targetCash: 'money', surplusCash: 'money', shortfallCash: 'money' },
   personal_balance_sheet: { grossAssets: 'money', totalLiabilities: 'money', netWorth: 'money', spendableReserves: 'money', reserveMonths: 'number' },
@@ -92,7 +93,8 @@ function registeredPlaceholders(pack, resourceLedger) {
   }
   for (const chapter of pack.chapters) {
     for (const key of Object.keys(PLAN_PACK_METRIC_TYPES[chapter] ?? {})) keys.add(chapter + '.' + key);
-    if (chapter === 'protection_gap') for (const id of ['today', ...pack.planningInputs.protectionCases.map(c => c.id)]) {
+    if (chapter === 'protection_gap') for (const id of ['today', ...pack.planningInputs.protectionCases.map(c => c.id),
+      ...protectionDefaultRequests(pack.household, pack).map(request => request.id ?? (request.kind === 'death' ? request.personId + '-died' : request.personId + '-cannot-work'))]) {
       for (const key of ['moneyIn', 'gap', 'months']) keys.add(chapter + '.' + id + '.' + key);
     }
   }
@@ -184,7 +186,7 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
           proposed.push([chapter, {
             id: caseId, inputHash, input, payload: json(built.payload),
             nativeCaseId: built.nativeCaseId ?? 'today', basis: built.basis,
-            metrics: json(built.metrics ?? {}), derived: derivedOutputs(checked.module),
+            metrics: json(built.metrics ?? {}), calculationFacts: json(built.calculationFacts ?? {}), derived: derivedOutputs(checked.module),
             assumptionsUsed: json(built.assumptionsUsed ?? []),
             warnings: json([...(built.warnings ?? []), ...checked.warnings]),
             provenance: {
@@ -214,7 +216,8 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
       }
       const narration = pack.narration[route.id] === undefined ? null
         : resolvePlanNarration(pack.narration[route.id], placeholders(pack, context, proposed), '/narration/' + route.id);
-      routes.push({ id: route.id, title: route.title ?? route.id, status: 'compiled', chapterCases: mapping, changes: context.changedFacts, narration });
+      routes.push({ id: route.id, title: route.title ?? route.id, status: 'compiled', chapterCases: mapping,
+        sourceHousehold: cloneJson(context.profile), changes: context.changedFacts, narration });
       pendingCasePacks.push({ routeId: route.id, casePack });
     } catch (error) {
       diagnostics.push(errorRow(error, route.id, error.chapter));
@@ -232,6 +235,27 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
     const order = new Map(routes.map((r, i) => [r.id, i]));
     pendingCasePacks.sort((a, b) => order.get(a.routeId) - order.get(b.routeId));
     ledgers.sort((a, b) => order.get(a.routeId) - order.get(b.routeId));
+  }
+  if (resourceLedger && !currentPositionOnly) {
+    const current = ledgers.find(ledger => ledger.routeId === 'current');
+    if (current) for (const route of routes) {
+      const ledger = ledgers.find(ledger => ledger.routeId === route.id);
+      if (!ledger) continue;
+      const delta = (before, after) => ({ current: before ?? null, route: after ?? null,
+        difference: Number.isFinite(before) && Number.isFinite(after) ? after - before : null });
+      route.differencesFromCurrent = {
+        ...(ledger.propertyMove ? { endingCash: delta(current.endingCash ?? current.cashRemaining, ledger.endingCash),
+          propertyCapitalCommitted: delta(current.propertyCapitalCommitted ?? 0, ledger.propertyCapitalCommitted) } : {}),
+        cashAllocated: delta(current.cashAllocated, ledger.cashAllocated),
+        cashRemaining: delta(current.cashRemaining, ledger.cashRemaining),
+        annualSurplusBeforeGoalFunding: delta(current.baselineLeftOver, ledger.baselineLeftOver),
+        annualSurplusAfterGoalFunding: delta(current.years[0]?.remaining, ledger.years[0]?.remaining),
+        years: [...new Set([...current.years, ...ledger.years].map(row => row.year))].sort((a, b) => a - b).map(year => ({
+          year, ...delta(current.years.find(row => row.year === year)?.remaining, ledger.years.find(row => row.year === year)?.remaining)
+        })),
+        goals: ledger.goals.map(goal => ({ goalId: goal.goalId, currentState: current.goals.find(row => row.goalId === goal.goalId)?.state ?? null, routeState: goal.state }))
+      };
+    }
   }
   return {
     planPackVersion: 1, compilerVersion: PLAN_PACK_COMPILER_VERSION, status,

@@ -9,7 +9,8 @@ const semanticPath = id => getSemanticFactDefinition(id).profilePathTemplate;
  * Section 6's full-plan inventory, not a module-routing or form-question policy.
  * `kind` distinguishes household facts from plan-pack facts, implementation
  * contracts and deferred property work. In particular, hypothetical Illness
- * Benefit is an implementation gap, never a question about client entitlement.
+ * Benefit is built into the income-stops case, never a question about client
+ * entitlement.
  * No defaults here turn an unanswered fact into zero, "none" or an entitlement.
  */
 export function planFactsMissing(profile) {
@@ -35,7 +36,7 @@ export function planFactsMissing(profile) {
   for (const [key, person] of people) {
     requireValue('person_current_age', `/${key}/age`, 'Current age sets pension, mortgage and dependant timelines.');
     if (!person.employmentStatus || ['unknown', 'other'].includes(person.employmentStatus)) add('employment_tax_basis', `/${key}/employmentStatus`,
-      'The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.');
+      'The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.');
     const incomes = (profile.incomeSources ?? []).filter(income => income.ownerIds.includes(person.personId));
     const earned = ['employee', 'self_employed', 'contractor'].includes(person.employmentStatus)
       ? incomes.filter(income => ['employment', 'self_employment'].includes(income.type)) : incomes;
@@ -47,7 +48,10 @@ export function planFactsMissing(profile) {
       if (!profile.pensions.some(pension => pension.ownerId === person.personId) && none['/pensions'] !== true) add('pension_positions', ownerConfirmedNonePath('/pensions', person.personId),
         `Pension holdings for ${person.personId} or an explicit confirmation of none are needed; an empty section does not establish that there are no pensions.`);
     }
-    if (person.employmentStatus !== 'retired' || profile.pensions.some(pension => pension.ownerId === person.personId)) {
+    // Years paying PRSI and years caring at home give an estimate of the fraction, so a person who has told us both is not missing it.
+    const contributions = profile.assumptions?.values?.retirement?.statePensionContributions?.[person.personId];
+    const hasContributionYears = Number.isFinite(contributions?.yearsPayingPrsi) && Number.isFinite(contributions?.yearsCaring);
+    if (!hasContributionYears && (person.employmentStatus !== 'retired' || profile.pensions.some(pension => pension.ownerId === person.personId))) {
       requireValue('state_pension_fraction', semanticPath('state_pension_fraction').replace('*', person.personId),
         `A numeric State Pension fraction for ${person.personId} is needed. Partly/not sure, or the other person’s expectation, cannot establish it.`);
     }
@@ -126,13 +130,10 @@ export function planFactsMissing(profile) {
   }
   add('other_dated_costs', '/goals',
     'Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.', 'household_fact', 'recommended');
-  const employees = people.filter(([, person]) => person.employmentStatus === 'employee');
-  if (employees.length) add('illness_scenario_contract', '/assumptions/values/protection/illnessScenario',
-    'Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.', 'implementation');
-  if (people.some(([, person]) => ['self_employed', 'contractor', 'other', 'unknown'].includes(person.employmentStatus))) add('illness_scenario_scope', '/assumptions/values/protection/illnessScenario',
-    'The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.', 'implementation');
-  if (profile.partner || profile.dependants.length) add('survivor_payment', '/assumptions/values/protection/survivorPayment',
-    'A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.', 'plan_pack_fact');
+  // The Illness Benefit assumption (section 6) is built into the income-stops case for an employee, so nothing is asked about it.
+  // The employment-status question above is the only one: unknown or "other" work is asked as employee or self-employed, and no payment is ever asked for.
+  // A death case needs no question: the survivor's State payment is the Bereaved Partner's pension at the register's rate,
+  // and a survivor's pension the household volunteers (assumptions.values.protection.survivorPayment) is used as given but never listed as missing.
   profile.properties.filter(property => property.use !== 'home').forEach(property => add('property_plan_facts', `/properties/${profile.properties.indexOf(property)}`,
     'Later property chapters need named ownership, use, rent, running costs, purchase date/price, acquisition basis and home history. HouseholdProfile v1 does not represent all of them.', 'deferred', 'optional'));
   for (const entry of application?.unmappedFields ?? []) {
