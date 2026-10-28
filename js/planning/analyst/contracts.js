@@ -23,7 +23,7 @@ const story = object({
 // The compiler owns lever validation, references and bounds. Keeping changes
 // open here lets a new compiler lever pass through without a second allowlist.
 export const TOOL_CATALOGUE = Object.freeze([
-  { name: 'read_position', description: 'Read the compiled current position and its resource summary.', inputSchema: object() },
+  { name: 'read_position', description: 'Read the compiled current position and its resource summary. `storyFacts` lists the keys a story may use.', inputSchema: object() },
   { name: 'read_figures', description: 'Read dated register values and their provenance.', inputSchema: object({
     ids: { type: 'array', items: text }, kinds: { anyOf: [{ type: 'array', items: { enum: FIGURE_KINDS } }, { enum: FIGURE_KINDS }] },
     module: { enum: FIGURE_MODULES }, onDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }

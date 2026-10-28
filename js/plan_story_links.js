@@ -9,7 +9,7 @@ import { followsRoute } from './plan_story_model.js';
  * do, so it can be proved without a browser and wired to app.js in one place.
  *
  * What the app supplies:
- *   findModule(chapter)            -> the session's module for that chapter, or null
+ *   findModule(chapter, target)    -> the session's module for that chapter (and compiled case), or null
  *   setCase(moduleId, caseId)      -> true when the module is now on that case
  *   currentCase(moduleId)          -> the case the module shows now
  *   openModule(moduleId)           -> brings the module up full size
@@ -40,7 +40,7 @@ export async function openStoryLink(target, deps, { routeId = null } = {}) {
     if (await deps.openPanel(target.panel) === false) return { opened: false, reason: 'panel_missing', panel: target.panel, routeId };
     return { opened: true, panel: target.panel, moduleId: null, caseId: null, outlined: false, routeId };
   }
-  const moduleId = deps.findModule(target.chapter);
+  const moduleId = deps.findModule(target.chapter, target);
   if (!moduleId) return { opened: false, reason: 'module_missing', chapter: target.chapter, routeId };
 
   const nativeCaseId = target.nativeCaseId ?? target.caseId;

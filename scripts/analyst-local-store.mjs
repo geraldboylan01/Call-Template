@@ -62,3 +62,14 @@ export async function callLocalTool(directory, name, input) {
     await unlink(join(path, '.lock'));
   }
 }
+
+/** Read a run's case file without changing it (no lock: a save is an atomic rename, so a read is never half-written). */
+export async function readLocalCase(directory) {
+  const path = directoryPath(directory);
+  await noSymlinks(path);
+  const caseFile = JSON.parse(await readFile(join(path, 'case.json'), 'utf8'));
+  if (path !== directoryPath(join(ANALYSES_ROOT, caseFile.pinned.requestId, caseFile.pinned.runId))) {
+    throw Object.assign(new Error('The directory must match the case’s request and run IDs.'), { path: '/case' });
+  }
+  return { path, caseFile };
+}

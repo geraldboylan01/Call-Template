@@ -6,6 +6,7 @@
   "scripts": {
     "analyst": "node ./scripts/analyst.mjs",
     "analyst:mcp": "node ./scripts/analyst-mcp.mjs",
+    "analyst:open": "node ./scripts/analyst-open.mjs",
     "check:analyst-tools": "node ./scripts/check-analyst-tools.mjs",
     "build": "npm run check:brand && npm run generate:planning-playbooks && npm run generate:module-manifest && npm run generate:workspace-copy && npm run generate:cases && npm run generate:agent-docs && node ./scripts/build-pages.mjs && node ./scripts/check-brand.mjs --dist && npm run check:form-journey -- --dist",
     "generate:agent-docs": "node ./scripts/generate-agent-docs.mjs",

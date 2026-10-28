@@ -90,9 +90,12 @@ export async function outlineFigure(root, { selector = null, text = null, focusT
   clearOutline();
   if (!root || (!focusTarget && !selector && !text)) return false;
 
+  // An exact target is in the module as soon as it is drawn (only a figure's text waits for a count-up), so a target
+  // the module does not mark is given up on quickly.
+  const limit = focusTarget ? Math.min(timeoutMs, 1000) : timeoutMs;
   const started = Date.now();
   let element = null;
-  while (!element && Date.now() - started < timeoutMs) {
+  while (!element && Date.now() - started < limit) {
     element = findFigureElement(root, { selector, text, focusTarget });
     if (!element) await wait(120);
   }
