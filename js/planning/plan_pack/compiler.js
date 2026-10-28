@@ -17,6 +17,7 @@ const versions = Object.freeze({
   irelandRules: IRELAND_RULES_CATALOGUE_VERSION,
   figures: figuresVersionLabel()
 });
+export { versions as PLAN_PACK_VERSIONS };
 function frozen(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(frozen); Object.freeze(value); }
   return value;
@@ -73,7 +74,7 @@ export function resolvePlanNarration(template, values, path = '/narration') {
   });
   return { text: rendered, html: '<p>' + escapeHtml(rendered) + '</p>' };
 }
-const PLAN_PACK_METRIC_TYPES = frozen({
+export const PLAN_PACK_METRIC_TYPES = frozen({
   household_cash_flow: { income: 'money', bankTakeHome: 'money', tax: 'money', pensions: 'money', leftOver: 'money' },
   liquidity_analysis: { currentCash: 'money', monthlyExpenditure: 'money', monthsCovered: 'number', minimumCash: 'money', targetCash: 'money', surplusCash: 'money', shortfallCash: 'money' },
   personal_balance_sheet: { grossAssets: 'money', totalLiabilities: 'money', netWorth: 'money', spendableReserves: 'money', reserveMonths: 'number' },
