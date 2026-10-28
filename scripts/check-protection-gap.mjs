@@ -21,6 +21,7 @@ import {
 import { runProtectionGapViewTests } from '../js/tests_protection_gap_view.js';
 import { runProtectionGapModuleTests } from '../js/tests_protection_gap_module.js';
 import { runProtectionGapWiringTests } from '../js/tests_protection_gap_wiring.js';
+import { runProtectionIncomeTests } from '../js/tests_protection_income.js';
 
 const HORIZON_MONTHS = 36;
 const MAX_REFERENCE_MONTHS = 100_000;
@@ -343,13 +344,15 @@ check('the published sample table is reproduced', () => {
 
 // The suites, run here so one command proves the engine, the screen's words and
 // geometry, the module's clock and DOM, and the wiring (paste pipeline, session
-// import and presenter catalogue). The video scene and the codex brief are proved
+// import and presenter catalogue), and the income built for each case from the
+// tax engine and the figures register. The video scene and the codex brief are proved
 // in check-video-scene.mjs and check-codex-video-brief.mjs.
 const suites = [
   ['engine', runProtectionGapTests()],
   ['view', runProtectionGapViewTests()],
   ['module', await runProtectionGapModuleTests()],
-  ['wiring', runProtectionGapWiringTests()]
+  ['wiring', runProtectionGapWiringTests()],
+  ['income (the tax engine and the figures register)', runProtectionIncomeTests()]
 ];
 suites.forEach(([name, summary]) => {
   if (summary.failed > 0) {
