@@ -9,11 +9,12 @@ import { classifyLever } from './lever_catalogue.js';
  * trade downs maximise price across years, breaking ties with the earliest.
  * No route, opening tax state, or failed probe is mutated or reused.
  */
-export async function sizeMajorMove(rawPack, route, { type, propertyId, year } = {}) {
+export async function sizeMajorMove(rawPack, route, { type, propertyId, year, goalIds } = {}) {
   const refused = (path, message) => ({ status: 'refused', refusals: [{ path, message, code: 'invalid_input' }] });
   let pack;
-  try { pack = normalizePlanPack(rawPack); } catch (error) { return refused(error.path ?? '/planPack', error.message); }
+  try { pack = normalizePlanPack(rawPack, { allowMultipleMajors: true }); } catch (error) { return refused(error.path ?? '/planPack', error.message); }
   const base = cloneJson(route);
+  if (goalIds !== undefined && (!Array.isArray(goalIds) || !goalIds.length || goalIds.some(id => !pack.household.goals.some(goal => goal.goalId === id)))) return refused('/goalIds', 'Name existing funding goals for a scoped walk probe.');
   if (!PROPERTY_LEVERS.includes(type)) return refused('/type', 'Choose tradeDownHome or sellProperty.');
   if (!base || base.id === 'current' || !Array.isArray(base.changes) || base.changes.some(c => PROPERTY_LEVERS.includes(c?.type))) return refused('/route', 'Supply an alternative draft without a property move.');
   const bounds = propertyMoveBounds(pack);
@@ -23,7 +24,10 @@ export async function sizeMajorMove(rawPack, route, { type, propertyId, year } =
     const candidate = { ...base, changes: [...base.changes, ...(change ? [change] : [])] };
     const result = await compilePlanPack({ ...pack, narration: {}, routes: [{ id: 'current' }, candidate] }, { resourceLedger: true });
     const ledger = result.resourceLedger?.routes.find(row => row.routeId === candidate.id);
-    const ok = result.status === 'compiled' && ledger?.balanced && ledger?.goalsCovered;
+    const scoped = goalIds !== undefined;
+    const ok = scoped ? ledger?.reserveProtected && goalIds.every(id => ledger.goals.some(goal => goal.goalId === id && goal.state === 'covered'))
+      && ledger.years.every(row => row.cashflowDeficit <= 0.005) && result.diagnostics.every(row => row.code === 'unbalanced_route')
+      : result.status === 'compiled' && ledger?.balanced && ledger?.goalsCovered;
     probes.push({ setting: change ?? null, ok: Boolean(ok), refusals: result.diagnostics });
     return { ok, ledger, compilation: result, route: candidate };
   };
@@ -41,7 +45,8 @@ export async function sizeMajorMove(rawPack, route, { type, propertyId, year } =
     sources: { year: bounded('year'), ...(type === 'tradeDownHome' ? { newHomePrice: bounded('replacement price') } : { propertyId: { kind: 'fact', path: path + '/propertyId' } }) } });
   const missing = result => result.compilation.diagnostics.filter(row => row.code === 'missing_information' || row.code.startsWith('requires_') || row.code === 'unsupported_parameter_source' || row.code === 'engine_refusal');
   let selected = null;
-  const firstShortYear = baseline.ledger.years.find(row => row.shortfall > 0.005)?.year;
+  const firstShortYear = baseline.ledger.years.find(row => goalIds
+    ? row.goals.some(goal => goalIds.includes(goal.goalId) && goal.shortfall > 0.005) : row.shortfall > 0.005)?.year;
   // A transaction after an existing gap cannot repair that earlier gap.
   const lastYear = year ?? Math.min(bounds.year[1], firstShortYear ?? bounds.year[1]);
   if (type === 'tradeDownHome') {
@@ -70,6 +75,7 @@ export async function sizeMajorMove(rawPack, route, { type, propertyId, year } =
       if (probe.ok) { selected = probe; break; }
     }
   }
-  return selected ? { status: 'sized', route: selected.route, ledger: selected.ledger, compilation: selected.compilation, bounds, probes }
+  return selected ? { status: 'sized', route: selected.route, ledger: selected.ledger, compilation: selected.compilation, bounds, probes,
+    ...(goalIds ? { scope: { goalIds, wholeRouteBalanced: selected.ledger.balanced && selected.ledger.goalsCovered } } : {}) }
     : { status: 'none', reason: 'No move inside these bounds funds every goal on time while protecting the reserve.', bounds, probes };
 }

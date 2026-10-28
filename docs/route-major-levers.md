@@ -1,6 +1,6 @@
 # Major property levers
 
-`tradeDownHome` and `sellProperty` extend the catalogue in `js/planning/plan_pack/lever_catalogue.js`. Both are major illustrations. Every setting uses the existing fact/default/bounded source contract, and the one-major-per-route rule applies. They require the full B1 ledger and a cash-flow chapter. `profileToPlanPack(..., {routes})` uses that mode for current and alternatives alike.
+`tradeDownHome` and `sellProperty` extend the catalogue in `js/planning/plan_pack/lever_catalogue.js`. Both are major illustrations. Every setting uses the existing fact/default/bounded source contract. The one-major-per-route rule applies, with only the compiler-proved exception described in [the ledger walk](ledger-walk.md). They require the full B1 ledger and a cash-flow chapter. `profileToPlanPack(..., {routes})` uses that mode for current and alternatives alike.
 
 `tradeDownHome` takes `newHomePrice` and `year`. One home, its household owners, value and linked mortgages must be established, with `homeUse: 'throughout'` confirming full PPR use. CGT is then zero. The existing loans are settled and the replacement bought outright; no new borrowing terms are invented. The cash-purchase equity helper lives in `home_trade_down_math.js` and shares the existing engine's exact equity arithmetic. The route earmarks the chosen purchase price from that equity. Insufficient equity is a refusal. Native amortisation gives the settlement balance and when repayments otherwise end. A sale today uses the stated opening balance before any new payment.
 

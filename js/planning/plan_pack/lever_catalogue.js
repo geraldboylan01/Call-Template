@@ -6,7 +6,7 @@ export const GOAL_MOVE_FIELDS = Object.freeze(['retirementAge', 'targetIncomeTod
 const id = { type: 'string', source: 'fact', bounds: 'existing matching record ID' };
 const positive = { type: 'number', exclusiveMinimum: 0 };
 const definitions = {
-  useCash: { parameters: { goalId: id, amount: { type: ['number', 'string'], minimum: 1, integer: true, choices: ['whole', 'remaining'], defaultPath: '/routes/defaultCashAmount', bounds: 'spare cash after the protected reserve, capped by this goal’s engine-priced need' } },
+  useCash: { parameters: { goalId: id, amount: { type: ['number', 'string'], minimum: 0.01, multipleOf: 0.01, choices: ['whole', 'remaining'], defaultPath: '/routes/defaultCashAmount', bounds: 'spare cash after the protected reserve, capped by this goal’s engine-priced need' } },
     requiredFacts: ['/household/assets/*/currentValue', '/planningInputs/cashAssetId', '/household/expenses/annualTotal', '/household/goals/*', '/planningInputs/goalFundingFacts/*'], engine: 'resource_ledger and the goal engine', scale: { kind: 'ordinary' } },
   clearOutgoing: { parameters: { outgoingId: id, paidFrom: { type: 'string', choices: ['savings'], defaultPath: '/routes/clearOutgoingPaidFrom' } },
     requiredFacts: ['/planningInputs/outgoingBindings/*', '/household/liabilities/*/currentBalance', '/household/liabilities/*/monthlyPayment', '/household/assets/*/currentValue', '/household/expenses/annualTotal'], engine: 'resource_ledger', scale: { kind: 'ordinary' } },
@@ -19,7 +19,8 @@ const definitions = {
     bounds: `/goalFlexibility/{goalId}/${field}`
   }])) }, requiredFacts: ['/goalFlexibility/{goalId}/*', '/planningInputs/goalBindings/*', '/household/goals/*'], engine: 'the goal engine',
     scale: { kind: 'conditional', ordinaryThroughAdditionalWorkingYears: PLANEIR_ASSUMPTIONS.routes.majorWorkingLongerYears, basis: PLANEIR_ASSUMPTIONS.routes.workingLongerBasis } },
-  pensionContribution: { parameters: { personId: id, annualAmount: { ...positive, bounds: 'current personal relief headroom from the pension engine; today’s gross annual extra, converted to a salary rate' } },
+  pensionContribution: { parameters: { personId: id, annualAmount: { ...positive, optional: true, bounds: 'current personal relief headroom from the pension engine; today’s gross annual extra, converted to a salary rate' },
+    oneOffAmount: { ...positive, optional: true, bounds: 'gross cash paid today; combined with current and recurring personal contributions inside this year’s relief limit and the protected cash reserve' } },
     requiredFacts: ['/household/pensions/*', '/household/incomeSources/*/grossAnnual', '/household/{primaryPerson|partner}/age', '/household/{primaryPerson|partner}/intendedRetirementAge',
       '/household/goals/*/targetAmount', '/planningInputs/retirementIncomeBasis', '/planningInputs/householdTaxStatus', '/planningInputs/personalPensionContributions'], engine: 'pension engine and goals-and-resources relief search', scale: { kind: 'ordinary' } },
   tradeDownHome: { parameters: { newHomePrice: { ...positive, multipleOf: 0.01, bounds: 'central minimumReplacementShare through maximumReplacementShare times current home value, and sufficient equity for a cash purchase' }, year: { type: 'number', integer: true, bounds: 'calculation year through central maximumYearsAhead' } },
@@ -41,7 +42,7 @@ const definitions = {
 
 /** One serialisable catalogue for schemas, validation and the later analyst tools. */
 export function getLeverCatalogue() {
-  return { version: 'route-levers-1.1.0', assumptionsVersion: PLANEIR_ASSUMPTIONS_VERSION,
+  return { version: 'route-levers-1.2.0', assumptionsVersion: PLANEIR_ASSUMPTIONS_VERSION,
     sourceKinds: ['fact', 'default', 'bounded'], levers: Object.entries(definitions).map(([type, definition]) => ({ type, ...cloneJson(definition),
       parameters: Object.fromEntries(Object.entries(definition.parameters).map(([key, parameter]) => [key, {
         ...cloneJson(parameter), ...(parameter.defaultPath ? { default: readJsonPointer(PLANEIR_ASSUMPTIONS, parameter.defaultPath) } : {})
