@@ -21,25 +21,32 @@
 
 const INCOME_TAX_HEAD_ID = 'income_tax';
 
-/** Income that is taxed: every Phase 1 type, with employment after pension contributions. */
+/**
+ * Income that is taxed: every Phase 1 type, with employment after pension
+ * contributions. Illness Benefit is the recipient's own taxable income, so it
+ * counts towards the recipient's income for the extra band a couple gets.
+ */
 function taxableIncome(income) {
   return income.statePension
     + income.occupationalPension
     + income.arfDistribution
     + Math.max(0, income.employment - income.employmentPensionContribution)
     + income.rentalProfit
+    + income.illnessBenefit
     + income.lumpSumScheduleE;
 }
 
 /**
  * Income that earns the employee (PAYE) credit. Rental profit does not.
- * Employment counts after pension contributions, as taxable pay.
+ * Employment counts after pension contributions, as taxable pay. Illness
+ * Benefit earns the recipient's own credit, which does not pass to anyone else.
  */
 function employeeCreditIncome(income) {
   return income.statePension
     + income.occupationalPension
     + income.arfDistribution
     + Math.max(0, income.employment - income.employmentPensionContribution)
+    + income.illnessBenefit
     + income.lumpSumScheduleE;
 }
 
@@ -150,6 +157,9 @@ function assessUnit(unit, rules) {
   }
   if (nursingHomeExpenses > 0) {
     disclosures.push({ code: 'IT_NURSING_HOME_RELIEF', params: { years: [rules.year] } });
+  }
+  if (unit.people.some((person) => person.income.illnessBenefit > 0)) {
+    disclosures.push({ code: 'IT_ILLNESS_BENEFIT' });
   }
 
   return {

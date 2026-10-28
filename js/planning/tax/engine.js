@@ -37,7 +37,8 @@ const TAX_ITEM_TYPES = Object.freeze([
   'employment',
   'employmentPensionContribution',
   'rentalProfit',
-  'nursingHomeExpenses'
+  'nursingHomeExpenses',
+  'illnessBenefit'
 ]);
 
 /** Events a caller may enter: a pension crystallisation, or the sale of a property. */
@@ -305,6 +306,9 @@ function normalizeTaxYearInput(input) {
     }
     checkItemType(raw.type, `${field}.type`, TAX_ITEM_TYPES);
     const personId = typeof raw.personId === 'string' ? raw.personId.trim() : '';
+    if (personId === JOINT_PERSON_ID && raw.type === 'illnessBenefit') {
+      throw new Error(`${field}.personId cannot be "${JOINT_PERSON_ID}" for illnessBenefit: it is the recipient's own income and is never split.`);
+    }
     if (personId === JOINT_PERSON_ID) {
       if (people.length !== 2) {
         throw new Error(`${field}.personId "${JOINT_PERSON_ID}" splits an item between two people, but input.people lists one.`);
@@ -461,6 +465,7 @@ function emptyIncome() {
     employmentPensionContribution: 0,
     rentalProfit: 0,
     nursingHomeExpenses: 0,
+    illnessBenefit: 0,
     lumpSumScheduleE: 0
   };
 }
@@ -597,7 +602,8 @@ function recurringGrossIncome(income) {
     + income.occupationalPension
     + income.arfDistribution
     + income.employment
-    + income.rentalProfit;
+    + income.rentalProfit
+    + income.illnessBenefit;
 }
 
 /**

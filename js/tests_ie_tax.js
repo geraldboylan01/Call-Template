@@ -1009,6 +1009,139 @@ export function runIeTaxTests() {
     assert(!/medical expenses/.test(taxNotIncludedLine()), 'medical expenses are no longer listed as not modelled in full');
   }));
 
+  /**
+   * Illness Benefit (plan section 6, "Approved illness-scenario assumption"):
+   * the recipient's own taxable income, income tax only. It earns the
+   * recipient's Employee Tax Credit and counts as the recipient's income for the
+   * extra standard rate band of a jointly assessed couple. Every figure comes
+   * from the selected year's rules.
+   */
+  const illnessYear = (people, items, status = 'single', yearNumber = 2026) => computeTaxYear({
+    input: { year: yearNumber, status, people, items }
+  }).result;
+  const couple = [single('a', 45), single('b', 45)];
+
+  cases.push(runCase('Illness Benefit is income tax only: no USC and no PRSI, and the same USC and PRSI as without it', () => {
+    const payOnly = illnessYear([single('a', 45)], [item('a', 'illnessBenefit', 13_208)]);
+    assertCents(payOnly.totals.usc, 0, 'no USC on the benefit');
+    assertCents(payOnly.totals.prsi, 0, 'no PRSI on the benefit');
+    assertCents(payOnly.totals.incomeTax, 0, '13,208 at 20% is 2,641.60, less the personal and employee credits');
+    assertCents(payOnly.totals.netIncome, 13_208, 'all of it is left after tax');
+    assert(payOnly.people[0].income.illnessBenefit === 13_208, 'it is recorded as its own income type');
+    const salaryOnly = illnessYear([single('a', 45)], [item('a', 'employment', 30_000)]);
+    const both = illnessYear([single('a', 45)], [item('a', 'employment', 30_000), item('a', 'illnessBenefit', 10_000)]);
+    assertCents(both.totals.usc, salaryOnly.totals.usc, 'USC does not move');
+    assertCents(both.totals.prsi, salaryOnly.totals.prsi, 'PRSI does not move');
+    assert(both.totals.incomeTax > salaryOnly.totals.incomeTax, 'income tax does');
+    assertCents(both.totals.incomeTax - salaryOnly.totals.incomeTax, 2_000, 'at the 20% rate on 10,000 of benefit, all inside the standard rate band');
+    assert(both.people[0].usc.aggregateIncome === 30_000, 'USC aggregate income leaves the benefit out');
+    assert(both.people[0].prsi.prsiableIncome === 30_000, 'PRSI base leaves the benefit out');
+  }));
+
+  cases.push(runCase('Illness Benefit earns the recipient’s own Employee Tax Credit, below and above the credit threshold', () => {
+    const rules = resolveTaxRules(2026);
+    const credit = rules.incomeTax.employeeCredit;
+    const threshold = credit.amount / credit.maxShareOfQualifyingIncome;
+    // With 20,000 of other taxed income the tax is 20% of the lot, so the credit shows as euros of tax.
+    const run = (benefit) => illnessYear(
+      [single('a', 45)],
+      [item('a', 'rentalProfit', 32_000 - benefit), item('a', 'illnessBenefit', benefit)]
+    );
+    const below = run(threshold / 2);
+    assertCents(below.assessments[0].credits.employee.a, credit.amount / 2, 'half the threshold earns half the credit');
+    const above = run(threshold + 2_208);
+    assertCents(above.assessments[0].credits.employee.a, credit.amount, 'above the threshold earns the full credit');
+    const at = run(threshold);
+    assertCents(at.assessments[0].credits.employee.a, credit.amount, 'exactly at the threshold earns the full credit');
+    const none = run(0);
+    assertCents(none.assessments[0].credits.employee.a ?? 0, 0, 'no benefit and no earnings, no credit');
+    assertCents(none.totals.incomeTax - above.totals.incomeTax, credit.amount, 'the credit is worth its full amount in tax');
+  }));
+
+  cases.push(runCase('Illness Benefit in a jointly assessed couple: the extra band belongs to the recipient (the plan’s worked example)', () => {
+    const rules = resolveTaxRules(2026);
+    const band = rules.incomeTax.standardRateBand;
+    const sick = illnessYear(couple, [item('a', 'employment', 75_000), item('b', 'illnessBenefit', 13_208)], 'married_or_civil_partners');
+    assertCents(sick.assessments[0].bandIncrease, 13_208, 'the increase is the recipient’s 13,208');
+    assertCents(sick.assessments[0].standardRateBand, 66_208, 'the plan’s 66,208 combined 20% band');
+    assertCents(sick.assessments[0].standardRateBand, band.marriedOneIncome + 13_208, 'built from the year’s own band, not typed in');
+    // The same benefit paid to the earner, with the other person on nothing, is one income: no increase.
+    const earnerSick = illnessYear(couple, [item('a', 'employment', 75_000), item('a', 'illnessBenefit', 13_208)], 'married_or_civil_partners');
+    assertCents(earnerSick.assessments[0].bandIncrease, 0, 'a second income is needed for an increase');
+    assertCents(earnerSick.assessments[0].standardRateBand, band.marriedOneIncome, 'so the band is the one-income band');
+    // Hand check of the first: 88,208 taxable, 66,208 at 20% and 22,000 at 40%, less 4,000 and two 2,000 credits.
+    assertCents(sick.totals.incomeTax, (66_208 * 0.2) + (22_000 * 0.4) - 8_000, 'income tax by hand');
+    assertCents(sick.assessments[0].credits.employee.b, 2_000, 'the recipient has their own employee credit');
+    assertCents(sick.assessments[0].credits.employee.a, 2_000, 'the earner has theirs');
+    const alone = illnessYear(couple, [item('a', 'employment', 75_000)], 'married_or_civil_partners');
+    assertCents(sick.totals.usc, alone.totals.usc, 'USC is the earner’s alone');
+    assertCents(sick.totals.prsi, alone.totals.prsi, 'PRSI is the earner’s alone');
+    assert(sick.assessments[0].bandIncrease <= band.secondIncomeIncreaseMax, 'and never above the cap');
+  }));
+
+  cases.push(runCase('Illness Benefit: the band increase is capped, shared by two recipients and never moves between people', () => {
+    const band = resolveTaxRules(2026).incomeTax.standardRateBand;
+    const bothSick = illnessYear(couple, [item('a', 'illnessBenefit', 13_208), item('b', 'illnessBenefit', 13_208)], 'married_or_civil_partners');
+    assertCents(bothSick.assessments[0].bandIncrease, 13_208, 'the lower person’s income');
+    assertCents(bothSick.totals.incomeTax, 0, '26,416 at 20%, less 4,000 and two 2,000 credits, never below nothing');
+    const capped = illnessYear(couple, [item('a', 'employment', 80_000), item('b', 'illnessBenefit', band.secondIncomeIncreaseMax + 20_000)], 'married_or_civil_partners');
+    assertCents(capped.assessments[0].bandIncrease, band.secondIncomeIncreaseMax, 'the cap holds');
+    // The employee credit stays with the person who has the income.
+    const lowEarnerSick = illnessYear(couple, [item('a', 'employment', 60_000), item('b', 'illnessBenefit', 4_000)], 'married_or_civil_partners');
+    assertCents(lowEarnerSick.assessments[0].credits.employee.b, 800, 'the recipient’s credit is 20% of their own 4,000');
+    assertCents(lowEarnerSick.assessments[0].credits.employee.a, 2_000, 'the earner’s credit is not topped up or shared');
+    const noBenefit = illnessYear(couple, [item('a', 'employment', 60_000)], 'married_or_civil_partners');
+    assertCents(noBenefit.assessments[0].credits.employee.b, 0, 'with no income of their own the other person has no credit to receive');
+  }));
+
+  cases.push(runCase('Illness Benefit of nothing changes nothing, and is not mentioned', () => {
+    const base = illnessYear(couple, [item('a', 'employment', 70_000)], 'married_or_civil_partners');
+    const zero = illnessYear(couple, [item('a', 'employment', 70_000), item('b', 'illnessBenefit', 0)], 'married_or_civil_partners');
+    assertCents(zero.totals.incomeTax, base.totals.incomeTax, 'the same income tax');
+    assertCents(zero.assessments[0].standardRateBand, base.assessments[0].standardRateBand, 'the same band');
+    assertCents(zero.totals.netIncome, base.totals.netIncome, 'the same net income');
+    assert(!zero.disclosureCodes.includes('IT_ILLNESS_BENEFIT'), 'no disclosure for a benefit of nothing');
+    assert(illnessYear(couple, [item('b', 'illnessBenefit', 1)], 'married_or_civil_partners').disclosureCodes.includes('IT_ILLNESS_BENEFIT'), 'and one for any payment');
+  }));
+
+  cases.push(runCase('Illness Benefit is refused when shared or negative, and has a rule with an id and sources', () => {
+    assertThrows(
+      () => illnessYear(couple, [item('joint', 'illnessBenefit', 10_000)], 'married_or_civil_partners'),
+      /recipient's own income/,
+      'a shared benefit'
+    );
+    assertThrows(() => illnessYear([single('a', 45)], [item('a', 'illnessBenefit', -1)]), /greater than or equal to 0/, 'a negative benefit');
+    const rules = resolveTaxRules(2026);
+    assert(rules.incomeTax.illnessBenefit.ruleId === 'ie.income_tax.illness_benefit.2026', 'the rule has an id');
+    assert(rules.incomeTax.illnessBenefit.sources.length === 3, 'Revenue’s benefit, credit and joint assessment pages');
+    assert(resolveTaxRules(2027).incomeTax.illnessBenefit.ruleId === rules.incomeTax.illnessBenefit.ruleId, 'carried into the next year');
+    assert(resolveTaxRules(2031).incomeTax.illnessBenefit.ruleId === rules.incomeTax.illnessBenefit.ruleId, 'held forward');
+  }));
+
+  cases.push(runCase('Illness Benefit: the same household in any order gives the same answers and changes no input', () => {
+    const makeInput = (benefit, salary) => deepFreeze({
+      year: 2026,
+      status: 'married_or_civil_partners',
+      people: [single('a', 45), single('b', 45)],
+      items: [item('a', 'employment', salary), item('b', 'illnessBenefit', benefit)]
+    });
+    const sickInput = makeInput(13_208, 75_000);
+    const wellInput = deepFreeze({
+      year: 2026,
+      status: 'married_or_civil_partners',
+      people: [single('a', 45), single('b', 45)],
+      items: [item('a', 'employment', 75_000), item('b', 'employment', 40_000)]
+    });
+    const run = (input) => JSON.stringify(computeTaxYear({ input }).result);
+    const firstSick = run(sickInput);
+    const firstWell = run(wellInput);
+    // sick, well, sick and well, sick, well: each run starts afresh.
+    assert(run(wellInput) === firstWell, 'well after sick');
+    assert(run(sickInput) === firstSick, 'sick after well');
+    assert(run(sickInput) === firstSick && run(wellInput) === firstWell, 'and again');
+    assert(sickInput.items.length === 2 && sickInput.items[1].amount === 13_208, 'the input is as it was');
+  }));
+
   cases.push(runCase('Every disclosure renders in plain words, with its figures filled in and no em dashes', () => {
     const rules = resolveTaxRules(2031);
     const params = {

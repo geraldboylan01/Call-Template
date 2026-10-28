@@ -61,6 +61,14 @@ export const IE_TAX_SOURCES = Object.freeze({
     title: 'Revenue, PRSI and USC for older persons',
     url: 'https://www.revenue.ie/en/life-events-and-personal-circumstances/older-persons/prsi-usc.aspx'
   }),
+  revenueIllnessBenefit: Object.freeze({
+    title: 'Revenue, taxation of Illness Benefit (liable to income tax, not USC or PRSI)',
+    url: 'https://www.revenue.ie/en/jobs-and-pensions/taxation-of-social-welfare-payments/illness-occupational-injury-partial-capacity-benefits.aspx'
+  }),
+  revenueJointAssessment: Object.freeze({
+    title: 'Revenue, joint assessment (the extra standard rate band belongs to the lower income)',
+    url: 'https://www.revenue.ie/en/life-events-and-personal-circumstances/marital-status/marriage-and-civil-partnerships/joint-assessment.aspx'
+  }),
   revenueNursingHome: Object.freeze({
     title: 'Revenue, nursing home and additional nursing care expenses (published 8 September 2026)',
     url: 'https://www.revenue.ie/en/personal-tax-credits-reliefs-and-exemptions/health-and-age/health-expenses/nursing-home-and-additional-nursing-care-expenses.aspx'
@@ -226,6 +234,17 @@ const TAX_YEAR_2026 = Object.freeze({
       nursingHomeExpenses: Object.freeze({
         ruleId: 'ie.income_tax.nursing_home_expenses.2026',
         sources: Object.freeze([S.revenueNursingHome, S.revenueTdmHealthExpenses])
+      }),
+      /**
+       * Illness Benefit is the recipient's own taxable income: income tax only,
+       * no USC or PRSI. It earns the recipient's Employee Tax Credit, which does
+       * not transfer, and it is the recipient's income for the extra standard
+       * rate band a jointly assessed couple gets. The figures are the year's own
+       * (the band, the credit and the rates above); only the treatment is here.
+       */
+      illnessBenefit: Object.freeze({
+        ruleId: 'ie.income_tax.illness_benefit.2026',
+        sources: Object.freeze([S.revenueIllnessBenefit, S.revenueEmployeeCredit, S.revenueJointAssessment])
       }),
       sources: Object.freeze([S.revenueTaxReliefCharts, S.revenueEmployeeCredit, S.arfEmolumentsNoteForGuidance])
     }),
@@ -402,6 +421,8 @@ const TAX_YEAR_2027 = Object.freeze({
     ageCredit: TAX_YEAR_2026.incomeTax.ageCredit,
     /** Not touched by the Budget, so it is the 2026 rule itself. */
     nursingHomeExpenses: TAX_YEAR_2026.incomeTax.nursingHomeExpenses,
+    /** Not touched by the Budget: the treatment is the 2026 rule itself. */
+    illnessBenefit: TAX_YEAR_2026.incomeTax.illnessBenefit,
     /** Said alongside the figure wherever it is shown, so a derived amount is never presented as printed. */
     notes: Object.freeze({
       widowedCredit: 'Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend.'
