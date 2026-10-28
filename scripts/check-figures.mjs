@@ -28,7 +28,21 @@ import {
   PROVIDER_NAMES,
   namesAProvider
 } from '../js/planning/figures/kinds.js';
-import { collectFigures } from '../js/planning/figures/collect.js';
+import { collectExplainers, collectFigures } from '../js/planning/figures/collect.js';
+import { EXPLAINERS, EXPLAINERS_VERSION } from '../js/planning/figures/explainers_ie.js';
+import {
+  EXPLAINER_LIMITS,
+  EXPLAINER_REREAD_DAYS,
+  attachExplainers,
+  buildExplainers,
+  explainerProblems,
+  explainerWarnings,
+  explainersProblems,
+  figuresCoveredBy,
+  isOfficialHost
+} from '../js/planning/figures/explainers.js';
+import { getExplainers } from '../js/planning/figures/get_explainers.js';
+import { HOSTS_THAT_REFUSE_SCRIPTS, classifyLinkResponse } from '../js/planning/figures/links.js';
 import { formatFigureValue } from '../js/planning/figures/format.js';
 import {
   FIGURES_INDEX_VERSION,
@@ -37,6 +51,8 @@ import {
   summariseCatalogues
 } from '../js/planning/figures/register_build.js';
 import {
+  EXPLAINERS_INDEX,
+  EXPLAINERS_VERSION as GENERATED_EXPLAINERS_VERSION,
   FIGURES_CATALOGUES,
   FIGURES_INDEX,
   FIGURES_INDEX_VERSION as GENERATED_INDEX_VERSION
@@ -513,6 +529,7 @@ check('the State Pension rule reads the social welfare catalogue and keeps no ra
 // ---------------------------------------------------------------------------
 
 const collected = collectFigures();
+const collectedExplainers = collectExplainers(collected);
 
 check('how values are shown: money, rates, ages, dates and weekly amounts read as a person would say them', () => {
   const shown = [
@@ -559,20 +576,22 @@ check('the generated index is exactly what the catalogues collect now', () => {
   assert.equal(GENERATED_INDEX_VERSION, FIGURES_INDEX_VERSION);
   assert.deepEqual(JSON.parse(JSON.stringify(FIGURES_INDEX)), JSON.parse(JSON.stringify(collected)));
   assert.deepEqual(JSON.parse(JSON.stringify(FIGURES_CATALOGUES)), summariseCatalogues(collected));
-  assert.equal(readFileSync(fileURLToPath(new URL('../js/planning/figures/figures_index.generated.js', import.meta.url)), 'utf8'), renderIndexSource(collected, summariseCatalogues(collected)));
+  assert.deepEqual(JSON.parse(JSON.stringify(EXPLAINERS_INDEX)), JSON.parse(JSON.stringify(collectedExplainers)));
+  assert.equal(GENERATED_EXPLAINERS_VERSION, EXPLAINERS_VERSION);
+  assert.equal(readFileSync(fileURLToPath(new URL('../js/planning/figures/figures_index.generated.js', import.meta.url)), 'utf8'), renderIndexSource(collected, summariseCatalogues(collected), collectedExplainers, EXPLAINERS_VERSION));
 });
 
 check('the readable register is exactly what the catalogues render to now', () => {
   const written = readFileSync(fileURLToPath(new URL('../docs/figures-register.md', import.meta.url)), 'utf8');
-  assert.equal(written, renderRegisterMarkdown(collected, summariseCatalogues(collected)));
+  assert.equal(written, renderRegisterMarkdown(collected, summariseCatalogues(collected), collectedExplainers, EXPLAINERS_VERSION));
   assert.ok(written.includes('Do not edit by hand'));
 });
 
 check('the staleness check bites: change one catalogue value and the index and register no longer match', () => {
   const tampered = collected.map((figure, index) => (index === 0 ? { ...figure, value: figure.value + 1, valueShown: 'changed' } : figure));
   const catalogues = summariseCatalogues(tampered);
-  assert.notEqual(renderIndexSource(tampered, catalogues), renderIndexSource(collected, summariseCatalogues(collected)));
-  assert.notEqual(renderRegisterMarkdown(tampered, catalogues), renderRegisterMarkdown(collected, summariseCatalogues(collected)));
+  assert.notEqual(renderIndexSource(tampered, catalogues, collectedExplainers, EXPLAINERS_VERSION), renderIndexSource(collected, summariseCatalogues(collected), collectedExplainers, EXPLAINERS_VERSION));
+  assert.notEqual(renderRegisterMarkdown(tampered, catalogues, collectedExplainers, EXPLAINERS_VERSION), renderRegisterMarkdown(collected, summariseCatalogues(collected), collectedExplainers, EXPLAINERS_VERSION));
 });
 
 check('every catalogue reaches the register, with its version', () => {
@@ -932,6 +951,196 @@ check('the State Pension rate is typed in nowhere outside the catalogue', () => 
   };
   ['js', 'worker/src'].forEach(walk);
   assert.deepEqual(found.sort(), [...KNOWN_STATE_PENSION_COPIES].sort());
+});
+
+// ---------------------------------------------------------------------------
+// Explainers: how the rules behind the figures work, in plain words
+// ---------------------------------------------------------------------------
+
+const FIRST_EXPLAINERS = [
+  'bereaved_partners_pension', 'cgt_and_your_home', 'dirt', 'emergency_reserve', 'illness_benefit',
+  'income_tax_bands_and_credits', 'moving_home_costs', 'pension_tax_relief',
+  'state_pension_contributions', 'state_pension_not_passed_on'
+];
+
+check('the first set of explainers is in the catalogue', () => {
+  assert.deepEqual(EXPLAINERS.map((explainer) => explainer.id).sort(), FIRST_EXPLAINERS);
+});
+
+check('every explainer is sound: official sources, a check date, plain "you" wording, ids that resolve', () => {
+  assert.deepEqual(explainersProblems(EXPLAINERS, collected, TODAY), []);
+});
+
+check('the explainer rules bite: each way a hand edit could go wrong is refused', () => {
+  const sound = EXPLAINERS.find((explainer) => explainer.id === 'dirt');
+  const other = (patch) => ({ ...sound, ...patch });
+  const first = sound.sources[0];
+  const mutations = [
+    ['an id that is not snake_case', { id: 'The-Dirt' }, /id must be short snake_case/],
+    ['no title', { title: '' }, /needs a title/],
+    ['a long title', { title: 'x'.repeat(EXPLAINER_LIMITS.maxTitleLength + 1) }, /title is longer/],
+    ['one sentence', { sentences: [sound.sentences[0]] }, /needs 2 to 4 sentences/],
+    ['five sentences', { sentences: [...sound.sentences, 'You see this.', 'You see that.'] }, /needs 2 to 4 sentences/],
+    ['two sentences in one', { sentences: ['You pay it. Then you pay more.', sound.sentences[1]] }, /more than one sentence/],
+    ['a sentence with no full stop', { sentences: ['You pay it', sound.sentences[1]] }, /must end with a full stop/],
+    ['a sentence that is too long', { sentences: [`You ${'pay it and '.repeat(EXPLAINER_LIMITS.maxSentenceWords)}stop.`, sound.sentences[1]] }, /longer than 40 words/],
+    ['no "you" voice', { sentences: ['Tax is taken off interest.', 'It is a final tax.'] }, /"you" voice/],
+    ['a typed percentage', { sentences: ['You pay 33% of the interest.', sound.sentences[1]] }, /a typed figure/],
+    ['a typed euro amount', { sentences: ['You keep the first €1 of interest.', sound.sentences[1]] }, /a typed figure/],
+    ['a typed number in digits', { sentences: ['You pay it for 3 years.', sound.sentences[1]] }, /a typed figure/],
+    ['advice', { sentences: ['You should move your savings.', sound.sentences[1]] }, /advice/],
+    ['the first person', { sentences: ['We take it off for you.', sound.sentences[1]] }, /the first person/],
+    ['a guarantee', { sentences: ['You are guaranteed to pay it.', sound.sentences[1]] }, /a guarantee/],
+    ['a provider named in a sentence', { sentences: ['You get it from AIB each year.', sound.sentences[1]] }, /names a provider/],
+    ['a typed figure in the title', { title: 'DIRT at 33%' }, /title carries a typed figure/],
+    ['a figure id the register does not hold', { figureIds: ['ie.dirt.2026.nonsense'] }, /not a figure in the register/],
+    ['a rule id with nothing beneath it', { ruleIds: ['ie.dirty'] }, /the register has no figure/],
+    ['a rule id that only shares a prefix', { ruleIds: ['ie.dir'] }, /the register has no figure/],
+    ['nothing explained', { figureIds: [], ruleIds: [] }, /at least one figure or rule/],
+    ['an id listed twice', { figureIds: ['ie.dirt.2026.rate'], ruleIds: ['ie.dirt', 'ie.dirt'] }, /lists an id twice/],
+    ['no source', { sources: [] }, /needs at least one source/],
+    ['an http source', { sources: [{ ...first, url: first.url.replace('https', 'http') }] }, /needs an https url/],
+    ['a page that is not official', { sources: [{ ...first, url: 'https://www.bonkers.ie/guides/dirt' }] }, /not an official page/],
+    ['an official-looking host that is not official', { sources: [{ ...first, url: 'https://revenue.ie.example.com/dirt' }] }, /not an official page/],
+    ['a tracking parameter', { sources: [{ ...first, url: `${first.url}?utm_source=x` }] }, /tracking parameters/],
+    ['a fragment', { sources: [{ ...first, url: `${first.url}#top` }] }, /fragment/],
+    ['a source that is not a url', { sources: [{ ...first, url: 'revenue.ie/dirt' }] }, /valid url/],
+    ['a source titled with a provider', { sources: [{ ...first, title: 'AIB deposit rates' }] }, /title names a provider/],
+    ['a source listed twice', { sources: [first, first] }, /lists a source twice/],
+    ['no check date', { checkedOn: undefined }, /checkedOn as a date/],
+    ['a check date in the future', { checkedOn: '2999-01-01' }, /in the future/]
+  ];
+  for (const [what, patch, expected] of mutations) {
+    const problems = explainerProblems(other(patch), collected, TODAY);
+    assert.ok(problems.some((problem) => expected.test(problem)), `${what} should be refused; got ${JSON.stringify(problems)}`);
+  }
+  assert.deepEqual(explainerProblems(sound, collected, TODAY), [], 'the unmutated explainer is sound');
+  const repeated = explainersProblems([sound, { ...sound }], collected, TODAY);
+  assert.ok(repeated.some((problem) => /explainer ids repeat: dirt/.test(problem)), 'two explainers cannot share an id');
+});
+
+check('only the State’s own pages count as official, and a host matches itself and its subdomains', () => {
+  for (const host of ['revenue.ie', 'www.revenue.ie', 'www.gov.ie', 'assets.gov.ie', 'www.citizensinformation.ie', 'www.mabs.ie', 'www.ccpc.ie']) {
+    assert.equal(isOfficialHost(host), true, host);
+  }
+  for (const host of ['bonkers.ie', 'notrevenue.ie', 'revenue.ie.example.com', 'gov.ie.evil.test', 'www.aib.ie']) {
+    assert.equal(isOfficialHost(host), false, host);
+  }
+});
+
+check('no explainer sentence, title or source title names a provider or types a figure, whatever the catalogue holds', () => {
+  for (const explainer of EXPLAINERS) {
+    const everything = [explainer.title, ...explainer.sentences, ...explainer.sources.map((source) => source.title)].join(' ');
+    assert.equal(namesAProvider(everything), null, explainer.id);
+    assert.doesNotMatch([explainer.title, ...explainer.sentences].join(' '), /[0-9€%]/, explainer.id);
+  }
+});
+
+check('the two lists an explainer explains are one source of truth: a figure names exactly the explainers that cover it', () => {
+  const figures = attachExplainers(collectFigures().map((figure) => { const { explainers: _derived, ...bare } = figure; return bare; }), EXPLAINERS);
+  for (const figure of figures) {
+    const expected = EXPLAINERS
+      .filter((explainer) => figuresCoveredBy(explainer, collected).includes(figure.id))
+      .map((explainer) => explainer.id);
+    assert.deepEqual(figure.explainers ?? [], expected, figure.id);
+  }
+  const named = new Set(collected.flatMap((figure) => figure.explainers ?? []));
+  assert.deepEqual([...named].sort(), FIRST_EXPLAINERS, 'every explainer covers at least one figure');
+  const dirt = collected.find((figure) => figure.id === 'ie.dirt.2026.rate');
+  assert.deepEqual(dirt.explainers, ['dirt']);
+  const exact = EXPLAINERS.find((explainer) => explainer.id === 'dirt');
+  assert.ok(figuresCoveredBy(exact, collected).includes('ie.market.cash.instant_access_gross_rate'), 'a figure id covers one figure');
+  assert.ok(!figuresCoveredBy(exact, collected).includes('ie.market.mortgage.illustration_rate'), 'and not its neighbours');
+});
+
+check('an explainer with an id the register does not hold stops the build, naming it', () => {
+  const broken = { ...EXPLAINERS[0], ruleIds: ['ie.nothing_here'] };
+  assert.throws(() => buildExplainers([broken], collected, 'test'), /ie\.nothing_here/);
+});
+
+check('the explainers are in the index and the register page, each with its sources', () => {
+  assert.equal(EXPLAINERS_INDEX.length, EXPLAINERS.length);
+  const page = readFileSync(fileURLToPath(new URL('../docs/figures-register.md', import.meta.url)), 'utf8');
+  for (const explainer of EXPLAINERS) {
+    assert.ok(page.includes(`\`${explainer.id}\``), `${explainer.id} is on the register page`);
+    assert.ok(page.includes(explainer.sentences[0]), `${explainer.id}'s wording is on the register page`);
+    for (const source of explainer.sources) assert.ok(page.includes(source.url), `${source.url} is on the register page`);
+  }
+  assert.ok(page.includes('## Explainers'));
+});
+
+check('getExplainers returns each explainer with its sentences, figures, official sources and read date, and nothing a client must not hear', () => {
+  const all = getExplainers();
+  assert.equal(all.length, EXPLAINERS.length);
+  for (const explainer of all) {
+    assert.ok(explainer.text && explainer.sentences.length >= 2 && explainer.sources.length >= 1 && explainer.checkedOn && explainer.catalogueVersion, explainer.id);
+    assert.ok(explainer.figureIds.length > 0, `${explainer.id} covers figures`);
+    assert.equal(namesAProvider(JSON.stringify(explainer)), null, `${explainer.id} names no provider`);
+    for (const source of explainer.sources) assert.equal(isOfficialHost(new URL(source.url).hostname), true, source.url);
+  }
+});
+
+check('getExplainers filters by id and by the figures explained, and combines them', () => {
+  assert.deepEqual(getExplainers({ ids: ['dirt'] }).map((explainer) => explainer.id), ['dirt']);
+  assert.deepEqual(getExplainers({ figureIds: ['ie.dirt.2026.rate'] }).map((explainer) => explainer.id), ['dirt']);
+  const stateRate = 'ie.social_welfare.state_pension_contributory.personal_under_80.from_2026_01_01';
+  assert.deepEqual(
+    getExplainers({ figureIds: [stateRate] }).map((explainer) => explainer.id).sort(),
+    ['state_pension_contributions', 'state_pension_not_passed_on']
+  );
+  assert.deepEqual(getExplainers({ ids: ['dirt'], figureIds: [stateRate] }), [], 'both filters must hold');
+  assert.deepEqual(getExplainers({ figureIds: ['ie.market.mortgage.illustration_rate'] }), [], 'a figure with no explainer returns none, not an error');
+  assert.deepEqual(getExplainers({ ids: [] }), []);
+});
+
+check('getExplainers refuses what it cannot answer, rather than leaving an explainer out of an answer', () => {
+  assert.throws(() => getExplainers({ ids: ['dirt', 'nope'] }), /holds no explainer with the id "nope"/);
+  assert.throws(() => getExplainers({ figureIds: ['ie.not.a.figure'] }), /holds no figure with the id "ie.not.a.figure"/);
+  assert.throws(() => getExplainers({ ids: 'dirt' }), /ids must be an array/);
+  assert.throws(() => getExplainers({ figureIds: [1] }), /figureIds must be an array/);
+});
+
+check('getExplainers is read-only: what it returns cannot be changed, and cannot change the catalogue', () => {
+  const [explainer] = getExplainers({ ids: ['dirt'] });
+  assert.ok(Object.isFrozen(explainer) && Object.isFrozen(explainer.sentences) && Object.isFrozen(explainer.sources) && Object.isFrozen(explainer.sources[0]));
+  assert.throws(() => { explainer.text = 'changed'; }, TypeError);
+  assert.throws(() => explainer.sentences.push('x'), TypeError);
+  assert.equal(getExplainers({ ids: ['dirt'] })[0].text, EXPLAINERS.find((entry) => entry.id === 'dirt').sentences.join(' '));
+});
+
+check('getFigures carries the ids of the explainers that cover a figure, so a screen can reach the explainer from the figure', () => {
+  assert.deepEqual(getFigures({ ids: ['ie.dirt.2026.rate'] })[0].explainers, ['dirt']);
+  assert.equal('explainers' in getFigures({ ids: ['ie.market.mortgage.illustration_rate'] })[0], false, 'a figure no explainer covers has none');
+  const explainerIds = new Set(EXPLAINERS.map((explainer) => explainer.id));
+  for (const figure of getFigures()) for (const id of figure.explainers ?? []) assert.ok(explainerIds.has(id), `${figure.id} names a real explainer`);
+});
+
+check('the link check judges a response by what the page says, not only by its status', () => {
+  const judge = (response) => classifyLinkResponse({ host: 'www.revenue.ie', ...response }).result;
+  assert.equal(judge({ status: 200, body: '<title>DIRT | Revenue</title><p>Deposit Interest Retention Tax</p>' }), 'ok');
+  assert.equal(judge({ status: 200, body: '<p>The page you are looking for has been removed, had its name changed.</p>' }), 'broken', 'Revenue answers a missing page with a 200');
+  assert.equal(judge({ status: 200, body: '<title>Page not found | Site</title>' }), 'broken', 'a site’s usual not-found page');
+  assert.equal(judge({ status: 200, body: '<title>Selling a home | CCPC</title><script>{"MetaInfo":{"Title":"Page Not Found"}}</script>' }), 'ok', 'another page’s metadata inside a script is not this page');
+  assert.equal(judge({ status: 404 }), 'broken');
+  assert.equal(judge({ status: 410 }), 'broken');
+  assert.equal(judge({ status: 503 }), 'broken');
+  assert.equal(judge({ status: 301 }), 'broken', 'a redirect that was not followed is not an answer');
+  assert.equal(judge({ status: 0, error: 'ENOTFOUND' }), 'broken');
+  assert.equal(judge({ status: 403 }), 'broken', 'a refusal from a host that does not refuse scripts is a failure');
+  for (const host of HOSTS_THAT_REFUSE_SCRIPTS) {
+    assert.equal(classifyLinkResponse({ status: 403, host }).result, 'refused', `${host} refuses scripts: unverified, never a pass`);
+  }
+});
+
+for (const warning of explainerWarnings(EXPLAINERS, TODAY)) {
+  console.warn(`[Figures] WARN: ${warning}`);
+}
+check('an explainer not read for a long time warns, and one read recently does not', () => {
+  const sound = EXPLAINERS[0];
+  const long = new Date(Date.parse(`${sound.checkedOn}T00:00:00Z`) + (EXPLAINER_REREAD_DAYS + 1) * 86_400_000).toISOString().slice(0, 10);
+  const edge = new Date(Date.parse(`${sound.checkedOn}T00:00:00Z`) + EXPLAINER_REREAD_DAYS * 86_400_000).toISOString().slice(0, 10);
+  assert.ok(explainerWarnings([sound], long).some((warning) => /read its sources again/.test(warning)));
+  assert.deepEqual(explainerWarnings([sound], edge), []);
 });
 
 if (failures > 0) {

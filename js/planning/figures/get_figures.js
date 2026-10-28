@@ -10,7 +10,8 @@
  *
  * An entry carries what a person or the AI may be told: the label, the value and
  * how it reads, the unit, the kind, the status, when it takes effect, its source,
- * when it was checked, the catalogue version and who uses it. It does not carry a
+ * when it was checked, the catalogue version, who uses it and the ids of the
+ * explainers that cover it (`getExplainers` returns them). It does not carry a
  * market figure's quotes: those name banks and lenders and are internal
  * provenance, kept in the index for the audit trail and the weekly job.
  */
@@ -38,7 +39,8 @@ function frozenCopy(figure) {
     usedBy: Object.freeze([...figure.usedBy]),
     ...(figure.appliesTo ? { appliesTo: figure.appliesTo } : {}),
     ...(figure.note ? { note: figure.note } : {}),
-    ...(figure.aliases ? { aliases: Object.freeze([...figure.aliases]) } : {})
+    ...(figure.aliases ? { aliases: Object.freeze([...figure.aliases]) } : {}),
+    ...(figure.explainers ? { explainers: Object.freeze([...figure.explainers]) } : {})
   });
 }
 

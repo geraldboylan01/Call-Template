@@ -9,7 +9,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { collectFigures } from '../js/planning/figures/collect.js';
+import { collectExplainers, collectFigures } from '../js/planning/figures/collect.js';
+import { EXPLAINERS_VERSION } from '../js/planning/figures/explainers_ie.js';
 import { renderIndexSource, renderRegisterMarkdown, summariseCatalogues } from '../js/planning/figures/register_build.js';
 
 const root = resolve(new URL('..', import.meta.url).pathname);
@@ -17,10 +18,11 @@ const indexPath = resolve(root, 'js/planning/figures/figures_index.generated.js'
 const registerPath = resolve(root, 'docs/figures-register.md');
 
 const figures = collectFigures();
+const explainers = collectExplainers(figures);
 const catalogues = summariseCatalogues(figures);
 const outputs = [
-  [indexPath, renderIndexSource(figures, catalogues), 'npm run build:figures'],
-  [registerPath, renderRegisterMarkdown(figures, catalogues), 'npm run build:figures']
+  [indexPath, renderIndexSource(figures, catalogues, explainers, EXPLAINERS_VERSION), 'npm run build:figures'],
+  [registerPath, renderRegisterMarkdown(figures, catalogues, explainers, EXPLAINERS_VERSION), 'npm run build:figures']
 ];
 
 if (process.argv.includes('--check')) {
@@ -36,11 +38,11 @@ if (process.argv.includes('--check')) {
       process.exit(1);
     }
   }
-  console.info(`[Figures] The index and the register match the catalogues (${figures.length} figures).`);
+  console.info(`[Figures] The index and the register match the catalogues (${figures.length} figures, ${explainers.length} explainers).`);
 } else {
   for (const [path, text] of outputs) {
     writeFileSync(path, text);
     console.info(`[Figures] wrote ${path.replace(`${root}/`, '')}`);
   }
-  console.info(`[Figures] ${figures.length} figures from ${catalogues.length} catalogues.`);
+  console.info(`[Figures] ${figures.length} figures from ${catalogues.length} catalogues, ${explainers.length} explainers.`);
 }

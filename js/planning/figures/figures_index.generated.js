@@ -73,6 +73,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -113,6 +116,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -153,6 +159,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -193,6 +202,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -233,6 +245,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -273,6 +288,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -313,6 +331,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -353,6 +374,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -393,6 +417,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -433,6 +460,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -473,6 +503,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1715,6 +1748,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "plan_pack"
+    ],
+    "explainers": [
+      "cgt_and_your_home"
     ]
   },
   {
@@ -1747,6 +1783,9 @@ export const FIGURES_INDEX = Object.freeze([
       "future_cost_fund",
       "goals_and_resources",
       "house_purchase"
+    ],
+    "explainers": [
+      "dirt"
     ]
   },
   {
@@ -1791,6 +1830,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1835,6 +1877,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1879,6 +1924,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1923,6 +1971,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -1967,6 +2018,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2011,6 +2065,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2055,6 +2112,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2099,6 +2159,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2144,7 +2207,10 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "plan_pack"
     ],
-    "note": "Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend."
+    "note": "Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend.",
+    "explainers": [
+      "income_tax_bands_and_credits"
+    ]
   },
   {
     "id": "ie.income_tax.employee_credit.2027.amount",
@@ -2188,6 +2254,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2232,6 +2301,9 @@ export const FIGURES_INDEX = Object.freeze([
       "household_cash_flow",
       "pension_projection",
       "plan_pack"
+    ],
+    "explainers": [
+      "income_tax_bands_and_credits"
     ]
   },
   {
@@ -2830,6 +2902,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "plan_pack"
+    ],
+    "explainers": [
+      "cgt_and_your_home"
     ]
   },
   {
@@ -2860,6 +2935,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "plan_pack"
+    ],
+    "explainers": [
+      "cgt_and_your_home"
     ]
   },
   {
@@ -4446,6 +4524,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4482,6 +4563,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4518,6 +4602,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4554,6 +4641,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4590,6 +4680,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4626,6 +4719,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4662,6 +4758,9 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "household_cash_flow",
       "goals_and_resources"
+    ],
+    "explainers": [
+      "pension_tax_relief"
     ]
   },
   {
@@ -4873,6 +4972,9 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
+    ],
+    "explainers": [
+      "state_pension_contributions"
     ]
   },
   {
@@ -4904,6 +5006,9 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "pension_projection",
       "net_retirement_cashflow"
+    ],
+    "explainers": [
+      "state_pension_contributions"
     ]
   },
   {
@@ -4940,7 +5045,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
@@ -4972,7 +5081,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person under 80 with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2026_01_01",
@@ -5004,7 +5117,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
@@ -5036,7 +5153,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable."
+    "appliesTo": "A person aged 80 or over with a full social insurance record. Gross: it is taxable.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
@@ -5074,6 +5195,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner under 66 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5108,6 +5233,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner under 66 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5146,6 +5275,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 66 to 79 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5180,6 +5313,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 66 to 79 with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5214,6 +5351,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 80 or over with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5248,6 +5389,10 @@ export const FIGURES_INDEX = Object.freeze([
     "appliesTo": "A bereaved partner aged 80 or over with 48 or more contributions. Taxable; not means tested.",
     "aliases": [
       "Widow’s, Widower’s or Surviving Civil Partner’s (Contributory) Pension"
+    ],
+    "explainers": [
+      "state_pension_not_passed_on",
+      "bereaved_partners_pension"
     ]
   },
   {
@@ -5283,7 +5428,10 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI."
+    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
   },
   {
     "id": "ie.social_welfare.invalidity_pension.personal.from_2027_01_01",
@@ -5314,7 +5462,10 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI."
+    "appliesTo": "A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
   },
   {
     "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
@@ -5349,7 +5500,10 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI."
+    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
   },
   {
     "id": "ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01",
@@ -5380,7 +5534,10 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "protection_gap"
     ],
-    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI."
+    "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI.",
+    "explainers": [
+      "illness_benefit"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.pension_age",
@@ -5416,7 +5573,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person born on or after 1 January 1958 can choose a date between 66 and 70, with a higher rate for starting later."
+    "appliesTo": "A person born on or after 1 January 1958 can choose a date between 66 and 70, with a higher rate for starting later.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
@@ -5452,7 +5613,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "Paid contributions, HomeCaring periods and credited contributions together. 2,080 is 40 years. With fewer, the rate is that share of the maximum."
+    "appliesTo": "Paid contributions, HomeCaring periods and credited contributions together. 2,080 is 40 years. With fewer, the rate is that share of the maximum.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.contributions_a_year",
@@ -5484,7 +5649,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "2,080 contributions are 40 years, which is 52 a year."
+    "appliesTo": "2,080 contributions are 40 years, which is 52 a year.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
@@ -5516,7 +5685,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "A person needs at least 520 reckonable contributions, of which 520 must be full-rate social insurance (PRSI) contributions. Class A and Class S both count as full-rate."
+    "appliesTo": "A person needs at least 520 reckonable contributions, of which 520 must be full-rate social insurance (PRSI) contributions. Class A and Class S both count as full-rate.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
@@ -5548,7 +5721,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "HomeCaring periods are awarded for time spent caring for a child aged 12 or under, or a person who needed an increased level of care. 1,040 is 20 years."
+    "appliesTo": "HomeCaring periods are awarded for time spent caring for a child aged 12 or under, or a person who needed an increased level of care. 1,040 is 20 years.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.social_welfare.state_pension_contributory.credited_contributions_cap",
@@ -5580,7 +5757,11 @@ export const FIGURES_INDEX = Object.freeze([
       "pension_projection",
       "net_retirement_cashflow"
     ],
-    "appliesTo": "Credits are awarded for periods when a person could not work and claimed a payment such as Illness Benefit or Jobseeker’s Benefit."
+    "appliesTo": "Credits are awarded for periods when a person could not work and claimed a payment such as Illness Benefit or Jobseeker’s Benefit.",
+    "explainers": [
+      "state_pension_contributions",
+      "state_pension_not_passed_on"
+    ]
   },
   {
     "id": "ie.house_purchase.mortgage.first_time_buyer_income_multiple",
@@ -5730,6 +5911,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5760,6 +5944,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5790,6 +5977,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5820,6 +6010,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -5850,6 +6043,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "house_purchase"
+    ],
+    "explainers": [
+      "moving_home_costs"
     ]
   },
   {
@@ -10248,6 +10444,9 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "liquidity_analysis",
       "house_purchase"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -10279,6 +10478,9 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "liquidity_analysis",
       "house_purchase"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -10309,6 +10511,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "liquidity_analysis"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -10339,6 +10544,9 @@ export const FIGURES_INDEX = Object.freeze([
     },
     "usedBy": [
       "liquidity_analysis"
+    ],
+    "explainers": [
+      "emergency_reserve"
     ]
   },
   {
@@ -10395,6 +10603,9 @@ export const FIGURES_INDEX = Object.freeze([
         "effective": "2025-05-13",
         "retrievedOn": "2026-10-22"
       }
+    ],
+    "explainers": [
+      "dirt"
     ]
   },
   {
@@ -10458,6 +10669,9 @@ export const FIGURES_INDEX = Object.freeze([
         "effective": null,
         "retrievedOn": "2026-10-22"
       }
+    ],
+    "explainers": [
+      "dirt"
     ]
   },
   {
@@ -10529,5 +10743,402 @@ export const FIGURES_INDEX = Object.freeze([
       "gap": 0,
       "drifted": false
     }
+  }
+].map(Object.freeze));
+
+export const EXPLAINERS_VERSION = "ie-explainers-2026.1";
+
+export const EXPLAINERS_INDEX = Object.freeze([
+  {
+    "id": "state_pension_contributions",
+    "title": "How your contributions set your State Pension",
+    "sentences": [
+      "The State Pension (Contributory) is paid from pension age on your own social insurance record, and it is not means-tested, so other income does not reduce it.",
+      "Under the Total Contributions Approach, your rate depends on the total contributions you have when you start it: paid and voluntary contributions, credited contributions and caring supports all count.",
+      "A full record earns the maximum rate and a shorter one a reduced rate in proportion, and while the older Yearly Average method is phased out you get whichever calculation is higher.",
+      "It is taxable, but you are unlikely to pay tax if it is your only income."
+    ],
+    "text": "The State Pension (Contributory) is paid from pension age on your own social insurance record, and it is not means-tested, so other income does not reduce it. Under the Total Contributions Approach, your rate depends on the total contributions you have when you start it: paid and voluntary contributions, credited contributions and caring supports all count. A full record earns the maximum rate and a shorter one a reduced rate in proportion, and while the older Yearly Average method is phased out you get whichever calculation is higher. It is taxable, but you are unlikely to pay tax if it is your only income.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.state_pension_contributory",
+      "ie.state_pension_contributory"
+    ],
+    "coversFigureIds": [
+      "ie.state_pension_contributory.default_start_age",
+      "ie.state_pension_contributory.default_escalation_rate",
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.pension_age",
+      "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+      "ie.social_welfare.state_pension_contributory.contributions_a_year",
+      "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+      "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+      "ie.social_welfare.state_pension_contributory.credited_contributions_cap"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      },
+      {
+        "title": "Citizens Information, applying for the State Pension (Contributory)",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/older-and-retired-people/state-pension-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "state_pension_not_passed_on",
+    "title": "A State Pension is not passed to a partner",
+    "sentences": [
+      "A State Pension (Contributory) is paid on the record of the person it is paid to, so it stops after a short run-on period when they die, and a partner does not inherit it.",
+      "A partner who is left may instead qualify for the Bereaved Partner’s (Contributory) Pension, which is based on their own contribution record or their late partner’s record.",
+      "Only one social welfare payment is paid at a time, with a few exceptions, so if you qualify for both a State Pension and a bereaved partner’s pension you are paid whichever is higher."
+    ],
+    "text": "A State Pension (Contributory) is paid on the record of the person it is paid to, so it stops after a short run-on period when they die, and a partner does not inherit it. A partner who is left may instead qualify for the Bereaved Partner’s (Contributory) Pension, which is based on their own contribution record or their late partner’s record. Only one social welfare payment is paid at a time, with a few exceptions, so if you qualify for both a State Pension and a bereaved partner’s pension you are paid whichever is higher.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.state_pension_contributory",
+      "ie.social_welfare.bereaved_partners_contributory"
+    ],
+    "coversFigureIds": [
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_under_80.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.state_pension_contributory.personal_80_and_over.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2027_01_01",
+      "ie.social_welfare.state_pension_contributory.pension_age",
+      "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+      "ie.social_welfare.state_pension_contributory.contributions_a_year",
+      "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+      "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+      "ie.social_welfare.state_pension_contributory.credited_contributions_cap"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, Operational Guidelines: State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/operational-guidelines-state-pension-contributory/"
+      },
+      {
+        "title": "Citizens Information, Bereaved Partner’s (Contributory) Pension",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/death-related-benefits/bereaved-partners-contributory-pension/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "bereaved_partners_pension",
+    "title": "The Bereaved Partner’s (Contributory) Pension",
+    "sentences": [
+      "This is a weekly payment to a husband, wife, civil partner or qualified cohabitant after their partner dies, and it replaced the widow’s, widower’s and surviving civil partner’s pension.",
+      "It depends on social insurance contributions: your record or your late partner’s record has to meet the conditions, and the two records cannot be added together.",
+      "It is paid whatever other income you have, and it is taxable, though you are unlikely to pay tax if it is your only income.",
+      "It stops if you marry or start to live with someone else as a couple."
+    ],
+    "text": "This is a weekly payment to a husband, wife, civil partner or qualified cohabitant after their partner dies, and it replaced the widow’s, widower’s and surviving civil partner’s pension. It depends on social insurance contributions: your record or your late partner’s record has to meet the conditions, and the two records cannot be added together. It is paid whatever other income you have, and it is taxable, though you are unlikely to pay tax if it is your only income. It stops if you marry or start to live with someone else as a couple.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.bereaved_partners_contributory"
+    ],
+    "coversFigureIds": [
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_66_to_79.from_2027_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2026_01_01",
+      "ie.social_welfare.bereaved_partners_contributory.personal_80_and_over.from_2027_01_01"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, Bereaved Partner’s (Contributory) Pension",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/bereaved-partners-contributory-pension/"
+      },
+      {
+        "title": "Citizens Information, Bereaved Partner’s (Contributory) Pension",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/death-related-benefits/bereaved-partners-contributory-pension/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "illness_benefit",
+    "title": "Illness Benefit: who it covers",
+    "sentences": [
+      "Illness Benefit is a weekly payment for people who cannot work because of illness and are certified unfit for work by a doctor, and it does not depend on your employer’s sick pay.",
+      "Only contributions at certain classes count towards it, such as the employee class, and Class S, paid by the self-employed, is not one of them, so people who pay only Class S are not covered.",
+      "It is taxable but paid without tax taken off, and Revenue adjusts your tax credits and rate band to collect any tax due.",
+      "It is paid for a limited time that depends on the contributions you have paid, and a longer illness can move on to longer-term payments such as Invalidity Pension."
+    ],
+    "text": "Illness Benefit is a weekly payment for people who cannot work because of illness and are certified unfit for work by a doctor, and it does not depend on your employer’s sick pay. Only contributions at certain classes count towards it, such as the employee class, and Class S, paid by the self-employed, is not one of them, so people who pay only Class S are not covered. It is taxable but paid without tax taken off, and Revenue adjusts your tax credits and rate band to collect any tax due. It is paid for a limited time that depends on the contributions you have paid, and a longer illness can move on to longer-term payments such as Invalidity Pension.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.social_welfare.illness_benefit",
+      "ie.social_welfare.invalidity_pension"
+    ],
+    "coversFigureIds": [
+      "ie.social_welfare.invalidity_pension.personal.from_2026_01_01",
+      "ie.social_welfare.invalidity_pension.personal.from_2027_01_01",
+      "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+      "ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01"
+    ],
+    "sources": [
+      {
+        "title": "Department of Social Protection, Illness Benefit",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/illness-benefit/"
+      },
+      {
+        "title": "Citizens Information, Illness Benefit",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/disability-and-illness/illness-benefit/"
+      },
+      {
+        "title": "Citizens Information, Class S PRSI",
+        "url": "https://www.citizensinformation.ie/en/social-welfare/irish-social-welfare-system/social-insurance-prsi/class-s-prsi/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "pension_tax_relief",
+    "title": "Pension tax relief and the age limits",
+    "sentences": [
+      "Contributions you pay into a pension can get income tax relief at your highest rate of tax, but not relief from the Universal Social Charge or PRSI.",
+      "The relief is limited each year to a share of your earnings, and that share rises with your age in bands.",
+      "There is also a ceiling on the earnings that count, so earnings above it add no further relief."
+    ],
+    "text": "Contributions you pay into a pension can get income tax relief at your highest rate of tax, but not relief from the Universal Social Charge or PRSI. The relief is limited each year to a share of your earnings, and that share rises with your age in bands. There is also a ceiling on the earnings that count, so earnings above it add no further relief.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.pension_relief.limits"
+    ],
+    "coversFigureIds": [
+      "ie.pension_relief.limits.age_band_0",
+      "ie.pension_relief.limits.age_band_30",
+      "ie.pension_relief.limits.age_band_40",
+      "ie.pension_relief.limits.age_band_50",
+      "ie.pension_relief.limits.age_band_55",
+      "ie.pension_relief.limits.age_band_60",
+      "ie.pension_relief.limits.earnings_cap"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, tax relief on pension contributions",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/pension/relief/index.aspx"
+      },
+      {
+        "title": "Revenue, tax relief limits on pension contributions",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/pension/relief/tax-relief-limits.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "dirt",
+    "title": "DIRT on your deposit interest",
+    "sentences": [
+      "Deposit Interest Retention Tax, or DIRT, is tax taken off the interest on your deposit accounts by the financial institution that holds them, before the interest is paid to you.",
+      "It is a final tax on that interest, and Universal Social Charge does not apply to deposit interest, although PRSI can apply in some circumstances.",
+      "Some people can receive interest without DIRT after making a declaration, such as people over a set age whose total income is below a limit and people who are permanently incapacitated."
+    ],
+    "text": "Deposit Interest Retention Tax, or DIRT, is tax taken off the interest on your deposit accounts by the financial institution that holds them, before the interest is paid to you. It is a final tax on that interest, and Universal Social Charge does not apply to deposit interest, although PRSI can apply in some circumstances. Some people can receive interest without DIRT after making a declaration, such as people over a set age whose total income is below a limit and people who are permanently incapacitated.",
+    "figureIds": [
+      "ie.market.cash.instant_access_gross_rate",
+      "ie.market.cash.regular_saver_gross_rate"
+    ],
+    "ruleIds": [
+      "ie.dirt"
+    ],
+    "coversFigureIds": [
+      "ie.dirt.2026.rate",
+      "ie.market.cash.instant_access_gross_rate",
+      "ie.market.cash.regular_saver_gross_rate"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, Deposit Interest Retention Tax (DIRT)",
+        "url": "https://www.revenue.ie/en/additional-incomes/dirt/index.aspx"
+      },
+      {
+        "title": "Revenue, what DIRT rate is applicable",
+        "url": "https://www.revenue.ie/en/additional-incomes/dirt/who-is-charged-dirt.aspx"
+      },
+      {
+        "title": "Revenue, who is exempt from DIRT",
+        "url": "https://www.revenue.ie/en/additional-incomes/dirt/who-is-exempt-from-dirt.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "cgt_and_your_home",
+    "title": "Capital gains tax, and why your home is different",
+    "sentences": [
+      "Capital gains tax is charged on the gain when you sell an asset such as shares or a second property, which is the sale price less what you paid and your allowable costs.",
+      "Each person has a yearly exemption, so a gain below it carries no tax, you still report the sale, and a loss can be set against gains.",
+      "Your home is treated differently: if it has been your only or main home for the whole time you owned it, selling it carries no capital gains tax.",
+      "Some of that relief can be lost if you did not live in all of it or for the whole time, and it does not cover a second property, which is not your only or main home."
+    ],
+    "text": "Capital gains tax is charged on the gain when you sell an asset such as shares or a second property, which is the sale price less what you paid and your allowable costs. Each person has a yearly exemption, so a gain below it carries no tax, you still report the sale, and a loss can be set against gains. Your home is treated differently: if it has been your only or main home for the whole time you owned it, selling it carries no capital gains tax. Some of that relief can be lost if you did not live in all of it or for the whole time, and it does not cover a second property, which is not your only or main home.",
+    "figureIds": [
+      "ie.cgt.2026.annual_exemption"
+    ],
+    "ruleIds": [
+      "ie.cgt.rate"
+    ],
+    "coversFigureIds": [
+      "ie.cgt.2026.annual_exemption",
+      "ie.cgt.rate.2012-12",
+      "ie.cgt.rate.2026-10"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, how to calculate CGT",
+        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/how-to-calculate-cgt.aspx"
+      },
+      {
+        "title": "Revenue, CGT: if you make a loss",
+        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/transfering-an-asset/if-you-make-a-loss.aspx"
+      },
+      {
+        "title": "Revenue, Principal Private Residence (PPR) Relief",
+        "url": "https://www.revenue.ie/en/gains-gifts-and-inheritance/cgt-reliefs/principal-private-residence-ppr-relief.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "moving_home_costs",
+    "title": "Stamp duty and selling costs when you move home",
+    "sentences": [
+      "Stamp duty is paid by the buyer, on the price of the home being bought, at rates that rise in bands.",
+      "Selling a home has its own costs, including the estate agent’s fee (a share of the sale price plus VAT), advertising, your solicitor’s fees and outlays, and the energy rating certificate that is required before you can list it.",
+      "What is left once the mortgage is repaid and these costs are paid is what the sale releases towards your next home."
+    ],
+    "text": "Stamp duty is paid by the buyer, on the price of the home being bought, at rates that rise in bands. Selling a home has its own costs, including the estate agent’s fee (a share of the sale price plus VAT), advertising, your solicitor’s fees and outlays, and the energy rating certificate that is required before you can list it. What is left once the mortgage is repaid and these costs are paid is what the sale releases towards your next home.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.house_purchase.stamp_duty"
+    ],
+    "coversFigureIds": [
+      "ie.house_purchase.stamp_duty.band_1.rate",
+      "ie.house_purchase.stamp_duty.band_1.upper_limit",
+      "ie.house_purchase.stamp_duty.band_2.rate",
+      "ie.house_purchase.stamp_duty.band_2.upper_limit",
+      "ie.house_purchase.stamp_duty.band_3.rate"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, Stamp Duty and property",
+        "url": "https://www.revenue.ie/en/property/stamp-duty/property/stamp-duty-property/index.aspx"
+      },
+      {
+        "title": "Revenue, residential Stamp Duty rates",
+        "url": "https://www.revenue.ie/en/property/stamp-duty/property/stamp-duty-property/rates.aspx"
+      },
+      {
+        "title": "CCPC, selling a home in Ireland",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "emergency_reserve",
+    "title": "The emergency reserve",
+    "sentences": [
+      "An emergency reserve is money kept easy to reach for urgent or unexpected costs, such as a car repair, a medical bill or a loss of income, so you do not have to borrow.",
+      "It is usually sized in months of your essential spending rather than as a fixed amount, because what you would need to cover depends on your own costs.",
+      "In your plan the reserve is set aside first, with a minimum and a target number of months, and it is kept apart from the cash counted towards a goal such as a deposit."
+    ],
+    "text": "An emergency reserve is money kept easy to reach for urgent or unexpected costs, such as a car repair, a medical bill or a loss of income, so you do not have to borrow. It is usually sized in months of your essential spending rather than as a fixed amount, because what you would need to cover depends on your own costs. In your plan the reserve is set aside first, with a minimum and a target number of months, and it is kept apart from the cash counted towards a goal such as a deposit.",
+    "figureIds": [],
+    "ruleIds": [
+      "planeir.assumption.reserve_months"
+    ],
+    "coversFigureIds": [
+      "planeir.assumption.reserve_months.working.minimum",
+      "planeir.assumption.reserve_months.working.target",
+      "planeir.assumption.reserve_months.retired.minimum",
+      "planeir.assumption.reserve_months.retired.target"
+    ],
+    "sources": [
+      {
+        "title": "MABS, building up savings",
+        "url": "https://www.mabs.ie/en/managing-money/building-up-savings/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
+  },
+  {
+    "id": "income_tax_bands_and_credits",
+    "title": "Income tax bands and credits",
+    "sentences": [
+      "Income tax works in two steps: income up to your standard-rate band is taxed at the standard rate, and income above it is taxed at the higher rate.",
+      "The size of your band depends on your circumstances, such as being single, married or in a civil partnership, or widowed, and a couple who both have income can have their band increased up to a limit.",
+      "Tax credits are then taken off the tax worked out, which lowers what you pay directly, and the Universal Social Charge is calculated separately."
+    ],
+    "text": "Income tax works in two steps: income up to your standard-rate band is taxed at the standard rate, and income above it is taxed at the higher rate. The size of your band depends on your circumstances, such as being single, married or in a civil partnership, or widowed, and a couple who both have income can have their band increased up to a limit. Tax credits are then taken off the tax worked out, which lowers what you pay directly, and the Universal Social Charge is calculated separately.",
+    "figureIds": [],
+    "ruleIds": [
+      "ie.income_tax.2026",
+      "ie.income_tax.2027",
+      "ie.income_tax.employee_credit"
+    ],
+    "coversFigureIds": [
+      "ie.income_tax.2026.standard_rate",
+      "ie.income_tax.2026.higher_rate",
+      "ie.income_tax.2026.standard_rate_band.single",
+      "ie.income_tax.2026.standard_rate_band.widowed",
+      "ie.income_tax.2026.standard_rate_band.married_one_income",
+      "ie.income_tax.2026.standard_rate_band.second_income_increase_max",
+      "ie.income_tax.2026.personal_credit.single",
+      "ie.income_tax.2026.personal_credit.married",
+      "ie.income_tax.2026.personal_credit.widowed",
+      "ie.income_tax.employee_credit.2026.amount",
+      "ie.income_tax.employee_credit.2026.max_share_of_qualifying_income",
+      "ie.income_tax.2027.standard_rate",
+      "ie.income_tax.2027.higher_rate",
+      "ie.income_tax.2027.standard_rate_band.single",
+      "ie.income_tax.2027.standard_rate_band.widowed",
+      "ie.income_tax.2027.standard_rate_band.married_one_income",
+      "ie.income_tax.2027.standard_rate_band.second_income_increase_max",
+      "ie.income_tax.2027.personal_credit.single",
+      "ie.income_tax.2027.personal_credit.married",
+      "ie.income_tax.2027.personal_credit.widowed",
+      "ie.income_tax.employee_credit.2027.amount",
+      "ie.income_tax.employee_credit.2027.max_share_of_qualifying_income"
+    ],
+    "sources": [
+      {
+        "title": "Revenue, how your Income Tax is calculated",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/calculating-your-income-tax/how-income-tax-is-calculated.aspx"
+      },
+      {
+        "title": "Revenue, what is a tax rate band",
+        "url": "https://www.revenue.ie/en/jobs-and-pensions/calculating-your-income-tax/tax-rate-band.aspx"
+      },
+      {
+        "title": "Revenue, tax rates, bands and reliefs",
+        "url": "https://www.revenue.ie/en/personal-tax-credits-reliefs-and-exemptions/tax-relief-charts/index.aspx"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "catalogueVersion": "ie-explainers-2026.1"
   }
 ].map(Object.freeze));
