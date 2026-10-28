@@ -157,6 +157,49 @@ await test('B1: running cash and surplus reconcile after each chosen step and fi
   }
   close(value(stories, 'steps.clear_car_loan.surplusAfter', 'clear_car'), 17000);
 });
+await test('Reduced mortgage repayments enter the walk once, at the mortgage goal, from serialized payment differences', async () => {
+  const p = base(); p.household.assets.find(asset => asset.assetId === 'cash').currentValue.amount = 150000;
+  p.routes = [{ id: 'current' }, { id: 'reduce_mortgage', changes: [{ type: 'useCash', goalId: 'goal_mortgage', amount: 60000 }] }]; p.narration = {};
+  const c = JSON.parse(JSON.stringify(await compile(p))), s = readPlanPosition(c), r = route(s, 'reduce_mortgage'), l = ledger(c, r.routeId);
+  assert.ok(l.pricing.every(quote => !Object.hasOwn(quote, 'freed')), 'The walk must use only serialized ledger data');
+  const payment = l.annualFunding.debtPayments.find(row => row.liabilityId === 'home_loan');
+  const saving = (payment.openingMonthlyPayment - payment.routeMonthlyPayment) * 12;
+  assert.ok(saving > 0);
+  close(r.facts['steps.reserve.surplusAfter'].value, l.years[0].available - saving);
+  let running = l.years[0].available - saving;
+  for (const goal of r.goalWalk) {
+    running -= goal.yearly;
+    if (goal.goalId === 'goal_mortgage') running += saving;
+    close(r.facts['steps.' + goal.goalId + '.surplusAfter'].value, running);
+  }
+  const final = r.facts[r.steps.at(-1).surplusAfter].value;
+  close(final, l.years[0].remaining);
+  close(final, r.facts['leftOverAfterGoals.yearly'].value);
+  assert.equal(Math.round(final * 100), 826932);
+});
+await test('Clearing a bound loan and reducing mortgage repayments credit each saving at its own step', async () => {
+  const p = base(); p.household.assets.find(asset => asset.assetId === 'cash').currentValue.amount = 150000;
+  p.routes = [{ id: 'current' }, { id: 'clear_and_reduce', changes: [
+    { type: 'clearOutgoing', outgoingId: 'car', paidFrom: 'savings' },
+    { type: 'useCash', goalId: 'goal_mortgage', amount: 60000 }
+  ] }]; p.narration = {};
+  const c = await compile(p), s = readPlanPosition(c), r = route(s, 'clear_and_reduce'), l = ledger(c, r.routeId);
+  const mortgage = l.annualFunding.debtPayments.find(row => row.liabilityId === 'home_loan');
+  const mortgageSaving = (mortgage.openingMonthlyPayment - mortgage.routeMonthlyPayment) * 12;
+  const car = l.annualFunding.debtPayments.find(row => row.liabilityId === 'car_loan');
+  const carSaving = (car.openingMonthlyPayment - car.routeMonthlyPayment) * 12;
+  assert.equal(carSaving, 6000);
+  let running = l.years[0].available - mortgageSaving - carSaving;
+  close(r.facts['steps.reserve.surplusAfter'].value, running);
+  running += carSaving;
+  close(r.facts['steps.clear_car_loan.surplusAfter'].value, running);
+  for (const goal of r.goalWalk) {
+    running -= goal.yearly;
+    if (goal.goalId === 'goal_mortgage') running += mortgageSaving;
+    close(r.facts['steps.' + goal.goalId + '.surplusAfter'].value, running);
+  }
+  close(r.facts[r.steps.at(-1).surplusAfter].value, l.years[0].remaining);
+});
 await test('B1: freed cash, retirement stops and assigned assets are registered once with native dates', () => {
   for (const r of stories.routes) {
     const l = ledger(compiled, r.routeId);

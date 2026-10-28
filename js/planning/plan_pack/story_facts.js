@@ -113,6 +113,8 @@ function goalFacts(r) {
 
 function ledgerWalk(r, walk) {
   const l = r.ledger, lp = r.ledgerPath, steps = [];
+  const cleared = new Set(), debtPayments = l?.annualFunding?.debtPayments ?? [];
+  const yearlySaving = payment => Math.max(0, (payment.openingMonthlyPayment - payment.routeMonthlyPayment) * 12);
   let cash = number(l?.cashAvailableAfterReserve) ? l.cashAvailableAfterReserve : null;
   let surplus = number(l?.earnedLeftOver) ? l.earnedLeftOver : valueOf(r.facts['position.leftOver']);
   const fundingActive = !number(l?.years?.[0]?.earningShare) || l.years[0].earningShare > 1e-9;
@@ -122,9 +124,13 @@ function ledgerWalk(r, walk) {
     const clearedAnnual = r.route.changes.reduce((total, change) => {
       const authored = r.pack.routes.find(row => row.id === r.route.id)?.changes?.[Number(change.source?.split('/')[4])];
       const original = r.pack.household.liabilities.find(row => row.liabilityId === change.liabilityId);
-      return total + (authored?.type === 'clearOutgoing' ? original.monthlyPayment.amount * 12 : 0);
+      if (authored?.type !== 'clearOutgoing') return total;
+      cleared.add(change.liabilityId);
+      return total + original.monthlyPayment.amount * 12;
     }, 0);
-    const goalSavings = r.route.id === 'current' ? 0 : sum((l.pricing ?? []).map(row => row.freed?.[0] ?? 0));
+    // Pricing omits the engine's temporary freed arrays. The serialized payment
+    // differences are also what the goal steps below use to release savings.
+    const goalSavings = r.route.id === 'current' ? 0 : sum(debtPayments.filter(payment => !cleared.has(payment.liabilityId)).map(yearlySaving));
     surplus = l.years[0].available - (fundingActive ? clearedAnnual + goalSavings : 0);
   }
   const step = (id, title, inputs, status = 'priced') => {
@@ -135,7 +141,6 @@ function ledgerWalk(r, walk) {
   };
   if (surplus < 0) step('deficit', 'Yearly deficit', ['position.leftOver']);
   step('reserve', 'Emergency reserve', ['position.reserve', 'position.spareCash', lp]);
-  const cleared = new Set();
   for (const change of r.route.changes) {
     const authored = r.pack.routes.find(row => row.id === r.route.id)?.changes?.[Number(change.source?.split('/')[4])];
     if (authored?.type !== 'clearOutgoing') continue;
@@ -148,8 +153,8 @@ function ledgerWalk(r, walk) {
   for (const goal of walk) {
     const quote = l?.pricing?.find(row => row.goalId === goal.goalId);
     const binding = r.pack.planningInputs.goalBindings.find(row => row.goalId === goal.goalId);
-    const payment = l?.annualFunding?.debtPayments?.find(row => row.liabilityId === binding?.liabilityId);
-    const freed = payment && !cleared.has(payment.liabilityId) && fundingActive ? Math.max(0, (payment.openingMonthlyPayment - payment.routeMonthlyPayment) * 12) : 0;
+    const payment = debtPayments.find(row => row.liabilityId === binding?.liabilityId);
+    const freed = payment && !cleared.has(payment.liabilityId) && fundingActive ? yearlySaving(payment) : 0;
     cash = number(cash) && number(goal.cash) ? cash - goal.cash : null;
     surplus = number(surplus) && number(goal.yearly) ? surplus + freed - goal.yearly : null;
     step(goal.goalId, goal.title, ['goals.' + goal.goalId + '.routeCash', 'goals.' + goal.goalId + '.routeYearly', ...(lp ? [l.annualFunding ? lp + '/annualFunding' : lp] : [])], quote ? 'priced' : 'not_priced');
