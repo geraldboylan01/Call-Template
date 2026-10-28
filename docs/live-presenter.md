@@ -8,14 +8,14 @@ Planeir exposes real presentation targets and executes a package. Codex reads th
 2. Run automatic discovery using the ordinary import pipeline. A case pack or a session JSON is accepted:
 
    ```sh
-   node scripts/presenter-package.mjs prepare path/to/case-pack.json private/aam-makeovers/my-presentation
+   node scripts/presenter-package.mjs prepare path/to/case-pack.json private/presenter/my-presentation
    ```
 
    This writes `session.json`, `catalogue.json`, `live-presenter-brief.json`, and a local preview bootstrap. `discover <source> [output-directory]` produces the catalogue/brief without a preview. No manual target export is required.
 3. Reread the finished script alongside the catalogue. Choose targets by their concept, label, description, values, scenario and output origin. Let one FRAME last as long as it helps comprehension. Report missing/uncertain mappings in `unmapped`.
 4. Create `presentation.json`; use `fingerprint(script)` from `js/presenter_catalogue.js` for `scriptHash` and the catalogue's case fingerprint. Every beat needs a stable ID, presenter label, operations, rationale, and one exact, unique script anchor. An operation can only select a discovered target or an existing named scenario. There is no arbitrary selector, script execution, input override or financial calculation action.
-5. Run `node scripts/presenter-package.mjs validate private/aam-makeovers/my-presentation`. This compiles the package and writes `script-presenter.md` and `validation-structural.json`. It deliberately does not claim live validation has happened.
-6. Serve the repository from its root with `node scripts/serve-presenter.mjs 8788`, then open `http://127.0.0.1:8788/private/aam-makeovers/my-presentation/`. This is the actual app shell importing `initApp` and the production controller, with a local, read-only case bootstrap. Private case files are excluded from the build and Git.
+5. Run `node scripts/presenter-package.mjs validate private/presenter/my-presentation`. This compiles the package and writes `script-presenter.md` and `validation-structural.json`. It deliberately does not claim live validation has happened.
+6. Serve the repository from its root with `node scripts/serve-presenter.mjs 8788`, then open `http://127.0.0.1:8788/private/presenter/my-presentation/`. This is the actual app shell importing `initApp` and the production controller, with a local, read-only case bootstrap. Private case files are excluded from the build and Git.
 7. Run `await window.planeirPresenter.validateLive()` or use **Controls → Validate live**. Retain the returned JSON, review the live views, fix failures, then regenerate the annotated script from the validated package. Do not invent a substitute visual for a missing target.
 
 In an already loaded advisor case, `window.planeirPresenter.discover()` returns the whole-case catalogue, and `.brief()` adds authoring instructions. These are read-only interfaces for local/browser tooling. The **Export presentation targets** button is a debugging fallback. The **Presenter Mode** button accepts `presentation.json` and `script.md` separately or together. Start preview stays disabled until both files pass validation; an invalid replacement clears the previously loaded package. It rejects a different or edited case.
@@ -137,10 +137,12 @@ node scripts/check-presenter-browser.mjs
 node scripts/check-presenter-browser.mjs --loading-only
 node scripts/check-presenter-browser.mjs --recording-only
 # Separate Terminal: node scripts/serve-presenter-controls.mjs
-node scripts/check-presenter-browser.mjs --controls-only
+node scripts/check-presenter-browser.mjs --controls-only --case-dir private/presenter/local-case
 node scripts/check-presenter-browser.mjs --capture-only
 node scripts/check-presenter-browser.mjs --design-only
-node scripts/check-presenter-browser.mjs private/aam-makeovers/my-presentation --motion --screenshots
+node scripts/check-presenter-browser.mjs private/presenter/my-presentation --motion --screenshots
 ```
+
+The default synthetic fixture is `private/presenter/presenter-regression`. A positional package directory overrides it for any mode. The controls check also uses a prepared local case (default `private/presenter/local-case`) with the `clear-mortgage` scenario and another enabled mortgage timing choice; pass `--case-dir path/to/local-presentation` to keep using an existing folder without renaming it. Loading, recording and controls modes accept `--output-dir path/to/ignored-output`. Keep case packages and generated evidence under an ignored local directory.
 
 Browser fixtures remain private and do not contain client data. The generic browser check covers writable-session autosave isolation and restoration, scenario focus, disclosure reset, timeline age ranges, chart points, forward/back navigation, keyboard controls and both target sizes. Native-capture tests use a real encoder with generated canvas and oscillator tracks, never the user's devices.

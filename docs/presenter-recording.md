@@ -11,7 +11,7 @@ Use **iPhone Camera + OBS Studio on the Mac + DaVinci Resolve Free**. Keep two c
 5. Settle on the final window size. Keep the Planeir window visible alongside the separate controls window, ideally on a second display. Avoid macOS fullscreen Spaces if switching windows hides the presentation. Click **Validate live**. It rehearses every beat in both directions; wait for it to finish. Validation is required before recording and must be rerun if the capture layout changes.
 6. The controls window shows the script section for the current beat. RIGHT/LEFT works in either window. You can also print the complete annotated script. The captured window must contain only Planeir, not the script or editor.
 
-For Frasier, the local preview at `http://127.0.0.1:8788/private/aam-makeovers/2026-09-23-frasier-presenter/` already loads the case and its package. Start at step 5. Run `node scripts/serve-presenter.mjs 8788` from the repository if that preview server is not already running.
+For a local case, the preview at `http://127.0.0.1:8788/private/presenter/local-case/` loads the case and its package once prepared locally. Start at step 5. Run `node scripts/serve-presenter.mjs 8788` from the repository if that preview server is not already running.
 
 ### Explore while presenting
 
