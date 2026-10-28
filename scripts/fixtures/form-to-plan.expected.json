@@ -673,14 +673,6 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "survivor_payment",
-        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
-        "kind": "plan_pack_fact",
-        "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "missing_information",
         "fieldPath": "/household/incomeSources/0/netAnnual",
         "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
@@ -1317,14 +1309,6 @@
         "fieldPath": "/household/goals",
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
-        "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
-        "kind": "plan_pack_fact",
         "importance": "recommended",
         "blockingModuleIds": []
       },
@@ -2610,14 +2594,6 @@
         "fieldPath": "/household/assumptions/values/protection/illnessScenario",
         "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
         "kind": "household_fact",
-        "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
-        "kind": "plan_pack_fact",
         "importance": "recommended",
         "blockingModuleIds": []
       },

@@ -131,8 +131,8 @@ export function planFactsMissing(profile) {
   // so there is nothing to collect for one. It is never a question about a predicted entitlement.
   if (people.some(([, person]) => ['self_employed', 'contractor', 'other', 'unknown'].includes(person.employmentStatus))) add('illness_scenario_scope', '/assumptions/values/protection/illnessScenario',
     'The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.', 'household_fact', 'recommended');
-  if (profile.partner || profile.dependants.length) add('survivor_payment', '/assumptions/values/protection/survivorPayment',
-    'A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.', 'plan_pack_fact', 'recommended');
+  // A death case needs no question: the survivor's State payment is the Bereaved Partner's pension at the register's rate,
+  // and a survivor's pension the household volunteers (assumptions.values.protection.survivorPayment) is used as given but never listed as missing.
   profile.properties.filter(property => property.use !== 'home').forEach(property => add('property_plan_facts', `/properties/${profile.properties.indexOf(property)}`,
     'Later property chapters need named ownership, use, rent, running costs, purchase date/price, acquisition basis and home history. HouseholdProfile v1 does not represent all of them.', 'deferred', 'optional'));
   for (const entry of application?.unmappedFields ?? []) {
