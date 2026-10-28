@@ -15,7 +15,12 @@ export const FIGURES_CATALOGUES = Object.freeze([
   {
     "id": "ie_social_welfare",
     "version": "ie-social-welfare-2026.3",
-    "count": 20
+    "count": 22
+  },
+  {
+    "id": "ie_fair_deal_rules",
+    "version": "ie-fair-deal-2026.1",
+    "count": 17
   },
   {
     "id": "house_purchase_rules",
@@ -25,7 +30,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   {
     "id": "planeir_assumptions",
     "version": "planeir-assumptions-1.7.0",
-    "count": 18
+    "count": 54
   },
   {
     "id": "ie_market",
@@ -5468,6 +5473,68 @@ export const FIGURES_INDEX = Object.freeze([
     ]
   },
   {
+    "id": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79.from_2026_01_02",
+    "quantity": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79",
+    "label": "State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79",
+    "value": 288,
+    "valueShown": "€288 a week",
+    "unit": "eur_a_week",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": "2026-01-02",
+    "source": {
+      "title": "Department of Social Protection, State Pension (Non-Contributory)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-non-contributory/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Non-Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-non-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "care_costs"
+    ],
+    "appliesTo": "A person aged 66 to 79 who passes the means test and has no income from any source. The Nursing Homes Support Scheme measures what a person keeps against it. Gross: it is taxable."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79.from_2027_01_01",
+    "quantity": "ie.social_welfare.state_pension_non_contributory.personal_66_to_79",
+    "label": "State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79",
+    "value": 298,
+    "valueShown": "€298 a week",
+    "unit": "eur_a_week",
+    "kind": "announced_law",
+    "status": "announced",
+    "effectiveFrom": "2027-01-01",
+    "source": {
+      "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "care_costs"
+    ],
+    "appliesTo": "A person aged 66 to 79 who passes the means test and has no income from any source. The Nursing Homes Support Scheme measures what a person keeps against it. Gross: it is taxable."
+  },
+  {
     "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
     "quantity": "ie.social_welfare.illness_benefit.personal_highest",
     "label": "Illness Benefit, highest weekly personal rate",
@@ -5761,6 +5828,596 @@ export const FIGURES_INDEX = Object.freeze([
     "explainers": [
       "state_pension_contributions",
       "state_pension_not_passed_on"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.income.share.single.2024",
+    "quantity": "ie.fair_deal.income.share.single",
+    "label": "Share of a single person’s income, after tax and deductions, that Fair Deal assesses",
+    "value": 0.8,
+    "valueShown": "80%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.income.share.couple.2024",
+    "quantity": "ie.fair_deal.income.share.couple",
+    "label": "Share of a couple’s combined income, after tax and deductions, that Fair Deal assesses for the person in care",
+    "value": 0.4,
+    "valueShown": "40%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.income.rental_share.2024",
+    "quantity": "ie.fair_deal.income.rental_share",
+    "label": "Share of the rent from a person’s own home that Fair Deal assesses while they are in care",
+    "value": 0,
+    "valueShown": "0%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": "2024-02-01",
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.rate.2024",
+    "quantity": "ie.fair_deal.assets.rate",
+    "label": "Yearly share of a person’s net assets above the disregard that Fair Deal assesses",
+    "value": 0.075,
+    "valueShown": "7.5% a year",
+    "unit": "rate_a_year",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.couple_divisor.2024",
+    "quantity": "ie.fair_deal.assets.couple_divisor",
+    "label": "Number of people a couple’s assessed assets are divided between",
+    "value": 2,
+    "valueShown": "2",
+    "unit": "count",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.disregard.single.2024",
+    "quantity": "ie.fair_deal.assets.disregard.single",
+    "label": "Assets of a single person that Fair Deal does not count",
+    "value": 36000,
+    "valueShown": "€36,000",
+    "unit": "eur",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.assets.disregard.couple.2024",
+    "quantity": "ie.fair_deal.assets.disregard.couple",
+    "label": "Assets of a couple that Fair Deal does not count",
+    "value": 72000,
+    "valueShown": "€72,000",
+    "unit": "eur",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.home.cap_years.2024",
+    "quantity": "ie.fair_deal.home.cap_years",
+    "label": "Years of care after which a person’s home stops counting in the Fair Deal assessment",
+    "value": 3,
+    "valueShown": "3 years",
+    "unit": "years",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: 3-year cap on homes, farms and businesses",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/3-year-cap/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.home.couple_both_in_care_cap.2024",
+    "quantity": "ie.fair_deal.home.couple_both_in_care_cap",
+    "label": "Most a couple’s shared home can add to Fair Deal contributions when both receive care, as a share of its value",
+    "value": 0.225,
+    "valueShown": "22.5%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.retained.single_pension_share.2024",
+    "quantity": "ie.fair_deal.retained.single_pension_share",
+    "label": "Share of the maximum State Pension (Non-Contributory) that a single person keeps at least",
+    "value": 0.2,
+    "valueShown": "20%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.retained.couple_at_home_pension_multiple.2024",
+    "quantity": "ie.fair_deal.retained.couple_at_home_pension_multiple",
+    "label": "Multiple of the maximum State Pension (Non-Contributory) that a couple keeps at least when the partner stays at home",
+    "value": 1.2,
+    "valueShown": "1.2 times",
+    "unit": "multiple",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.transfers.look_back_years.2024",
+    "quantity": "ie.fair_deal.transfers.look_back_years",
+    "label": "Years before a Fair Deal application in which a transfer of assets or income still counts",
+    "value": 5,
+    "valueShown": "5 years",
+    "unit": "years",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, Schedule 1 (Assessment of Means), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/schedule/1/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.review.earliest_request_months.2024",
+    "quantity": "ie.fair_deal.review.earliest_request_months",
+    "label": "Months after an assessment or review before a person can ask for another review without a material change",
+    "value": 12,
+    "valueShown": "12 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Nursing Homes Support Scheme Act 2009, section 30 (Reviews), revised Act",
+      "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/section/30/revised/en/html"
+    },
+    "sources": [
+      {
+        "title": "Nursing Homes Support Scheme Act 2009, section 30 (Reviews), revised Act",
+        "url": "https://revisedacts.lawreform.ie/eli/2009/act/15/section/30/revised/en/html"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: financial assessment, how much you pay towards care",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/financial-assessment/"
+      },
+      {
+        "title": "Citizens Information, Fair Deal scheme",
+        "url": "https://www.citizensinformation.ie/en/health/health-services/health-services-for-older-people/fair-deal-scheme/"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.repay_after_death_months.revenue.2024",
+    "quantity": "ie.fair_deal.loan.repay_after_death_months.revenue",
+    "label": "Months after death within which the nursing home loan is repaid, as Revenue states it",
+    "value": 12,
+    "valueShown": "12 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Revenue, how the nursing home loan is repaid",
+      "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+    },
+    "sources": [
+      {
+        "title": "Revenue, how the nursing home loan is repaid",
+        "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.repay_after_death_months.hse.2024",
+    "quantity": "ie.fair_deal.loan.repay_after_death_months.hse",
+    "label": "Months after death within which the nursing home loan is repaid, as the HSE states it",
+    "value": 18,
+    "valueShown": "18 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "HSE, Fair Deal scheme: nursing home loan",
+      "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/"
+    },
+    "sources": [
+      {
+        "title": "HSE, Fair Deal scheme: nursing home loan",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.repay_on_sale_months.2024",
+    "quantity": "ie.fair_deal.loan.repay_on_sale_months",
+    "label": "Months after a sale or transfer of the home within which the nursing home loan is repaid",
+    "value": 6,
+    "valueShown": "6 months",
+    "unit": "months",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Revenue, how the nursing home loan is repaid",
+      "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+    },
+    "sources": [
+      {
+        "title": "Revenue, how the nursing home loan is repaid",
+        "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+      },
+      {
+        "title": "HSE, Fair Deal scheme: nursing home loan",
+        "url": "https://www2.hse.ie/services/schemes-allowances/fair-deal-scheme/nursing-home-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "ie.fair_deal.loan.late_interest_daily.2024",
+    "quantity": "ie.fair_deal.loan.late_interest_daily",
+    "label": "Interest charged a day on a late repayment of the nursing home loan",
+    "value": 0.000219,
+    "valueShown": "0.0219%",
+    "unit": "rate",
+    "kind": "law",
+    "status": "enacted",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Revenue, how the nursing home loan is repaid",
+      "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+    },
+    "sources": [
+      {
+        "title": "Revenue, how the nursing home loan is repaid",
+        "url": "https://www.revenue.ie/en/life-events-and-personal-circumstances/nursing-homes-fair-deal-loan/"
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_fair_deal_rules",
+      "version": "ie-fair-deal-2026.1"
+    },
+    "usedBy": [
+      "care_costs"
     ]
   },
   {
@@ -10046,7 +10703,7 @@ export const FIGURES_INDEX = Object.freeze([
   {
     "id": "planeir.assumption.education_inflation",
     "quantity": "planeir.assumption.education_inflation",
-    "label": "Education cost inflation assumed",
+    "label": "Education and care cost inflation assumed",
     "value": 0.04,
     "valueShown": "4% a year",
     "unit": "rate_a_year",
@@ -10072,7 +10729,8 @@ export const FIGURES_INDEX = Object.freeze([
     "usedBy": [
       "college_funding",
       "future_cost_fund",
-      "goals_and_resources"
+      "goals_and_resources",
+      "care_costs"
     ]
   },
   {
@@ -10547,6 +11205,1088 @@ export const FIGURES_INDEX = Object.freeze([
     ],
     "explainers": [
       "emergency_reserve"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.list_number",
+    "quantity": "planeir.assumption.care.agreed_prices.list_number",
+    "label": "Number of the HSE list of maximum agreed nursing home prices that the care fees come from",
+    "value": 231,
+    "valueShown": "231",
+    "unit": "count",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.list_date",
+    "quantity": "planeir.assumption.care.agreed_prices.list_date",
+    "label": "Date of that HSE list of maximum agreed nursing home prices",
+    "value": "2026-10-14",
+    "valueShown": "14 October 2026",
+    "unit": "date",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.homes_in_list",
+    "quantity": "planeir.assumption.care.agreed_prices.homes_in_list",
+    "label": "Homes with a price in that HSE list",
+    "value": 411,
+    "valueShown": "411",
+    "unit": "count",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.national_weekly_average",
+    "quantity": "planeir.assumption.care.agreed_prices.national_weekly_average",
+    "label": "Average weekly nursing home fee across the list, a simple average of each home’s price",
+    "value": 1315,
+    "valueShown": "€1,315 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.lowest_weekly",
+    "quantity": "planeir.assumption.care.agreed_prices.lowest_weekly",
+    "label": "Lowest weekly nursing home fee in the list",
+    "value": 1200,
+    "valueShown": "€1,200 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.highest_weekly",
+    "quantity": "planeir.assumption.care.agreed_prices.highest_weekly",
+    "label": "Highest weekly nursing home fee in the list",
+    "value": 1508,
+    "valueShown": "€1,508 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.carlow.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.carlow.average",
+    "label": "Average weekly nursing home fee in Co. Carlow, a simple average of each home’s price in the list",
+    "value": 1264,
+    "valueShown": "€1,264 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.cavan.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.cavan.average",
+    "label": "Average weekly nursing home fee in Co. Cavan, a simple average of each home’s price in the list",
+    "value": 1295,
+    "valueShown": "€1,295 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.clare.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.clare.average",
+    "label": "Average weekly nursing home fee in Co. Clare, a simple average of each home’s price in the list",
+    "value": 1264,
+    "valueShown": "€1,264 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.cork.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.cork.average",
+    "label": "Average weekly nursing home fee in Co. Cork, a simple average of each home’s price in the list",
+    "value": 1311,
+    "valueShown": "€1,311 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.donegal.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.donegal.average",
+    "label": "Average weekly nursing home fee in Co. Donegal, a simple average of each home’s price in the list",
+    "value": 1259,
+    "valueShown": "€1,259 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.dublin.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.dublin.average",
+    "label": "Average weekly nursing home fee in Co. Dublin, a simple average of each home’s price in the list",
+    "value": 1416,
+    "valueShown": "€1,416 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.galway.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.galway.average",
+    "label": "Average weekly nursing home fee in Co. Galway, a simple average of each home’s price in the list",
+    "value": 1269,
+    "valueShown": "€1,269 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.kerry.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.kerry.average",
+    "label": "Average weekly nursing home fee in Co. Kerry, a simple average of each home’s price in the list",
+    "value": 1263,
+    "valueShown": "€1,263 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.kildare.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.kildare.average",
+    "label": "Average weekly nursing home fee in Co. Kildare, a simple average of each home’s price in the list",
+    "value": 1346,
+    "valueShown": "€1,346 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.kilkenny.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.kilkenny.average",
+    "label": "Average weekly nursing home fee in Co. Kilkenny, a simple average of each home’s price in the list",
+    "value": 1274,
+    "valueShown": "€1,274 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.laois.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.laois.average",
+    "label": "Average weekly nursing home fee in Co. Laois, a simple average of each home’s price in the list",
+    "value": 1284,
+    "valueShown": "€1,284 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.leitrim.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.leitrim.average",
+    "label": "Average weekly nursing home fee in Co. Leitrim, a simple average of each home’s price in the list",
+    "value": 1276,
+    "valueShown": "€1,276 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.limerick.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.limerick.average",
+    "label": "Average weekly nursing home fee in Co. Limerick, a simple average of each home’s price in the list",
+    "value": 1270,
+    "valueShown": "€1,270 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.longford.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.longford.average",
+    "label": "Average weekly nursing home fee in Co. Longford, a simple average of each home’s price in the list",
+    "value": 1276,
+    "valueShown": "€1,276 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.louth.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.louth.average",
+    "label": "Average weekly nursing home fee in Co. Louth, a simple average of each home’s price in the list",
+    "value": 1302,
+    "valueShown": "€1,302 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.mayo.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.mayo.average",
+    "label": "Average weekly nursing home fee in Co. Mayo, a simple average of each home’s price in the list",
+    "value": 1272,
+    "valueShown": "€1,272 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.meath.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.meath.average",
+    "label": "Average weekly nursing home fee in Co. Meath, a simple average of each home’s price in the list",
+    "value": 1318,
+    "valueShown": "€1,318 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.monaghan.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.monaghan.average",
+    "label": "Average weekly nursing home fee in Co. Monaghan, a simple average of each home’s price in the list",
+    "value": 1289,
+    "valueShown": "€1,289 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.offaly.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.offaly.average",
+    "label": "Average weekly nursing home fee in Co. Offaly, a simple average of each home’s price in the list",
+    "value": 1262,
+    "valueShown": "€1,262 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.roscommon.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.roscommon.average",
+    "label": "Average weekly nursing home fee in Co. Roscommon, a simple average of each home’s price in the list",
+    "value": 1254,
+    "valueShown": "€1,254 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.sligo.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.sligo.average",
+    "label": "Average weekly nursing home fee in Co. Sligo, a simple average of each home’s price in the list",
+    "value": 1333,
+    "valueShown": "€1,333 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.tipperary.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.tipperary.average",
+    "label": "Average weekly nursing home fee in Co. Tipperary, a simple average of each home’s price in the list",
+    "value": 1273,
+    "valueShown": "€1,273 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.waterford.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.waterford.average",
+    "label": "Average weekly nursing home fee in Co. Waterford, a simple average of each home’s price in the list",
+    "value": 1289,
+    "valueShown": "€1,289 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.westmeath.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.westmeath.average",
+    "label": "Average weekly nursing home fee in Co. Westmeath, a simple average of each home’s price in the list",
+    "value": 1253,
+    "valueShown": "€1,253 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.wexford.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.wexford.average",
+    "label": "Average weekly nursing home fee in Co. Wexford, a simple average of each home’s price in the list",
+    "value": 1274,
+    "valueShown": "€1,274 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.agreed_prices.county.wicklow.average",
+    "quantity": "planeir.assumption.care.agreed_prices.county.wicklow.average",
+    "label": "Average weekly nursing home fee in Co. Wicklow, a simple average of each home’s price in the list",
+    "value": 1339,
+    "valueShown": "€1,339 a week",
+    "unit": "eur_a_week",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": "2026-10-14",
+    "source": {
+      "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+      "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+    },
+    "sources": [
+      {
+        "title": "HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231",
+        "url": "https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf"
+      }
+    ],
+    "checkedOn": "2026-10-27",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.relative_care.default_years",
+    "quantity": "planeir.assumption.care.relative_care.default_years",
+    "label": "Years of care shown for a relative by default",
+    "value": 5,
+    "valueShown": "5 years",
+    "unit": "years",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 21 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 21 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "catalogue",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.relative_care.compare_years",
+    "quantity": "planeir.assumption.care.relative_care.compare_years",
+    "label": "Other lengths of care shown beside the default, in years",
+    "value": "3, 10",
+    "valueShown": "3, 10",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 21 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 21 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "catalogue",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.own_care_stress.start_age",
+    "quantity": "planeir.assumption.care.own_care_stress.start_age",
+    "label": "Age at which the own-care stress test starts",
+    "value": 85,
+    "valueShown": "age 85",
+    "unit": "age",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs",
+      "plan_pack"
+    ]
+  },
+  {
+    "id": "planeir.assumption.care.own_care_stress.years",
+    "quantity": "planeir.assumption.care.own_care_stress.years",
+    "label": "Years of care in the own-care stress test",
+    "value": 5,
+    "valueShown": "5 years",
+    "unit": "years",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir care stress-test assumption, approved 21 October 2026, based on the Department of Public Expenditure and Reform’s social impact assessment of the Nursing Home Support Scheme (2019)",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-21",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "care_costs",
+      "plan_pack"
     ]
   },
   {

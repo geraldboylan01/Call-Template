@@ -48,6 +48,7 @@ jobs:
         run: |
           npm run check:house-purchase
           npm run check:future-cost-fund
+          npm run check:care-costs
           npm run check:dated-cost-contract
           npm run check:market-refresh
           npm run check:household-cash-flow

@@ -40,6 +40,11 @@ const SOCIAL_WELFARE_SOURCES = Object.freeze({
     title: 'Department of Social Protection, State Pension (Contributory)',
     url: 'https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/'
   }),
+  statePensionNonContributory: Object.freeze({
+    title: 'Department of Social Protection, State Pension (Non-Contributory)',
+    url: 'https://www.gov.ie/en/department-of-social-protection/services/state-pension-non-contributory/',
+    publishedOn: '2026-10-07'
+  }),
   bereavedPartnersContributory: Object.freeze({
     title: 'Department of Social Protection, Bereaved Partner’s (Contributory) Pension',
     url: 'https://www.gov.ie/en/department-of-social-protection/services/bereaved-partners-contributory-pension/'
@@ -70,14 +75,14 @@ const FROM_JANUARY_2026 = 'from January 2026; the Department does not print the 
  * only the Budget table is cited. Switch `status` to `in_force` once the rates are
  * payable and the scheme pages show them.
  */
-const rate2027 = (weeklyEur) => Object.freeze({
+const rate2027 = (weeklyEur, verifiedOn = '2026-10-22') => Object.freeze({
   effectiveFrom: '2027-01-01',
   effectiveFromNote: 'from January 2027; the Department does not print the day',
   weeklyEur,
   status: 'announced',
   announcedBy: 'Budget 2027',
   announcedOn: '2026-10-06',
-  verifiedOn: '2026-10-22',
+  verifiedOn,
   sources: Object.freeze([S.dspBudget2027])
 });
 
@@ -142,6 +147,24 @@ export const SOCIAL_WELFARE_SERIES = Object.freeze([
     label: 'Invalidity Pension, weekly personal rate',
     appliesTo: 'A person with a long-term incapacity and enough contributions. Taxable, without USC or PRSI.',
     rates: Object.freeze([rate2026(259.50, S.invalidityPension), rate2027(269.50)])
+  }),
+  Object.freeze({
+    id: 'ie.social_welfare.state_pension_non_contributory.personal_66_to_79',
+    schemeId: 'state_pension_non_contributory',
+    scheme: 'State Pension (Non-Contributory)',
+    label: 'State Pension (Non-Contributory), maximum weekly personal rate, aged 66 to 79',
+    appliesTo: 'A person aged 66 to 79 who passes the means test and has no income from any source. The Nursing Homes Support Scheme measures what a person keeps against it. Gross: it is taxable.',
+    rates: Object.freeze([
+      Object.freeze({
+        effectiveFrom: '2026-01-02',
+        effectiveFromNote: 'from 2 January 2026, as the Department prints it',
+        weeklyEur: 288,
+        status: 'in_force',
+        verifiedOn: '2026-10-27',
+        sources: Object.freeze([S.statePensionNonContributory])
+      }),
+      rate2027(298, '2026-10-27')
+    ])
   }),
   Object.freeze({
     id: 'ie.social_welfare.illness_benefit.personal_highest',

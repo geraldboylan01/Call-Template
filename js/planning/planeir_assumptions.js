@@ -119,51 +119,51 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
   care: Object.freeze({
     agreedPrices: Object.freeze({
       /** The HSE list of maximum agreed prices with private and voluntary homes. */
-      listNumber: 230,
-      listDate: '2026-09-04',
+      listNumber: 231,
+      listDate: '2026-10-14',
       homesInList: 411,
       /** A week, in euro. */
-      nationalWeeklyAverage: 1312,
-      lowestWeekly: 1192,
+      nationalWeeklyAverage: 1315,
+      lowestWeekly: 1200,
       highestWeekly: 1508,
       /**
        * A simple average of each home's price in the county, our own calculation
-       * from the list on 2026-10-21, not weighted by beds. The list gives none.
+       * from the list on 2026-10-27, not weighted by beds. The list gives none.
        * A county with two or three homes moves a lot with one home's price.
        */
       countyWeeklyAverages: Object.freeze({
-        Carlow: Object.freeze({ homes: 5, average: 1256, lowest: 1220, highest: 1277 }),
-        Cavan: Object.freeze({ homes: 7, average: 1291, lowest: 1228, highest: 1329 }),
-        Clare: Object.freeze({ homes: 12, average: 1260, lowest: 1224, highest: 1304 }),
-        Cork: Object.freeze({ homes: 47, average: 1307, lowest: 1232, highest: 1492 }),
+        Carlow: Object.freeze({ homes: 5, average: 1264, lowest: 1220, highest: 1289 }),
+        Cavan: Object.freeze({ homes: 7, average: 1295, lowest: 1228, highest: 1329 }),
+        Clare: Object.freeze({ homes: 11, average: 1264, lowest: 1230, highest: 1304 }),
+        Cork: Object.freeze({ homes: 47, average: 1311, lowest: 1232, highest: 1492 }),
         Donegal: Object.freeze({ homes: 13, average: 1259, lowest: 1234, highest: 1279 }),
-        Dublin: Object.freeze({ homes: 86, average: 1414, lowest: 1342, highest: 1508 }),
+        Dublin: Object.freeze({ homes: 86, average: 1416, lowest: 1342, highest: 1508 }),
         Galway: Object.freeze({ homes: 31, average: 1269, lowest: 1210, highest: 1319 }),
-        Kerry: Object.freeze({ homes: 15, average: 1262, lowest: 1200, highest: 1310 }),
-        Kildare: Object.freeze({ homes: 20, average: 1341, lowest: 1275, highest: 1388 }),
+        Kerry: Object.freeze({ homes: 16, average: 1263, lowest: 1200, highest: 1310 }),
+        Kildare: Object.freeze({ homes: 20, average: 1346, lowest: 1275, highest: 1393 }),
         Kilkenny: Object.freeze({ homes: 10, average: 1274, lowest: 1245, highest: 1285 }),
         Laois: Object.freeze({ homes: 3, average: 1284, lowest: 1270, highest: 1304 }),
         Leitrim: Object.freeze({ homes: 2, average: 1276, lowest: 1274, highest: 1277 }),
-        Limerick: Object.freeze({ homes: 21, average: 1263, lowest: 1230, highest: 1292 }),
+        Limerick: Object.freeze({ homes: 21, average: 1270, lowest: 1230, highest: 1292 }),
         Longford: Object.freeze({ homes: 3, average: 1276, lowest: 1233, highest: 1320 }),
-        Louth: Object.freeze({ homes: 9, average: 1296, lowest: 1258, highest: 1325 }),
+        Louth: Object.freeze({ homes: 9, average: 1302, lowest: 1258, highest: 1330 }),
         Mayo: Object.freeze({ homes: 17, average: 1272, lowest: 1247, highest: 1333 }),
-        Meath: Object.freeze({ homes: 18, average: 1313, lowest: 1282, highest: 1369 }),
+        Meath: Object.freeze({ homes: 18, average: 1318, lowest: 1287, highest: 1369 }),
         Monaghan: Object.freeze({ homes: 4, average: 1289, lowest: 1276, highest: 1299 }),
         Offaly: Object.freeze({ homes: 5, average: 1262, lowest: 1232, highest: 1281 }),
         Roscommon: Object.freeze({ homes: 8, average: 1254, lowest: 1225, highest: 1278 }),
-        Sligo: Object.freeze({ homes: 6, average: 1332, lowest: 1276, highest: 1414 }),
-        Tipperary: Object.freeze({ homes: 23, average: 1270, lowest: 1235, highest: 1295 }),
-        Waterford: Object.freeze({ homes: 7, average: 1283, lowest: 1262, highest: 1315 }),
-        Westmeath: Object.freeze({ homes: 8, average: 1241, lowest: 1192, highest: 1272 }),
-        Wexford: Object.freeze({ homes: 14, average: 1265, lowest: 1212, highest: 1305 }),
-        Wicklow: Object.freeze({ homes: 17, average: 1338, lowest: 1285, highest: 1373 })
+        Sligo: Object.freeze({ homes: 6, average: 1333, lowest: 1276, highest: 1414 }),
+        Tipperary: Object.freeze({ homes: 23, average: 1273, lowest: 1235, highest: 1300 }),
+        Waterford: Object.freeze({ homes: 7, average: 1289, lowest: 1262, highest: 1315 }),
+        Westmeath: Object.freeze({ homes: 8, average: 1253, lowest: 1201, highest: 1303 }),
+        Wexford: Object.freeze({ homes: 14, average: 1274, lowest: 1212, highest: 1316 }),
+        Wicklow: Object.freeze({ homes: 17, average: 1339, lowest: 1285, highest: 1395 })
       }),
       basis: 'The nursing home fee is the average of the HSE’s maximum agreed prices for private and voluntary nursing homes in the county, or nationally when the county is not known.',
       disclosure: 'This is a planning figure, not a quoted price. A home’s own fee can be higher or lower, and the HSE publishes a new list from time to time.',
-      source: 'HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 230',
-      url: 'https://assets.hse.ie/media/documents/HSE_Section40_List_230_Published_List_04.09.2026.pdf',
-      checkedOn: '2026-10-21'
+      source: 'HSE, Nursing Home Support Scheme Maximum Agreed Prices with Private & Voluntary Nursing Homes, list 231',
+      url: 'https://assets.hse.ie/media/documents/HSE_Section40_List_231_Published_List_14.10.2026.pdf',
+      checkedOn: '2026-10-27'
     }),
     relativeCare: Object.freeze({
       defaultYears: 5,

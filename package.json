@@ -105,6 +105,7 @@
     "check:module-media": "node ./scripts/check-module-media-state.mjs",
     "check:house-purchase": "node ./scripts/check-house-purchase.mjs",
     "check:future-cost-fund": "node ./scripts/check-future-cost-fund.mjs",
+    "check:care-costs": "node ./scripts/check-care-costs.mjs",
     "check:dated-cost-contract": "node ./scripts/check-dated-cost-contract.mjs",
     "check:household-cash-flow": "node ./scripts/check-household-cash-flow.mjs",
     "check:protection-gap": "node ./scripts/check-protection-gap.mjs",
