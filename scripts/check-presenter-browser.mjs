@@ -5,14 +5,29 @@ import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 import { loadPresentationSession, preparePreview } from './presenter-package.mjs';
 import { buildPresentationCatalogue, fingerprint } from '../js/presenter_catalogue.js';
-if (process.argv.includes('--controls-only')) { const {checkPresenterControls}=await import('./presenter-controls-browser.mjs'); await checkPresenterControls(); process.exit(0); }
-if (process.argv.includes('--loading-only')) { const {checkPresenterLoading}=await import('./presenter-loading-browser.mjs'); await checkPresenterLoading(process.argv[3]); process.exit(0); }
-if (process.argv.includes('--recording-only')) { const {checkPresenterRecording}=await import('./presenter-recording-browser.mjs'); await checkPresenterRecording(); process.exit(0); }
-if (process.argv.includes('--capture-only')) { const {checkNativeCapture}=await import('./presenter-capture-browser.mjs'); await checkNativeCapture(); process.exit(0); }
-if (process.argv[2] === '--design-only') { const {checkPresenterDesign}=await import('./presenter-design-browser.mjs'); await checkPresenterDesign(process.argv[3]); process.exit(0); }
-const supplied = process.argv[2], dir = supplied || 'private/aam-makeovers/presenter-regression';
+const { values: options, positionals } = parseArgs({
+  allowPositionals: true,
+  options: {
+    'controls-only': { type: 'boolean' },
+    'loading-only': { type: 'boolean' },
+    'recording-only': { type: 'boolean' },
+    'capture-only': { type: 'boolean' },
+    'design-only': { type: 'boolean' },
+    motion: { type: 'boolean' },
+    screenshots: { type: 'boolean' },
+    'case-dir': { type: 'string' },
+    'output-dir': { type: 'string' }
+  }
+});
+const supplied = positionals[0], dir = supplied || 'private/presenter/presenter-regression';
+if (options['controls-only']) { const {checkPresenterControls}=await import('./presenter-controls-browser.mjs'); await checkPresenterControls(dir, options['case-dir'], options['output-dir']); process.exit(0); }
+if (options['loading-only']) { const {checkPresenterLoading}=await import('./presenter-loading-browser.mjs'); await checkPresenterLoading(dir, options['output-dir']); process.exit(0); }
+if (options['recording-only']) { const {checkPresenterRecording}=await import('./presenter-recording-browser.mjs'); await checkPresenterRecording(dir, options['output-dir']); process.exit(0); }
+if (options['capture-only']) { const {checkNativeCapture}=await import('./presenter-capture-browser.mjs'); await checkNativeCapture(dir); process.exit(0); }
+if (options['design-only']) { const {checkPresenterDesign}=await import('./presenter-design-browser.mjs'); await checkPresenterDesign(dir); process.exit(0); }
 if (!supplied) {
   console.info = () => {};
   const raw = JSON.parse(await fs.readFile('scripts/fixtures/case-packs/valid-call.json'));

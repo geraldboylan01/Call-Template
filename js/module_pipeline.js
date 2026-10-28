@@ -462,8 +462,8 @@ export function applyHousePurchaseProjectionToModule(module) {
   return projection;
 }
 
-function applyFutureCostFundProjectionToModule(module) {
-  const projection = computeFutureCostFundProjection(module.generated.futureCostFundInputs);
+function applyFutureCostFundProjectionToModule(module, options = {}) {
+  const projection = computeFutureCostFundProjection(module.generated.futureCostFundInputs, options);
 
   module.generated.assumptions = projection.assumptionsTable;
   module.generated.outputs = projection.outputsTable;
@@ -2712,7 +2712,7 @@ export function cloneSessionValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-export function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState = true } = {}) {
+export function applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState = true, calculationYear } = {}) {
   if ('title' in normalizedPayload) {
     module.title = normalizedPayload.title;
   }
@@ -2759,7 +2759,7 @@ export function applyNormalizedPayloadToModule(module, normalizedPayload, { rese
       applyHousePurchaseProjectionToModule(module);
       module.ui.housePurchaseEditor = null;
     } else if (hasFutureCostFundInputsPatch && module.generated.futureCostFundInputs) {
-      applyFutureCostFundProjectionToModule(module);
+      applyFutureCostFundProjectionToModule(module, { calculationYear });
     } else if (hasHouseholdCashFlowInputsPatch && module.generated.householdCashFlowInputs) {
       applyHouseholdCashFlowProjectionToModule(module);
     } else if ((hasProtectionGapInputsPatch || 'summaryHtml' in normalizedPayload.generated) && module.generated.protectionGapInputs) {
@@ -3056,7 +3056,7 @@ export function casePackModuleLabel(number, total, title) {
  * The same three steps the Dev Panel takes for a single paste, in the same
  * order, so a module that passes here is a module that renders.
  */
-export function checkModulePayload(rawPayload, { number = 1, total = 1 } = {}) {
+export function checkModulePayload(rawPayload, { number = 1, total = 1, calculationYear } = {}) {
   const title = casePackModuleTitle(rawPayload);
   const row = { number, total, title, ok: false, warnings: [], error: '', payload: null, module: null };
 
@@ -3076,7 +3076,7 @@ export function checkModulePayload(rawPayload, { number = 1, total = 1 } = {}) {
     // Built rather than thrown away: the summary reads its figures off the
     // module the engines actually produced, not off the payload.
     const module = createBlankModule();
-    applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState: false });
+    applyNormalizedPayloadToModule(module, normalizedPayload, { resetEditorState: false, calculationYear });
 
     row.payload = normalizedPayload;
     row.module = module;
@@ -3094,7 +3094,7 @@ export function checkModulePayload(rawPayload, { number = 1, total = 1 } = {}) {
  * Top-level problems stop the check: there is no point reporting on the
  * modules of a file that is not a pack.
  */
-export function checkCasePack(rawPack) {
+export function checkCasePack(rawPack, { calculationYear } = {}) {
   const result = { ok: false, clientName: '', errors: [], modules: [] };
 
   if (!rawPack || typeof rawPack !== 'object' || Array.isArray(rawPack)) {
@@ -3127,7 +3127,7 @@ export function checkCasePack(rawPack) {
 
   const total = rawPack.modules.length;
   result.modules = rawPack.modules.map((payload, index) => (
-    checkModulePayload(payload, { number: index + 1, total })
+    checkModulePayload(payload, { number: index + 1, total, calculationYear })
   ));
   result.ok = result.modules.every((row) => row.ok);
   return result;

@@ -2,6 +2,7 @@ import { normalizeReport } from './report.js';
 import { MAX_MODULE_SCENARIO_CASES, MAX_PBS_SCENARIO_ALTERNATIVES } from './scenario_cap.js';
 
 import { normalizeVideoSummary } from './video_summary.js';
+import { normalizePlanStory } from './plan_story_session.js';
 import {
   normalizeHousePurchaseInputs,
   computeHousePurchaseProjection
@@ -2500,8 +2501,15 @@ function normalizeSession(raw) {
     updatedAt: raw?.updatedAt || raw?.createdAt || nowIso(),
     modules,
     order,
-    activeModuleId
+    activeModuleId,
+    ...planStoryField(raw?.planStory)
   };
+}
+
+/** A plan built through the form carries its story; every other session carries nothing extra. */
+function planStoryField(raw) {
+  const planStory = normalizePlanStory(raw, { warn: recordSessionImportWarning });
+  return planStory ? { planStory } : {};
 }
 
 export function newSession(clientName = 'Client') {

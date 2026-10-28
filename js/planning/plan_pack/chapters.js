@@ -7,6 +7,8 @@ import { computeProtectionGapProjection } from '../../protection_gap_math.js';
 import { computeMortgageComparison } from '../../mortgage_math.js';
 import { computePensionProjection } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
+import { computeFutureCostFundProjection } from '../../future_cost_fund_math.js';
+import { planDatedCostProducer } from '../dated_costs/plan_producers.js';
 import { finiteJson, PlanPackError, fail } from './schema.js';
 
 export class LaterStage extends PlanPackError {
@@ -16,7 +18,8 @@ export class LaterStage extends PlanPackError {
   }
 }
 export function missing(path, message) { throw new PlanPackError(path, message, 'missing_information'); }
-export function people(profile) { return [profile.primaryPerson, profile.partner].filter(Boolean); }
+export { people, ownerBankPay } from './working_shares.js';
+import { people, ownerBankPay } from './working_shares.js';
 function amount(value, path) {
   if (!value || value.currency !== 'EUR' || !Number.isFinite(value.amount)) missing(path, 'A stated EUR amount is required; no currency conversion or missing value is inferred.');
   return value.amount;
@@ -173,18 +176,6 @@ function currentPension(profile, pack, personId) {
   if (hasOwnerConfirmedNone(profile, '/pensions', personId) || profile.assumptions.values.completionFacts?.confirmedNonePaths?.['/pensions'] === true) return 0;
   missing('/planningInputs/personalPensionContributions', 'Confirm the current personal contribution for ' + personId + ', including explicit zero.');
 }
-export function ownerBankPay(profile, personId, { optional = false } = {}) {
-  const owned = profile.incomeSources.filter(i => i.ownerIds.includes(personId));
-  if (!owned.length) {
-    if (hasOwnerConfirmedNone(profile, '/incomeSources', personId) || profile.assumptions.values.completionFacts?.confirmedNonePaths?.['/incomeSources'] === true) return 0;
-    missing('/household/incomeSources', 'State income or confirm no income for ' + personId + '; an absent record does not establish zero bank pay.');
-  }
-  if (owned.some(i => i.ownerIds.length !== 1 || !i.netAnnual)) {
-    if (optional) return null;
-    missing('/household/incomeSources', 'Per-person bank take-home is missing or jointly owned. It is not inferred from gross income or split between people.');
-  }
-  return owned.reduce((sum, i) => sum + amount(i.netAnnual, '/household/incomeSources/' + profile.incomeSources.indexOf(i) + '/netAnnual'), 0);
-}
 function outgoings(profile, pack) {
   const spending = amount(profile.expenses.annualTotal, '/household/expenses/annualTotal');
   const lines = [];
@@ -251,6 +242,9 @@ export async function buildChapter(context, pack, chapter) {
     context = { ...context, profile };
   }
   const year = Number(pack.calculationDate.slice(0, 4));
+  if (chapter === 'net_retirement_cashflow' && !context.ledgerFunding && context.usableCashDeductions?.length) {
+    throw new LaterStage('/planningInputs/assetAssignments', 'Net retirement needs an explicit adapter for after-tax capital remaining after cash earmarks; the original fund cannot be reused.');
+  }
   if (context.ledgerFunding && ['net_retirement_cashflow', 'college_funding'].includes(chapter)) {
     throw new LaterStage('/chapters', chapter === 'net_retirement_cashflow'
       ? 'The ledger is priced; net retirement still needs a route adapter for unassigned after-tax capital and changed bank pay.'
@@ -266,7 +260,37 @@ export async function buildChapter(context, pack, chapter) {
       : 'The goals engine derives its own funding cases. Mapping a plan route requires B1; no nearest or relabelled case is substituted.', context.ledgerFunding ? 'B2' : 'B1', context.ledgerFunding ? 'requires_profile_adapter' : 'requires_resource_ledger');
   }
   if (chapter === 'future_cost_fund') {
-    throw new LaterStage('/chapters', 'The existing fund pipeline has no explicit pack calculation-date input. Its dated-cost builder must be added before this chapter can compile.', 'B2', 'requires_profile_adapter');
+    const candidates = context.profile.goals.filter(goal => !['paused', 'completed'].includes(goal.status)
+      && (goal.type === 'fund_education' || pack.planningInputs.goalFundingFacts.some(fact => fact.goalId === goal.goalId && fact.kind === 'dated_cost')));
+    const selectedId = pack.planningInputs.chapterGoals[chapter];
+    const goal = selectedId ? candidates.find(row => row.goalId === selectedId) : candidates.length === 1 ? candidates[0] : null;
+    if (!goal) missing('/planningInputs/chapterGoals/future_cost_fund', 'Select one dated cost for the future-cost-fund chapter.');
+    const producer = planDatedCostProducer(context, pack, goal);
+    const recorded = context.resourceLedger?.datedCosts.find(cost => cost.goalId === goal.goalId);
+    // B0 can compile a funding requirement too, without applying B1 route cash.
+    // Assigned investments still need a valuation contract before counting here.
+    const held = pack.planningInputs.assetAssignments.filter(row => row.goalId === goal.goalId).reduce((sum, row) => {
+      const asset = context.profile.assets.find(asset => asset.assetId === row.assetId);
+      if (asset.type !== 'cash') throw new LaterStage('/planningInputs/assetAssignments', 'An assigned investment needs its goal-specific valuation before it can count as cash.', 'B2', 'requires_goal_asset_adapter');
+      return sum + amount(asset.currentValue, '/household/assets/currentValue');
+    }, 0);
+    const contract = recorded ?? producer.produce(held);
+    if (producer.input.startsInYears === 0 || contract.provenance.funding !== 'save_then_pay' || contract.retirementSplit.capitalNeededAtRetirement > 0.005) {
+      throw new LaterStage('/chapters', 'The dated-cost contract is priced, but this unchanged screen only shows saving before a future cost; immediate, each-year and retirement-split funding need their screen adapter.', 'B2', 'requires_profile_adapter');
+    }
+    const requiredToday = contract.provenance.requiredToday;
+    const input = { ...producer.input, scenarios: [{ id: 'funding', lumpShare: requiredToday > 0 ? contract.provenance.cashToday / requiredToday : 0 }] };
+    const projection = computeFutureCostFundProjection(input, { calculationYear: year });
+    const priced = projection.debug, fundingCase = priced.cases[0];
+    if (Math.abs(priced.requiredToday - requiredToday) > 0.005 || priced.costYears.some((row, i) => Math.abs(row.cost - contract.costByYear[i].amountAfterRelief) > 0.005)) {
+      throw new LaterStage('/chapters', 'This cost’s nominal schedule needs an exact screen adapter; the existing fixed-growth screen is not substituted.', 'B2', 'requires_profile_adapter');
+    }
+    return { input, payload: { title: goal.title, generated: { futureCostFundInputs: input,
+      summaryHtml: '<p>What this route would need to fund this cost, distinct from its current saving.</p>' } },
+    nativeCaseId: 'funding', metrics: { requiredToday, moneyNow: contract.moneyNow, lumpSumToday: fundingCase.lumpSumToday,
+      yearlyAmount: fundingCase.yearlyAmount, totalCost: priced.totalCost }, builderHousehold: context.profile,
+    assumptionsUsed: [{ key: 'datedCost', value: contract }, { key: 'calculationYear', value: year }], warnings: [],
+    basis: 'dated_cost_contract_funding_requirement' };
   }
   if (['household_cash_flow', 'protection_gap'].includes(chapter)) {
     if (pack.planningInputs.takeHomeBasis !== 'after_personal_pension') missing('/planningInputs/takeHomeBasis', 'Confirm that stated net income is bank pay after personal pension deductions.');
@@ -341,6 +365,19 @@ export async function buildChapter(context, pack, chapter) {
     missing('/household' + (first?.fieldPath ?? ''), first?.reason ?? 'Chapter is not ready: ' + readiness.status + '.');
   }
   let input = definition.buildInput(profile);
+  const chapterAssumptions = [];
+  const chapterWarnings = [];
+  if (chapter === 'pension_projection' && pack.planningInputs.householdTaxStatus) input.householdTaxStatus = pack.planningInputs.householdTaxStatus;
+  if (chapter === 'pension_projection') {
+    const targetSource = profile.fieldMetadata['/assumptions/values/retirement/targetIncomeToday']?.application;
+    if (targetSource?.paths.includes('retirement.income')) input.targetIncomeBasis = 'gross';
+    for (const member of input.pensions) {
+      if (profile.assumptions.values.retirement?.statePensionFraction?.[member.id] !== undefined) continue;
+      chapterAssumptions.push({ key: `statePensionFraction.${member.id}`, value: member.statePensionFraction,
+        reason: 'Existing adviser-adapter illustration default, using the dated central maximum. No numeric entitlement was established for this person; retain the missing fact.' });
+      chapterWarnings.push(`The State Pension fraction for ${member.id} is an illustration assumption, not a confirmed entitlement.`);
+    }
+  }
   const balanceSheetAssignments = chapter === 'personal_balance_sheet' ? context.usableCashDeductions ?? [] : [];
   if (balanceSheetAssignments.length) {
     const committed = new Map();
@@ -410,8 +447,8 @@ export async function buildChapter(context, pack, chapter) {
     }
   }
   return { input, payload, metrics, nativeCaseId, basis: 'existing_adviser_adapter', moduleVersion: definition.moduleVersion,
-    builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...(balanceSheetAssignments.length ? [{
+    builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...chapterAssumptions, ...(balanceSheetAssignments.length ? [{
       key: 'goalCashClassification', value: { bucket: 'lifestyle_assets', cashAssignments: cloneJson(balanceSheetAssignments) }
     }, { key: 'balanceSheetCashRounding', value: 'Free and earmarked cash rounded to the cent for the balance sheet; ledger amounts retain full precision.' }] : [])],
-    warnings: readiness.warnings ?? [] };
+    warnings: [...(readiness.warnings ?? []), ...chapterWarnings] };
 }

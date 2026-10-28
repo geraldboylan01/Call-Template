@@ -1,6 +1,6 @@
 import { normalizePlanPack, finiteJson, PlanPackError, fail } from './schema.js';
 import { buildChapter, routeContext, LaterStage } from './chapters.js';
-import { prepareResourceRoute } from './resource_ledger.js';
+import { prepareResourceRoute, prepareCurrentPosition } from './resource_ledger.js';
 import { checkCasePack, checkModulePayload } from '../../module_pipeline.js';
 import { cloneJson, sha256Json } from '../utils.js';
 import { PLANEIR_ASSUMPTIONS_VERSION } from '../planeir_assumptions.js';
@@ -9,7 +9,7 @@ import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.1.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.2.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -81,7 +81,8 @@ const PLAN_PACK_METRIC_TYPES = frozen({
   loan_analysis: { monthlyPayment: 'money', totalInterest: 'money', interestSaved: 'money' },
   pension_projection: { requiredPot: 'money', projectedPot: 'money', retirementYear: 'year' },
   net_retirement_cashflow: { requiredFundToday: 'money', availableInvestmentFundToday: 'money' },
-  college_funding: { firstCollegeYear: 'year', finalCollegeYear: 'year', fundingPeriodYears: 'number' }
+  college_funding: { firstCollegeYear: 'year', finalCollegeYear: 'year', fundingPeriodYears: 'number' },
+  future_cost_fund: { requiredToday: 'money', moneyNow: 'money', lumpSumToday: 'money', yearlyAmount: 'money', totalCost: 'money' }
 });
 function registeredPlaceholders(pack, resourceLedger) {
   const keys = new Set(['route.cashUsed', 'route.goalsMoved', 'route.goalChangeCount', 'plan.calculationDate', ...Object.keys(FIGURE_PLACEHOLDERS)]);
@@ -140,9 +141,15 @@ function validateLiteralNarration(pack, resourceLedger) {
  * B0 compiles engine inputs; explicit resourceLedger mode also checks B1
  * allocation and route balance. Every route starts from the same opening facts.
  */
-export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
+export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false } = {}) {
   let pack;
-  try { pack = frozen(normalizePlanPack(raw)); validateLiteralNarration(pack, resourceLedger); }
+  try {
+    pack = frozen(normalizePlanPack(raw));
+    if (currentPositionOnly && (!resourceLedger || pack.routes.length !== 1 || pack.routes[0].id !== 'current' || pack.routes[0].changes.length)) {
+      fail('/routes', 'Current-position mode requires resourceLedger and exactly the unchanged current route.');
+    }
+    validateLiteralNarration(pack, resourceLedger && !currentPositionOnly);
+  }
   catch (error) {
     return { status: 'invalid', compilerVersion: PLAN_PACK_COMPILER_VERSION, diagnostics: [errorRow(error)], routes: [], chapters: [], casePacks: null };
   }
@@ -157,9 +164,9 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
     const proposed = [];
     try {
       if (resourceLedger) {
-        const prepared = await prepareResourceRoute(pack, route, index);
+        const prepared = currentPositionOnly ? await prepareCurrentPosition(pack) : await prepareResourceRoute(pack, route, index);
         context = prepared.context;
-        context.resourceLedger = prepared.ledger;
+        if (!currentPositionOnly) context.resourceLedger = prepared.ledger;
         ledgers.push({ routeId: route.id, ...prepared.ledger });
         if (route.id !== 'current' && !prepared.ledger.balanced) fail('/routes/' + index,
           !prepared.ledger.reserveProtected ? 'This route spends cash protected for the emergency reserve.'
@@ -168,7 +175,7 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
       for (const chapter of pack.chapters) {
         try {
           const built = await buildChapter(context, pack, chapter);
-          const checked = checkModulePayload(built.payload);
+          const checked = checkModulePayload(built.payload, { calculationYear: Number(pack.calculationDate.slice(0, 4)) });
           if (!checked.ok) throw new PlanPackError('/chapters/' + pack.chapters.indexOf(chapter), checked.error, 'engine_refusal');
           const input = json(built.input);
           const builderVersion = built.moduleVersion ?? PLAN_PACK_COMPILER_VERSION;
@@ -194,7 +201,7 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
         }
       }
       const casePack = { casePackVersion: 1, clientName: pack.clientName, modules: proposed.map(([, entry]) => entry.payload) };
-      const checkedPack = checkCasePack(casePack);
+      const checkedPack = checkCasePack(casePack, { calculationYear: Number(pack.calculationDate.slice(0, 4)) });
       if (!checkedPack.ok) fail('/routes/' + index, 'The existing case-pack validator refused the compiled route.', 'engine_refusal');
       const mapping = {};
       for (const [chapter, entry] of proposed) {
@@ -230,8 +237,8 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
     planPackVersion: 1, compilerVersion: PLAN_PACK_COMPILER_VERSION, status,
     clientName: pack.clientName, calculationDate: pack.calculationDate, versions,
     source: { hash: sourceHash, normalizedPlanPack: cloneJson(pack) },
-    scope: resourceLedger ? 'B1 resource-ledger checks' : 'B0 compilation only',
-    resourceLedger: resourceLedger ? { stage: 'B1', status: ledgers.length === pack.routes.length ? 'priced' : 'incomplete', routes: ledgers } : { stage: 'B1', status: 'not_computed' },
+    scope: currentPositionOnly ? 'B2 current-position resources; goal funding not priced' : resourceLedger ? 'B1 resource-ledger checks' : 'B0 compilation only',
+    resourceLedger: resourceLedger ? { stage: 'B1', status: currentPositionOnly ? (ledgers[0]?.status ?? 'incomplete') : ledgers.length === pack.routes.length ? 'priced' : 'incomplete', routes: ledgers } : { stage: 'B1', status: 'not_computed' },
     diagnostics, routes,
     chapters: status === 'invalid' ? [] : [...chapterMap.values()],
     // Atomic export: no partial pack can be passed to the app as successful.
