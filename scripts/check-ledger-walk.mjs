@@ -73,6 +73,8 @@ try {
   assert.ok(kept.pricing.ledger.years[0].planned > mix.pricing.ledger.years[0].planned);
   const retireWays = await checkWays(complete.compilation, cash.route, reviewed.retirementGoalId);
   assert.ok(retireWays.available.earlierGoalIds.includes(reviewed.costId));
+  assert.equal(retireWays.ways[0].funding.startsInYears, null);
+  assert.equal(retireWays.ways[0].funding.timingBasis, 'per_person_retirement_ages_in_contributionBenchmark');
   close(retireWays.available.spareCash, cash.pricing.ledger.spareCashRemaining);
   const suggestions = await suggestRoutes(complete.compilation);
   assert.ok(suggestions.suggestions.length <= 5);
