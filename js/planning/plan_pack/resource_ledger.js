@@ -5,7 +5,8 @@ import { computeDatedCostFunding } from '../../future_cost_fund_math.js';
 import { planDatedCostProducer } from '../dated_costs/plan_producers.js';
 import { planWorkingShares } from './working_shares.js';
 import { computeAmortizationMonthlySchedule } from '../../mortgage_math.js';
-import { GOAL_STATE_WORDS, pricePlanMortgage, pricePlanRetirement } from '../../goals_and_resources_math.js';
+import { GOAL_STATE_WORDS, pricePlanMortgage, pricePlanRetirement, pricePlanPensionContributions } from '../../goals_and_resources_math.js';
+import { classifyLever } from './lever_catalogue.js';
 import { routeContext, buildChapter, missing, people, LaterStage } from './chapters.js';
 import { priceInvestmentSales } from './investment_sales.js';
 import { fail, finiteJson } from './schema.js';
@@ -96,9 +97,12 @@ function quoteGoals(context, pack, cashByGoal = {}) {
       if (goal.targetDate) throw new LaterStage('/household/goals/' + context.profile.goals.indexOf(goal) + '/targetDate',
         'Represent a retirement timing target with the named person’s retirement age; a retirement goal date needs its date-to-age adapter.', 'B2', 'requires_goal_funding_adapter');
       const input = pensionInput(context, pack, goal);
-      const priced = pricePlanRetirement(input, { calculationDate: pack.calculationDate });
+      const explicit = context.pensionContributions?.length > 0;
+      const priced = explicit ? pricePlanPensionContributions(input, context.pensionContributions, { calculationDate: pack.calculationDate })
+        : pricePlanRetirement(input, { calculationDate: pack.calculationDate });
       return { ...common, kind: 'retirement', order: 3, startsInYears: 999, input, priced, wholeCash: null,
         needs: priced.extraCostByYear, alreadyCovered: priced.onTrackAtToday, hasCurrentFunding: priced.projectedPotAtToday > 0,
+        fundingInsufficient: explicit && priced.gapLeftOver > 0.005,
         unreachable: priced.reachedCap && priced.gapLeftOver > 0 };
     }
     if (['optimise_mortgage', 'manage_loan'].includes(goal.type)) {
@@ -173,7 +177,9 @@ function investmentInventory(pack, sales, { pricePotential = true } = {}) {
   const holdings = pack.household.assets.filter(a => a.type === 'investment' && !assigned.has(a.assetId));
   const sold = new Set(sales.sales.map(s => s.assetId));
   // Only holdings the route keeps: a sold asset and its exemption are already in the route's own sale.
-  const ordinary = holdings.filter(a => a.investmentTaxTreatment === 'ordinary_cgt' && a.currentValue && !sold.has(a.assetId));
+  const analyst = pack.household.assumptions.values.application?.schema === 'planeir.application.v1';
+  const ordinary = holdings.filter(a => a.investmentTaxTreatment === 'ordinary_cgt' && a.currentValue && !sold.has(a.assetId)
+    && (!analyst || (a.baseCost && a.sellingCosts)));
   // This is one hypothetical batch, never additional cash or another allowance.
   const potentialSale = pricePotential && ordinary.length && pack.planningInputs.householdTaxStatus
     ? priceInvestmentSales(pack.household, ordinary.map(a => a.assetId), pack.calculationDate, pack.planningInputs.householdTaxStatus, pack.planningInputs.openingTaxState) : null;
@@ -266,10 +272,11 @@ export async function prepareResourceRoute(pack, route, index) {
   const saleIds = route.changes.filter(c => c.type === 'sellAsset').map(c => c.assetId);
   if (saleIds.some(id => pack.planningInputs.assetAssignments.some(a => a.assetId === id))) fail('/routes/' + index, 'An assigned asset cannot fund another goal without an explicit reassignment contract.');
   const sales = priceInvestmentSales(pack.household, saleIds, pack.calculationDate, pack.planningInputs.householdTaxStatus, pack.planningInputs.openingTaxState);
-  const movedOnly = { ...route, changes: route.changes.filter(c => c.type === 'moveGoal') };
+  const movedOnly = { ...route, changes: route.changes.filter(c => ['moveGoal', 'spendLess', 'pensionContribution'].includes(c.type)) };
   const preview = routeContext(pack, movedOnly, index, { allowGoalMoves: true, saleResult: sales });
   await routeIncome(preview, pack);
   const preliminary = quoteGoals(preview, pack);
+  if (preview.pensionContributions.length && !preliminary.some(goal => goal.kind === 'retirement')) missing('/household/goals', 'A contribution lever needs one combined retirement goal.');
   for (const change of route.changes.filter(c => c.type === 'useCash')) if (!preliminary.some(g => g.goalId === change.goalId)) {
     throw new LaterStage('/routes/' + index, 'This goal needs an explicit cash-funding contract.', 'B2', 'requires_goal_funding_adapter');
   }
@@ -384,7 +391,7 @@ export async function prepareResourceRoute(pack, route, index) {
     const rows = years.map(row => row.goals.find(g => g.goalId === goal.goalId));
     // Current saving covers a goal only in the years the yearly money can still pay it.
     const unfundedRetirementCost = current && (goal.contract?.retirementSplit.capitalNeededAtRetirement > 0.005 || goal.retirementCosts?.length > 0);
-    const covered = (current ? goal.alreadyCovered && !unfundedRetirementCost : !goal.unreachable) && rows.every(row => row.shortfall <= 0.005);
+    const covered = (current ? goal.alreadyCovered && !unfundedRetirementCost : !goal.unreachable && !goal.fundingInsufficient) && rows.every(row => row.shortfall <= 0.005);
     const partly = goal.hasCurrentFunding || rows.some(row => row.allocated > 0.005) || (cashByGoal[goal.goalId] ?? 0) > 0;
     const short = years.filter(row => { const g = row.goals.find(g => g.goalId === goal.goalId); return g.allocated < g.required - 0.005; });
     const lastShort = short.at(-1)?.offset;
@@ -406,6 +413,10 @@ export async function prepareResourceRoute(pack, route, index) {
         openingMonthlyPayment: pack.household.liabilities.find(d => d.liabilityId === g.liabilityId).monthlyPayment.amount,
         routeMonthlyPayment: context.profile.liabilities.find(d => d.liabilityId === g.liabilityId).monthlyPayment.amount })) },
     balanced: reserveProtected && years.every(row => row.shortfall <= 0.005),
+    levers: route.changes.map((change, ci) => ({ type: change.type, source: `/routes/${index}/changes/${ci}`,
+      ...classifyLever(pack, change), parameterSources: cloneJson(change.sources ?? {}),
+      ...(change.type === 'spendLess' ? { annualSpendingReduction: change.annualAmount } : {}),
+      ...(change.type === 'pensionContribution' ? { personId: change.personId, annualGrossExtra: change.annualAmount } : {}) })),
     goalsCovered: goalStates.every(g => g.state === 'covered'),
     assumptions: ['Dated costs use calendar-year offsets. Annual left over is held at today’s figure while people work; no salary rise is credited.',
       'A loan’s repayment comes back in full from the first ledger year after its last repayment on the native amortisation schedule. Saving for a dated cost stops when the cost starts, because the fund then pays it.',
@@ -444,6 +455,8 @@ export async function prepareCurrentPosition(pack) {
       const flow = await buildChapter(context, pack, 'household_cash_flow');
       baselineLeftOver = flow.metrics.leftOver;
       takeHomeByPerson = flow.cashFlowSummary.cases[0].takeHome.byPerson;
+      if (pack.chapters.includes('future_cost_fund')) context.workingShares = planWorkingShares(pack, context.profile,
+        Object.fromEntries(takeHomeByPerson.map(person => [person.personId, person.bankTakeHome])));
     } else if (pack.planningInputs.leftOverEachYear !== undefined) baselineLeftOver = pack.planningInputs.leftOverEachYear;
     else missing('/planningInputs/leftOverEachYear', 'Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount.');
   } catch (error) { record(error); }

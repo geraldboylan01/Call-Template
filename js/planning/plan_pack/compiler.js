@@ -9,7 +9,7 @@ import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.2.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.3.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -232,6 +232,25 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
     const order = new Map(routes.map((r, i) => [r.id, i]));
     pendingCasePacks.sort((a, b) => order.get(a.routeId) - order.get(b.routeId));
     ledgers.sort((a, b) => order.get(a.routeId) - order.get(b.routeId));
+  }
+  if (resourceLedger && !currentPositionOnly) {
+    const current = ledgers.find(ledger => ledger.routeId === 'current');
+    if (current) for (const route of routes) {
+      const ledger = ledgers.find(ledger => ledger.routeId === route.id);
+      if (!ledger) continue;
+      const delta = (before, after) => ({ current: before ?? null, route: after ?? null,
+        difference: Number.isFinite(before) && Number.isFinite(after) ? after - before : null });
+      route.differencesFromCurrent = {
+        cashAllocated: delta(current.cashAllocated, ledger.cashAllocated),
+        cashRemaining: delta(current.cashRemaining, ledger.cashRemaining),
+        annualSurplusBeforeGoalFunding: delta(current.baselineLeftOver, ledger.baselineLeftOver),
+        annualSurplusAfterGoalFunding: delta(current.years[0]?.remaining, ledger.years[0]?.remaining),
+        years: [...new Set([...current.years, ...ledger.years].map(row => row.year))].sort((a, b) => a - b).map(year => ({
+          year, ...delta(current.years.find(row => row.year === year)?.remaining, ledger.years.find(row => row.year === year)?.remaining)
+        })),
+        goals: ledger.goals.map(goal => ({ goalId: goal.goalId, currentState: current.goals.find(row => row.goalId === goal.goalId)?.state ?? null, routeState: goal.state }))
+      };
+    }
   }
   return {
     planPackVersion: 1, compilerVersion: PLAN_PACK_COMPILER_VERSION, status,

@@ -17,7 +17,7 @@ Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Tot
 
 **From.** The day the value takes effect. A dash means the source states no date. A rule that a later tax year carries over unchanged is listed once, for the year it first took effect.
 
-Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.6.0`; Market figures `ie-market-2026.2`.
+Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.7.0`; Market figures `ie-market-2026.2`.
 
 ## Irish tax rules
 
@@ -403,7 +403,7 @@ Catalogue version `house-purchase-rules-2026.10`. 131 figures.
 
 ## Planeir central assumptions
 
-Catalogue version `planeir-assumptions-1.6.0`. 12 figures.
+Catalogue version `planeir-assumptions-1.7.0`. 12 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|

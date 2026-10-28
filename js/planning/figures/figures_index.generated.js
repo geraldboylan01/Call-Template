@@ -24,7 +24,7 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "planeir_assumptions",
-    "version": "planeir-assumptions-1.6.0",
+    "version": "planeir-assumptions-1.7.0",
     "count": 12
   },
   {
@@ -9608,7 +9608,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "pension_projection"
@@ -9638,7 +9638,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "pension_projection",
@@ -9671,7 +9671,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9703,7 +9703,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "net_retirement_cashflow"
@@ -9733,7 +9733,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9764,7 +9764,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9795,7 +9795,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9826,7 +9826,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9857,7 +9857,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -9888,7 +9888,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -9919,7 +9919,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -9949,7 +9949,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis"

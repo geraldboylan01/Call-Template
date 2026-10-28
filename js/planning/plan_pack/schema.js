@@ -2,6 +2,7 @@ import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES 
 import { normalizeHouseholdProfile } from '../profile.js';
 import { createTaxState } from '../tax/engine.js';
 import { assertIsoDate, assertJsonCompatible, cloneJson, isPlainObject } from '../utils.js';
+import { GOAL_MOVE_FIELDS, getLeverDefinition, validateLeverSources, validateLeverFacts, classifyLever } from './lever_catalogue.js';
 
 const PLAN_PACK_VERSION = 1;
 const PLAN_PACK_CONTRACT = Object.freeze({
@@ -9,7 +10,7 @@ const PLAN_PACK_CONTRACT = Object.freeze({
   fields: ['planPackVersion', 'clientName', 'calculationDate', 'household', 'planningInputs', 'goalFlexibility', 'routes', 'chapters', 'narration'],
   chapters: ['personal_balance_sheet', 'liquidity_analysis', 'household_cash_flow', 'protection_gap', 'mortgage_analysis', 'loan_analysis', 'pension_projection', 'net_retirement_cashflow', 'college_funding', 'future_cost_fund', 'goals_and_resources'],
   planningFields: ['spendingLabel', 'takeHomeBasis', 'spendingBasis', 'householdTaxStatus', 'personalPensionContributions', 'cashAssetId', 'outgoingBindings', 'goalBindings', 'chapterGoals', 'protectionCases', 'leftOverEachYear', 'goalFundingFacts', 'assetAssignments', 'goalSavingBasis', 'goalFundingLabel', 'retirementIncomeBasis', 'openingTaxState'],
-  goalFields: ['retirementAge', 'targetIncomeToday', 'clearByAge', 'targetDate', 'targetAmount']
+  goalFields: GOAL_MOVE_FIELDS
 });
 
 Object.values(PLAN_PACK_CONTRACT).filter(Array.isArray).forEach(Object.freeze);
@@ -262,15 +263,15 @@ export function normalizePlanPack(raw) {
     const touched = new Set();
     next.changes = array(route.changes ?? [], path + '/changes').map((change, ci) => {
       const here = path + '/changes/' + ci;
-      const fields = change?.type === 'moveGoal'
-        ? ['type', 'goalId', ...PLAN_PACK_CONTRACT.goalFields]
-        : change?.type === 'useCash' ? ['type', 'goalId', 'amount']
-          : change?.type === 'sellAsset' ? ['type', 'assetId']
-          : ['type', 'outgoingId', 'paidFrom'];
-      object(change, here, fields);
-      if (!['moveGoal', 'useCash', 'clearOutgoing', 'sellAsset'].includes(change.type)) fail(here + '/type', 'unsupported route change.');
+      const lever = getLeverDefinition(change?.type);
+      if (!lever) fail(here + '/type', 'unsupported route change.');
+      object(change, here, ['type', 'sources', ...Object.keys(lever.parameters)]);
       const result = cloneJson(change);
-      if (change.type === 'sellAsset') {
+      if (['pensionContribution', 'spendLess'].includes(change.type)) {
+        number(change.annualAmount, here + '/annualAmount');
+        if (change.annualAmount <= lever.parameters.annualAmount.exclusiveMinimum) fail(here + '/annualAmount', 'must be positive.');
+        if (change.type === 'pensionContribution') reference(change.personId, new Set([household.primaryPerson.personId, household.partner?.personId].filter(Boolean)), here + '/personId');
+      } else if (change.type === 'sellAsset') {
         const asset = household.assets.find(a => a.assetId === change.assetId);
         if (!asset || asset.type !== 'investment') fail(here + '/assetId', 'must name an investment holding.');
       } else if (change.type === 'clearOutgoing') {
@@ -294,22 +295,28 @@ export function normalizePlanPack(raw) {
             result[field] = goalValue(change[field], field, here + '/' + field);
             if (field === 'targetDate' && result[field] < calculationDate) fail(here + '/' + field, 'cannot move an active goal into the past.');
             const range = goalFlexibility[change.goalId]?.[field];
-            if (!range || result[field] < range[0] || result[field] > range[1]) fail(here + '/' + field, 'is outside the stated goal flexibility.');
+            if (!range) fail(here + '/' + field, 'State flexibility at /goalFlexibility/' + change.goalId + '/' + field + ' before moving the goal.', 'missing_information');
+            if (result[field] < range[0] || result[field] > range[1]) fail(here + '/' + field, 'is outside the stated goal flexibility.');
           }
         }
       }
-      for (const key of Object.keys(result).filter(k => !['type', 'goalId', 'outgoingId', 'paidFrom'].includes(k))) {
-        const token = change.type + ':' + (change.goalId ?? change.outgoingId ?? change.assetId) + ':' + key;
+      const sourcePack = { household, planningInputs, goalFlexibility, calculationDate };
+      const strict = household.assumptions.values.application?.schema === 'planeir.application.v1' || ['pensionContribution', 'spendLess'].includes(change.type);
+      validateLeverSources(sourcePack, change, here, { required: strict });
+      if (strict || change.sources !== undefined) validateLeverFacts(sourcePack, change, here);
+      for (const key of Object.keys(result).filter(k => !['type', 'goalId', 'outgoingId', 'paidFrom', 'sources'].includes(k))) {
+        const token = change.type + ':' + (change.goalId ?? change.outgoingId ?? change.assetId ?? change.personId) + ':' + key;
         if (touched.has(token)) fail(here, 'duplicates a conflicting route change.');
         touched.add(token);
       }
-      const identity = change.type + ':' + (change.goalId ?? change.outgoingId ?? change.assetId);
+      const identity = change.type + ':' + (change.goalId ?? change.outgoingId ?? change.assetId ?? change.personId);
       if (change.type !== 'moveGoal') {
         if (touched.has(identity)) fail(here, 'duplicates a route change.');
         touched.add(identity);
       }
       return result;
     });
+    if (next.changes.filter(change => classifyLever({ household, planningInputs }, change).scale === 'major').length > 1) fail(path + '/changes', 'At most one major lever is supported per route; a combined-major search belongs to the later balancing tool.');
     return next;
   });
   if (!routes.length || routes.length > 4) fail('/routes', 'must contain current plus at most three alternatives.');
