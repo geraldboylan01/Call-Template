@@ -11,6 +11,8 @@ import { computeNetRetirementProjection } from '../../net_retirement_math.js';
 import { computeFutureCostFundProjection } from '../../future_cost_fund_math.js';
 import { planDatedCostProducer } from '../dated_costs/plan_producers.js';
 import { finiteJson, PlanPackError, fail } from './schema.js';
+import { statedEssentialAnnual } from './lever_catalogue.js';
+import { applyPropertyMove, PROPERTY_LEVERS } from './property_moves.js';
 
 export class LaterStage extends PlanPackError {
   constructor(path, message, stage = 'B2', code = 'requires_profile_adapter') {
@@ -27,7 +29,7 @@ function amount(value, path) {
 }
 const toCents = value => Math.round(value * 100) / 100;
 const retirementTypes = ['retire', 'retire_early', 'improve_pension'];
-export function routeContext(pack, route, index, { fundingGoalIds = new Set(), allowGoalMoves = false, saleResult = null } = {}) {
+export function routeContext(pack, route, index, { fundingGoalIds = new Set(), allowGoalMoves = false, saleResult = null, propertyMove = null } = {}) {
   const profile = cloneJson(pack.household);
   const original = pack.household;
   const inputs = pack.planningInputs;
@@ -39,10 +41,16 @@ export function routeContext(pack, route, index, { fundingGoalIds = new Set(), a
   let cashUsed = 0;
   let reservedCash = 0;
   let spendingRemoved = 0;
+  let spendingReduction = 0;
+  let spendingReductionPath;
+  const pensionContributions = [];
   const changes = route.changes;
   const liabilityChanges = new Set();
   const retirementChanges = new Set();
   let cashAssetId = inputs.cashAssetId;
+  applyPropertyMove(profile, propertyMove, cashAssetId);
+  const propertySpendingRemoved = propertyMove?.offset === 0 ? propertyMove.debts.reduce((sum, d) => sum + d.annualPayment, 0) + (propertyMove.rental?.running ?? 0) : 0;
+  if (propertyMove?.offset === 0) for (const debt of propertyMove.debts) cashByLiability[debt.liabilityId] = debt.balance;
   if (saleResult?.sales.length) {
     const cash = cashAssetId ? profile.assets.find(a => a.assetId === cashAssetId) : profile.assets.filter(a => a.type === 'cash').length === 1 ? profile.assets.find(a => a.type === 'cash') : null;
     if (!cash) missing('/planningInputs/cashAssetId', 'Name the cash account receiving sale proceeds.');
@@ -54,6 +62,24 @@ export function routeContext(pack, route, index, { fundingGoalIds = new Set(), a
     const path = '/routes/' + index + '/changes/' + ci;
     const goal = profile.goals.find(g => g.goalId === change.goalId);
     const binding = inputs.goalBindings.find(b => b.goalId === change.goalId);
+    if (PROPERTY_LEVERS.includes(change.type)) {
+      if (!propertyMove) throw new LaterStage(path, 'Property levers require the full B1 ledger.', 'B1', 'requires_resource_ledger');
+      changedFacts.push({ source: path, propertyId: propertyMove.propertyId, year: propertyMove.year, cashReleased: propertyMove.cashReleased });
+      continue;
+    }
+    if (change.type === 'pensionContribution') {
+      if (!allowGoalMoves) throw new LaterStage(path, 'Contribution levers require the full B1 ledger.', 'B1', 'requires_resource_ledger');
+      pensionContributions.push({ personId: change.personId, annualAmount: change.annualAmount, source: path });
+      changedFacts.push({ source: path, personId: change.personId, grossAnnualContribution: change.annualAmount });
+      continue;
+    }
+    if (change.type === 'spendLess') {
+      if (!allowGoalMoves) throw new LaterStage(path, 'Spending levers require the full B1 ledger.', 'B1', 'requires_resource_ledger');
+      spendingReduction = change.annualAmount;
+      spendingReductionPath = path + '/annualAmount';
+      changedFacts.push({ source: path, annualSpendingReduction: change.annualAmount });
+      continue;
+    }
     if (change.type === 'sellAsset') {
       if (!saleResult) throw new LaterStage(path, 'Investment-sale funding requires the B1 ledger.', 'B1', 'requires_resource_ledger');
       changedFacts.push({ source: path, assetId: change.assetId, sale: saleResult.sales.find(s => s.assetId === change.assetId) });
@@ -62,7 +88,7 @@ export function routeContext(pack, route, index, { fundingGoalIds = new Set(), a
     if (change.type === 'moveGoal') {
       if (!movedGoals.includes(goal.goalId)) movedGoals.push(goal.goalId);
       for (const [key, value] of Object.entries(change)) {
-        if (['type', 'goalId'].includes(key)) continue;
+        if (['type', 'goalId', 'sources'].includes(key)) continue;
         if (key === 'retirementAge') {
           if (!retirementTypes.includes(goal.type)) fail(path + '/' + key, 'retirementAge requires a retirement goal.');
           const owner = binding?.personId ?? (people(profile).length === 1 ? profile.primaryPerson.personId : null);
@@ -134,12 +160,20 @@ export function routeContext(pack, route, index, { fundingGoalIds = new Set(), a
     cashAssetId = asset.assetId;
     asset.currentValue.amount = cash - (cashUsed - reservedCash);
   }
-  if (spendingRemoved > 0) {
+  if (spendingRemoved > 0 || spendingReduction > 0) {
     const spending = amount(profile.expenses.annualTotal, '/household/expenses/annualTotal');
     if (spending < spendingRemoved) fail('/household/expenses/annualTotal', 'must include the contractual debt payments being cleared.');
+    if (spendingReduction > 0 && spending - spendingRemoved - spendingReduction < statedEssentialAnnual(original) - 0.005) fail(spendingReductionPath, 'After debt clearances this reduction would take spending below stated essentials.');
+    spendingRemoved += spendingReduction;
     profile.expenses.annualTotal.amount = spending - spendingRemoved;
   }
-  return { profile, original, route, cashUsed, cashByLiability, spendingRemoved, changedFacts, movedGoals, goalOverrides, goalCashReserved, reservedCash, cashAssetId, saleResult };
+  spendingRemoved += propertySpendingRemoved;
+  if (spendingReduction > 0 && propertyMove?.offset > 0) {
+    const futureRemoval = propertyMove.debts.reduce((sum, debt) => sum + debt.annualPayment, 0) + (propertyMove.rental?.running ?? 0);
+    if (profile.expenses.annualTotal.amount - futureRemoval < statedEssentialAnnual(original) - 0.005) fail(spendingReductionPath,
+      'After the future property move this cut would take spending below stated essentials.');
+  }
+  return { profile, original, route, cashUsed, cashByLiability, spendingRemoved, spendingReduction, pensionContributions, changedFacts, movedGoals, goalOverrides, goalCashReserved, reservedCash, cashAssetId, saleResult, propertyMove };
 }
 function selectGoalProfile(profile, pack, chapter) {
   const view = cloneJson(profile);

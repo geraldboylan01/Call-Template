@@ -733,6 +733,16 @@ function collectPlaneirAssumptions(out) {
   };
   reserve('working', 'working');
   reserve('retired', 'retired');
+  const moves = a.routes.propertyMoves;
+  for (const [field, label, value, unit] of [
+    ['property_agent_fee', 'Proposed selling-agent allowance including VAT', moves.agentFeeRate, 'rate'],
+    ['property_sale_legal', 'Proposed sale legal and outlay allowance including VAT', moves.saleLegalCosts, 'eur'],
+    ['replacement_home_minimum_share', 'Proposed minimum replacement-home share of current value', moves.minimumReplacementShare, 'rate'],
+    ['replacement_home_maximum_share', 'Proposed maximum replacement-home share of current value', moves.maximumReplacementShare, 'rate'],
+    ['property_move_horizon', 'Maximum years ahead in the proposed property-move search', moves.maximumYearsAhead, 'years']
+  ]) add({ id: `planeir.assumption.${field}`, quantity: `planeir.assumption.${field}`, label, value, unit,
+    status: moves.approvalStatus, kind: 'planeir_assumption', sources: [PLANEIR_SOURCE(moves.basis), ...moves.sources],
+    checkedOn: moves.checkedOn, usedBy: ['plan_pack', 'home_trade_down', 'rental_keep_or_sell'], extra: { basis: moves.basis } });
 
   collectCareAssumptions(add, a, approved, row);
 }

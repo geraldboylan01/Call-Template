@@ -148,9 +148,43 @@ The confirmed v1 form supplies the regular-spending basis and its existing `Spen
 
 The form's separately stated current mortgage overpayment is part of today's repayment once. Assembly leaves the input profile unchanged, retains the components as `mortgage.scheduledMonthlyPayment` and `mortgage.currentAnnualOverpayment` in the plan household's assumptions, and derives the liability's actual monthly payment with form provenance. It removes the old proposed-overpayment setting. The existing builders and ledger therefore use the same current repayment without changing route arithmetic. A defined-benefit promise without a stated capital value is disclosed as not capitalised in the balance sheet; its promised pension/lump sum remain in the pension projection.
 
-The goals screen remains unavailable because its native engine derives funding alternatives rather than an exact unchanged-current case. B0's `requires_resource_ledger` asks the caller to opt into the available B1 pricing with `{resourceLedger: true}`. B1/B1.1 price funding; they then report `requires_profile_adapter` for the remaining route-to-screen adapter. Protection awaits the later Illness Benefit/scenario-tax/duration work. The fund screen awaits its dated-cost contract and explicit pack-date payload boundary. Net retirement is omitted when only gross income is available, rather than silently dropping those income streams. Current-position investment holdings remain at their recorded market values, with no hypothetical sale or tax valuation counted as cash.
+The goals screen remains unavailable because its native engine derives funding alternatives rather than an exact unchanged-current case. B0's `requires_resource_ledger` asks the caller to opt into the available B1 pricing with `{resourceLedger: true}`. B1/B1.1 price funding; they then report `requires_profile_adapter` for the remaining route-to-screen adapter. Protection awaits the later Illness Benefit/scenario-tax/duration work. The fund screen now uses #100's dated-cost contract and explicit pack date: select one dated goal with complete funding facts. Its existing screen supports future `save_then_pay` costs without a retirement split; immediate, `each_year` and split costs retain their explicit adapter refusal. Net retirement is omitted when only gross income is available, rather than silently dropping those income streams. Current-position investment holdings remain at their recorded market values, with no hypothetical sale or tax valuation counted as cash.
 
 `npm run check:form-to-plan` prints the compiled chapters, omissions, current-resource summary and merged missing facts for the five invented #97 households. Its deterministic reports are in `scripts/fixtures/form-to-plan.expected.json`.
+
+### Profile-built alternatives and the lever catalogue
+
+Supply `routes` to `profileToPlanPack`, as an array of zero to three alternatives. Code prepends unchanged `current`; the caller cannot replace it. For example:
+
+```js
+const result = await profileToPlanPack(profile, {
+  confirmedRevision: 7, clientLabel: 'Invented example',
+  routes: [{ id: 'spending_cut', changes: [{
+    type: 'spendLess', annualAmount: 1200,
+    sources: { annualAmount: { kind: 'bounded',
+      reason: 'Illustrate a smaller regular budget within /household/expenses/annualTotal/amount.',
+      factPaths: ['/household/expenses/annualTotal/amount'] } }
+  }] }]
+});
+```
+
+This returns `compileOptions: {resourceLedger: true}`, `compilation` and `routeRefusals`, alongside the existing assembly fields. The same full B1 options price every route including current. A missing funding fact or refused alternative stays visible with its path; the assembler never downgrades the run. Only chapters explicitly missing an exact B1 screen adapter are omitted. The priced ledgers remain available in a refusal; successful case-pack export is atomic. `compilation.routes[].differencesFromCurrent` shows cash allocated/remaining, annual surplus before/after goal funding, yearly balances and goal states. Current retains actual saving and contributions; an alternative prices the goal-funding requirements, so its difference can include those requirements even with no lever changes.
+
+`getLeverCatalogue()` from `js/planning/plan_pack/lever_catalogue.js` returns the eight supported levers, their typed parameters, bounds, needed fact paths, pricing engines, scale rules and assumptions version. The property levers and sizing API are described in [Major property levers](route-major-levers.md). Schema validation reads this catalogue's parameter names. Every supplied setting in a form-built route (and every new lever in any pack) needs `sources[parameter]`:
+
+- `{kind: 'fact', path: '/household/…'}`: exact equality to a real household, planning-input or flexibility value. Record IDs always use this source.
+- `{kind: 'default', path: '/routes/…', version: PLANEIR_ASSUMPTIONS_VERSION}`: exact equality to this parameter's versioned central default. Currently these are `useCash.amount = 'remaining'` and `clearOutgoing.paidFrom = 'savings'`.
+- `{kind: 'bounded', reason: 'One line citing /household/…', factPaths: ['/household/…']}`: real cited facts, a reason naming at least one of those paths, and a setting within the lever's enforced bounds. A citation establishes traceability; it does not assert acceptance or feasibility.
+
+`moveGoal` requires an explicit range at `/goalFlexibility/{goalId}/{field}`. No range is created from a target or age. `sellAsset` requires known sale value, owners, tax treatment, base cost and selling costs, including stated zero; missing base cost is not replaced with zero in a form-built run, including its hypothetical holding valuations. Legacy hand-authored B1 sale packs retain their documented fallback contract.
+
+`pensionContribution` takes `{personId, annualAmount}`: today's gross annual personal increase for that named person, converted to a salary rate for the existing pension projection. It requires an active contributory holding, earnings, ages and a combined net retirement goal. The pension engine caps it at today's personal relief headroom, taking existing personal contributions into account. Its native contribution-cost schedule and the goals engine's relief-search benchmark are reused. The selected increase remains explicit; it is not replaced with the search's suggested contribution. Native tax prices its effect on bank pay and annual surplus, and the pension chapter uses its increased contribution. A positive contribution can still leave a retirement goal partly funded.
+
+`spendLess` takes `{annualAmount}` and reduces total regular spending, including the effect of any debt clearance in the same route. The remaining amount must cover stated essentials at `/household/expenses/monthlyEssential`. The v1 form's non-housing spending annotation does not establish this floor. Until essentials are separately established, the lever refuses that path. The opening B1 reserve stays protected.
+
+**Proposed classification for review:** `planeir_assumptions.routes.spendLess.ordinaryFractionOfAnnualSpending = 0.10`. Cuts through 10% of stated annual spending are ordinary; larger cuts are major. This editorial boundary exposes a greater lifestyle change; it is not evidence that a cut is feasible or accepted. Its status is `proposed`, and its basis/status/version accompany the catalogue and ledger. Working more than two additional years is major under the architecture's existing rule. At most one major lever is accepted per route; the later balancing search must establish any exception. Major illustrations still need the later story/openness checks.
+
+The consumer gate already runs `check:form-to-plan`. It now also prints each route's financial ledger, current-position differences and refusal paths in `scripts/fixtures/form-to-plan-routes.expected.json`. All five raw #97 households retain their genuine funding gaps. `form-to-plan-reviewed.mjs` explicitly lists invented supplemental review facts for priced demonstrations; none is presented as a v1 form answer. Checks compare native contribution costs/projections, relief and spending bounds, setting sources, and repeated/reordered runs.
 
 ## B1: explicit resource checks
 

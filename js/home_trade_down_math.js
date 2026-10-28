@@ -498,10 +498,20 @@ function buildCharts(cases) {
  *
  * @param {object} rawInputs `generated.homeTradeDownInputs`
  */
-export function computeHomeTradeDownProjection(rawInputs) {
-  const inputs = normalizeHomeTradeDownInputs(rawInputs);
+/** Shared exact equity arithmetic; the planning ledger uses no display rounding. */
+export function computeHomeTradeDownCashPurchase(inputs) {
+  for (const key of ['homeValue', 'mortgageBalance', 'currentAnnualRepayments', 'sellingCosts', 'buyingCosts', 'newHomePrice']) {
+    if (!Number.isFinite(inputs[key]) || inputs[key] < 0) throw new Error(`${key} must be a stated non-negative amount.`);
+  }
   const released = inputs.homeValue - inputs.mortgageBalance - inputs.sellingCosts;
   const cashTowardHome = released - inputs.buyingCosts;
+  return { released, cashTowardHome, cashReleased: cashTowardHome - inputs.newHomePrice,
+    annualRepaymentReleased: inputs.currentAnnualRepayments, newMortgageBalance: 0, newAnnualRepayment: 0 };
+}
+
+export function computeHomeTradeDownProjection(rawInputs) {
+  const inputs = normalizeHomeTradeDownInputs(rawInputs);
+  const { released, cashTowardHome } = computeHomeTradeDownCashPurchase({ ...inputs, newHomePrice: 0 });
 
   const shown = shownFigures(inputs);
   const cases = inputs.scenarios.map((scenario) => (

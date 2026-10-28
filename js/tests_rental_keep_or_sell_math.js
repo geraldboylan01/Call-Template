@@ -281,7 +281,8 @@ export function runRentalKeepOrSellTests() {
       normalizeRentalKeepOrSellInputs(copy);
     };
 
-    assertThrows(bad({ rentPerYear: 0 }), `${FIELD}.rentPerYear must be a number greater than 0.`, 'no rent');
+    assertEqual(computeRentalKeepOrSellProjection({ ...RENTAL_KEEP_OR_SELL_SAMPLE, rentPerYear: 0 }).debug.cases[0].result, -19200, 'no rent retains the stated costs');
+    assertThrows(bad({ rentPerYear: -1 }), `${FIELD}.rentPerYear must be a number greater than or equal to 0.`, 'negative rent');
     assertThrows(bad({ salePrice: -1 }), `${FIELD}.salePrice must be a number greater than 0.`, 'negative price');
     assertThrows(
       bad({ taxOnGain: -1 }),
@@ -305,7 +306,7 @@ export function runRentalKeepOrSellTests() {
     );
     assertThrows(
       without('rentPerYear'),
-      `${FIELD}.rentPerYear must be a number greater than 0.`,
+      `${FIELD}.rentPerYear must be a number greater than or equal to 0.`,
       'a missing rent'
     );
     assertThrows(

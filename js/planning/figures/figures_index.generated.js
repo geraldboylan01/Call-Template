@@ -29,8 +29,8 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "planeir_assumptions",
-    "version": "planeir-assumptions-1.7.0",
-    "count": 54
+    "version": "planeir-assumptions-1.8.0",
+    "count": 59
   },
   {
     "id": "ie_market",
@@ -10661,7 +10661,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "pension_projection"
@@ -10691,7 +10691,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "pension_projection",
@@ -10724,7 +10724,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -10757,7 +10757,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "net_retirement_cashflow"
@@ -10787,7 +10787,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -10818,7 +10818,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -10849,7 +10849,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -10880,7 +10880,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "college_funding",
@@ -10911,7 +10911,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "protection_gap",
@@ -10942,7 +10942,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "protection_gap",
@@ -10973,7 +10973,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "protection_gap",
@@ -11004,7 +11004,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "protection_gap",
@@ -11035,7 +11035,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "protection_gap",
@@ -11066,7 +11066,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "protection_gap",
@@ -11097,7 +11097,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -11131,7 +11131,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -11165,7 +11165,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -11198,7 +11198,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -11206,6 +11206,211 @@ export const FIGURES_INDEX = Object.freeze([
     "explainers": [
       "emergency_reserve"
     ]
+  },
+  {
+    "id": "planeir.assumption.property_agent_fee",
+    "quantity": "planeir.assumption.property_agent_fee",
+    "label": "Proposed selling-agent allowance including VAT",
+    "value": 0.01845,
+    "valueShown": "1.845%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.property_sale_legal",
+    "quantity": "planeir.assumption.property_sale_legal",
+    "label": "Proposed sale legal and outlay allowance including VAT",
+    "value": 2500,
+    "valueShown": "€2,500",
+    "unit": "eur",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.replacement_home_minimum_share",
+    "quantity": "planeir.assumption.replacement_home_minimum_share",
+    "label": "Proposed minimum replacement-home share of current value",
+    "value": 0.5,
+    "valueShown": "50%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.replacement_home_maximum_share",
+    "quantity": "planeir.assumption.replacement_home_maximum_share",
+    "label": "Proposed maximum replacement-home share of current value",
+    "value": 0.95,
+    "valueShown": "95%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
+  },
+  {
+    "id": "planeir.assumption.property_move_horizon",
+    "quantity": "planeir.assumption.property_move_horizon",
+    "label": "Maximum years ahead in the proposed property-move search",
+    "value": 20,
+    "valueShown": "20 years",
+    "unit": "years",
+    "kind": "planeir_assumption",
+    "status": "proposed",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.",
+        "url": null
+      },
+      {
+        "title": "Published estate-agent commission example",
+        "url": "https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/"
+      },
+      {
+        "title": "CCPC: selling a home, variable solicitor fees and outlays",
+        "url": "https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.8.0"
+    },
+    "usedBy": [
+      "plan_pack",
+      "home_trade_down",
+      "rental_keep_or_sell"
+    ],
+    "basis": "Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast."
   },
   {
     "id": "planeir.assumption.care.agreed_prices.list_number",
@@ -11231,7 +11436,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11261,7 +11466,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11291,7 +11496,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11321,7 +11526,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11351,7 +11556,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11381,7 +11586,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11411,7 +11616,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11441,7 +11646,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11471,7 +11676,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11501,7 +11706,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11531,7 +11736,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11561,7 +11766,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11591,7 +11796,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11621,7 +11826,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11651,7 +11856,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11681,7 +11886,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11711,7 +11916,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11741,7 +11946,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11771,7 +11976,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11801,7 +12006,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11831,7 +12036,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11861,7 +12066,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11891,7 +12096,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11921,7 +12126,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11951,7 +12156,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -11981,7 +12186,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12011,7 +12216,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12041,7 +12246,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12071,7 +12276,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12101,7 +12306,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12131,7 +12336,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12161,7 +12366,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12191,7 +12396,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12221,7 +12426,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs"
@@ -12251,7 +12456,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs",
@@ -12282,7 +12487,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.7.0"
+      "version": "planeir-assumptions-1.8.0"
     },
     "usedBy": [
       "care_costs",

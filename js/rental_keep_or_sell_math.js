@@ -44,8 +44,9 @@
 const FIELD = 'generated.rentalKeepOrSellInputs';
 
 const CASE_IDS = Object.freeze(['keep', 'sell']);
-const POSITIVE_FIELDS = Object.freeze(['rentPerYear', 'salePrice']);
+const POSITIVE_FIELDS = Object.freeze(['salePrice']);
 const NON_NEGATIVE_FIELDS = Object.freeze([
+  'rentPerYear',
   'loanRepaymentsPerYear',
   'runningCostsPerYear',
   'taxOnRentalProfitPerYear',

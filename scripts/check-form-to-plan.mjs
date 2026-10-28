@@ -7,6 +7,7 @@ import { normalizePlanPack } from '../js/planning/plan_pack/schema.js';
 import { checkCasePack } from '../js/module_pipeline.js';
 import { computeHouseholdCashFlowProjection } from '../js/household_cash_flow_math.js';
 import { getPersonalBalanceSheetReadiness } from '../js/planning/adapters/personal_balance_sheet.js';
+import { checkFormToPlanRoutes } from './check-form-to-plan-routes.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures/form-to-profile.households.json', import.meta.url), 'utf8'));
 const expectedUrl = new URL('./fixtures/form-to-plan.expected.json', import.meta.url);
@@ -32,7 +33,7 @@ for (const fixture of fixtures) {
   assert.equal(result.omittedChapters.length + (result.planPack?.chapters.length ?? 0), 11);
   assert.ok(result.omittedChapters.every(row => row.reasons.length && row.reasons.every(reason => reason.fieldPath && reason.reason)));
   assert.ok(result.missingFacts.every(fact => fact.fieldPath && fact.reason));
-  for (const chapter of ['future_cost_fund', 'goals_and_resources']) {
+  for (const chapter of ['goals_and_resources']) {
     assert.ok(result.omittedChapters.some(row => row.chapter === chapter && row.reasons.some(reason => reason.code === 'requires_profile_adapter')));
   }
   // Protection is built from the profile now (the Illness Benefit default): it is either in the plan or left out for a missing fact, never for a missing adapter.
@@ -217,3 +218,4 @@ assert.deepEqual(reports, JSON.parse(readFileSync(expectedUrl, 'utf8')), 'The co
 console.info = originalInfo;
 if (!process.argv.includes('--quiet')) for (const report of reports) console.log(JSON.stringify(report, null, 2));
 console.log('[FormToPlan] Five invented households passed; confirmation, source preservation, tax status, available chapters and current-resource summaries verified.');
+await checkFormToPlanRoutes();
