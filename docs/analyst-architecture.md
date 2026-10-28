@@ -215,7 +215,7 @@ A made-up household's confirmed form becomes a checked story with up to three ro
 3. **Protection with the Illness Benefit default** (plan document section 6), with the protection playbook's change to stop stating rates as its own prompt-pack commit. Protection chat.
 4. **The tool layer and the local harness**: the case file, the fact registry, the executors wired to what exists, the local tool server and the command line. Each tool picks up 1, 2 and 3 as they land. Analyst chat (new).
 5. **The skills** in `docs/analyst/skills/`. Written in this planning conversation, from the course method in Planeir's own words.
-6. **The story screen reads a compiled plan** instead of samples, from 1's facts and sources. Story chat, after the story facts.
+6. **The story screen reads a compiled plan** instead of samples, from 1's facts and sources, with where each figure comes from and explainers on hover or tap. Story chat, after the story facts. Built in `story/compiled-plan`: `buildSessionFromPlan` and `npm run analyst:open` ([plan-story-view.md](plan-story-view.md)).
 7. **First runs**: Claude Code with the skills and tools on the made-up households from #97, plus at least one where only a major lever brings the goals on time, read on the story screen, and the skills tuned. Gerry, with this conversation.
 
 ### Draft 2: real people, Gerry releases every analysis

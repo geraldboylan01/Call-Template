@@ -1,4 +1,5 @@
 import { buildGlance, resolveStory } from './plan_story_model.js';
+import { PLAN_STORY_BASIS_KINDS } from './plan_story_basis.js';
 
 /**
  * THE STORY, AS A SESSION KEEPS IT.
@@ -17,9 +18,11 @@ const PLAN_STORY_VERSION = 1;
 const MAX_ROUTES = 4;
 const MAX_FACTS = 400;
 const MAX_TEXT = 4000;
+const MAX_EXPLAINERS = 40;
+const MAX_CASE_MODULES = 60;
 
 /** Small marks until each module has an icon of its own. */
-const PLAN_STORY_DEFAULT_GLYPHS = Object.freeze({
+export const PLAN_STORY_DEFAULT_GLYPHS = Object.freeze({
   household_cash_flow: 'flow',
   liquidity_analysis: 'res',
   protection_gap: 'prot',
@@ -56,6 +59,61 @@ function cleanCatalogue(raw) {
   return { chapters, cases };
 }
 
+/** A cell of the at-a-glance table: its words, "About" when rounded, and where the figure comes from when the plan says. */
+function cleanCell(raw) {
+  const basis = raw?.basis;
+  if (basis !== undefined && (!isPlain(basis) || !PLAN_STORY_BASIS_KINDS.includes(basis.kind))) throw new Error('a glance figure has a basis the screen does not know.');
+  return {
+    text: String(raw?.text ?? '').slice(0, 40),
+    ...(raw?.approx ? { approx: true } : {}),
+    ...(basis ? { basis: jsonClone(basis) } : {})
+  };
+}
+
+/** The explainers a story may point to, copied whole from the register by the code that built the story. */
+function cleanExplainers(raw) {
+  const explainers = {};
+  for (const [id, entry] of Object.entries(isPlain(raw) ? raw : {}).slice(0, MAX_EXPLAINERS)) {
+    if (!/^[a-z][a-z0-9_]*$/.test(id) || !isPlain(entry) || typeof entry.title !== 'string' || !entry.title.trim()) continue;
+    const sentences = (Array.isArray(entry.sentences) ? entry.sentences : []).filter((sentence) => typeof sentence === 'string' && sentence.trim()).slice(0, 8);
+    if (!sentences.length) continue;
+    explainers[id] = {
+      title: entry.title.trim().slice(0, 200),
+      sentences: sentences.map((sentence) => sentence.trim().slice(0, 600)),
+      sources: (Array.isArray(entry.sources) ? entry.sources : []).filter((source) => isPlain(source) && typeof source.title === 'string' && source.title.trim()).slice(0, 8)
+        .map((source) => ({ title: source.title.trim().slice(0, 200), url: typeof source.url === 'string' && /^https:\/\//.test(source.url) ? source.url.slice(0, 500) : null })),
+      checkedOn: typeof entry.checkedOn === 'string' ? entry.checkedOn.slice(0, 10) : null,
+      catalogueVersion: typeof entry.catalogueVersion === 'string' ? entry.catalogueVersion.slice(0, 60) : null
+    };
+  }
+  return explainers;
+}
+
+/**
+ * Which session module shows which compiled case. A plan compiled with several routes has several cases of
+ * the same chapter (each its own module); a link names its case, and this says which module that is.
+ */
+function cleanCaseModules(raw) {
+  const caseModules = {};
+  for (const [caseId, entry] of Object.entries(isPlain(raw) ? raw : {}).slice(0, MAX_CASE_MODULES)) {
+    if (!isPlain(entry) || !idPattern.test(entry.chapter) || typeof entry.moduleId !== 'string' || !entry.moduleId.trim()) continue;
+    caseModules[caseId] = { chapter: entry.chapter, moduleId: entry.moduleId, routeIds: (Array.isArray(entry.routeIds) ? entry.routeIds : []).filter((id) => typeof id === 'string' && idPattern.test(id)) };
+  }
+  return caseModules;
+}
+
+/** The module that shows the case a link names: by compiled case when the plan has them, otherwise by chapter. */
+export function planStoryModuleFor(planStory, target) {
+  return planStory?.caseModules?.[target?.caseId]?.moduleId ?? planStory?.chapterModules?.[target?.chapter] ?? null;
+}
+
+/** The chapter a session module belongs to, so the app can find the case controls that module answers to. */
+export function planStoryChapterOf(planStory, moduleId) {
+  const compiled = Object.values(planStory?.caseModules ?? {}).find((entry) => entry.moduleId === moduleId);
+  if (compiled) return compiled.chapter;
+  return Object.keys(planStory?.chapterModules ?? {}).find((chapter) => planStory.chapterModules[chapter] === moduleId) ?? null;
+}
+
 /** Returns a clean `planStory`, or null (after saying why through `warn`). */
 export function normalizePlanStory(raw, { warn = () => {} } = {}) {
   if (raw === undefined || raw === null) return null;
@@ -72,9 +130,9 @@ export function normalizePlanStory(raw, { warn = () => {} } = {}) {
         id: route.id,
         number: Number.isInteger(route.number) ? route.number : null,
         name: String(route.name || '').trim().slice(0, 80),
-        savingsUsed: { text: String(route.savingsUsed?.text ?? '').slice(0, 40), ...(route.savingsUsed?.approx ? { approx: true } : {}) },
-        leftOver: { text: String(route.leftOver?.text ?? '').slice(0, 40), ...(route.leftOver?.approx ? { approx: true } : {}) },
-        goalsCovered: { text: String(route.goalsCovered?.text ?? '').slice(0, 40), ...(route.goalsCovered?.approx ? { approx: true } : {}) }
+        savingsUsed: cleanCell(route.savingsUsed),
+        leftOver: cleanCell(route.leftOver),
+        goalsCovered: cleanCell(route.goalsCovered)
       };
     });
     if (new Set(routes.map((route) => route.id)).size !== routes.length) throw new Error('route ids must be unique.');
@@ -87,6 +145,7 @@ export function normalizePlanStory(raw, { warn = () => {} } = {}) {
 
   const selectedRouteId = routes.some((route) => route.id === raw.selectedRouteId) ? raw.selectedRouteId : routes[0].id;
   const catalogue = cleanCatalogue(raw.catalogue);
+  const explainers = cleanExplainers(raw.explainers);
   const registries = {};
   const stories = {};
   for (const route of routes) {
@@ -96,7 +155,7 @@ export function normalizePlanStory(raw, { warn = () => {} } = {}) {
     if (!isPlain(story) || !isPlain(registry) || Object.keys(registry).length > MAX_FACTS) { warn(`The story for ${route.id} was left out: it needs its facts.`); continue; }
     try {
       if (story.routeId !== route.id) throw new Error('the story routeId does not match its route.');
-      resolveStory({ story, registry, catalogue });
+      resolveStory({ story, registry, catalogue, explainers });
     } catch (error) {
       warn(`The story for ${route.id} was left out: ${error.message}`);
       continue;
@@ -110,6 +169,8 @@ export function normalizePlanStory(raw, { warn = () => {} } = {}) {
     if (idPattern.test(chapter) && typeof moduleId === 'string' && moduleId.trim()) chapterModules[chapter] = moduleId;
   }
 
+  const caseModules = cleanCaseModules(raw.caseModules);
+
   return {
     version: PLAN_STORY_VERSION,
     routes,
@@ -118,6 +179,8 @@ export function normalizePlanStory(raw, { warn = () => {} } = {}) {
     registries,
     catalogue,
     chapterModules,
+    ...(Object.keys(caseModules).length ? { caseModules } : {}),
+    ...(Object.keys(explainers).length ? { explainers } : {}),
     glanceNote: typeof raw.glanceNote === 'string' ? raw.glanceNote.slice(0, MAX_TEXT) : ''
   };
 }
@@ -139,9 +202,14 @@ export function buildPlanStoryScreen(planStory, session, routeId = planStory.sel
       glyph: chapters[chapter]?.glyph || PLAN_STORY_DEFAULT_GLYPHS[chapter] || null
     };
   }
+  for (const { chapter, moduleId } of Object.values(planStory.caseModules ?? {})) {
+    const module = modulesById.get(moduleId);
+    if (!module || chapters[chapter]?.title) continue;
+    chapters[chapter] = { title: module.title || chapter, glyph: PLAN_STORY_DEFAULT_GLYPHS[chapter] || null };
+  }
   const catalogue = { chapters, cases: planStory.catalogue.cases };
   const story = planStory.stories[route.id] || null;
   let resolved = null;
-  if (story) resolved = resolveStory({ story, registry: planStory.registries[route.id], catalogue });
+  if (story) resolved = resolveStory({ story, registry: planStory.registries[route.id], catalogue, explainers: planStory.explainers ?? {} });
   return { route, routes: planStory.routes, glance: buildGlance(planStory.routes), catalogue, resolved, storyMissing: !story };
 }
