@@ -66,6 +66,16 @@ Every tool result registers its figures as facts: an ID, the value, the unit, ho
 
 The story facts in B1.5 section 1 are computed by code for exactly this reason: running surplus after each step, freed cash, differences from the current position, goal states. The AI compares and explains them; it never derives them.
 
+**Where each figure comes from.** Every fact also carries its basis, so the person can see on the story screen how each figure was arrived at:
+- **stated:** the person told us, with the form question it came from;
+- **calculated:** worked out by the app, naming the module or engine;
+- **assumption:** a Planeir central assumption, with its plain basis;
+- **official:** a rate, band, limit or rule from the figures register, with its source and the day it was checked.
+
+On the story screen every figure shows this on hover or tap, written by code from the fact, never by the AI.
+
+**Explainers.** The figures register also holds short, sourced, plain-language explanations of the rules behind the figures: how years of contributions set a State Pension, that a State Pension is not passed to a partner and what the survivor receives instead, who Illness Benefit covers, how pension tax relief works, why selling a home has no CGT but selling a second property does. A figure can name its explainer, and the AI can attach one to a phrase with `{?explainer.<id>}`. The screen shows it on hover or tap. The explainer's wording is code-owned and checked like a figure; the AI never rewrites it.
+
 ### 3.3 The tools
 
 The tool catalogue is B1.5 section 7's, with two additions, `goal_ways` and `suggest_routes`. Each tool is one JSON Schema and one executor, used by both harnesses (section 4). A refusal is an ordinary result with a path the AI can act on.

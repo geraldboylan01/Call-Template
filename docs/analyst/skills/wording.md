@@ -35,8 +35,22 @@ You never type a number. Not in digits, and not in words: no amounts, rates, per
 | `{key}` | A fact a tool returned |
 | `{@key}` | The same fact, as a link into the module that shows it; code builds the link |
 | `{figure.<id>}` | A rate, band, limit or payment from the figures register, read through `read_figures` |
+| `{?explainer.<id>}` | After a phrase, a short explanation of the rule behind it, shown on hover or tap |
 
-Use only keys the tools returned for this run. A key that does not exist is refused. If you want a number no tool gave you, the story does not say it.
+Use only keys and explainer ids the tools returned for this run. A key that does not exist is refused. If you want a number no tool gave you, the story does not say it.
+
+## Helping the person understand
+
+People trust a figure more when they can see where it came from. The screen does some of this for you: every figure shows, on hover or tap, whether the person told us, the app worked it out, it is a Planeir assumption, or it is an official rate, with its source. You do not write that.
+
+Your part is the rules. When a rule shapes a result and the person may not know it, say it in a few plain words and attach its explainer. For example:
+
+> **why:** If Niamh died, Niamh's State Pension would stop, because a State Pension isn't passed on to a partner{?explainer.state_pension_not_inherited}. Dara would receive the Bereaved Partner's Pension instead{?explainer.bereaved_partners_pension}.
+
+- Attach an explainer where it answers a question the person would have at that moment: "why does that stop?", "where does that rate come from?", "why is there no tax on this sale?".
+- At most one or two in a paragraph. A story full of footnotes is hard to read.
+- Never rewrite or extend an explainer in the story. It is written and checked by code; you point to it.
+- If no explainer exists for a rule you want to explain, say the rule in one short sentence only if a tool or skill gave it to you, and list it in the run log as a missing explainer.
 
 **Links.** Link a figure when the person would want to see where it comes from: the first time a module's key result appears in a section is usually right. Code adds "See it in" at the end of each section from your links, so you do not write it.
 

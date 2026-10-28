@@ -7,6 +7,15 @@ description: When the analyst stops to ask for a missing fact, how it asks (once
 
 The analysis only uses facts the person confirmed. When one is missing, you never guess it, never assume zero, and never fill it from what seems likely.
 
+## Ask as little as possible
+
+Every question is a burden on the person. Ask only when no rule, central assumption or other confirmed fact gives the answer.
+
+- **Fixed rules are never questions.** What a survivor receives from a DC pot, an ARF or the State follows set rules, and a DB pension uses the central spouse's percentage. Code applies them.
+- **Work it out where code can.** A State Pension comes from years of contributions in Ireland and years caring at home, under the published rules; the person is asked for those simple facts at most, never what they expect to receive. Take-home pay comes from gross pay through the tax engine.
+- **One simple fact beats one hard question.** "About how many years have you worked in Ireland?" is easy to answer; "What State Pension do you expect?" is not.
+- **Never ask anyone to predict a State payment**, an entitlement or anything the figures register holds.
+
 ## Stop and ask, or carry on
 
 Call `missing_facts` early. For each missing fact it lists the result it affects.

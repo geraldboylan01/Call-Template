@@ -37,6 +37,16 @@ Settings follow the same three sources as levers: a fact with its path, the cent
 - A risk is a description of a result, not a warning or a prediction. Calm, factual, no alarm.
 - When a what-if ran without a fact it could have used (for example existing cover the person has not told us about), the result says so in plain words, and it appears in `check_next`.
 
+## What happens on a death
+
+Code applies these rules; you explain them, with their explainers. None of them is a question for the person.
+
+- The person who died: their pay, their pensions and their State Pension stop. A State Pension is never passed to a partner.
+- The survivor's State payment: the Bereaved Partner's (Contributory) Pension, at the register's rate for their age, assumed as a central assumption. Where the survivor would also have their own State Pension, only the higher of the two is paid.
+- A DB pension pays the survivor the central spouse's percentage, unless the person told us their scheme's own.
+- A DC pot not yet drawn, and an ARF, pass to the spouse.
+- Cover the household told us about pays out as money received, and a protected mortgage is cleared.
+
 ## Protection wording
 
 Protection shows the income gap and how long savings last, counting any cover the household has told us about.
