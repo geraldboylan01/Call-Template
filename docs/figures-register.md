@@ -11,13 +11,13 @@ Every figure that can change: law, market prices and Planeir's own assumptions, 
 | Market | A price or rate that moves on its own, worked out from the quotes it was read from | The weekly job adds quotes; code does the arithmetic |
 | Planeir assumption | A choice Planeir makes | A person only; a job never changes these |
 
-Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Total 288.
+Counts: Law in force 232, Announced law 32, Market 3, Planeir assumption 27. Total 294.
 
 **Checked.** The day the value was read against its source. † means the figure has no check date of its own and shows the date its catalogue was last verified. ‡ means a Planeir choice with no review recorded, so the date shown is the day it was set.
 
 **From.** The day the value takes effect. A dash means the source states no date. A rule that a later tax year carries over unchanged is listed once, for the year it first took effect.
 
-Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.6.0`; Market figures `ie-market-2026.2`.
+Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.3`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.6.0`; Market figures `ie-market-2026.2`.
 
 ## Irish tax rules
 
@@ -217,7 +217,7 @@ Catalogue version `ie-planning-rules-2026.02`. 15 figures.
 
 ## Social welfare rates
 
-Catalogue version `ie-social-welfare-2026.2`. 14 figures.
+Catalogue version `ie-social-welfare-2026.3`. 20 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
@@ -235,6 +235,12 @@ Catalogue version `ie-social-welfare-2026.2`. 14 figures.
 | Invalidity Pension, weekly personal rate | €269.50 a week | 2027-01-01 | **announced** | [Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/) | 2026-10-22 | protection_gap | `ie.social_welfare.invalidity_pension.personal.from_2027_01_01` |
 | Illness Benefit, highest weekly personal rate | €254 a week | 2026-01-01 | in force | [Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/) | 2026-10-22 | protection_gap | `ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01` |
 | Illness Benefit, highest weekly personal rate | €264 a week | 2027-01-01 | **announced** | [Department of Social Protection, Budget 2027 (maximum weekly rates from January 2027)](https://www.gov.ie/en/department-of-social-protection/publications/budget-2027/) | 2026-10-22 | protection_gap | `ie.social_welfare.illness_benefit.personal_highest.from_2027_01_01` |
+| Age from which the State Pension (Contributory) is paid | age 66 | — | in force | [Department of Social Protection, State Pension (Contributory)](https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/) | 2026-10-28 | pension_projection, net_retirement_cashflow | `ie.social_welfare.state_pension_contributory.pension_age` |
+| Contributions for the maximum State Pension (Contributory) rate, under the Total Contributions Approach | 2080 | — | in force | [Department of Social Protection, State Pension (Contributory) calculation methods and rates](https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/) | 2026-10-28 | pension_projection, net_retirement_cashflow | `ie.social_welfare.state_pension_contributory.maximum_rate_contributions` |
+| Contributions in a full year of social insurance (PRSI) payments | 52 | — | in force | [Department of Social Protection, State Pension (Contributory) calculation methods and rates](https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/) | 2026-10-28 | pension_projection, net_retirement_cashflow | `ie.social_welfare.state_pension_contributory.contributions_a_year` |
+| Fewest paid (full-rate) contributions that qualify for a State Pension (Contributory) | 520 | — | in force | [Department of Social Protection, State Pension (Contributory)](https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/) | 2026-10-28 | pension_projection, net_retirement_cashflow | `ie.social_welfare.state_pension_contributory.minimum_paid_contributions` |
+| Most HomeCaring periods that count towards the State Pension (Contributory) rate | 1040 | — | in force | [Department of Social Protection, State Pension (Contributory) calculation methods and rates](https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/) | 2026-10-28 | pension_projection, net_retirement_cashflow | `ie.social_welfare.state_pension_contributory.home_caring_periods_cap` |
+| Most credited contributions that count towards the State Pension (Contributory) rate | 520 | — | in force | [Department of Social Protection, State Pension (Contributory) calculation methods and rates](https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/) | 2026-10-28 | pension_projection, net_retirement_cashflow | `ie.social_welfare.state_pension_contributory.credited_contributions_cap` |
 
 ## House Purchase rules
 

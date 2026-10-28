@@ -14,8 +14,8 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "ie_social_welfare",
-    "version": "ie-social-welfare-2026.2",
-    "count": 14
+    "version": "ie-social-welfare-2026.3",
+    "count": 20
   },
   {
     "id": "house_purchase_rules",
@@ -4934,7 +4934,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
@@ -4966,7 +4966,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
@@ -4998,7 +4998,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
@@ -5030,7 +5030,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "pension_projection",
@@ -5066,7 +5066,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5100,7 +5100,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5138,7 +5138,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5172,7 +5172,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5206,7 +5206,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5240,7 +5240,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5278,7 +5278,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5309,7 +5309,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5344,7 +5344,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
@@ -5375,12 +5375,212 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "ie_social_welfare",
-      "version": "ie-social-welfare-2026.2"
+      "version": "ie-social-welfare-2026.3"
     },
     "usedBy": [
       "protection_gap"
     ],
     "appliesTo": "A person whose average weekly earnings are €300 or more; lower earnings bands get a lower rate. Taxable, without USC or PRSI."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.pension_age",
+    "quantity": "ie.social_welfare.state_pension_contributory.pension_age",
+    "label": "Age from which the State Pension (Contributory) is paid",
+    "value": 66,
+    "valueShown": "age 66",
+    "unit": "age",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      },
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "A person born on or after 1 January 1958 can choose a date between 66 and 70, with a higher rate for starting later."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+    "quantity": "ie.social_welfare.state_pension_contributory.maximum_rate_contributions",
+    "label": "Contributions for the maximum State Pension (Contributory) rate, under the Total Contributions Approach",
+    "value": 2080,
+    "valueShown": "2080",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      },
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "Paid contributions, HomeCaring periods and credited contributions together. 2,080 is 40 years. With fewer, the rate is that share of the maximum."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.contributions_a_year",
+    "quantity": "ie.social_welfare.state_pension_contributory.contributions_a_year",
+    "label": "Contributions in a full year of social insurance (PRSI) payments",
+    "value": 52,
+    "valueShown": "52",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "2,080 contributions are 40 years, which is 52 a year."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+    "quantity": "ie.social_welfare.state_pension_contributory.minimum_paid_contributions",
+    "label": "Fewest paid (full-rate) contributions that qualify for a State Pension (Contributory)",
+    "value": 520,
+    "valueShown": "520",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory)",
+      "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory)",
+        "url": "https://www.gov.ie/en/department-of-social-protection/services/state-pension-contributory/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "A person needs at least 520 reckonable contributions, of which 520 must be full-rate social insurance (PRSI) contributions. Class A and Class S both count as full-rate."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+    "quantity": "ie.social_welfare.state_pension_contributory.home_caring_periods_cap",
+    "label": "Most HomeCaring periods that count towards the State Pension (Contributory) rate",
+    "value": 1040,
+    "valueShown": "1040",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "HomeCaring periods are awarded for time spent caring for a child aged 12 or under, or a person who needed an increased level of care. 1,040 is 20 years."
+  },
+  {
+    "id": "ie.social_welfare.state_pension_contributory.credited_contributions_cap",
+    "quantity": "ie.social_welfare.state_pension_contributory.credited_contributions_cap",
+    "label": "Most credited contributions that count towards the State Pension (Contributory) rate",
+    "value": 520,
+    "valueShown": "520",
+    "unit": "count",
+    "kind": "law",
+    "status": "in_force",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+      "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+    },
+    "sources": [
+      {
+        "title": "Department of Social Protection, State Pension (Contributory) calculation methods and rates",
+        "url": "https://www.gov.ie/en/department-of-social-protection/publications/state-pension-contributory-calculation-methods-and-rates/"
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "ie_social_welfare",
+      "version": "ie-social-welfare-2026.3"
+    },
+    "usedBy": [
+      "pension_projection",
+      "net_retirement_cashflow"
+    ],
+    "appliesTo": "Credits are awarded for periods when a person could not work and claimed a payment such as Illness Benefit or Jobseeker’s Benefit."
   },
   {
     "id": "ie.house_purchase.mortgage.first_time_buyer_income_multiple",
