@@ -8,7 +8,7 @@ const PLAN_PACK_CONTRACT = Object.freeze({
   version: PLAN_PACK_VERSION,
   fields: ['planPackVersion', 'clientName', 'calculationDate', 'household', 'planningInputs', 'goalFlexibility', 'routes', 'chapters', 'narration'],
   chapters: ['personal_balance_sheet', 'liquidity_analysis', 'household_cash_flow', 'protection_gap', 'mortgage_analysis', 'loan_analysis', 'pension_projection', 'net_retirement_cashflow', 'college_funding', 'future_cost_fund', 'goals_and_resources'],
-  planningFields: ['spendingLabel', 'takeHomeBasis', 'spendingBasis', 'householdTaxStatus', 'personalPensionContributions', 'cashAssetId', 'outgoingBindings', 'goalBindings', 'chapterGoals', 'protectionCases', 'leftOverEachYear', 'goalFundingFacts', 'assetAssignments', 'goalSavingBasis', 'goalFundingLabel', 'retirementIncomeBasis', 'openingTaxState'],
+  planningFields: ['spendingLabel', 'takeHomeBasis', 'spendingBasis', 'householdTaxStatus', 'personalPensionContributions', 'cashAssetId', 'outgoingBindings', 'goalBindings', 'chapterGoals', 'protectionCases', 'leftOverEachYear', 'goalFundingFacts', 'assetAssignments', 'goalSavingBasis', 'goalFundingLabel', 'retirementIncomeBasis', 'openingTaxState', 'taxDue'],
   goalFields: ['retirementAge', 'targetIncomeToday', 'clearByAge', 'targetDate', 'targetAmount']
 });
 
@@ -149,6 +149,15 @@ function normalizePlanning(raw, household) {
     return next;
   });
   unique(result.goalFundingFacts, 'goalId', path + '/goalFundingFacts');
+  if (Object.hasOwn(value, 'taxDue')) {
+    result.taxDue = array(value.taxDue, path + '/taxDue').map((entry, index) => {
+      const here = path + '/taxDue/' + index;
+      object(entry, here, ['liabilityId', 'dueDate']);
+      return { liabilityId: reference(entry.liabilityId, liabilities, here + '/liabilityId'),
+        dueDate: date(entry.dueDate, here + '/dueDate') };
+    });
+    unique(result.taxDue, 'liabilityId', path + '/taxDue');
+  }
   if (Object.hasOwn(value, 'spendingLabel')) result.spendingLabel = text(value.spendingLabel, path + '/spendingLabel');
   for (const [key, expected] of [['takeHomeBasis', 'after_personal_pension'], ['spendingBasis', 'regular_costs_including_debt_excluding_tax_and_pensions']]) {
     if (Object.hasOwn(value, key)) {

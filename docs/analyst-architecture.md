@@ -72,7 +72,7 @@ The tool catalogue is B1.5 section 7's, with two additions, `goal_ways` and `sug
 
 | Tool | What it returns | Built from |
 |---|---|---|
-| `read_position` | The current position facts (B1.5 section 1) and the issue list (section 2) | The compiled current route (#102); the story facts and issue scan are to build |
+| `read_position` | The current position facts (B1.5 section 1) and the issue list (section 2) | `readPlanPosition(compiled)` supplies facts and issues for every compiled route; see [the code contract](story-facts.md). Tool wiring is still to build |
 | `read_figures` | Register values with their source and check date | `getFigures` (built) |
 | `goal_ways` | **New.** For one goal, at a point in a route draft: the lump sum and yearly surplus still available there, and each way of meeting the goal, priced (3.4) | The mortgage, future cost fund, pension and goals-and-resources engines (built); the step function is to build |
 | `suggest_routes` | **New.** Up to five candidate routes composed by code as whole ledger walks, each priced and labelled with what it does (3.4) | To build, on `goal_ways` and the levers |
@@ -198,7 +198,7 @@ Three drafts, each a working whole. Each line names the chat it belongs to; line
 
 A made-up household's confirmed form becomes a checked story with up to three routes, built by walking the ledger and including a major lever where the goals need one, written by Claude Code through the tools, and opened in the story screen with working links.
 
-1. **Story facts and the issue list** as code (B1.5 sections 1 and 2), then **the checker** (B1.5 section 3's floor, wording rules, and the linked-figure match). Plan chat, two pull requests.
+1. **Story facts and the issue list** as code (B1.5 sections 1 and 2) are built in `readPlanPosition(compiled)`, with `check:story-facts` in the consumer gate. Next is **the checker** (B1.5 section 3's floor, wording rules, and the linked-figure match). Plan chat, two pull requests.
 2. **Routes**, in three pull requests: (a) alternatives for profile-built plans and the new ordinary levers (`pensionContribution`, `spendLess`); (b) the major levers `tradeDownHome` and `sellProperty`, with central selling and buying costs in the register; (c) `goal_ways`, `balancing_moves` with lever sizes, and `suggest_routes`. Routes chat (the chat that built #97 and #102).
 3. **Protection with the Illness Benefit default** (plan document section 6), with the protection playbook's change to stop stating rates as its own prompt-pack commit. Protection chat.
 4. **The tool layer and the local harness**: the case file, the fact registry, the executors wired to what exists, the local tool server and the command line. Each tool picks up 1, 2 and 3 as they land. Analyst chat (new).
