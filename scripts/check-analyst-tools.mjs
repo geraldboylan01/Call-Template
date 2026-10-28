@@ -15,6 +15,8 @@ import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
 import { sha256Json } from '../js/planning/utils.js';
 import { SECTIONS } from '../js/case_application/schema.js';
 import { missingFactQuestions } from '../js/planning/analyst/questions.js';
+import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
+import { checkAnalystWiring } from './check-analyst-wiring.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/form-to-profile.households.json', import.meta.url), 'utf8'));
@@ -35,7 +37,7 @@ console.info = () => {};
 let client, transport;
 try {
   const ajv = new Ajv({ strict: false });
-  assert.equal(TOOL_CATALOGUE.length, 9);
+  assert.equal(TOOL_CATALOGUE.length, 10);
   for (const tool of TOOL_CATALOGUE) assert.ok(ajv.validateSchema(tool.inputSchema), JSON.stringify(ajv.errors));
   const cases = [];
   for (const fixture of fixtures.slice(0, 4)) {
@@ -47,9 +49,9 @@ try {
     assert.ok(c.pinned.versions.taxRules && c.pinned.versions.figures && c.pinned.versions.assumptions);
     const position = await executeTool(c, 'read_position', {});
     assert.equal(position.result.ok, true);
-    assert.equal(position.result.data.ledgerSummary.cashRemaining, c.pinned.currentPosition.resourceLedger.routes[0].cashRemaining);
-    for (const fact of Object.values(position.result.data.facts)) {
-      assert.ok(fact.id && fact.unit && fact.text && fact.source.routeId === 'current' && fact.source.versions);
+    assert.deepEqual(position.result.data, readPlanPosition(c.pinned.currentPosition));
+    for (const fact of Object.values(position.result.data.routes[0].facts)) {
+      assert.ok(fact.key && fact.status && fact.basis && fact.source.routeId === 'current' && fact.source.versions);
     }
     for (const tool of TOOL_CATALOGUE) {
       const input = tool.name === 'price_route' ? { route: { id: 'trial', changes: [] } }
@@ -57,7 +59,7 @@ try {
       const out = await executeTool(c, tool.name, input);
       assert.equal(out.caseFile.runLog.length, 2);
       assert.deepEqual(out.caseFile.runLog.at(-1).result, out.result);
-      if (tool.unavailable) { assertRefusal(out.result); assert.equal(firstCode(out), 'not_built_yet'); }
+      if (tool.unavailable || tool.name === 'balancing_moves') { assertRefusal(out.result); assert.equal(firstCode(out), 'not_built_yet'); }
       else if (tool.name !== 'price_route') assert.equal(out.result.ok, true, JSON.stringify(out.result));
       else assertRefusal(out.result); // Full route funding facts have not been asked by v1.
     }
@@ -115,7 +117,7 @@ try {
   for (const input of [{}, { kinds: ['law'] }, { kinds: 'law' }, { module: 'planning' }, { onDate: '2026-10-20' },
     { ids: getFigures().slice(0, 3).map(row => row.id), kinds: ['law'], module: 'planning', onDate: '2026-10-20' }]) {
     const result = await executeTool(base, 'read_figures', input);
-    assert.deepEqual(result.result.data.figures, getFigures(input));
+    assert.deepEqual(result.result.data.figures, getFigures(input).map(figure => ({ ...figure, explainers: figure.explainers ?? [] })));
     assert.ok(!JSON.stringify(result.result.data.figures).includes('"quotes"'));
   }
   const a = await executeTool(base, 'read_position', {});
@@ -135,6 +137,11 @@ try {
   assert.equal(checked.result.data.releaseEligible, false);
   assert.equal(checked.caseFile.reviewStatus, 'pending');
   assert.equal(checked.caseFile.checkerReports.length, 1);
+  const nativeStory = story(); nativeStory.summary = 'Your net worth is {@position.netWorth}.';
+  assert.equal((await executeTool(base, 'submit_story', { story: nativeStory })).result.ok, true);
+  const missingKey = Object.entries(readPlanPosition(base.pinned.currentPosition).routes[0].facts).find(([, fact]) => fact.status === 'missing')[0];
+  nativeStory.summary = '{' + missingKey + '}';
+  assertRefusal((await executeTool(base, 'submit_story', { story: nativeStory })).result);
 
   // A variant of #97's invented family asking only about the current position
   // can exercise successful route pricing without inventing funding facts.
@@ -154,7 +161,7 @@ try {
   ]) {
     const result = await executeTool(lean, 'price_route', { route: { id: 'trial', changes: [change] } });
     assertRefusal(result.result);
-    assert.ok(result.result.refusals[0].path.startsWith('/routes/'), 'Compiler owns lever validation');
+    assert.ok(result.result.refusals[0].path.startsWith('/input/route/') || result.result.refusals[0].path.startsWith('/routes/'), 'Catalogue schema and compiler own lever validation');
   }
   const linked = story('unchanged'); linked.summary = '{@personal_balance_sheet.netWorth}';
   assert.equal((await executeTool(priced.caseFile, 'submit_story', { story: linked })).result.ok, true);
@@ -192,6 +199,7 @@ try {
     args: ['run', '--silent', 'analyst:mcp', '--', '--case', directory], cwd: root, stderr: 'pipe' });
   client = new Client({ name: 'analyst-contract-check', version: '1.0.0' });
   await client.connect(transport);
+  transport.stderr?.resume();
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map(({ name, inputSchema }) => ({ name, inputSchema })), TOOL_CATALOGUE.map(({ name, inputSchema }) => ({ name, inputSchema })));
   for (const tool of [...TOOL_CATALOGUE, { name: 'unknown' }]) {
@@ -208,7 +216,7 @@ try {
   assert.equal((await callLocalTool(directory, 'price_route', { route })).refusals[0].code, 'case_busy');
   await rm(join(directory, '.lock'));
   const stored = JSON.parse(await readFile(join(directory, 'case.json'), 'utf8'));
-  assert.equal(stored.runLog.length, 21);
+  assert.equal(stored.runLog.length, 1 + 2 * (TOOL_CATALOGUE.length + 1));
   assert.equal(stored.budget.engineRuns, 3, 'Both harnesses share one persisted budget');
   const persistedFull = { ...stored, budget: { ...stored.budget, engineRuns: 60 } };
   await writeFile(join(directory, 'case.json'), JSON.stringify(persistedFull));
@@ -220,6 +228,32 @@ try {
   const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   assert.ok(pkg.scripts['check:consumer'].includes('npm run check:analyst-tools'));
   assert.match(pkg.devDependencies['@modelcontextprotocol/sdk'], /^\d+\.\d+\.\d+$/);
+  const wiring = await checkAnalystWiring({ fixtures, options });
+  await client.close();
+  transport = new StdioClientTransport({ command: 'npm',
+    args: ['run', '--silent', 'analyst:mcp', '--', '--case', wiring.directory], cwd: root, stderr: 'pipe' });
+  client = new Client({ name: 'analyst-wiring-parity', version: '1.0.0' });
+  await client.connect(transport);
+  transport.stderr?.resume();
+  const wiringInput = join(wiring.directory, 'input.json');
+  for (const [name, input] of [
+    ['price_route', { route: wiring.route }],
+    ['read_position', { routeId: wiring.route.id }],
+    ['read_explainers', {}],
+    ['balancing_moves', { route: { id: 'harness_size', changes: [] }, type: 'tradeDownHome', year: 2026 }]
+  ]) {
+    // Replay the same saved state through each harness, including the available
+    // budget for a multi-probe search. Each real call still records its result.
+    const snapshot = await readFile(join(wiring.directory, 'case.json'), 'utf8');
+    await writeFile(wiringInput, JSON.stringify(input));
+    const cli = spawnSync('npm', ['run', '--silent', 'analyst', '--', name, '--case', wiring.directory, '--input', wiringInput], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    assert.equal(cli.status, 0, String(cli.error ?? '') + cli.stderr.slice(-3000));
+    const expected = JSON.parse(cli.stdout);
+    assert.equal(expected.ok, true, JSON.stringify(expected.refusals));
+    await writeFile(join(wiring.directory, 'case.json'), snapshot);
+    const actual = await client.callTool({ name, arguments: input });
+    assert.deepEqual(actual.structuredContent, expected, 'Native wiring parity: ' + name);
+  }
   console.log('[AnalystTools] schemas, confirmed cases, all tools, refusals, budgets, CLI/MCP parity and private paths passed.');
 } finally {
   if (client) await client.close();

@@ -1,11 +1,12 @@
 import { PLAN_PACK_METRIC_TYPES } from '../plan_pack/compiler.js';
+import { readPlanPosition } from '../plan_pack/story_facts.js';
 
 const euro = new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
 const number = new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 });
 const copy = value => JSON.parse(JSON.stringify(value));
 
-// Register existing compiler metrics only. The B1.5 story-facts layer will add
-// differences, issue scans and running totals; the analyst never computes them.
+// Keep the original metric keys as aliases for existing drafts. Story facts,
+// bases, differences and issues come directly from readPlanPosition.
 export function compiledFacts(compiled, routeId) {
   const route = compiled.routes.find(row => row.id === routeId);
   const ledger = compiled.resourceLedger.routes.find(row => row.routeId === routeId);
@@ -36,5 +37,7 @@ export function compiledFacts(compiled, routeId) {
       if (typeof value === 'number') add('ledger.' + key, value, 'EUR', { panel: 'ledger', ledgerPath: key === 'reserve' ? '/reserve/protectedAmount' : '/' + key });
     }
   }
-  return { registry, chapters, ledgerSummary: summary };
+  const position = readPlanPosition(compiled);
+  Object.assign(registry, position.routes.find(row => row.routeId === routeId).facts);
+  return { registry, chapters, ledgerSummary: summary, position };
 }

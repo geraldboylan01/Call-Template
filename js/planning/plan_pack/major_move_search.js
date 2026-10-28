@@ -8,8 +8,22 @@ import { classifyLever } from './lever_catalogue.js';
  * years in ascending order. An explicit year fixes the sale date; otherwise
  * trade downs maximise price across years, breaking ties with the earliest.
  * No route, opening tax state, or failed probe is mutated or reused.
+ * The optional maxProbes guard stops before compilation and returns completed
+ * probes so a caller can enforce and account for its remaining engine budget.
  */
-export async function sizeMajorMove(rawPack, route, { type, propertyId, year } = {}) {
+export async function sizeMajorMove(rawPack, route, options = {}, { maxProbes = Infinity } = {}) {
+  const probes = [];
+  if (maxProbes !== Infinity && (!Number.isInteger(maxProbes) || maxProbes < 0)) {
+    return { status: 'refused', refusals: [{ path: '/maxProbes', code: 'invalid_input', message: 'Use a non-negative whole probe budget.' }], probes };
+  }
+  try { return await searchMajorMove(rawPack, route, options, probes, maxProbes); }
+  catch (error) {
+    if (error.code !== 'budget_exceeded') throw error;
+    return { status: 'refused', refusals: [{ path: '/budget/engineRuns', code: error.code, message: error.message }], probes };
+  }
+}
+
+async function searchMajorMove(rawPack, route, { type, propertyId, year }, probes, maxProbes) {
   const refused = (path, message) => ({ status: 'refused', refusals: [{ path, message, code: 'invalid_input' }] });
   let pack;
   try { pack = normalizePlanPack(rawPack); } catch (error) { return refused(error.path ?? '/planPack', error.message); }
@@ -18,8 +32,8 @@ export async function sizeMajorMove(rawPack, route, { type, propertyId, year } =
   if (!base || base.id === 'current' || !Array.isArray(base.changes) || base.changes.some(c => PROPERTY_LEVERS.includes(c?.type))) return refused('/route', 'Supply an alternative draft without a property move.');
   const bounds = propertyMoveBounds(pack);
   if (year !== undefined && (!Number.isInteger(year) || year < bounds.year[0] || year > bounds.year[1])) return refused('/year', 'Choose a year inside the central search horizon.');
-  const probes = [];
   const run = async change => {
+    if (probes.length >= maxProbes) throw Object.assign(new Error('The plan has used its engine runs; the major-move search stopped before another probe.'), { code: 'budget_exceeded' });
     const candidate = { ...base, changes: [...base.changes, ...(change ? [change] : [])] };
     const result = await compilePlanPack({ ...pack, narration: {}, routes: [{ id: 'current' }, candidate] }, { resourceLedger: true });
     const ledger = result.resourceLedger?.routes.find(row => row.routeId === candidate.id);
