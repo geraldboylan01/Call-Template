@@ -1295,18 +1295,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -3543,18 +3531,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
