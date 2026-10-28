@@ -638,8 +638,8 @@
       },
       "missingInformation": [
         {
-          "fieldPath": "/household/married",
-          "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+          "fieldPath": "/planningInputs/householdTaxStatus",
+          "reason": "With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -679,9 +679,9 @@
     },
     "missingFacts": [
       {
-        "factId": "married_or_civil_partners",
-        "fieldPath": "/household/married",
-        "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+        "factId": "single_or_widowed",
+        "fieldPath": "/planningInputs/householdTaxStatus",
+        "reason": "With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -4229,8 +4229,8 @@
       },
       "missingInformation": [
         {
-          "fieldPath": "/household/married",
-          "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+          "fieldPath": "/planningInputs/householdTaxStatus",
+          "reason": "With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -4306,9 +4306,9 @@
     },
     "missingFacts": [
       {
-        "factId": "married_or_civil_partners",
-        "fieldPath": "/household/married",
-        "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+        "factId": "single_or_widowed",
+        "fieldPath": "/planningInputs/householdTaxStatus",
+        "reason": "With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -4730,7 +4730,7 @@
       "missingInformation": [
         {
           "fieldPath": "/household/married",
-          "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+          "reason": "Marriage or civil partnership decides joint assessment for the couple.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -4962,7 +4962,7 @@
       {
         "factId": "married_or_civil_partners",
         "fieldPath": "/household/married",
-        "reason": "Marriage or civil partnership decides joint assessment. Planning with or without a partner does not establish legal marital status.",
+        "reason": "Marriage or civil partnership decides joint assessment for the couple.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []

@@ -1,6 +1,6 @@
 import { normalizePlanPack, finiteJson, PlanPackError, fail } from './schema.js';
 import { buildChapter, routeContext, LaterStage } from './chapters.js';
-import { prepareResourceRoute } from './resource_ledger.js';
+import { prepareResourceRoute, prepareCurrentPosition } from './resource_ledger.js';
 import { checkCasePack, checkModulePayload } from '../../module_pipeline.js';
 import { cloneJson, sha256Json } from '../utils.js';
 import { PLANEIR_ASSUMPTIONS_VERSION } from '../planeir_assumptions.js';
@@ -141,9 +141,15 @@ function validateLiteralNarration(pack, resourceLedger) {
  * B0 compiles engine inputs; explicit resourceLedger mode also checks B1
  * allocation and route balance. Every route starts from the same opening facts.
  */
-export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
+export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false } = {}) {
   let pack;
-  try { pack = frozen(normalizePlanPack(raw)); validateLiteralNarration(pack, resourceLedger); }
+  try {
+    pack = frozen(normalizePlanPack(raw));
+    if (currentPositionOnly && (!resourceLedger || pack.routes.length !== 1 || pack.routes[0].id !== 'current' || pack.routes[0].changes.length)) {
+      fail('/routes', 'Current-position mode requires resourceLedger and exactly the unchanged current route.');
+    }
+    validateLiteralNarration(pack, resourceLedger && !currentPositionOnly);
+  }
   catch (error) {
     return { status: 'invalid', compilerVersion: PLAN_PACK_COMPILER_VERSION, diagnostics: [errorRow(error)], routes: [], chapters: [], casePacks: null };
   }
@@ -158,9 +164,9 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
     const proposed = [];
     try {
       if (resourceLedger) {
-        const prepared = await prepareResourceRoute(pack, route, index);
+        const prepared = currentPositionOnly ? await prepareCurrentPosition(pack) : await prepareResourceRoute(pack, route, index);
         context = prepared.context;
-        context.resourceLedger = prepared.ledger;
+        if (!currentPositionOnly) context.resourceLedger = prepared.ledger;
         ledgers.push({ routeId: route.id, ...prepared.ledger });
         if (route.id !== 'current' && !prepared.ledger.balanced) fail('/routes/' + index,
           !prepared.ledger.reserveProtected ? 'This route spends cash protected for the emergency reserve.'
@@ -231,8 +237,8 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
     planPackVersion: 1, compilerVersion: PLAN_PACK_COMPILER_VERSION, status,
     clientName: pack.clientName, calculationDate: pack.calculationDate, versions,
     source: { hash: sourceHash, normalizedPlanPack: cloneJson(pack) },
-    scope: resourceLedger ? 'B1 resource-ledger checks' : 'B0 compilation only',
-    resourceLedger: resourceLedger ? { stage: 'B1', status: ledgers.length === pack.routes.length ? 'priced' : 'incomplete', routes: ledgers } : { stage: 'B1', status: 'not_computed' },
+    scope: currentPositionOnly ? 'B2 current-position resources; goal funding not priced' : resourceLedger ? 'B1 resource-ledger checks' : 'B0 compilation only',
+    resourceLedger: resourceLedger ? { stage: 'B1', status: currentPositionOnly ? (ledgers[0]?.status ?? 'incomplete') : ledgers.length === pack.routes.length ? 'priced' : 'incomplete', routes: ledgers } : { stage: 'B1', status: 'not_computed' },
     diagnostics, routes,
     chapters: status === 'invalid' ? [] : [...chapterMap.values()],
     // Atomic export: no partial pack can be passed to the app as successful.

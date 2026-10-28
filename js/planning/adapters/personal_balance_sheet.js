@@ -153,6 +153,9 @@ function positionLabel(record, index, rule) {
 function incompletePositionValues(profile, currency) {
   return POSITION_VALUE_RULES.flatMap((rule) => (
     (profile?.[rule.collectionKey] || []).flatMap((record, index) => {
+      // A DB promise is an income entitlement, not a missing funded pot. Keep
+      // it in the pension projection and disclose that it is not capitalised.
+      if (rule.collectionKey === 'pensions' && record.type === 'defined_benefit' && record.currentValue === undefined) return [];
       if (moneyAmount(record?.[rule.valueKey], currency) !== null) return [];
       const suppliedCurrency = typeof record?.[rule.valueKey]?.currency === 'string'
         ? record[rule.valueKey].currency
@@ -208,6 +211,9 @@ function specialistReconciliation(profile) {
 
 function reconciliationWarnings(profile) {
   const warnings = [];
+  if (profile.pensions.some(pension => pension.type === 'defined_benefit' && pension.currentValue === undefined)) {
+    warnings.push('Defined-benefit promises without a stated capital value are not capitalised in this balance sheet. Their stated income and lump sum remain in the pension projection.');
+  }
   const reconciliation = specialistReconciliation(profile);
   for (const [category, entries] of Object.entries(reconciliation)) {
     const definition = SPECIALIST_CATEGORIES[category];
@@ -229,7 +235,7 @@ export function getPersonalBalanceSheetReadiness(profile) {
   const currency = baseCurrency(profile);
   const assetPositionCount = profile.assets.length
     + profile.properties.length
-    + profile.pensions.length
+    + profile.pensions.filter(pension => pension.type !== 'defined_benefit' || pension.currentValue !== undefined).length
     + profile.businesses.length;
   if (assetPositionCount === 0 && !confirmedNone(profile, '/assets')) {
     requiredMissing.push(missing('/assets', 'Add the household assets and current values, or confirm that there are none.', moduleIds));

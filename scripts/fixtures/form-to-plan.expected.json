@@ -1,0 +1,2839 @@
+[
+  {
+    "id": "fictional-single-renter",
+    "description": "Entirely invented: a single renter building a reserve.",
+    "calculationDate": "2026-10-20",
+    "chaptersCompiled": [
+      "personal_balance_sheet",
+      "liquidity_analysis"
+    ],
+    "chaptersLeftOut": [
+      {
+        "chapter": "household_cash_flow",
+        "reasons": [
+          {
+            "fieldPath": "/planningInputs/householdTaxStatus",
+            "reason": "State the tax assessment status; the compiler does not infer it from a partner record.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "mortgage_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/mortgage_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "loan_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/loan_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "pension_projection",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/pension_projection",
+            "reason": "No pensions were confirmed. The existing pension builder needs a pension member; a State-Pension-only member adapter is not implemented.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "net_retirement_cashflow",
+        "reasons": [
+          {
+            "fieldPath": "/household/incomeSources/0/netAnnual",
+            "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "college_funding",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/college_funding",
+            "reason": "There is no relevant goal or position for this chapter.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "goals_and_resources",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/goals_and_resources",
+            "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/protection_gap",
+            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "future_cost_fund",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/future_cost_fund",
+            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      }
+    ],
+    "currentPosition": {
+      "status": "compiled",
+      "scope": "B2 current-position resources; goal funding not priced",
+      "ledger": {
+        "routeId": "current",
+        "version": 1,
+        "status": "incomplete",
+        "currentPositionUnchanged": true,
+        "goalFundingStatus": "not_priced",
+        "goals": [
+          {
+            "goalId": "goal_application_retire",
+            "status": "not_priced"
+          }
+        ],
+        "recordedCash": 12000,
+        "openingCash": 12000,
+        "reserve": {
+          "input": {
+            "currentCash": 12000,
+            "monthlyExpenditure": 2800,
+            "annualExpenditure": 33600,
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6
+          },
+          "result": {
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "currentCash": 12000,
+            "monthlyExpenditure": 2800,
+            "annualExpenditure": 33600,
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6,
+            "minimumCash": 8400,
+            "targetCash": 16800,
+            "monthsCovered": 4.285714285714286,
+            "surplusCash": 0,
+            "shortfallCash": 4800,
+            "position": "below_target"
+          },
+          "protectedAmount": 16800,
+          "basis": "opening_unassigned_cash_and_central_target_policy"
+        },
+        "cashAllocated": 0,
+        "cashRemaining": 12000,
+        "assignedCash": [],
+        "cashAvailableAfterReserve": 0,
+        "reserveProtected": false,
+        "baselineLeftOver": null,
+        "takeHomeByPerson": null,
+        "investments": {
+          "countedAsCash": false,
+          "potentialSaleBasis": "unassigned_ordinary_cgt_holdings_kept_by_the_route_sold_together_from_opening_tax_history",
+          "potentialSale": null,
+          "potentialSaleStatus": "not_priced_in_current_position_mode",
+          "holdings": [
+            {
+              "assetId": "asset_application_investments",
+              "marketValue": {
+                "amount": 5000,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            },
+            {
+              "assetId": "asset_application_employerShares",
+              "marketValue": {
+                "amount": 0,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            }
+          ]
+        },
+        "diagnostics": [
+          {
+            "code": "missing_information",
+            "path": "/planningInputs/leftOverEachYear",
+            "message": "/planningInputs/leftOverEachYear: Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount."
+          }
+        ],
+        "assumptions": [
+          "Current-position resources only. No cash is committed and no goal funding, affordability or coverage is claimed.",
+          "The reserve uses the existing opening central-policy calculation. Cash flow retains current personal contributions and repayments.",
+          "Current saving by goal is not inferred from an aggregate saving amount. Annual left over is before any unidentified goal-saving transfers."
+        ]
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "single_or_widowed",
+        "fieldPath": "/planningInputs/householdTaxStatus",
+        "reason": "With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/household/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_retire",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/household/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_contract",
+        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
+        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/pension_projection",
+        "reason": "No pensions were confirmed. The existing pension builder needs a pension member; a State-Pension-only member adapter is not implemented.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "pension_projection"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/incomeSources/0/netAnnual",
+        "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "net_retirement_cashflow"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/goals_and_resources",
+        "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "goals_and_resources"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/protection_gap",
+        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "protection_gap"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/future_cost_fund",
+        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "future_cost_fund"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/leftOverEachYear",
+        "reason": "Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ],
+    "planningInputs": {
+      "assetAssignments": [],
+      "goalFundingFacts": [],
+      "spendingLabel": "Spending and saving",
+      "takeHomeBasis": "after_personal_pension",
+      "spendingBasis": "regular_costs_including_debt_excluding_tax_and_pensions",
+      "cashAssetId": "asset_application_cash",
+      "personalPensionContributions": [
+        {
+          "personId": "primary",
+          "annualAmount": 0
+        }
+      ],
+      "outgoingBindings": [],
+      "goalBindings": [
+        {
+          "goalId": "goal_application_retire",
+          "personId": "primary"
+        }
+      ],
+      "chapterGoals": {
+        "pension_projection": "goal_application_retire",
+        "net_retirement_cashflow": "goal_application_retire"
+      },
+      "protectionCases": []
+    },
+    "planningInputSources": {
+      "/calculationDate": {
+        "profilePaths": [
+          "/confirmedAt"
+        ],
+        "confirmedRevision": 7
+      },
+      "/planningInputs/spendingBasis": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "form_regular_spending_plus_housing; savings_transfers_not_inferred",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/spendingLabel": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "verbatim_form_section_heading",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/takeHomeBasis": {
+        "profilePaths": [
+          "/incomeSources",
+          "/pensions"
+        ],
+        "confirmedRevision": 7,
+        "basis": "native_engine_estimate_after_current_personal_contributions; household_net_total_not_allocated",
+        "applicationSources": []
+      },
+      "/planningInputs/cashAssetId": {
+        "profilePaths": [
+          "/assets/0/assetId"
+        ],
+        "confirmedRevision": 7,
+        "basis": "sole_recorded_cash_account",
+        "applicationSources": []
+      },
+      "/planningInputs/outgoingBindings": {
+        "profilePaths": [
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "bind_stated_payments_to_their_own_liability; labels_copied_verbatim",
+        "applicationSources": []
+      },
+      "/planningInputs/personalPensionContributions": {
+        "profilePaths": [
+          "/pensions",
+          "/assumptions/values/completionFacts/confirmedNonePaths"
+        ],
+        "confirmedRevision": 7,
+        "basis": "zero_only_from_recorded_non_contributory_status_or_confirmed_none; rates_stay_on_pensions",
+        "applicationSources": []
+      },
+      "/planningInputs/goalBindings": {
+        "profilePaths": [
+          "/goals",
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_matching_debt_or_only_household_person; no_joint_person_selection",
+        "applicationSources": []
+      },
+      "/planningInputs/chapterGoals": {
+        "profilePaths": [
+          "/goals"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_relevant_goal_only"
+      }
+    },
+    "chapterAssumptions": [
+      {
+        "chapter": "personal_balance_sheet",
+        "assumptions": [],
+        "warnings": []
+      },
+      {
+        "chapter": "liquidity_analysis",
+        "assumptions": [
+          {
+            "key": "minimumBufferMonths",
+            "value": 3,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target. (planeir-liquidity-reserve-1.0.0)."
+          },
+          {
+            "key": "targetBufferMonths",
+            "value": 6,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target."
+          }
+        ],
+        "warnings": []
+      }
+    ]
+  },
+  {
+    "id": "fictional-mortgage-college-family",
+    "description": "Entirely invented: married partners with a mortgage and two children planning for college.",
+    "calculationDate": "2026-10-20",
+    "chaptersCompiled": [
+      "personal_balance_sheet",
+      "liquidity_analysis",
+      "household_cash_flow",
+      "mortgage_analysis",
+      "pension_projection",
+      "college_funding"
+    ],
+    "chaptersLeftOut": [
+      {
+        "chapter": "loan_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/loan_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "net_retirement_cashflow",
+        "reasons": [
+          {
+            "fieldPath": "/household/incomeSources/0/netAnnual",
+            "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/incomeSources/1/netAnnual",
+            "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "goals_and_resources",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/goals_and_resources",
+            "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/protection_gap",
+            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "future_cost_fund",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/future_cost_fund",
+            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      }
+    ],
+    "currentPosition": {
+      "status": "compiled",
+      "scope": "B2 current-position resources; goal funding not priced",
+      "ledger": {
+        "routeId": "current",
+        "version": 1,
+        "status": "current_resources",
+        "currentPositionUnchanged": true,
+        "goalFundingStatus": "not_priced",
+        "goals": [
+          {
+            "goalId": "goal_application_optimise_mortgage",
+            "status": "not_priced"
+          },
+          {
+            "goalId": "goal_application_fund_education",
+            "status": "not_priced"
+          },
+          {
+            "goalId": "goal_application_retire",
+            "status": "not_priced"
+          }
+        ],
+        "recordedCash": 50000,
+        "openingCash": 50000,
+        "reserve": {
+          "input": {
+            "currentCash": 50000,
+            "monthlyExpenditure": 5700,
+            "annualExpenditure": 68400,
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6
+          },
+          "result": {
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "currentCash": 50000,
+            "monthlyExpenditure": 5700,
+            "annualExpenditure": 68400,
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6,
+            "minimumCash": 17100,
+            "targetCash": 34200,
+            "monthsCovered": 8.771929824561404,
+            "surplusCash": 15800,
+            "shortfallCash": 0,
+            "position": "at_or_above_target"
+          },
+          "protectedAmount": 34200,
+          "basis": "opening_unassigned_cash_and_central_target_policy"
+        },
+        "cashAllocated": 0,
+        "cashRemaining": 50000,
+        "assignedCash": [],
+        "cashAvailableAfterReserve": 15800,
+        "reserveProtected": true,
+        "baselineLeftOver": 20751.809999999998,
+        "takeHomeByPerson": [
+          {
+            "personId": "primary",
+            "gross": 82000,
+            "tax": 20457.00076923077,
+            "takeHome": 61542.99923076923,
+            "bankTakeHome": 54982.99923076923,
+            "estimatedBankTakeHome": 54982.99923076923,
+            "taxSource": "estimated",
+            "basis": "allocated",
+            "estimatedTakeHome": 61542.99923076923
+          },
+          {
+            "personId": "partner",
+            "gross": 48000,
+            "tax": 11431.18923076923,
+            "takeHome": 36568.81076923077,
+            "bankTakeHome": 34168.81076923077,
+            "estimatedBankTakeHome": 34168.81076923077,
+            "taxSource": "estimated",
+            "basis": "allocated",
+            "estimatedTakeHome": 36568.81076923077
+          }
+        ],
+        "investments": {
+          "countedAsCash": false,
+          "potentialSaleBasis": "unassigned_ordinary_cgt_holdings_kept_by_the_route_sold_together_from_opening_tax_history",
+          "potentialSale": null,
+          "potentialSaleStatus": "not_priced_in_current_position_mode",
+          "holdings": [
+            {
+              "assetId": "asset_application_investments",
+              "marketValue": {
+                "amount": 18000,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            },
+            {
+              "assetId": "asset_application_employerShares",
+              "marketValue": {
+                "amount": 0,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            }
+          ]
+        },
+        "diagnostics": [],
+        "assumptions": [
+          "Current-position resources only. No cash is committed and no goal funding, affordability or coverage is claimed.",
+          "The reserve uses the existing opening central-policy calculation. Cash flow retains current personal contributions and repayments.",
+          "Current saving by goal is not inferred from an aggregate saving amount. Annual left over is before any unidentified goal-saving transfers."
+        ]
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/household/assumptions/values/retirement/statePensionFraction/partner",
+        "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/household/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_clear_by",
+        "fieldPath": "/household/goals/0/targetDate",
+        "reason": "The mortgage goal needs a chosen payoff age/date. The contractual term is not the household’s desired clearance date.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_cleared_on_death",
+        "fieldPath": "/household/liabilities/0/clearedOnDeath",
+        "reason": "Whether this mortgage clears on death changes the survivor’s spending need. Having life cover alone does not establish this.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_optimise_mortgage",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_fund_education",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_retire",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/household/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_contract",
+        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
+        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "survivor_payment",
+        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
+        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/incomeSources/0/netAnnual",
+        "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "net_retirement_cashflow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/incomeSources/1/netAnnual",
+        "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "net_retirement_cashflow"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/goals_and_resources",
+        "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "goals_and_resources"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/protection_gap",
+        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "protection_gap"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/future_cost_fund",
+        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "future_cost_fund"
+        ]
+      }
+    ],
+    "planningInputs": {
+      "assetAssignments": [],
+      "goalFundingFacts": [],
+      "spendingLabel": "Spending and saving",
+      "takeHomeBasis": "after_personal_pension",
+      "spendingBasis": "regular_costs_including_debt_excluding_tax_and_pensions",
+      "householdTaxStatus": "married_or_civil_partners",
+      "cashAssetId": "asset_application_cash",
+      "personalPensionContributions": [],
+      "outgoingBindings": [
+        {
+          "id": "debt_0",
+          "liabilityId": "liability_application_home_mortgage",
+          "label": "Home mortgage"
+        }
+      ],
+      "goalBindings": [
+        {
+          "goalId": "goal_application_optimise_mortgage",
+          "liabilityId": "liability_application_home_mortgage"
+        }
+      ],
+      "chapterGoals": {
+        "pension_projection": "goal_application_retire",
+        "net_retirement_cashflow": "goal_application_retire",
+        "college_funding": "goal_application_fund_education"
+      },
+      "protectionCases": []
+    },
+    "planningInputSources": {
+      "/calculationDate": {
+        "profilePaths": [
+          "/confirmedAt"
+        ],
+        "confirmedRevision": 7
+      },
+      "/household/liabilities/0/monthlyPayment": {
+        "profilePaths": [
+          "/liabilities/0/monthlyPayment",
+          "/assumptions/values/mortgage/annualOverpayment"
+        ],
+        "confirmedRevision": 7,
+        "basis": "scheduled_plus_explicit_current_extra_once"
+      },
+      "/planningInputs/householdTaxStatus": {
+        "profilePaths": [
+          "/household/married"
+        ],
+        "confirmedRevision": 7,
+        "basis": "explicit_marriage_or_civil_partnership_choice",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.married"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        ]
+      },
+      "/planningInputs/spendingBasis": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "form_regular_spending_plus_housing; savings_transfers_not_inferred",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "mortgage.repayment",
+              "mortgage.overpayment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/spendingLabel": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "verbatim_form_section_heading",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "mortgage.repayment",
+              "mortgage.overpayment"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/takeHomeBasis": {
+        "profilePaths": [
+          "/incomeSources",
+          "/pensions"
+        ],
+        "confirmedRevision": 7,
+        "basis": "native_engine_estimate_after_current_personal_contributions; household_net_total_not_allocated",
+        "applicationSources": []
+      },
+      "/planningInputs/cashAssetId": {
+        "profilePaths": [
+          "/assets/0/assetId"
+        ],
+        "confirmedRevision": 7,
+        "basis": "sole_recorded_cash_account",
+        "applicationSources": []
+      },
+      "/planningInputs/outgoingBindings": {
+        "profilePaths": [
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "bind_stated_payments_to_their_own_liability; labels_copied_verbatim",
+        "applicationSources": []
+      },
+      "/planningInputs/personalPensionContributions": {
+        "profilePaths": [
+          "/pensions",
+          "/assumptions/values/completionFacts/confirmedNonePaths"
+        ],
+        "confirmedRevision": 7,
+        "basis": "zero_only_from_recorded_non_contributory_status_or_confirmed_none; rates_stay_on_pensions",
+        "applicationSources": []
+      },
+      "/planningInputs/goalBindings": {
+        "profilePaths": [
+          "/goals",
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_matching_debt_or_only_household_person; no_joint_person_selection",
+        "applicationSources": []
+      },
+      "/planningInputs/chapterGoals": {
+        "profilePaths": [
+          "/goals"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_relevant_goal_only"
+      }
+    },
+    "chapterAssumptions": [
+      {
+        "chapter": "personal_balance_sheet",
+        "assumptions": [],
+        "warnings": []
+      },
+      {
+        "chapter": "liquidity_analysis",
+        "assumptions": [
+          {
+            "key": "minimumBufferMonths",
+            "value": 3,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target. (planeir-liquidity-reserve-1.0.0)."
+          },
+          {
+            "key": "targetBufferMonths",
+            "value": 6,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target."
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "chapter": "household_cash_flow",
+        "assumptions": [
+          {
+            "key": "taxRulesVersion",
+            "value": "ie-tax-2026.7"
+          },
+          {
+            "key": "taxRulesYear",
+            "value": 2026
+          },
+          {
+            "key": "calculationYear",
+            "value": 2026
+          },
+          {
+            "key": "assumptionsVersion",
+            "value": "planeir-assumptions-1.6.0"
+          },
+          {
+            "key": "taxStatus",
+            "value": "married_or_civil_partners"
+          },
+          {
+            "key": "taxStatusDefaulted",
+            "value": false
+          },
+          {
+            "key": "taxSourceByPerson",
+            "value": {
+              "primary": "estimated",
+              "partner": "estimated"
+            }
+          }
+        ],
+        "warnings": [
+          "Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated."
+        ]
+      },
+      {
+        "chapter": "mortgage_analysis",
+        "assumptions": [
+          {
+            "key": "repaymentType",
+            "value": "repayment",
+            "reason": "The current deterministic engine supports amortising repayment mortgages only."
+          }
+        ],
+        "warnings": [
+          "Interest-only mortgages are not supported in v1."
+        ]
+      },
+      {
+        "chapter": "pension_projection",
+        "assumptions": [
+          {
+            "key": "investmentGrowthRate",
+            "value": 0.05,
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+          },
+          {
+            "key": "inflationRate",
+            "value": 0.02,
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+          },
+          {
+            "key": "statePensionContributory",
+            "value": 15563.6,
+            "reason": "ie-planning-rules-2026.02, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record."
+          },
+          {
+            "key": "statePensionFraction.partner",
+            "value": 1,
+            "reason": "Existing adviser-adapter illustration default, using the dated central maximum. No numeric entitlement was established for this person; retain the missing fact."
+          }
+        ],
+        "warnings": [
+          "Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review.",
+          "The State Pension fraction for partner is an illustration assumption, not a confirmed entitlement."
+        ]
+      },
+      {
+        "chapter": "college_funding",
+        "assumptions": [
+          {
+            "key": "collegeAnnualCostsToday",
+            "value": "Living at home: €5,000 a year per child; Living away from home: €15,000 a year per child",
+            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.6.0)"
+          },
+          {
+            "key": "educationInflationRate",
+            "value": 0.04,
+            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.6.0)"
+          },
+          {
+            "key": "collegeStartAge",
+            "value": 18,
+            "reason": "Standard assumed college start age (planeir-assumptions-1.6.0)."
+          },
+          {
+            "key": "collegeDurationYears",
+            "value": 4,
+            "reason": "Four years of college for each child (planeir-assumptions-1.6.0)."
+          }
+        ],
+        "warnings": [
+          "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fictional-near-retirement-couple",
+    "description": "Entirely invented: unmarried partners near retirement with funded, defined-benefit and preserved pensions.",
+    "calculationDate": "2026-10-20",
+    "chaptersCompiled": [
+      "personal_balance_sheet",
+      "liquidity_analysis",
+      "household_cash_flow",
+      "pension_projection"
+    ],
+    "chaptersLeftOut": [
+      {
+        "chapter": "mortgage_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/mortgage_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "loan_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/loan_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "net_retirement_cashflow",
+        "reasons": [
+          {
+            "fieldPath": "/household/incomeSources/0/netAnnual",
+            "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/incomeSources/1/netAnnual",
+            "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "college_funding",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/college_funding",
+            "reason": "There is no relevant goal or position for this chapter.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "goals_and_resources",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/goals_and_resources",
+            "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/protection_gap",
+            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "future_cost_fund",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/future_cost_fund",
+            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      }
+    ],
+    "currentPosition": {
+      "status": "compiled",
+      "scope": "B2 current-position resources; goal funding not priced",
+      "ledger": {
+        "routeId": "current",
+        "version": 1,
+        "status": "current_resources",
+        "currentPositionUnchanged": true,
+        "goalFundingStatus": "not_priced",
+        "goals": [
+          {
+            "goalId": "goal_application_retire",
+            "status": "not_priced"
+          }
+        ],
+        "recordedCash": 90000,
+        "openingCash": 90000,
+        "reserve": {
+          "input": {
+            "currentCash": 90000,
+            "monthlyExpenditure": 3500,
+            "annualExpenditure": 42000,
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6
+          },
+          "result": {
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "currentCash": 90000,
+            "monthlyExpenditure": 3500,
+            "annualExpenditure": 42000,
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6,
+            "minimumCash": 10500,
+            "targetCash": 21000,
+            "monthsCovered": 25.714285714285715,
+            "surplusCash": 69000,
+            "shortfallCash": 0,
+            "position": "at_or_above_target"
+          },
+          "protectedAmount": 21000,
+          "basis": "opening_unassigned_cash_and_central_target_policy"
+        },
+        "cashAllocated": 0,
+        "cashRemaining": 90000,
+        "assignedCash": [],
+        "cashAvailableAfterReserve": 69000,
+        "reserveProtected": true,
+        "baselineLeftOver": 49178.31,
+        "takeHomeByPerson": [
+          {
+            "personId": "primary",
+            "gross": 76000,
+            "tax": 19091.12,
+            "takeHome": 56908.880000000005,
+            "bankTakeHome": 47308.880000000005,
+            "estimatedBankTakeHome": 47308.880000000005,
+            "taxSource": "estimated",
+            "basis": "own",
+            "estimatedTakeHome": 56908.880000000005
+          },
+          {
+            "personId": "partner",
+            "gross": 58000,
+            "tax": 14130.57,
+            "takeHome": 43869.43,
+            "bankTakeHome": 43869.43,
+            "estimatedBankTakeHome": 43869.43,
+            "taxSource": "estimated",
+            "basis": "own",
+            "estimatedTakeHome": 43869.43
+          }
+        ],
+        "investments": {
+          "countedAsCash": false,
+          "potentialSaleBasis": "unassigned_ordinary_cgt_holdings_kept_by_the_route_sold_together_from_opening_tax_history",
+          "potentialSale": null,
+          "potentialSaleStatus": "not_priced_in_current_position_mode",
+          "holdings": [
+            {
+              "assetId": "asset_application_investments",
+              "marketValue": {
+                "amount": 50000,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            },
+            {
+              "assetId": "asset_application_employerShares",
+              "marketValue": {
+                "amount": 10000,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            }
+          ]
+        },
+        "diagnostics": [],
+        "assumptions": [
+          "Current-position resources only. No cash is committed and no goal funding, affordability or coverage is claimed.",
+          "The reserve uses the existing opening central-policy calculation. Cash flow retains current personal contributions and repayments.",
+          "Current saving by goal is not inferred from an aggregate saving amount. Annual left over is before any unidentified goal-saving transfers."
+        ]
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/household/assumptions/values/retirement/statePensionFraction/primary",
+        "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/household/assumptions/values/retirement/statePensionFraction/partner",
+        "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/household/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_retire",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/household/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_contract",
+        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
+        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "survivor_payment",
+        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
+        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/incomeSources/0/netAnnual",
+        "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "net_retirement_cashflow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/incomeSources/1/netAnnual",
+        "reason": "Net retirement needs after-tax income and its timeline. A gross salary or household take-home total cannot stand in for each future net stream.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "net_retirement_cashflow"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/goals_and_resources",
+        "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "goals_and_resources"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/protection_gap",
+        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "protection_gap"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/future_cost_fund",
+        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "future_cost_fund"
+        ]
+      }
+    ],
+    "planningInputs": {
+      "assetAssignments": [],
+      "goalFundingFacts": [],
+      "spendingLabel": "Spending and saving",
+      "takeHomeBasis": "after_personal_pension",
+      "spendingBasis": "regular_costs_including_debt_excluding_tax_and_pensions",
+      "householdTaxStatus": "single",
+      "cashAssetId": "asset_application_cash",
+      "personalPensionContributions": [
+        {
+          "personId": "partner",
+          "annualAmount": 0
+        }
+      ],
+      "outgoingBindings": [],
+      "goalBindings": [],
+      "chapterGoals": {
+        "pension_projection": "goal_application_retire",
+        "net_retirement_cashflow": "goal_application_retire"
+      },
+      "protectionCases": []
+    },
+    "planningInputSources": {
+      "/calculationDate": {
+        "profilePaths": [
+          "/confirmedAt"
+        ],
+        "confirmedRevision": 7
+      },
+      "/planningInputs/householdTaxStatus": {
+        "profilePaths": [
+          "/household/married"
+        ],
+        "confirmedRevision": 7,
+        "basis": "explicit_marriage_or_civil_partnership_choice",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "household.married"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7
+          }
+        ]
+      },
+      "/planningInputs/spendingBasis": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "form_regular_spending_plus_housing; savings_transfers_not_inferred",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/spendingLabel": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "verbatim_form_section_heading",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/takeHomeBasis": {
+        "profilePaths": [
+          "/incomeSources",
+          "/pensions"
+        ],
+        "confirmedRevision": 7,
+        "basis": "native_engine_estimate_after_current_personal_contributions; household_net_total_not_allocated",
+        "applicationSources": []
+      },
+      "/planningInputs/cashAssetId": {
+        "profilePaths": [
+          "/assets/0/assetId"
+        ],
+        "confirmedRevision": 7,
+        "basis": "sole_recorded_cash_account",
+        "applicationSources": []
+      },
+      "/planningInputs/outgoingBindings": {
+        "profilePaths": [
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "bind_stated_payments_to_their_own_liability; labels_copied_verbatim",
+        "applicationSources": []
+      },
+      "/planningInputs/personalPensionContributions": {
+        "profilePaths": [
+          "/pensions",
+          "/assumptions/values/completionFacts/confirmedNonePaths"
+        ],
+        "confirmedRevision": 7,
+        "basis": "zero_only_from_recorded_non_contributory_status_or_confirmed_none; rates_stay_on_pensions",
+        "applicationSources": []
+      },
+      "/planningInputs/goalBindings": {
+        "profilePaths": [
+          "/goals",
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_matching_debt_or_only_household_person; no_joint_person_selection",
+        "applicationSources": []
+      },
+      "/planningInputs/chapterGoals": {
+        "profilePaths": [
+          "/goals"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_relevant_goal_only"
+      }
+    },
+    "chapterAssumptions": [
+      {
+        "chapter": "personal_balance_sheet",
+        "assumptions": [],
+        "warnings": [
+          "Defined-benefit promises without a stated capital value are not capitalised in this balance sheet. Their stated income and lump sum remain in the pension projection."
+        ]
+      },
+      {
+        "chapter": "liquidity_analysis",
+        "assumptions": [
+          {
+            "key": "minimumBufferMonths",
+            "value": 3,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target. (planeir-liquidity-reserve-1.0.0)."
+          },
+          {
+            "key": "targetBufferMonths",
+            "value": 6,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target."
+          }
+        ],
+        "warnings": []
+      },
+      {
+        "chapter": "household_cash_flow",
+        "assumptions": [
+          {
+            "key": "taxRulesVersion",
+            "value": "ie-tax-2026.7"
+          },
+          {
+            "key": "taxRulesYear",
+            "value": 2026
+          },
+          {
+            "key": "calculationYear",
+            "value": 2026
+          },
+          {
+            "key": "assumptionsVersion",
+            "value": "planeir-assumptions-1.6.0"
+          },
+          {
+            "key": "taxStatus",
+            "value": "single"
+          },
+          {
+            "key": "taxStatusDefaulted",
+            "value": false
+          },
+          {
+            "key": "taxSourceByPerson",
+            "value": {
+              "primary": "estimated",
+              "partner": "estimated"
+            }
+          }
+        ],
+        "warnings": [
+          "Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated."
+        ]
+      },
+      {
+        "chapter": "pension_projection",
+        "assumptions": [
+          {
+            "key": "investmentGrowthRate",
+            "value": 0.05,
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+          },
+          {
+            "key": "inflationRate",
+            "value": 0.02,
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+          },
+          {
+            "key": "statePensionContributory",
+            "value": 15563.6,
+            "reason": "ie-planning-rules-2026.02, effective January 2026. Maximum gross rate only; actual entitlement depends on each person’s PRSI record."
+          },
+          {
+            "key": "statePensionFraction.primary",
+            "value": 1,
+            "reason": "Existing adviser-adapter illustration default, using the dated central maximum. No numeric entitlement was established for this person; retain the missing fact."
+          },
+          {
+            "key": "statePensionFraction.partner",
+            "value": 1,
+            "reason": "Existing adviser-adapter illustration default, using the dated central maximum. No numeric entitlement was established for this person; retain the missing fact."
+          }
+        ],
+        "warnings": [
+          "Pension balances and projected withdrawals are shown before tax. Tax and wider retirement-income needs require separate adviser review.",
+          "Defined-benefit income is included at its stated annual amount without inventing an escalation rate.",
+          "The State Pension fraction for primary is an illustration assumption, not a confirmed entitlement.",
+          "The State Pension fraction for partner is an illustration assumption, not a confirmed entitlement."
+        ]
+      }
+    ]
+  },
+  {
+    "id": "fictional-borrower-with-card",
+    "description": "Entirely invented: a self-employed renter with two loans and an uncleared credit card.",
+    "calculationDate": "2026-10-20",
+    "chaptersCompiled": [
+      "personal_balance_sheet",
+      "liquidity_analysis"
+    ],
+    "chaptersLeftOut": [
+      {
+        "chapter": "household_cash_flow",
+        "reasons": [
+          {
+            "fieldPath": "/planningInputs/householdTaxStatus",
+            "reason": "State the tax assessment status; the compiler does not infer it from a partner record.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "mortgage_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/mortgage_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "loan_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/household/assumptions/values/loan/liabilityId",
+            "reason": "Which loan should this analysis cover: car loan, personal loan?",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "pension_projection",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/pension_projection",
+            "reason": "There is no relevant goal or position for this chapter.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "net_retirement_cashflow",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/net_retirement_cashflow",
+            "reason": "There is no relevant goal or position for this chapter.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "college_funding",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/college_funding",
+            "reason": "There is no relevant goal or position for this chapter.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "goals_and_resources",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/goals_and_resources",
+            "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/protection_gap",
+            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "future_cost_fund",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/future_cost_fund",
+            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      }
+    ],
+    "currentPosition": {
+      "status": "compiled",
+      "scope": "B2 current-position resources; goal funding not priced",
+      "ledger": {
+        "routeId": "current",
+        "version": 1,
+        "status": "incomplete",
+        "currentPositionUnchanged": true,
+        "goalFundingStatus": "not_priced",
+        "goals": [
+          {
+            "goalId": "goal_application_manage_loan",
+            "status": "not_priced"
+          }
+        ],
+        "recordedCash": 0,
+        "openingCash": 0,
+        "reserve": {
+          "input": {
+            "currentCash": 0,
+            "monthlyExpenditure": 2250,
+            "annualExpenditure": 27000,
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6
+          },
+          "result": {
+            "clientStatus": "not-retired",
+            "policyVersion": "planeir-liquidity-reserve-1.0.0",
+            "currentCash": 0,
+            "monthlyExpenditure": 2250,
+            "annualExpenditure": 27000,
+            "minimumBufferMonths": 3,
+            "targetBufferMonths": 6,
+            "minimumCash": 6750,
+            "targetCash": 13500,
+            "monthsCovered": 0,
+            "surplusCash": 0,
+            "shortfallCash": 13500,
+            "position": "below_target"
+          },
+          "protectedAmount": 13500,
+          "basis": "opening_unassigned_cash_and_central_target_policy"
+        },
+        "cashAllocated": 0,
+        "cashRemaining": 0,
+        "assignedCash": [],
+        "cashAvailableAfterReserve": 0,
+        "reserveProtected": false,
+        "baselineLeftOver": null,
+        "takeHomeByPerson": null,
+        "investments": {
+          "countedAsCash": false,
+          "potentialSaleBasis": "unassigned_ordinary_cgt_holdings_kept_by_the_route_sold_together_from_opening_tax_history",
+          "potentialSale": null,
+          "potentialSaleStatus": "not_priced_in_current_position_mode",
+          "holdings": [
+            {
+              "assetId": "asset_application_investments",
+              "marketValue": {
+                "amount": 0,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            },
+            {
+              "assetId": "asset_application_employerShares",
+              "marketValue": {
+                "amount": 0,
+                "currency": "EUR"
+              },
+              "taxTreatment": "unknown",
+              "soldInRoute": false,
+              "valuationStatus": "requires_sale_facts_or_adapter"
+            }
+          ]
+        },
+        "diagnostics": [
+          {
+            "code": "missing_information",
+            "path": "/planningInputs/leftOverEachYear",
+            "message": "/planningInputs/leftOverEachYear: Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount."
+          }
+        ],
+        "assumptions": [
+          "Current-position resources only. No cash is committed and no goal funding, affordability or coverage is claimed.",
+          "The reserve uses the existing opening central-policy calculation. Cash flow retains current personal contributions and repayments.",
+          "Current saving by goal is not inferred from an aggregate saving amount. Annual left over is before any unidentified goal-saving transfers."
+        ]
+      }
+    },
+    "missingFacts": [
+      {
+        "factId": "single_or_widowed",
+        "fieldPath": "/planningInputs/householdTaxStatus",
+        "reason": "With no partner included, establish whether the person is single or widowed/a surviving civil partner; the tax credit differs. Planning alone does not answer this.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "intended_retirement_age",
+        "fieldPath": "/household/primaryPerson/intendedRetirementAge",
+        "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/household/assumptions/values/retirement/statePensionFraction/primary",
+        "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending_basis",
+        "fieldPath": "/household/expenses/monthlyEssential",
+        "reason": "The v1 profilePath labels this as essential spending, but the form asks all spending excluding rent/mortgage. Confirm the essential-only basis before sizing a reserve.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "target_retirement_income",
+        "fieldPath": "/household/assumptions/values/retirement/targetIncomeToday",
+        "reason": "The household target annual retirement income in today’s money sets the retirement goal; current spending is not a stated target.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_annualInterestRate",
+        "fieldPath": "/household/liabilities/2/annualInterestRate",
+        "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_remainingTermMonths",
+        "fieldPath": "/household/liabilities/2/remainingTermMonths",
+        "reason": "The remaining term sets the repayment horizon.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_monthlyPayment",
+        "fieldPath": "/household/liabilities/2/monthlyPayment",
+        "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "goal_flexibility",
+        "fieldPath": "/goalFlexibility/goal_application_manage_loan",
+        "reason": "Routes may move a goal only within the household’s stated age, amount or date bounds. These bounds belong in the plan pack and are not collected yet.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/household/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_scope",
+        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
+        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/goalBindings",
+        "reason": "Identify the liability for goal_application_manage_loan; there is no unique loan record.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "loan_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/assumptions/values/loan/liabilityId",
+        "reason": "Which loan should this analysis cover: car loan, personal loan?",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "loan_analysis"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/goals_and_resources",
+        "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "goals_and_resources"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/protection_gap",
+        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "protection_gap"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/future_cost_fund",
+        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "future_cost_fund"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/leftOverEachYear",
+        "reason": "Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ],
+    "planningInputs": {
+      "assetAssignments": [],
+      "goalFundingFacts": [],
+      "spendingLabel": "Spending and saving",
+      "takeHomeBasis": "after_personal_pension",
+      "spendingBasis": "regular_costs_including_debt_excluding_tax_and_pensions",
+      "cashAssetId": "asset_application_cash",
+      "personalPensionContributions": [
+        {
+          "personId": "primary",
+          "annualAmount": 0
+        }
+      ],
+      "outgoingBindings": [
+        {
+          "id": "debt_0",
+          "liabilityId": "liability_application_loan_0",
+          "label": "car loan"
+        },
+        {
+          "id": "debt_1",
+          "liabilityId": "liability_application_loan_1",
+          "label": "personal loan"
+        }
+      ],
+      "goalBindings": [],
+      "chapterGoals": {},
+      "protectionCases": []
+    },
+    "planningInputSources": {
+      "/calculationDate": {
+        "profilePaths": [
+          "/confirmedAt"
+        ],
+        "confirmedRevision": 7
+      },
+      "/planningInputs/spendingBasis": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "form_regular_spending_plus_housing; savings_transfers_not_inferred",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/spendingLabel": {
+        "profilePaths": [
+          "/expenses/annualTotal"
+        ],
+        "confirmedRevision": 7,
+        "basis": "verbatim_form_section_heading",
+        "applicationSources": [
+          {
+            "schema": "planeir.application.v1",
+            "version": 1,
+            "paths": [
+              "spending.spend",
+              "home.status",
+              "home.rent"
+            ],
+            "mappingVersion": "1.0.0",
+            "revision": 7,
+            "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
+          }
+        ]
+      },
+      "/planningInputs/takeHomeBasis": {
+        "profilePaths": [
+          "/incomeSources",
+          "/pensions"
+        ],
+        "confirmedRevision": 7,
+        "basis": "native_engine_estimate_after_current_personal_contributions; household_net_total_not_allocated",
+        "applicationSources": []
+      },
+      "/planningInputs/cashAssetId": {
+        "profilePaths": [
+          "/assets/0/assetId"
+        ],
+        "confirmedRevision": 7,
+        "basis": "sole_recorded_cash_account",
+        "applicationSources": []
+      },
+      "/planningInputs/outgoingBindings": {
+        "profilePaths": [
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "bind_stated_payments_to_their_own_liability; labels_copied_verbatim",
+        "applicationSources": []
+      },
+      "/planningInputs/personalPensionContributions": {
+        "profilePaths": [
+          "/pensions",
+          "/assumptions/values/completionFacts/confirmedNonePaths"
+        ],
+        "confirmedRevision": 7,
+        "basis": "zero_only_from_recorded_non_contributory_status_or_confirmed_none; rates_stay_on_pensions",
+        "applicationSources": []
+      },
+      "/planningInputs/goalBindings": {
+        "profilePaths": [
+          "/goals",
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_matching_debt_or_only_household_person; no_joint_person_selection",
+        "applicationSources": []
+      },
+      "/planningInputs/chapterGoals": {
+        "profilePaths": [
+          "/goals"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_relevant_goal_only"
+      }
+    },
+    "chapterAssumptions": [
+      {
+        "chapter": "personal_balance_sheet",
+        "assumptions": [],
+        "warnings": []
+      },
+      {
+        "chapter": "liquidity_analysis",
+        "assumptions": [
+          {
+            "key": "minimumBufferMonths",
+            "value": 3,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target. (planeir-liquidity-reserve-1.0.0)."
+          },
+          {
+            "key": "targetBufferMonths",
+            "value": 6,
+            "reason": "For a working household, Planeir uses three months of spending as the minimum cash-reserve floor and six months as the target."
+          }
+        ],
+        "warnings": []
+      }
+    ]
+  },
+  {
+    "id": "fictional-mostly-blank",
+    "description": "Entirely invented: most answers blank or explicitly unsure, including a mortgage without figures.",
+    "calculationDate": null,
+    "chaptersCompiled": [],
+    "chaptersLeftOut": [
+      {
+        "chapter": "personal_balance_sheet",
+        "reasons": [
+          {
+            "fieldPath": "/household/properties/0/currentValue",
+            "reason": "Add the current value for Home in EUR; an existing position cannot be omitted from the balance sheet.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/pensions/0/currentValue",
+            "reason": "Add the current value for Other in EUR; an existing position cannot be omitted from the balance sheet.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/liabilities/0/currentBalance",
+            "reason": "Add the current balance for Home mortgage in EUR; an existing position cannot be omitted from the balance sheet.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/liabilities/1/currentBalance",
+            "reason": "Add the current balance for Uncleared credit card in EUR; an existing position cannot be omitted from the balance sheet.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "liquidity_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/household/assets",
+            "reason": "Add the current cash available to the household.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/expenses/annualTotal",
+            "reason": "Add annual or monthly household spending.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/assumptions/values/persona/retirementStatus",
+            "reason": "Confirm whether the household is working or retired so the correct cash-reserve guide is used.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "household_cash_flow",
+        "reasons": [
+          {
+            "fieldPath": "/planningInputs/takeHomeBasis",
+            "reason": "Confirm that stated net income is bank pay after personal pension deductions.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "mortgage_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/household/liabilities/0/currentBalance",
+            "reason": "Add the mortgage balance.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/liabilities/0/annualInterestRate",
+            "reason": "Add the current annual interest rate.",
+            "code": "missing_information"
+          },
+          {
+            "fieldPath": "/household/liabilities/0/remainingTermMonths",
+            "reason": "Add the remaining mortgage term.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "loan_analysis",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/loan_analysis",
+            "reason": "This chapter is not relevant to the recorded household facts.",
+            "code": "not_relevant"
+          }
+        ]
+      },
+      {
+        "chapter": "pension_projection",
+        "reasons": [
+          {
+            "fieldPath": "/planningInputs/chapterGoals/pension_projection",
+            "reason": "Record or select one relevant goal; holdings or children alone cannot establish the goal this chapter answers.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "net_retirement_cashflow",
+        "reasons": [
+          {
+            "fieldPath": "/planningInputs/chapterGoals/net_retirement_cashflow",
+            "reason": "Record or select one relevant goal; holdings or children alone cannot establish the goal this chapter answers.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "college_funding",
+        "reasons": [
+          {
+            "fieldPath": "/planningInputs/chapterGoals/college_funding",
+            "reason": "Record or select one relevant goal; holdings or children alone cannot establish the goal this chapter answers.",
+            "code": "missing_information"
+          }
+        ]
+      },
+      {
+        "chapter": "goals_and_resources",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/goals_and_resources",
+            "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "protection_gap",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/protection_gap",
+            "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      },
+      {
+        "chapter": "future_cost_fund",
+        "reasons": [
+          {
+            "fieldPath": "/chapters/future_cost_fund",
+            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+            "code": "requires_profile_adapter"
+          }
+        ]
+      }
+    ],
+    "currentPosition": {
+      "status": "missing_information",
+      "scope": "No chapter has enough facts to compile.",
+      "ledger": null
+    },
+    "missingFacts": [
+      {
+        "factId": "married_or_civil_partners",
+        "fieldPath": "/household/household/married",
+        "reason": "Marriage or civil partnership decides joint assessment for the couple.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_current_age",
+        "fieldPath": "/household/primaryPerson/age",
+        "reason": "Current age sets pension, mortgage and dependant timelines.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "employment_tax_basis",
+        "fieldPath": "/household/primaryPerson/employmentStatus",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_gross_income",
+        "fieldPath": "/household/incomeSources",
+        "reason": "Gross annual income for primary is needed for tax and pension relief, including an explicit zero where appropriate.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "intended_retirement_age",
+        "fieldPath": "/household/primaryPerson/intendedRetirementAge",
+        "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_positions",
+        "fieldPath": "/household/pensions/owner/primary",
+        "reason": "Pension holdings for primary or an explicit confirmation of none are needed; an empty section does not establish that there are no pensions.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/household/assumptions/values/retirement/statePensionFraction/primary",
+        "reason": "A numeric State Pension fraction for primary is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_current_age",
+        "fieldPath": "/household/partner/age",
+        "reason": "Current age sets pension, mortgage and dependant timelines.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "employment_tax_basis",
+        "fieldPath": "/household/partner/employmentStatus",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "person_gross_income",
+        "fieldPath": "/household/incomeSources",
+        "reason": "Gross annual income for partner is needed for tax and pension relief, including an explicit zero where appropriate.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "intended_retirement_age",
+        "fieldPath": "/household/partner/intendedRetirementAge",
+        "reason": "The intended retirement age sets the saving horizon and the point employment income stops.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "state_pension_fraction",
+        "fieldPath": "/household/assumptions/values/retirement/statePensionFraction/partner",
+        "reason": "A numeric State Pension fraction for partner is needed. Partly/not sure, or the other person’s expectation, cannot establish it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "total_spending",
+        "fieldPath": "/household/expenses/annualTotal",
+        "reason": "Total spending including rent or mortgage is needed for left over each year. Both non-housing spending and the applicable housing payment must be known.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "essential_spending",
+        "fieldPath": "/household/expenses/monthlyEssential",
+        "reason": "Essential spending sets the protected emergency cash reserve.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "cash_savings",
+        "fieldPath": "/household/assets",
+        "reason": "Cash available, including an explicit zero, sets the emergency reserve and the money available once it is protected.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "dependant_current_age",
+        "fieldPath": "/household/dependants/0/currentAge",
+        "reason": "Each child’s current age sets when college costs begin.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "college_plan",
+        "fieldPath": "/household/assumptions/values/collegeFunding/scenarioByChild/child_application_0",
+        "reason": "Living at home or away selects the college cost basis; not sure must stay unresolved.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "target_retirement_income",
+        "fieldPath": "/household/assumptions/values/retirement/targetIncomeToday",
+        "reason": "The household target annual retirement income in today’s money sets the retirement goal; current spending is not a stated target.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_type",
+        "fieldPath": "/household/pensions/0/type",
+        "reason": "Pension type determines whether to grow a pot or use promised benefits.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_current_value",
+        "fieldPath": "/household/pensions/0/currentValue",
+        "reason": "The current pension pot is needed to project retirement resources.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_employee_contribution_rate",
+        "fieldPath": "/household/pensions/0/employeeContributionRate",
+        "reason": "Personal contributions, including zero, affect pension growth, tax relief and current cash flow.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "pension_employer_contribution_rate",
+        "fieldPath": "/household/pensions/0/employerContributionRate",
+        "reason": "Employer contributions, including zero, affect pension growth.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "loans_presence",
+        "fieldPath": "/household/liabilities",
+        "reason": "Loan records or explicit no loans are needed; an unanswered section cannot be treated as debt-free.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_currentBalance",
+        "fieldPath": "/household/liabilities/0/currentBalance",
+        "reason": "Debt balance sets the money required to clear it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_annualInterestRate",
+        "fieldPath": "/household/liabilities/0/annualInterestRate",
+        "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_remainingTermMonths",
+        "fieldPath": "/household/liabilities/0/remainingTermMonths",
+        "reason": "The remaining term sets the repayment horizon.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_monthlyPayment",
+        "fieldPath": "/household/liabilities/0/monthlyPayment",
+        "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_clear_by",
+        "fieldPath": "/household/goals",
+        "reason": "The mortgage goal needs a chosen payoff age/date. The contractual term is not the household’s desired clearance date.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "mortgage_cleared_on_death",
+        "fieldPath": "/household/liabilities/0/clearedOnDeath",
+        "reason": "Whether this mortgage clears on death changes the survivor’s spending need. Having life cover alone does not establish this.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_currentBalance",
+        "fieldPath": "/household/liabilities/1/currentBalance",
+        "reason": "Debt balance sets the money required to clear it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_annualInterestRate",
+        "fieldPath": "/household/liabilities/1/annualInterestRate",
+        "reason": "The debt rate determines its cost and whether a route removes an expensive inefficiency.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_remainingTermMonths",
+        "fieldPath": "/household/liabilities/1/remainingTermMonths",
+        "reason": "The remaining term sets the repayment horizon.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "debt_monthlyPayment",
+        "fieldPath": "/household/liabilities/1/monthlyPayment",
+        "reason": "The current repayment is needed for cash flow and the nothing-changes position.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "other_dated_costs",
+        "fieldPath": "/household/goals",
+        "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
+        "kind": "household_fact",
+        "importance": "recommended",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "illness_scenario_scope",
+        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
+        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "survivor_payment",
+        "fieldPath": "/household/assumptions/values/protection/survivorPayment",
+        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "kind": "plan_pack_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/householdTaxStatus",
+        "reason": "Establish whether the couple are married or civil partners before calculating tax.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/takeHomeBasis",
+        "reason": "Confirm that individual stated bank pay is after current personal pension deductions, or provide gross inputs for the native estimate.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/spendingBasis",
+        "reason": "Establish regular spending including debts and excluding tax/pension deductions; essential spending alone cannot supply it.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/spendingLabel",
+        "reason": "Supply the authored spending label; no text is shortened or rewritten to fit.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/cashAssetId",
+        "reason": "Record cash, including an explicit zero, before identifying a funding account.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "liquidity_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/personalPensionContributions",
+        "reason": "Establish primary's current personal pension contribution, including explicit zero.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/personalPensionContributions",
+        "reason": "Establish partner's current personal pension contribution, including explicit zero.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/properties/0/currentValue",
+        "reason": "Add the current value for Home in EUR; an existing position cannot be omitted from the balance sheet.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/pensions/0/currentValue",
+        "reason": "Add the current value for Other in EUR; an existing position cannot be omitted from the balance sheet.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/liabilities/0/currentBalance",
+        "reason": "Add the current balance for Home mortgage in EUR; an existing position cannot be omitted from the balance sheet.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/liabilities/1/currentBalance",
+        "reason": "Add the current balance for Uncleared credit card in EUR; an existing position cannot be omitted from the balance sheet.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "personal_balance_sheet"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/assets",
+        "reason": "Add the current cash available to the household.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "liquidity_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/expenses/annualTotal",
+        "reason": "Add annual or monthly household spending.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "liquidity_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/assumptions/values/persona/retirementStatus",
+        "reason": "Confirm whether the household is working or retired so the correct cash-reserve guide is used.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "liquidity_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/takeHomeBasis",
+        "reason": "Confirm that stated net income is bank pay after personal pension deductions.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "household_cash_flow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/liabilities/0/currentBalance",
+        "reason": "Add the mortgage balance.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "mortgage_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/liabilities/0/annualInterestRate",
+        "reason": "Add the current annual interest rate.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "mortgage_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/household/liabilities/0/remainingTermMonths",
+        "reason": "Add the remaining mortgage term.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "mortgage_analysis"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/chapterGoals/pension_projection",
+        "reason": "Record or select one relevant goal; holdings or children alone cannot establish the goal this chapter answers.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "pension_projection"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/chapterGoals/net_retirement_cashflow",
+        "reason": "Record or select one relevant goal; holdings or children alone cannot establish the goal this chapter answers.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "net_retirement_cashflow"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/chapterGoals/college_funding",
+        "reason": "Record or select one relevant goal; holdings or children alone cannot establish the goal this chapter answers.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": [
+          "college_funding"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/goals_and_resources",
+        "reason": "B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "goals_and_resources"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/protection_gap",
+        "reason": "The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "protection_gap"
+        ]
+      },
+      {
+        "factId": "requires_profile_adapter",
+        "fieldPath": "/chapters/future_cost_fund",
+        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
+        "kind": "implementation",
+        "importance": "required",
+        "blockingModuleIds": [
+          "future_cost_fund"
+        ]
+      },
+      {
+        "factId": "missing_information",
+        "fieldPath": "/planningInputs/leftOverEachYear",
+        "reason": "Current annual left over needs a compilable cash-flow chapter or an explicitly stated annual amount.",
+        "kind": "household_fact",
+        "importance": "required",
+        "blockingModuleIds": []
+      }
+    ],
+    "planningInputs": null,
+    "planningInputSources": {
+      "/calculationDate": {
+        "profilePaths": [
+          "/confirmedAt"
+        ],
+        "confirmedRevision": 7
+      },
+      "/planningInputs/outgoingBindings": {
+        "profilePaths": [
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "bind_stated_payments_to_their_own_liability; labels_copied_verbatim",
+        "applicationSources": []
+      },
+      "/planningInputs/personalPensionContributions": {
+        "profilePaths": [
+          "/pensions",
+          "/assumptions/values/completionFacts/confirmedNonePaths"
+        ],
+        "confirmedRevision": 7,
+        "basis": "zero_only_from_recorded_non_contributory_status_or_confirmed_none; rates_stay_on_pensions",
+        "applicationSources": []
+      },
+      "/planningInputs/goalBindings": {
+        "profilePaths": [
+          "/goals",
+          "/liabilities"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_matching_debt_or_only_household_person; no_joint_person_selection",
+        "applicationSources": []
+      },
+      "/planningInputs/chapterGoals": {
+        "profilePaths": [
+          "/goals"
+        ],
+        "confirmedRevision": 7,
+        "basis": "unique_relevant_goal_only"
+      }
+    },
+    "chapterAssumptions": []
+  }
+]

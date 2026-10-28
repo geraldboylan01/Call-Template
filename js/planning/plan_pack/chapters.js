@@ -242,6 +242,9 @@ export async function buildChapter(context, pack, chapter) {
     context = { ...context, profile };
   }
   const year = Number(pack.calculationDate.slice(0, 4));
+  if (chapter === 'net_retirement_cashflow' && !context.ledgerFunding && context.usableCashDeductions?.length) {
+    throw new LaterStage('/planningInputs/assetAssignments', 'Net retirement needs an explicit adapter for after-tax capital remaining after cash earmarks; the original fund cannot be reused.');
+  }
   if (context.ledgerFunding && ['net_retirement_cashflow', 'college_funding'].includes(chapter)) {
     throw new LaterStage('/chapters', chapter === 'net_retirement_cashflow'
       ? 'The ledger is priced; net retirement still needs a route adapter for unassigned after-tax capital and changed bank pay.'
@@ -362,6 +365,19 @@ export async function buildChapter(context, pack, chapter) {
     missing('/household' + (first?.fieldPath ?? ''), first?.reason ?? 'Chapter is not ready: ' + readiness.status + '.');
   }
   let input = definition.buildInput(profile);
+  const chapterAssumptions = [];
+  const chapterWarnings = [];
+  if (chapter === 'pension_projection' && pack.planningInputs.householdTaxStatus) input.householdTaxStatus = pack.planningInputs.householdTaxStatus;
+  if (chapter === 'pension_projection') {
+    const targetSource = profile.fieldMetadata['/assumptions/values/retirement/targetIncomeToday']?.application;
+    if (targetSource?.paths.includes('retirement.income')) input.targetIncomeBasis = 'gross';
+    for (const member of input.pensions) {
+      if (profile.assumptions.values.retirement?.statePensionFraction?.[member.id] !== undefined) continue;
+      chapterAssumptions.push({ key: `statePensionFraction.${member.id}`, value: member.statePensionFraction,
+        reason: 'Existing adviser-adapter illustration default, using the dated central maximum. No numeric entitlement was established for this person; retain the missing fact.' });
+      chapterWarnings.push(`The State Pension fraction for ${member.id} is an illustration assumption, not a confirmed entitlement.`);
+    }
+  }
   const balanceSheetAssignments = chapter === 'personal_balance_sheet' ? context.usableCashDeductions ?? [] : [];
   if (balanceSheetAssignments.length) {
     const committed = new Map();
@@ -431,8 +447,8 @@ export async function buildChapter(context, pack, chapter) {
     }
   }
   return { input, payload, metrics, nativeCaseId, basis: 'existing_adviser_adapter', moduleVersion: definition.moduleVersion,
-    builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...(balanceSheetAssignments.length ? [{
+    builderHousehold: profile, assumptionsUsed: [...(readiness.assumptionsUsed ?? []), ...chapterAssumptions, ...(balanceSheetAssignments.length ? [{
       key: 'goalCashClassification', value: { bucket: 'lifestyle_assets', cashAssignments: cloneJson(balanceSheetAssignments) }
     }, { key: 'balanceSheetCashRounding', value: 'Free and earmarked cash rounded to the cent for the balance sheet; ledger amounts retain full precision.' }] : [])],
-    warnings: readiness.warnings ?? [] };
+    warnings: [...(readiness.warnings ?? []), ...chapterWarnings] };
 }
