@@ -76,7 +76,7 @@ assert.equal(family.assets.find(asset => asset.type === 'cash').currentValue.amo
 assert.ok(hasGap(family, 'mortgage_clear_by'));
 assert.ok(hasGap(family, 'mortgage_cleared_on_death'));
 assert.ok(hasGap(family, 'goal_flexibility'));
-assert.ok(hasGap(family, 'survivor_payment'));
+assert.ok(!hasGap(family, 'survivor_payment'), 'a death case asks nothing about a survivor payment');
 assert.equal(family.assumptions.values.retirement.statePensionFraction.primary, 1);
 assert.equal(family.assumptions.values.retirement.statePensionFraction.partner, undefined, 'A singular answer cannot establish the partner’s State Pension');
 assert.ok(planFactsMissing(family).some(item => item.factId === 'state_pension_fraction' && item.fieldPath.endsWith('/partner')));

@@ -660,12 +660,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -708,14 +702,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -2118,18 +2104,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -2212,22 +2186,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -3331,18 +3289,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -3401,22 +3347,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -4287,12 +4217,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -4383,14 +4307,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -4742,7 +4658,7 @@
         },
         {
           "fieldPath": "/primaryPerson/employmentStatus",
-          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -4778,7 +4694,7 @@
         },
         {
           "fieldPath": "/partner/employmentStatus",
-          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+          "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
           "blockingModuleIds": [],
           "importance": "required"
         },
@@ -4931,18 +4847,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -4978,7 +4882,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/primaryPerson/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -5026,7 +4930,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/partner/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -5229,22 +5133,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "survivor_payment",
-        "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
-        "kind": "plan_pack_fact",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]

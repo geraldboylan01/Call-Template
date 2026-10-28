@@ -22,10 +22,29 @@
  *
  * WHAT IS DELIBERATELY NOT HERE
  *
- * No tax. Take-home and State payments are STATED, so this module holds no tax
- * rule and no State rate. When the household cash flow module can supply them
- * they will arrive in the same fields. The surviving partner's changed tax
- * position is not recalculated, and the footnote says so.
+ * No tax rule and no State rate. A case either states its take-home and State
+ * payment (the `people[].takeHome` and event amounts), or carries an `income`
+ * block that a caller upstream built from the shared tax engine and the figures
+ * register: recalculated take-home for each person and the State payment kept
+ * separate, with the calculation year, the versions and the basis. This module
+ * only checks that block adds up; it never calculates tax or looks up a rate.
+ *
+ * TIME
+ *
+ * A case's money in can change over time: an `income` block may have a second
+ * phase (a State payment counted for a stated number of months, then not at
+ * all), and a stated payment may run for a number of months. Savings fill the
+ * gap month by month through those changes, so a payment is never extended
+ * past the time it was given for. A case with neither is one constant gap, as
+ * before, and its answer is unchanged.
+ *
+ * MONEY RECEIVED
+ *
+ * What a person has told us they would receive (a lump sum paid on death, a
+ * regular payment while they cannot work) is counted as money received: a lump
+ * sum joins the savings in that case, a regular payment is money in for the
+ * months stated. It is never a cover amount needed, a gap against cover, a
+ * premium, a product or a provider.
  *
  * THE HARD LIMIT
  *
@@ -54,7 +73,23 @@ const SCALE_HEADROOM_PERCENT = 105;
 
 const INPUT_FIELDS = Object.freeze(['householdLabel', 'people', 'needed', 'savings', 'baseScenarioId', 'scenarios']);
 const PERSON_FIELDS = Object.freeze(['id', 'label', 'takeHome']);
-const CASE_FIELDS = Object.freeze(['id', 'title', 'description', 'event']);
+const CASE_FIELDS = Object.freeze(['id', 'title', 'description', 'event', 'income', 'received']);
+const INCOME_FIELDS = Object.freeze(['basis', 'calculationYear', 'versions', 'creditAllocation', 'phases']);
+const INCOME_BASES = Object.freeze(['stated', 'estimated']);
+const CREDIT_ALLOCATIONS = Object.freeze(['own', 'allocated']);
+const VERSION_FIELDS = Object.freeze(['taxRules', 'assumptions', 'socialWelfare']);
+const PHASE_FIELDS = Object.freeze(['months', 'takeHome', 'statePayment', 'householdNetIncome']);
+const STATE_PAYMENT_FIELDS = Object.freeze(['personId', 'scheme', 'amount', 'grossAmount', 'estimatedTax', 'weeklyRate', 'weeks', 'figure']);
+const STATE_PAYMENT_SCHEMES = Object.freeze(['illnessBenefit', 'bereavedPartnerPension', 'stated']);
+const FIGURE_FIELDS = Object.freeze(['id', 'effectiveFrom', 'status', 'checkedOn', 'catalogueVersion', 'sourceUrl']);
+const RECEIVED_FIELDS = Object.freeze({
+  lumpSum: Object.freeze(['type', 'amount']),
+  regularPayment: Object.freeze(['type', 'amount', 'months', 'afterMonths'])
+});
+const MAX_RECEIVED = 3;
+const MAX_PHASE_MONTHS = 120;
+/** The most euros a phase's parts may differ from the household net income they should add up to. */
+const RECONCILE_TOLERANCE_EUR = 1;
 const EVENT_TYPES = Object.freeze(['cannotWork', 'dies']);
 const EVENT_FIELDS = Object.freeze({
   cannotWork: Object.freeze(['type', 'personId', 'statePayment']),
@@ -121,6 +156,7 @@ function refuseForbiddenWording(text, path) {
 
 const ID_PATTERN = /^[a-z0-9_-]+$/;
 
+/** What the screen says when every figure is stated. */
 const FOOTNOTE = 'Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation. '
   + 'State payments are as given and depend on eligibility. '
   + 'When one income stops, the other person’s tax can change, so your take-home may differ from what is shown.';
@@ -151,7 +187,7 @@ function fieldPath(path, key) {
 }
 
 /** The hard limit and the calculated fields come before anything else is said about a key. */
-function refuseForbiddenAndDerived(raw, path) {
+function refuseForbiddenAndDerived(raw, path, allowedDerived = []) {
   Object.keys(raw).forEach((key) => {
     if (FORBIDDEN_KEY_PATTERN.test(key)) {
       throw new Error(
@@ -160,7 +196,7 @@ function refuseForbiddenAndDerived(raw, path) {
     }
   });
   Object.keys(raw).forEach((key) => {
-    if (DERIVED_FIELDS.includes(key)) {
+    if (DERIVED_FIELDS.includes(key) && !allowedDerived.includes(key)) {
       throw new Error(`${fieldPath(path, key)} is not accepted. It is calculated.`);
     }
   });
@@ -220,7 +256,7 @@ function derivedCaseTitle(event, person) {
   return event.type === 'dies' ? `If ${person.label} died` : `${person.label} cannot work`;
 }
 
-function normalizeEvent(rawEvent, { path, rawTitle, id, people, neededToday }) {
+function normalizeEvent(rawEvent, { path, rawTitle, id, people, neededToday, hasIncome = false }) {
   const eventPath = `${path}.event`;
   const nameForErrors = rawTitle || id;
 
@@ -253,13 +289,23 @@ function normalizeEvent(rawEvent, { path, rawTitle, id, people, neededToday }) {
   }
 
   if (rawEvent.type === 'cannotWork') {
+    if (hasIncome) {
+      if (has(rawEvent, 'statePayment')) {
+        throw new Error(`${where}: the State payment is given in income.phases[].statePayment; do not give it in the event as well.`);
+      }
+      return { event: { type: 'cannotWork', personId: person.id }, person, title };
+    }
     if (!isWholeEuros(rawEvent.statePayment)) {
       throw new Error(`${where}: statePayment must be a whole number of euros, 0 or more.`);
     }
     return { event: { type: 'cannotWork', personId: person.id, statePayment: rawEvent.statePayment }, person, title };
   }
 
-  if (!isWholeEuros(rawEvent.survivorsPension)) {
+  if (hasIncome) {
+    if (has(rawEvent, 'survivorsPension')) {
+      throw new Error(`${where}: the survivor’s pension is given in income.phases[].statePayment; do not give it in the event as well.`);
+    }
+  } else if (!isWholeEuros(rawEvent.survivorsPension)) {
     throw new Error(`${where}: survivorsPension must be a whole number of euros, 0 or more.`);
   }
 
@@ -289,7 +335,9 @@ function normalizeEvent(rawEvent, { path, rawTitle, id, people, neededToday }) {
     throw new Error(`${where}: a higher need after a death is not drawn yet.`);
   }
 
-  const event = { type: 'dies', personId: person.id, survivorsPension: rawEvent.survivorsPension };
+  const event = hasIncome
+    ? { type: 'dies', personId: person.id }
+    : { type: 'dies', personId: person.id, survivorsPension: rawEvent.survivorsPension };
   // A need that has not changed is the same as none stated, so the reason is dropped with it.
   if (hasNeededAfter && rawEvent.neededAfter < neededToday) {
     event.neededAfter = rawEvent.neededAfter;
@@ -298,6 +346,241 @@ function normalizeEvent(rawEvent, { path, rawTitle, id, people, neededToday }) {
     }
   }
   return { event, person, title };
+}
+
+
+function wholeEuroField(value, where, name, { positive = false } = {}) {
+  if (!isWholeEuros(value) || (positive && value <= 0)) {
+    throw new Error(`${where}: ${name} must be a whole number of euros${positive ? ' greater than 0' : ', 0 or more'}.`);
+  }
+  return value;
+}
+
+function wholeMonthsField(value, where, name, { min }) {
+  if (!Number.isInteger(value) || value < min || value > MAX_PHASE_MONTHS) {
+    throw new Error(`${where}: ${name} must be a whole number of months from ${min} to ${MAX_PHASE_MONTHS}.`);
+  }
+  return value;
+}
+
+function normalizeStatePayment(raw, { where, path, people, event }) {
+  if (!isPlainObject(raw)) {
+    throw new Error(`${where}: statePayment must be an object.`);
+  }
+  refuseForbiddenAndDerived(raw, path);
+  refuseUnknown(raw, STATE_PAYMENT_FIELDS, path);
+  const personId = typeof raw.personId === 'string' ? raw.personId.trim() : '';
+  if (!people.some((person) => person.id === personId)) {
+    throw new Error(`${where}: statePayment.personId "${personId}" is not one of the people.`);
+  }
+  if (event && event.type === 'cannotWork' && personId !== event.personId) {
+    throw new Error(`${where}: the State payment is paid to the person who cannot work.`);
+  }
+  if (event && event.type === 'dies' && personId === event.personId) {
+    throw new Error(`${where}: the survivor’s pension is paid to the person who is left.`);
+  }
+  if (!STATE_PAYMENT_SCHEMES.includes(raw.scheme)) {
+    throw new Error(`${where}: statePayment.scheme must be one of ${STATE_PAYMENT_SCHEMES.join(', ')}.`);
+  }
+  const amount = wholeEuroField(raw.amount, where, 'statePayment.amount');
+  const out = { personId, scheme: raw.scheme, amount };
+  if (raw.scheme === 'stated') {
+    ['grossAmount', 'estimatedTax', 'weeklyRate', 'weeks', 'figure'].forEach((key) => {
+      if (has(raw, key)) {
+        throw new Error(`${where}: a stated State payment is given as it is; statePayment.${key} belongs to an estimated one.`);
+      }
+    });
+    return out;
+  }
+  // A payment worked out from a rate: the gross figure and the tax estimated on it
+  // are kept, so the amount shown can be traced back to both.
+  out.grossAmount = wholeEuroField(raw.grossAmount, where, 'statePayment.grossAmount');
+  out.estimatedTax = wholeEuroField(raw.estimatedTax, where, 'statePayment.estimatedTax');
+  if (Math.abs(out.grossAmount - out.estimatedTax - amount) > RECONCILE_TOLERANCE_EUR) {
+    throw new Error(`${where}: statePayment.amount (${amount}) is not the gross amount (${out.grossAmount}) less the estimated tax (${out.estimatedTax}).`);
+  }
+  if (has(raw, 'weeklyRate') || has(raw, 'weeks')) {
+    if (typeof raw.weeklyRate !== 'number' || !Number.isFinite(raw.weeklyRate) || raw.weeklyRate < 0
+      || !Number.isInteger(raw.weeks) || raw.weeks < 1 || raw.weeks > 52) {
+      throw new Error(`${where}: statePayment.weeklyRate must be a number of euros and statePayment.weeks a whole number from 1 to 52.`);
+    }
+    if (Math.abs(raw.weeklyRate * raw.weeks - out.grossAmount) > RECONCILE_TOLERANCE_EUR) {
+      throw new Error(`${where}: statePayment.grossAmount (${out.grossAmount}) is not the weekly rate (${raw.weeklyRate}) for ${raw.weeks} weeks.`);
+    }
+    out.weeklyRate = raw.weeklyRate;
+    out.weeks = raw.weeks;
+  }
+  if (has(raw, 'figure')) {
+    if (!isPlainObject(raw.figure)) {
+      throw new Error(`${where}: statePayment.figure must be an object.`);
+    }
+    refuseForbiddenAndDerived(raw.figure, `${path}.figure`);
+    refuseUnknown(raw.figure, FIGURE_FIELDS, `${path}.figure`);
+    const figure = {};
+    FIGURE_FIELDS.forEach((key) => {
+      if (has(raw.figure, key)) {
+        if (typeof raw.figure[key] !== 'string' || raw.figure[key].length < 1 || raw.figure[key].length > 200) {
+          throw new Error(`${where}: statePayment.figure.${key} must be text of up to 200 characters.`);
+        }
+        figure[key] = raw.figure[key];
+      }
+    });
+    out.figure = figure;
+  }
+  return out;
+}
+
+/**
+ * A case's `income` block: the recalculated take-home for each person and the
+ * State payment kept apart, for one calculation year, with the versions of what
+ * it was calculated from and the basis. Each phase is one full calculation of
+ * the whole household, so a phase after the State payment ends is its own
+ * figures, not the first phase carried on.
+ */
+function normalizeIncome(raw, { path, where, people, event }) {
+  const incomePath = `${path}.income`;
+  const at = `${FIELD}.${incomePath}`;
+  if (!isPlainObject(raw)) {
+    throw new Error(`${at} must be an object.`);
+  }
+  refuseForbiddenAndDerived(raw, incomePath);
+  refuseUnknown(raw, INCOME_FIELDS, incomePath, where);
+
+  if (!INCOME_BASES.includes(raw.basis)) {
+    throw new Error(`${where}: income.basis must be "stated" or "estimated".`);
+  }
+  if (!Number.isInteger(raw.calculationYear) || raw.calculationYear < 2000 || raw.calculationYear > 2100) {
+    throw new Error(`${where}: income.calculationYear must be a whole year.`);
+  }
+  const creditAllocation = has(raw, 'creditAllocation') ? raw.creditAllocation : 'own';
+  if (!CREDIT_ALLOCATIONS.includes(creditAllocation)) {
+    throw new Error(`${where}: income.creditAllocation must be "own" or "allocated".`);
+  }
+
+  const versions = {};
+  if (has(raw, 'versions')) {
+    if (!isPlainObject(raw.versions)) {
+      throw new Error(`${where}: income.versions must be an object.`);
+    }
+    refuseForbiddenAndDerived(raw.versions, `${incomePath}.versions`);
+    refuseUnknown(raw.versions, VERSION_FIELDS, `${incomePath}.versions`);
+    VERSION_FIELDS.forEach((key) => {
+      if (has(raw.versions, key)) {
+        if (typeof raw.versions[key] !== 'string' || raw.versions[key].length < 1 || raw.versions[key].length > 80) {
+          throw new Error(`${where}: income.versions.${key} must be text of up to 80 characters.`);
+        }
+        versions[key] = raw.versions[key];
+      }
+    });
+  }
+  if (raw.basis === 'estimated' && !has(versions, 'taxRules')) {
+    throw new Error(`${where}: an estimated income needs income.versions.taxRules, the version of the tax rules it was calculated with.`);
+  }
+
+  if (!Array.isArray(raw.phases) || raw.phases.length < 1 || raw.phases.length > 2) {
+    throw new Error(`${where}: income.phases must list 1 or 2 phases.`);
+  }
+  const phases = raw.phases.map((rawPhase, index) => {
+    const phasePath = `${incomePath}.phases[${index}]`;
+    const here = `${where}: income.phases[${index}]`;
+    if (!isPlainObject(rawPhase)) {
+      throw new Error(`${here} must be an object.`);
+    }
+    refuseForbiddenAndDerived(rawPhase, phasePath, ['months']);
+    refuseUnknown(rawPhase, PHASE_FIELDS, phasePath);
+
+    const last = index === raw.phases.length - 1;
+    let months = null;
+    if (!last) {
+      months = wholeMonthsField(rawPhase.months, here, 'months', { min: 1 });
+    } else if (has(rawPhase, 'months') && rawPhase.months !== null) {
+      throw new Error(`${here}: the last phase carries on, so it has no months.`);
+    }
+
+    if (!isPlainObject(rawPhase.takeHome)) {
+      throw new Error(`${here}: takeHome must give each person’s take-home.`);
+    }
+    refuseForbiddenAndDerived(rawPhase.takeHome, `${phasePath}.takeHome`);
+    Object.keys(rawPhase.takeHome).forEach((key) => {
+      if (!people.some((person) => person.id === key)) {
+        throw new Error(`${here}: takeHome "${key}" is not one of the people.`);
+      }
+    });
+    const takeHome = {};
+    people.forEach((person) => {
+      if (!has(rawPhase.takeHome, person.id)) {
+        throw new Error(`${here}: takeHome needs ${person.id}.`);
+      }
+      takeHome[person.id] = wholeEuroField(rawPhase.takeHome[person.id], here, `takeHome.${person.id}`);
+    });
+    if (event && takeHome[event.personId] !== 0) {
+      throw new Error(`${here}: takeHome.${event.personId} must be 0, because that take-home stops in this case.`);
+    }
+
+    let statePayment = null;
+    if (has(rawPhase, 'statePayment') && rawPhase.statePayment !== null) {
+      if (!event) {
+        throw new Error(`${here}: a case with no event has no State payment.`);
+      }
+      statePayment = normalizeStatePayment(rawPhase.statePayment, { where: here, path: `${phasePath}.statePayment`, people, event });
+    }
+
+    const phase = { months, takeHome, statePayment };
+    if (has(rawPhase, 'householdNetIncome')) {
+      phase.householdNetIncome = wholeEuroField(rawPhase.householdNetIncome, here, 'householdNetIncome');
+      const parts = Object.values(takeHome).reduce((total, value) => total + value, 0) + (statePayment ? statePayment.amount : 0);
+      if (Math.abs(parts - phase.householdNetIncome) > RECONCILE_TOLERANCE_EUR) {
+        throw new Error(`${here}: the take-home and the State payment add up to ${parts}, but the household’s net income is ${phase.householdNetIncome}. They must reconcile.`);
+      }
+    } else if (raw.basis === 'estimated') {
+      throw new Error(`${here}: an estimated income needs householdNetIncome from the shared tax engine, so its parts can be checked against it.`);
+    }
+    return phase;
+  });
+
+  return { basis: raw.basis, calculationYear: raw.calculationYear, versions, creditAllocation, phases };
+}
+
+/** Money a person has told us they would receive in this case. */
+function normalizeReceived(raw, { path, where, event }) {
+  const at = `${path}.received`;
+  if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_RECEIVED) {
+    throw new Error(`${where}: received must list 1 to ${MAX_RECEIVED} payments.`);
+  }
+  if (!event) {
+    throw new Error(`${where}: money received belongs to a case with an event.`);
+  }
+  return raw.map((entry, index) => {
+    const entryPath = `${at}[${index}]`;
+    const here = `${where}: received[${index}]`;
+    if (!isPlainObject(entry)) {
+      throw new Error(`${here} must be an object.`);
+    }
+    refuseForbiddenAndDerived(entry, entryPath, ['months']);
+    if (!Object.keys(RECEIVED_FIELDS).includes(entry.type)) {
+      throw new Error(`${here}: type must be "lumpSum" or "regularPayment".`);
+    }
+    refuseUnknown(entry, RECEIVED_FIELDS[entry.type], entryPath, where);
+    if (entry.type === 'lumpSum') {
+      if (event.type !== 'dies') {
+        throw new Error(`${here}: a lump sum is money paid on a death.`);
+      }
+      return { type: 'lumpSum', amount: wholeEuroField(entry.amount, here, 'amount', { positive: true }) };
+    }
+    if (event.type !== 'cannotWork') {
+      throw new Error(`${here}: a regular payment is money paid while someone cannot work.`);
+    }
+    const out = {
+      type: 'regularPayment',
+      amount: wholeEuroField(entry.amount, here, 'amount', { positive: true }),
+      months: wholeMonthsField(entry.months, here, 'months', { min: 1 })
+    };
+    if (has(entry, 'afterMonths')) {
+      const after = wholeMonthsField(entry.afterMonths, here, 'afterMonths', { min: 0 });
+      if (after > 0) out.afterMonths = after;
+    }
+    return out;
+  });
 }
 
 function normalizeCase(rawCase, index, people, neededToday) {
@@ -325,11 +608,35 @@ function normalizeCase(rawCase, index, people, neededToday) {
   const description = typeof rawCase.description === 'string' ? rawCase.description.trim() : '';
   if (description) refuseForbiddenWording(description, `${path}.description`);
 
+  const hasIncome = has(rawCase, 'income');
   if (!has(rawCase, 'event')) {
-    return { id, title: rawTitle || derivedCaseTitle(null, null), description };
+    const title = rawTitle || derivedCaseTitle(null, null);
+    if (has(rawCase, 'received')) {
+      throw new Error(`${FIELD}.${path} (${title}): money received belongs to a case with an event.`);
+    }
+    const normalized = { id, title, description };
+    if (hasIncome) {
+      normalized.income = normalizeIncome(rawCase.income, { path, where: `${FIELD}.${path} (${title})`, people, event: null });
+    }
+    return normalized;
   }
-  const { event, title } = normalizeEvent(rawCase.event, { path, rawTitle, id, people, neededToday });
-  return { id, title, description, event };
+  const { event, title } = normalizeEvent(rawCase.event, { path, rawTitle, id, people, neededToday, hasIncome });
+  const normalized = { id, title, description, event };
+  const where = `${FIELD}.${path} (${title})`;
+  if (hasIncome) {
+    normalized.income = normalizeIncome(rawCase.income, { path, where, people, event });
+    const paidTo = normalized.income.phases.map((phase) => phase.statePayment).filter(Boolean);
+    if (event.type === 'cannotWork' && paidTo.length === 0) {
+      throw new Error(`${where}: income needs the State payment in its first phase, even when it is 0.`);
+    }
+    if (event.type === 'dies' && !normalized.income.phases[0].statePayment) {
+      throw new Error(`${where}: income needs the survivor’s pension in its first phase, even when it is 0.`);
+    }
+  }
+  if (has(rawCase, 'received')) {
+    normalized.received = normalizeReceived(rawCase.received, { path, where, event });
+  }
+  return normalized;
 }
 
 /**
@@ -423,8 +730,55 @@ function reasonText(codes) {
   return codes[0] === 'mortgageCleared' ? 'your mortgage is cleared' : 'your living costs drop';
 }
 
+/** `a year`, `2 years`, `7 months`: how long something is counted for. */
+function durationText(months) {
+  if (months === 12) return 'a year';
+  if (months % 12 === 0) return `${months / 12} years`;
+  return monthsText(months);
+}
+
+const ILLNESS_BENEFIT_ASSUMPTION = 'Assumes the standard personal rate of Illness Benefit';
+const BEREAVED_PENSION_ASSUMPTION = 'Assumes the standard personal rate of the Bereaved Partner’s (Contributory) Pension';
+
+/**
+ * The words a case adds when its State payment came from a rate, or when it
+ * counts money the person told us about.
+ */
+function buildPaymentParts({ event, income, received, intervals }) {
+  const first = income ? income.phases[0].statePayment : null;
+  const estimated = Boolean(income && income.basis === 'estimated' && first && first.scheme !== 'stated');
+  const assumption = !first ? '' : (first.scheme === 'illnessBenefit'
+    ? `${ILLNESS_BENEFIT_ASSUMPTION}.`
+    : (first.scheme === 'bereavedPartnerPension' ? `${BEREAVED_PENSION_ASSUMPTION}.` : ''));
+  const shownAfterTax = estimated ? ', shown after estimated tax' : '';
+
+  const receivedParts = [];
+  (received || []).forEach((entry) => {
+    if (entry.type === 'lumpSum') {
+      receivedParts.push(`A lump sum of ${euroText(entry.amount)}, as you told us, is counted with your savings.`);
+    } else {
+      const from = entry.afterMonths ? ` from month ${entry.afterMonths + 1}` : '';
+      receivedParts.push(`A payment of ${euroText(entry.amount)} a year, as you told us, is counted for ${monthsText(entry.months)}${from}.`);
+    }
+  });
+
+  let later = '';
+  if (event && intervals.length > 1) {
+    const next = intervals[1];
+    const what = next.ended.join(',');
+    const lead = what === 'statePayment'
+      ? 'the State payment is not counted'
+      : (what === 'paid' ? 'the payment you told us about stops' : 'your income changes');
+    const outcome = next.gap > 0
+      ? `you would be ${euroText(next.gap)} a year short`
+      : 'you would still have what you need';
+    later = `After ${durationText(next.start)}, ${lead}, and ${outcome}.`;
+  }
+  return { assumption, shownAfterTax, receivedParts, later };
+}
+
 /** The sentence under the answer: what this case changes, and what is still needed. */
-function buildSentence({ event, people, earnersCounted, needed, neededChanged }) {
+function buildSentence({ event, people, earnersCounted, needed, neededChanged, extras }) {
   const need = euroText(needed);
   if (!event) {
     if (earnersCounted >= 2) {
@@ -437,74 +791,175 @@ function buildSentence({ event, people, earnersCounted, needed, neededChanged })
   }
 
   const name = people.find((person) => person.id === event.personId).label;
+  const { assumption, shownAfterTax, receivedParts, later, payment } = extras;
   if (event.type === 'cannotWork') {
-    const lead = event.statePayment > 0
-      ? `${name}’s take-home stops and a State payment starts.`
+    const lead = payment > 0
+      ? `${name}’s take-home stops and a State payment starts${shownAfterTax}.`
       : `${name}’s take-home stops.`;
-    return `${lead} You still need ${need}.`;
+    return [lead, assumption, ...receivedParts, `You still need ${need}.`, later].filter(Boolean).join(' ');
   }
 
-  const lead = event.survivorsPension > 0
-    ? `${name}’s take-home stops and a survivor’s pension starts.`
+  const lead = payment > 0
+    ? `${name}’s take-home stops and a survivor’s pension starts${shownAfterTax}.`
     : `${name}’s take-home stops.`;
   if (!neededChanged) {
-    return `${lead} You still need ${need}.`;
+    return [lead, assumption, ...receivedParts, `You still need ${need}.`, later].filter(Boolean).join(' ');
   }
   const reasons = event.neededBecause || [];
-  return reasons.length > 0
-    ? `${lead} You need ${need}, because ${reasonText(reasons)}.`
-    : `${lead} You need ${need}.`;
+  const needText = reasons.length > 0
+    ? `You need ${need}, because ${reasonText(reasons)}.`
+    : `You need ${need}.`;
+  return [lead, assumption, ...receivedParts, needText, later].filter(Boolean).join(' ');
 }
 
 /** The two-line answer. */
-function buildHeadline({ status, gap, spare, savings, months, beyond }) {
-  if (status === 'left_over') {
-    return {
-      line1: `You have ${euroText(spare)} a year left over.`,
-      line2: 'There is nothing for your savings to fill.'
-    };
-  }
-  if (status === 'tight') {
-    return {
-      line1: 'You have exactly what you need.',
-      line2: 'There is nothing for your savings to fill.'
-    };
+function buildHeadline({ status, gap, spare, savings, months, beyond, savingsWords, later }) {
+  if (status === 'left_over' || status === 'tight') {
+    const line1 = status === 'left_over'
+      ? `You have ${euroText(spare)} a year left over.`
+      : 'You have exactly what you need.';
+    if (later) {
+      // Covered at first, short later: the second line says when, and for how long savings help.
+      const after = `After ${durationText(later.start)} you would be ${euroText(later.gap)} a year short`;
+      if (savings === 0) {
+        return { line1, line2: `${after}, and you have no savings to fill it.` };
+      }
+      if (beyond) {
+        return { line1, line2: `${after}, and ${savingsWords.toLowerCase()} would last beyond three years.` };
+      }
+      return { line1, line2: `${after}, and ${savingsWords.toLowerCase()} would last ${monthsText(months)} in all.` };
+    }
+    return { line1, line2: 'There is nothing for your savings to fill.' };
   }
   const line1 = `You are ${euroText(gap)} a year short.`;
   if (savings === 0) {
     return { line1, line2: 'You have no savings to fill it.' };
   }
   if (beyond) {
-    return { line1, line2: 'Your savings would last beyond three years.' };
+    return { line1, line2: `${savingsWords} would last beyond three years.` };
   }
   if (months === 0) {
-    return { line1, line2: 'Your savings would last less than a month.' };
+    return { line1, line2: `${savingsWords} would last less than a month.` };
   }
-  return { line1, line2: `Your savings would last ${monthsText(months)}.` };
+  return { line1, line2: `${savingsWords} would last ${monthsText(months)}.` };
+}
+
+/**
+ * The case's money in over time, as stretches in which it is constant. A stretch
+ * starts when a State payment's phase ends, or a stated regular payment starts
+ * or stops. Everything is in whole months from the day the income stops.
+ */
+function buildIntervals({ phases, regular, needed }) {
+  const cuts = new Set([0]);
+  if (phases.length > 1) cuts.add(phases[0].months);
+  regular.forEach((entry) => {
+    cuts.add(entry.afterMonths);
+    cuts.add(entry.afterMonths + entry.months);
+  });
+  const starts = [...cuts].sort((left, right) => left - right);
+  return starts.map((start, index) => {
+    const length = index + 1 < starts.length ? starts[index + 1] - start : Infinity;
+    const phase = phases.length > 1 && start >= phases[0].months ? phases[1] : phases[0];
+    const takeHome = Object.values(phase.takeHome).reduce((total, value) => total + value, 0);
+    const paid = regular
+      .filter((entry) => entry.afterMonths <= start && start < entry.afterMonths + entry.months)
+      .reduce((total, entry) => total + entry.amount, 0);
+    const ended = [];
+    if (start > 0) {
+      if (phases.length > 1 && start === phases[0].months && phases[0].payment > 0) ended.push('statePayment');
+      if (regular.some((entry) => entry.afterMonths + entry.months === start)) ended.push('paid');
+    }
+    const moneyIn = takeHome + phase.payment + paid;
+    return { start, length, moneyIn, gap: Math.max(0, needed - moneyIn), spare: Math.max(0, moneyIn - needed), ended };
+  });
+}
+
+/**
+ * How long savings fill the gaps, month by month through the stretches. In
+ * twelfths of a euro (savings x 12 against a stretch's whole yearly gap), so a
+ * boundary such as exactly 36 months is exact. Savings fill ONLY a gap; a
+ * stretch with money to spare adds nothing to them. Null when nothing is short.
+ */
+function runwayMonths(intervals, savings) {
+  if (intervals.every((entry) => entry.gap === 0)) {
+    return null;
+  }
+  let balance = savings * 12;
+  let elapsed = 0;
+  for (const entry of intervals) {
+    if (entry.gap === 0) {
+      if (entry.length === Infinity) return Infinity;
+      elapsed += entry.length;
+      continue;
+    }
+    const lasts = balance / entry.gap;
+    if (lasts <= entry.length) {
+      return elapsed + lasts;
+    }
+    balance -= entry.gap * entry.length;
+    elapsed += entry.length;
+  }
+  return elapsed;
+}
+
+/** What each part of a case is in its first stretch, before any change over time. */
+function casePhases(inputs, scenario) {
+  const { event, income } = scenario;
+  const stoppedId = event ? event.personId : null;
+  if (income) {
+    return income.phases.map((phase) => ({
+      months: phase.months,
+      takeHome: Object.fromEntries(inputs.people.map((person) => [person.id, person.id === stoppedId ? 0 : phase.takeHome[person.id]])),
+      payment: phase.statePayment ? phase.statePayment.amount : 0
+    }));
+  }
+  let payment = 0;
+  if (event) {
+    payment = event.type === 'cannotWork' ? event.statePayment : event.survivorsPension;
+  }
+  return [{
+    months: null,
+    takeHome: Object.fromEntries(inputs.people.map((person) => [person.id, person.id === stoppedId ? 0 : person.takeHome])),
+    payment
+  }];
 }
 
 function solveCase(inputs, scenario) {
-  const { event } = scenario;
-  const stoppedId = event ? event.personId : null;
+  const { event, income } = scenario;
+  const received = scenario.received || [];
+  const phases = casePhases(inputs, scenario);
 
-  let floorAmount = 0;
-  if (event) {
-    floorAmount = event.type === 'cannotWork' ? event.statePayment : event.survivorsPension;
-  }
+  const regular = received
+    .filter((entry) => entry.type === 'regularPayment')
+    .map((entry) => ({ amount: entry.amount, months: entry.months, afterMonths: entry.afterMonths || 0 }));
+  const lumpSum = received.filter((entry) => entry.type === 'lumpSum').reduce((total, entry) => total + entry.amount, 0);
+  const savingsAvailable = inputs.savings + lumpSum;
+
+  const floorAmount = phases[0].payment;
   const floorLabel = event && event.type === 'dies' ? 'Survivor’s pension' : 'State payment';
 
   // Every slot is always present, in a fixed order, so a screen can move one
-  // mark from its old value to its new one. An absent part has amount 0.
-  const segments = [
-    { id: 'floor', label: floorLabel, amount: floorAmount, kind: 'floor' },
-    ...inputs.people.map((person) => ({
+  // mark from its old value to its new one. An absent part has amount 0. The
+  // slot for a payment the person told us about exists only in a module that
+  // has one, so a module without any keeps the shape it always had.
+  const segments = [{ id: 'floor', label: floorLabel, amount: floorAmount, kind: 'floor' }];
+  if (inputs.hasPaidSlot) {
+    segments.push({
+      id: 'paid',
+      label: 'Payment you told us about',
+      amount: regular.filter((entry) => entry.afterMonths === 0).reduce((total, entry) => total + entry.amount, 0),
+      kind: 'floor'
+    });
+  }
+  inputs.people.forEach((person) => {
+    segments.push({
       id: person.id,
       personId: person.id,
       label: `${person.label}’s take-home`,
-      amount: person.id === stoppedId ? 0 : person.takeHome,
+      amount: phases[0].takeHome[person.id],
       kind: 'takeHome'
-    }))
-  ];
+    });
+  });
 
   const moneyIn = segments.reduce((sum, segment) => sum + segment.amount, 0);
   const needed = event && typeof event.neededAfter === 'number' ? event.neededAfter : inputs.needed;
@@ -513,26 +968,40 @@ function solveCase(inputs, scenario) {
   const spare = Math.max(0, moneyIn - needed);
   const status = gap > 0 ? 'short' : (spare > 0 ? 'left_over' : 'tight');
 
-  let exactMonths = null;
+  const intervals = buildIntervals({ phases, regular, needed });
+  const exactMonths = runwayMonths(intervals, savingsAvailable);
   let months = null;
   let beyond = false;
-  if (gap > 0) {
-    // Savings x 12 over the yearly gap: whole numbers, so a boundary such as
-    // exactly 36 months is exact and not 35.99999999999999.
-    exactMonths = (inputs.savings * 12) / gap;
+  if (exactMonths !== null) {
     beyond = exactMonths >= PROTECTION_GAP_HORIZON_MONTHS;
     months = beyond ? null : Math.round(exactMonths);
   }
+  // Covered at first and short later: the answer says so, and the strip says why it is empty.
+  const laterInterval = status !== 'short' && exactMonths !== null
+    ? intervals.find((entry) => entry.gap > 0)
+    : null;
 
+  const savingsWords = lumpSum > 0 ? 'Your savings and the lump sum' : 'Your savings';
   const earnersCounted = segments.filter((segment) => segment.kind === 'takeHome' && segment.amount > 0).length;
-  const headline = buildHeadline({ status, gap, spare, savings: inputs.savings, months, beyond });
-  const sentence = buildSentence({ event, people: inputs.people, earnersCounted, needed, neededChanged });
+  const headline = buildHeadline({
+    status, gap, spare, savings: savingsAvailable, months, beyond, savingsWords,
+    later: laterInterval ? { start: laterInterval.start, gap: laterInterval.gap } : null
+  });
+  const extras = { ...buildPaymentParts({ event, income, received, intervals }), payment: floorAmount };
+  const sentence = buildSentence({ event, people: inputs.people, earnersCounted, needed, neededChanged, extras });
+
+  const savingsLead = lumpSum > 0
+    ? `Your savings and a lump sum of ${euroText(lumpSum)} would last`
+    : `Your savings of ${euroText(inputs.savings)} would last`;
+  const savingsLeadNarrow = lumpSum > 0 ? 'Savings and lump sum last' : 'Your savings last';
 
   return {
     id: scenario.id,
     title: scenario.title,
     description: scenario.description,
     event: event || null,
+    income: income || null,
+    received,
     segments,
     floorAmount,
     moneyIn,
@@ -540,6 +1009,16 @@ function solveCase(inputs, scenario) {
     neededChanged,
     gap,
     spare,
+    intervals: intervals.map((entry) => ({
+      start: entry.start,
+      length: entry.length === Infinity ? null : entry.length,
+      moneyIn: entry.moneyIn,
+      gap: entry.gap
+    })),
+    savingsAvailable,
+    savingsLead,
+    savingsLeadNarrow,
+    nothingText: laterInterval ? 'Nothing to fill at first' : 'Nothing to fill',
     exactMonths,
     months,
     beyond,
@@ -565,18 +1044,86 @@ function savingsLastText(entry) {
   return entry.beyond ? 'Beyond three years' : entry.months;
 }
 
+/** What the module's cases rest on, read from the cases themselves. */
+function incomeSummary(inputs) {
+  const incomes = inputs.scenarios.map((scenario) => scenario.income).filter(Boolean);
+  const payments = incomes.flatMap((income) => income.phases.map((phase) => phase.statePayment)).filter(Boolean);
+  const statedPayment = inputs.scenarios.some((scenario) => scenario.event && !scenario.income)
+    || payments.some((payment) => payment.scheme === 'stated');
+  return {
+    estimated: incomes.some((income) => income.basis === 'estimated'),
+    statedPayment,
+    illnessBenefit: payments.some((payment) => payment.scheme === 'illnessBenefit'),
+    bereavedPension: payments.some((payment) => payment.scheme === 'bereavedPartnerPension'),
+    limited: incomes.some((income) => income.phases.length > 1)
+      || inputs.scenarios.some((scenario) => (scenario.received || []).some((entry) => entry.type === 'regularPayment')),
+    years: [...new Set(incomes.map((income) => income.calculationYear))].sort((left, right) => left - right),
+    versions: Object.assign({}, ...incomes.map((income) => income.versions)),
+    allocated: incomes.some((income) => income.creditAllocation === 'allocated')
+  };
+}
+
+/** The footnote. The stated wording is unchanged; a recalculated income says how tax was treated instead. */
+function buildFootnote(inputs) {
+  const summary = incomeSummary(inputs);
+  if (!summary.estimated) {
+    return FOOTNOTE;
+  }
+  const parts = [
+    'Amounts are a year. Your savings are used only to fill the gap, with no interest or inflation.',
+    'Tax is recalculated for each case.'
+  ];
+  if (inputs.people.length > 1) {
+    parts.push('If one of you stops working, the other person’s take-home may change.');
+  }
+  parts.push('State payments are shown after estimated tax and depend on eligibility.');
+  if (summary.limited) {
+    parts.push('A State payment is counted only for the time stated, and not after that.');
+  }
+  if (summary.statedPayment) {
+    parts.push('A State payment you gave us is used as given.');
+  }
+  return parts.join(' ');
+}
+
 function buildAssumptionsTable(inputs) {
+  const summary = incomeSummary(inputs);
+  const statePayments = [];
+  if (summary.illnessBenefit) {
+    statePayments.push(`${ILLNESS_BENEFIT_ASSUMPTION} for a year, shown after estimated tax`);
+  }
+  if (summary.bereavedPension) {
+    statePayments.push(`${BEREAVED_PENSION_ASSUMPTION}, shown after estimated tax`);
+  }
+  if (summary.statedPayment || statePayments.length === 0) {
+    statePayments.push('A year, as given');
+  }
+
   const rows = [
     ['Household', inputs.householdLabel || 'As entered'],
     ['What you need', `${euroText(inputs.needed)} a year`],
     ['Your savings', euroText(inputs.savings)],
-    ['Take-home pay', 'Net pay a year, as given'],
-    ['State payments', 'A year, as given'],
+    ['Take-home pay', summary.estimated ? 'Net pay a year, recalculated for each case' : 'Net pay a year, as given'],
+    ['State payments', statePayments.join('; ')]
+  ];
+  if (summary.estimated) {
+    const versionText = Object.entries({ 'tax rules': summary.versions.taxRules, 'State payment rates': summary.versions.socialWelfare })
+      .filter(([, value]) => value)
+      .map(([name, value]) => `${name} ${value}`)
+      .join('; ');
+    rows.push(['Tax', `Recalculated for each case for ${summary.years.join(' and ')}${versionText ? `, using ${versionText}` : ''}${summary.allocated ? ', with each person’s tax allocated within a joint assessment' : ''}`]);
+  }
+  if (summary.limited) {
+    rows.push(['How long a payment counts', 'For the time stated, then not at all']);
+  }
+  rows.push(
     ['How long savings last', 'Savings divided by the gap, to the nearest month, with no interest or inflation'],
     ['Shown for', `${PROTECTION_GAP_HORIZON_MONTHS} months, then “beyond three years”`],
     ['Rounding', 'Amounts are whole euros, as given'],
-    ['Not modelled', 'A change in tax when one income stops, limits on State payments, and costs that change over time']
-  ];
+    ['Not modelled', summary.estimated
+      ? 'Limits on State payments, waiting days and a first claim year, and costs that change over time'
+      : 'A change in tax when one income stops, limits on State payments, and costs that change over time']
+  );
   return { columns: ['Assumption', 'Input Used'], rows };
 }
 
@@ -638,7 +1185,11 @@ function buildCharts(inputs, baseCase) {
  */
 export function computeProtectionGapProjection(rawInputs) {
   const inputs = normalizeProtectionGapInputs(rawInputs);
-  const cases = inputs.scenarios.map((scenario) => solveCase(inputs, scenario));
+  const solving = {
+    ...inputs,
+    hasPaidSlot: inputs.scenarios.some((scenario) => (scenario.received || []).some((entry) => entry.type === 'regularPayment'))
+  };
+  const cases = inputs.scenarios.map((scenario) => solveCase(solving, scenario));
   const baseCase = cases.find((entry) => entry.id === inputs.baseScenarioId) || cases[0];
 
   return {
@@ -653,22 +1204,31 @@ export function computeProtectionGapProjection(rawInputs) {
       horizonMonths: PROTECTION_GAP_HORIZON_MONTHS,
       cases,
       baseScenarioId: baseCase.id,
-      footnote: FOOTNOTE,
+      footnote: buildFootnote(inputs),
       assumptionsUsed: {
         savingsGrowth: 'none',
         inflation: 'none',
         monthsRounding: 'nearest month',
         horizonMonths: PROTECTION_GAP_HORIZON_MONTHS,
         amounts: 'stated, whole euros',
-        taxRecalculated: false
+        taxRecalculated: incomeSummary(inputs).estimated,
+        incomeContracts: inputs.scenarios.filter((scenario) => scenario.income).map((scenario) => ({
+          caseId: scenario.id,
+          basis: scenario.income.basis,
+          calculationYear: scenario.income.calculationYear,
+          versions: scenario.income.versions,
+          creditAllocation: scenario.income.creditAllocation
+        }))
       }
     }
   };
 }
 
 
-const SUMMARY_INTRO = 'This shows how big the gap would be each year if an income stopped, '
-  + 'and how many months your savings would fill it. Take-home pay and State payments are as given.';
+const SUMMARY_INTRO_START = 'This shows how big the gap would be each year if an income stopped, '
+  + 'and how many months your savings would fill it. ';
+const SUMMARY_INTRO_STATED = 'Take-home pay and State payments are as given.';
+const SUMMARY_INTRO_ESTIMATED = 'Tax is recalculated for each case, and State payments are shown after estimated tax.';
 
 function escapeHtml(value) {
   return String(value)
@@ -692,5 +1252,6 @@ export function protectionGapSummaryHtml(projection) {
   const items = cases
     .map((entry) => `<li>${escapeHtml(`${entry.title}: ${entry.headline.line1} ${entry.headline.line2}`)}</li>`)
     .join('');
-  return `<p>${SUMMARY_INTRO}</p>${items ? `<ul>${items}</ul>` : ''}`;
+  const intro = SUMMARY_INTRO_START + (projection?.debug?.assumptionsUsed?.taxRecalculated ? SUMMARY_INTRO_ESTIMATED : SUMMARY_INTRO_STATED);
+  return `<p>${intro}</p>${items ? `<ul>${items}</ul>` : ''}`;
 }

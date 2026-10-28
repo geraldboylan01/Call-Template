@@ -205,11 +205,10 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
   };
   const omit = (chapter, reasons) => omittedChapters.push({ chapter, reasons });
   for (const chapter of CHAPTERS) {
-    if (['protection_gap', 'future_cost_fund', 'goals_and_resources'].includes(chapter)) {
-      const reason = chapter === 'protection_gap'
-        ? 'The later protection step must implement the Illness Benefit default, scenario tax and bounded payment/runway duration; survivor inputs remain separate.'
-        : chapter === 'future_cost_fund' ? 'The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.'
-          : 'B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.';
+    if (['future_cost_fund', 'goals_and_resources'].includes(chapter)) {
+      const reason = chapter === 'future_cost_fund'
+        ? 'The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.'
+        : 'B1/B1.1 price goal funding, but the native goals screen derives funding alternatives and has no exact unchanged-current case. Its route-to-screen adapter is still missing; B1 availability does not supply that adapter.';
       omit(chapter, [gap(`/chapters/${chapter}`, reason, chapter, 'requires_profile_adapter', 'implementation')]);
       continue;
     }

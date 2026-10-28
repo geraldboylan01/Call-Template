@@ -24,8 +24,8 @@ export const FIGURES_CATALOGUES = Object.freeze([
   },
   {
     "id": "planeir_assumptions",
-    "version": "planeir-assumptions-1.6.0",
-    "count": 12
+    "version": "planeir-assumptions-1.7.0",
+    "count": 18
   },
   {
     "id": "ie_market",
@@ -9608,7 +9608,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "pension_projection"
@@ -9638,7 +9638,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "pension_projection",
@@ -9671,7 +9671,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9703,7 +9703,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "own",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "net_retirement_cashflow"
@@ -9733,7 +9733,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9764,7 +9764,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9795,7 +9795,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
@@ -9826,11 +9826,197 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "college_funding",
       "goals_and_resources"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_db_spouse_pension_share",
+    "quantity": "planeir.assumption.survivor_db_spouse_pension_share",
+    "label": "Share of a defined benefit pension paid on to the surviving spouse",
+    "value": 0.5,
+    "valueShown": "50%",
+    "unit": "rate",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.qualifies",
+    "quantity": "planeir.assumption.survivor_rule.qualifies",
+    "label": "Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension",
+    "value": "Assumed to qualify, at the standard personal rate for their age band",
+    "valueShown": "Assumed to qualify, at the standard personal rate for their age band",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.diedStops",
+    "quantity": "planeir.assumption.survivor_rule.diedStops",
+    "label": "The person who died: their pay, pensions and State Pension",
+    "value": "They stop",
+    "valueShown": "They stop",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.statePensionNotPassed",
+    "quantity": "planeir.assumption.survivor_rule.statePensionNotPassed",
+    "label": "A State Pension is passed to a partner",
+    "value": "Never",
+    "valueShown": "Never",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+    "quantity": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+    "label": "A survivor who would also have their own State Pension",
+    "value": "Only the higher of the two is paid, which only arises once they are retired",
+    "valueShown": "Only the higher of the two is paid, which only arises once they are retired",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
+    ]
+  },
+  {
+    "id": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+    "quantity": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+    "label": "A defined contribution pot not yet drawn, and an ARF",
+    "value": "Pass to the spouse",
+    "valueShown": "Pass to the spouse",
+    "unit": "text",
+    "kind": "planeir_assumption",
+    "status": "approved",
+    "effectiveFrom": null,
+    "source": {
+      "title": "Planeir central planning assumptions, approved 28 October 2026",
+      "url": null
+    },
+    "sources": [
+      {
+        "title": "Planeir central planning assumptions, approved 28 October 2026",
+        "url": null
+      }
+    ],
+    "checkedOn": "2026-10-28",
+    "checkedOnFrom": "own",
+    "catalogue": {
+      "id": "planeir_assumptions",
+      "version": "planeir-assumptions-1.7.0"
+    },
+    "usedBy": [
+      "protection_gap",
+      "net_retirement_cashflow"
     ]
   },
   {
@@ -9857,7 +10043,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -9888,7 +10074,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis",
@@ -9919,7 +10105,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis"
@@ -9949,7 +10135,7 @@ export const FIGURES_INDEX = Object.freeze([
     "checkedOnFrom": "catalogue",
     "catalogue": {
       "id": "planeir_assumptions",
-      "version": "planeir-assumptions-1.6.0"
+      "version": "planeir-assumptions-1.7.0"
     },
     "usedBy": [
       "liquidity_analysis"

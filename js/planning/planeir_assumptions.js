@@ -15,7 +15,7 @@
 
 import { marketFigure, marketFigureValue } from './figures/market_math.js';
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.6.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.7.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-21';
 
 const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
@@ -57,6 +57,43 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
     presentValueRate: 0.04,
     basis: 'A 4% a year after-tax growth rate is used to work out the fund needed today to pay for each year of retirement spending that other income does not cover.',
     disclosure: 'This is a planning assumption, not a guaranteed return. It is held separately from the long-term growth assumption used for pension pots.'
+  }),
+
+  /**
+   * What a death does to the money a household has: the protection gap's death
+   * case now, and the retirement-years run later. These are fixed rules, not
+   * questions: the household is never asked for any of them. A survivor's share a
+   * person volunteers for their own scheme is used instead of the central one.
+   * Approved 28 October 2026.
+   */
+  survivor: Object.freeze({
+    approvedOn: '2026-10-28',
+    /** The share of a defined benefit pension that is paid on to the spouse. */
+    dbSpousePensionShare: 0.5,
+    rules: Object.freeze({
+      qualifies: Object.freeze({
+        label: 'Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension',
+        value: 'Assumed to qualify, at the standard personal rate for their age band'
+      }),
+      diedStops: Object.freeze({
+        label: 'The person who died: their pay, pensions and State Pension',
+        value: 'They stop'
+      }),
+      statePensionNotPassed: Object.freeze({
+        label: 'A State Pension is passed to a partner',
+        value: 'Never'
+      }),
+      higherOfTwoStatePayments: Object.freeze({
+        label: 'A survivor who would also have their own State Pension',
+        value: 'Only the higher of the two is paid, which only arises once they are retired'
+      }),
+      dcAndArfPassToSpouse: Object.freeze({
+        label: 'A defined contribution pot not yet drawn, and an ARF',
+        value: 'Pass to the spouse'
+      })
+    }),
+    basis: 'When someone dies, their pay, pensions and State Pension stop, and a State Pension is never passed to a partner. The surviving partner is assumed to qualify for the Bereaved Partner’s (Contributory) Pension at the standard personal rate for their age band, and if they also have their own State Pension only the higher of the two is paid. A defined benefit pension pays the surviving spouse 50%, and a defined contribution pot not yet drawn and an ARF pass to the spouse.',
+    disclosure: 'These are planning assumptions, not a statement of what any scheme or the Department will pay. What is paid depends on eligibility and on the rules of each scheme.'
   }),
 
   cash: Object.freeze({

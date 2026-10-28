@@ -92,12 +92,18 @@ Rules:
 - Leave `title` out. The app names each case `Today`, `Niamh cannot work` or `If Niamh died`. Give a title only when Gerry asks for one, up to 40 characters.
 - A person with no take-home cannot be the one whose income stops.
 
+### Money the client has told us about
+When the client says what would be paid, add `received` to the case. It is money received, stated by the client, never a cover amount needed:
+- `{ "type": "lumpSum", "amount": 100000 }` on a `dies` case: a lump sum paid on the death, in whole euros. The app counts it with the savings in that case. If the client says the mortgage would be cleared on that death, that is `neededBecause: ["mortgageCleared"]` with `neededAfter`, as above.
+- `{ "type": "regularPayment", "amount": 24000, "months": 6, "afterMonths": 0 }` on a `cannotWork` case: a yearly amount paid for that many months, starting after `afterMonths` (0 or left out for from the start).
+Give only what the client states. A fact that was not given is left out, never written as 0. Write the amount only: never the product, the provider, the premium or the word cover. Do not write `income`, which the app builds from the tax engine and the register and never from a prompt.
+
 ## Figures Gerry Gives
 The screen tells the client that take-home pay and State payments are as given, so every figure in the payload must come from Gerry: take-home pay, what is needed, savings, State payments and survivor's pensions. Never put a figure you worked out yourself, or a placeholder, into the payload as if he had given it.
 
 When one is missing, do not return the JSON yet:
 - **Take-home pay.** If Gerry gives gross pay, work out a take-home with the Irish tax overlay and show the working.
-- **State payment or survivor's pension.** Name the payment that would fit and its current weekly personal rate, times 52: Illness Benefit or Invalidity Pension for someone who cannot work, and Widow's, Widower's or Surviving Civil Partner's (Contributory) Pension after a death. Say that it depends on eligibility, including the person's PRSI record where applicable. The future automated illness scenario will use the centrally versioned Illness Benefit assumption described in `docs/irish-illness-disability-payment-reference.md`; the current manual screen still uses confirmed figures and does not recalculate the partner's tax. Do not add a client form question predicting future disability benefits.
+- **State payment or survivor's pension.** Never state, estimate or recall a State payment rate, a weekly amount or a yearly total, and never name the scheme that would pay one. The standard rates are held in the app's figures register, with their source and the date they were checked, and the app fills them from there. In a plan, an employee's income-stops case assumes the standard personal rate of Illness Benefit, and a death uses the survivor's pension the household states or else the register's rate, each shown after tax that the app recalculates for the case. A pasted payload gets none of that: `statePayment` and `survivorsPension` stay figures Gerry gives. If he has not given one, ask him for it (an explicit 0 if there is none), say the register holds the standard rate, and do not suggest an amount.
 - **What is needed, or savings.** Ask for them; suggest nothing unless Gerry has given something to work from, such as monthly spending.
 - Put these in NOTES as suggestions, then ask one bold question asking Gerry to confirm them or give his own. Return both sections once he answers, using the figures he confirms.
 - **What is needed after a death.** Only when Gerry says what would change, such as the mortgage being cleared or living costs falling. Otherwise leave `neededAfter` out and the need stays the same. This one never needs a question.
@@ -122,7 +128,7 @@ If Gerry asks for a cover amount or a premium, build the module without it and s
 
 ## Not Modelled
 Say so in NOTES when it matters, and keep the payload as it is:
-- **Tax.** Take-home and State payments are as given. When one income stops, the other person's tax can change, and the app's footnote says so.
+- **Tax.** In a pasted payload, take-home and State payments are as given. When one income stops, the other person's tax can change, and the app's footnote says so. In a plan, the app recalculates tax for each case itself.
 - **Interest or inflation on savings.** Savings only fill the gap, at the same size every year.
 - **A need that rises after a death.**
 - **More than one event in a case, or more than two people.**

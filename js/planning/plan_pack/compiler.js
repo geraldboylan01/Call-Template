@@ -1,5 +1,5 @@
 import { normalizePlanPack, finiteJson, PlanPackError, fail } from './schema.js';
-import { buildChapter, routeContext, LaterStage } from './chapters.js';
+import { buildChapter, routeContext, LaterStage, protectionDefaultRequests } from './chapters.js';
 import { prepareResourceRoute, prepareCurrentPosition } from './resource_ledger.js';
 import { checkCasePack, checkModulePayload } from '../../module_pipeline.js';
 import { cloneJson, sha256Json } from '../utils.js';
@@ -92,7 +92,8 @@ function registeredPlaceholders(pack, resourceLedger) {
   }
   for (const chapter of pack.chapters) {
     for (const key of Object.keys(PLAN_PACK_METRIC_TYPES[chapter] ?? {})) keys.add(chapter + '.' + key);
-    if (chapter === 'protection_gap') for (const id of ['today', ...pack.planningInputs.protectionCases.map(c => c.id)]) {
+    if (chapter === 'protection_gap') for (const id of ['today', ...pack.planningInputs.protectionCases.map(c => c.id),
+      ...protectionDefaultRequests(pack.household, pack).map(request => request.id ?? (request.kind === 'death' ? request.personId + '-died' : request.personId + '-cannot-work'))]) {
       for (const key of ['moneyIn', 'gap', 'months']) keys.add(chapter + '.' + id + '.' + key);
     }
   }
