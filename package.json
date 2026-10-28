@@ -170,6 +170,7 @@
     "check:plan-pack-fixtures": "node ./scripts/check-plan-pack-fixtures.mjs",
     "check:plan-resource-ledger": "node ./scripts/check-plan-resource-ledger.mjs",
     "check:figures": "node ./scripts/check-figures.mjs",
+    "check:figure-links": "node ./scripts/check-figure-links.mjs",
     "build:figures": "node ./scripts/build-figures-index.mjs",
     "refresh:market-figures": "node ./scripts/refresh-market-figures.mjs",
     "check:market-refresh": "node ./scripts/check-market-refresh.mjs"

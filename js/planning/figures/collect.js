@@ -15,6 +15,10 @@
  * - the central Planeir assumptions (`planeir_assumptions.js`)
  * - the market figures (`figures/market_ie.js`)
  *
+ * The explainers (`figures/explainers_ie.js`) are not figures: they say how the
+ * rules behind the figures work. `collectFigures` marks each figure with the
+ * explainers that cover it, and `collectExplainers` lists them.
+ *
  * A catalogue that lands later (care costs: the Fair Deal rules and the HSE
  * price list) adds a function here and its entries appear in the register.
  *
@@ -25,6 +29,8 @@
  *   Pension view in the Irish rules) is not a second definition and is not listed.
  */
 
+import { attachExplainers, buildExplainers } from './explainers.js';
+import { EXPLAINERS, EXPLAINERS_VERSION } from './explainers_ie.js';
 import { formatFigureValue } from './format.js';
 import { FIGURE_MODULES, figureKindForStatus } from './kinds.js';
 import { MARKET_FIGURES, MARKET_FIGURES_VERSION } from './market_ie.js';
@@ -721,5 +727,14 @@ export function collectFigures() {
   if (unknown.length > 0) {
     throw new Error(`Figures name modules the register does not know: ${[...new Set(unknown)].join(', ')}.`);
   }
-  return out;
+  return attachExplainers(out, EXPLAINERS);
+}
+
+/**
+ * The explainers, each with the figures it covers. A figure carries the ids of
+ * the explainers that cover it (`explainers`, added by `collectFigures`), so a
+ * figure can name its explainer without a second list to keep in step.
+ */
+export function collectExplainers(figures = collectFigures()) {
+  return buildExplainers(EXPLAINERS, figures, EXPLAINERS_VERSION);
 }
