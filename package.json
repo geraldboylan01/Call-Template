@@ -108,6 +108,7 @@
     "check:dated-cost-contract": "node ./scripts/check-dated-cost-contract.mjs",
     "check:household-cash-flow": "node ./scripts/check-household-cash-flow.mjs",
     "check:protection-gap": "node ./scripts/check-protection-gap.mjs",
+    "check:state-pension-estimate": "node ./scripts/check-state-pension-estimate.mjs",
     "check:plan-story": "node ./scripts/check-plan-story.mjs",
     "check:plan-story-browser": "node ./scripts/check-plan-story-browser.mjs",
     "check:rental-keep-or-sell": "node ./scripts/check-rental-keep-or-sell.mjs",

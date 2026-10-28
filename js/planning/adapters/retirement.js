@@ -9,6 +9,7 @@ import {
 } from '../ireland_rules.js';
 import { NON_CONTRIBUTORY_PENSION_TYPES, hasOwnerConfirmedNone } from '../profile.js';
 import { monthYearText } from '../utils.js';
+import { estimateStateContributoryPension } from '../social_welfare_rules.js';
 import {
   annualExpenses,
   availableInvestmentAmount,
@@ -327,9 +328,22 @@ export function buildPensionProjectionInput(profile) {
       ? legacyIncludeSetting
       : getAssumption(profile, `retirement.includeStatePension.${ownerId}`, true);
     const rawFraction = getAssumption(profile, `retirement.statePensionFraction.${ownerId}`);
+    // No confirmed fraction: where the household has told us years paying PRSI and
+    // years caring at home, the fraction is the estimate under the Total
+    // Contributions Approach, with its basis recorded. Without those facts it is
+    // the full maximum this adapter has always assumed, and nothing is invented.
+    const contributions = getAssumption(profile, `retirement.statePensionContributions.${ownerId}`);
+    const estimate = includeStatePension === false || typeof rawFraction !== 'undefined' || !contributions
+      ? null
+      : estimateStateContributoryPension({
+        yearsPayingPrsi: contributions.yearsPayingPrsi,
+        yearsCaring: contributions.yearsCaring,
+        currentAge: person?.age,
+        workStopAge: person?.intendedRetirementAge
+      });
     const statePensionFraction = includeStatePension === false
       ? 0
-      : normalizeStatePensionFraction(rawFraction, 1);
+      : (estimate?.status === 'estimated' ? estimate.fraction : normalizeStatePensionFraction(rawFraction, 1));
     const activePensions = ownerPensions.filter((pension) => effectiveContributionStatus(pension) === 'active');
     const fundedPensions = ownerPensions.filter((pension) => pension.type !== 'defined_benefit');
     return {
@@ -343,6 +357,12 @@ export function buildPensionProjectionInput(profile) {
       employerPct: Math.min(1, sumKnown(activePensions.map((pension) => pension.employerContributionRate))),
       includeStatePension: statePensionFraction > 0,
       statePensionFraction,
+      ...(estimate ? {
+        statePensionYears: { yearsPayingPrsi: contributions.yearsPayingPrsi, yearsCaring: contributions.yearsCaring },
+        statePensionBasis: estimate.status === 'estimated'
+          ? estimate.basis
+          : `The full maximum is assumed, not estimated. ${estimate.basis}`
+      } : {}),
       statePensionStartAge: getAssumption(
         profile,
         `retirement.statePensionStartAge.${ownerId}`,

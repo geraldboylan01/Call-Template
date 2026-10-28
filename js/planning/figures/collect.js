@@ -42,7 +42,7 @@ import {
   IRISH_PENSION_RELIEF_LIMITS,
   IRISH_STATE_PENSION_CONTRIBUTORY
 } from '../ireland_rules.js';
-import { SOCIAL_WELFARE_RATES_VERSION, SOCIAL_WELFARE_SERIES } from '../social_welfare_ie.js';
+import { SOCIAL_WELFARE_RATES_VERSION, SOCIAL_WELFARE_SERIES, SOCIAL_WELFARE_THRESHOLDS } from '../social_welfare_ie.js';
 import {
   FHS_PRICE_CEILINGS,
   HOUSE_PURCHASE_RULES,
@@ -523,6 +523,21 @@ function collectSocialWelfare(out) {
         extra: { appliesTo: series.appliesTo, ...(series.aliases ? { aliases: series.aliases } : {}) }
       });
     }
+  }
+  for (const rule of SOCIAL_WELFARE_THRESHOLDS) {
+    add({
+      id: rule.id,
+      quantity: rule.id,
+      label: rule.label,
+      value: rule.value,
+      unit: rule.unit,
+      status: rule.status,
+      effectiveFrom: null,
+      sources: rule.sources,
+      checkedOn: rule.verifiedOn,
+      usedBy: ['pension_projection', 'net_retirement_cashflow'],
+      extra: rule.note ? { appliesTo: rule.note } : {}
+    });
   }
 }
 

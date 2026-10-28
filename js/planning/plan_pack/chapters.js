@@ -470,6 +470,12 @@ export async function buildChapter(context, pack, chapter) {
     if (targetSource?.paths.includes('retirement.income')) input.targetIncomeBasis = 'gross';
     for (const member of input.pensions) {
       if (profile.assumptions.values.retirement?.statePensionFraction?.[member.id] !== undefined) continue;
+      if (member.statePensionBasis) {
+        // An estimate from the person's own contribution years, with its basis recorded.
+        chapterAssumptions.push({ key: `statePensionFraction.${member.id}`, value: member.statePensionFraction, reason: member.statePensionBasis });
+        chapterWarnings.push(`The State Pension for ${member.id} is an estimate from years of contributions, not a confirmed entitlement.`);
+        continue;
+      }
       chapterAssumptions.push({ key: `statePensionFraction.${member.id}`, value: member.statePensionFraction,
         reason: 'Existing adviser-adapter illustration default, using the dated central maximum. No numeric entitlement was established for this person; retain the missing fact.' });
       chapterWarnings.push(`The State Pension fraction for ${member.id} is an illustration assumption, not a confirmed entitlement.`);
