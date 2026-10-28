@@ -9,7 +9,7 @@ import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.1.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.2.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -81,7 +81,8 @@ const PLAN_PACK_METRIC_TYPES = frozen({
   loan_analysis: { monthlyPayment: 'money', totalInterest: 'money', interestSaved: 'money' },
   pension_projection: { requiredPot: 'money', projectedPot: 'money', retirementYear: 'year' },
   net_retirement_cashflow: { requiredFundToday: 'money', availableInvestmentFundToday: 'money' },
-  college_funding: { firstCollegeYear: 'year', finalCollegeYear: 'year', fundingPeriodYears: 'number' }
+  college_funding: { firstCollegeYear: 'year', finalCollegeYear: 'year', fundingPeriodYears: 'number' },
+  future_cost_fund: { requiredToday: 'money', moneyNow: 'money', lumpSumToday: 'money', yearlyAmount: 'money', totalCost: 'money' }
 });
 function registeredPlaceholders(pack, resourceLedger) {
   const keys = new Set(['route.cashUsed', 'route.goalsMoved', 'route.goalChangeCount', 'plan.calculationDate', ...Object.keys(FIGURE_PLACEHOLDERS)]);
@@ -168,7 +169,7 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
       for (const chapter of pack.chapters) {
         try {
           const built = await buildChapter(context, pack, chapter);
-          const checked = checkModulePayload(built.payload);
+          const checked = checkModulePayload(built.payload, { calculationYear: Number(pack.calculationDate.slice(0, 4)) });
           if (!checked.ok) throw new PlanPackError('/chapters/' + pack.chapters.indexOf(chapter), checked.error, 'engine_refusal');
           const input = json(built.input);
           const builderVersion = built.moduleVersion ?? PLAN_PACK_COMPILER_VERSION;
@@ -194,7 +195,7 @@ export async function compilePlanPack(raw, { resourceLedger = false } = {}) {
         }
       }
       const casePack = { casePackVersion: 1, clientName: pack.clientName, modules: proposed.map(([, entry]) => entry.payload) };
-      const checkedPack = checkCasePack(casePack);
+      const checkedPack = checkCasePack(casePack, { calculationYear: Number(pack.calculationDate.slice(0, 4)) });
       if (!checkedPack.ok) fail('/routes/' + index, 'The existing case-pack validator refused the compiled route.', 'engine_refusal');
       const mapping = {};
       for (const [chapter, entry] of proposed) {

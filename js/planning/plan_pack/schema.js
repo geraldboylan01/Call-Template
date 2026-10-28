@@ -120,7 +120,7 @@ function normalizePlanning(raw, household) {
   unique(result.assetAssignments, 'assetId', path + '/assetAssignments');
   result.goalFundingFacts = array(value.goalFundingFacts ?? [], path + '/goalFundingFacts').map((entry, i) => {
     const here = path + '/goalFundingFacts/' + i;
-    object(entry, here, ['goalId', 'kind', 'dependantId', 'currentAnnualSaving', 'costKind', 'durationYears', 'debtTarget']);
+    object(entry, here, ['goalId', 'kind', 'dependantId', 'currentAnnualSaving', 'costKind', 'durationYears', 'debtTarget', 'payerIds', 'funding']);
     const next = { goalId: reference(entry.goalId, goals, here + '/goalId') };
     if (entry.kind !== undefined) {
       if (!['college', 'dated_cost', 'debt', 'retirement'].includes(entry.kind)) fail(here + '/kind', 'is not a supported funding kind.');
@@ -129,6 +129,15 @@ function normalizePlanning(raw, household) {
     if (entry.dependantId !== undefined) next.dependantId = reference(entry.dependantId, new Set(household.dependants.map(d => d.dependantId)), here + '/dependantId');
     if (entry.currentAnnualSaving !== undefined) next.currentAnnualSaving = number(entry.currentAnnualSaving, here + '/currentAnnualSaving');
     if (entry.durationYears !== undefined) next.durationYears = number(entry.durationYears, here + '/durationYears', { min: 1, integer: true });
+    if (entry.payerIds !== undefined) {
+      const members = new Set([household.primaryPerson, household.partner].filter(Boolean).map(person => person.personId));
+      next.payerIds = array(entry.payerIds, here + '/payerIds').map((payer, index) => reference(payer, members, here + '/payerIds/' + index));
+      if (!next.payerIds.length || new Set(next.payerIds).size !== next.payerIds.length) fail(here + '/payerIds', 'name each payer once.');
+    }
+    if (entry.funding !== undefined) {
+      if (!['save_then_pay', 'each_year'].includes(entry.funding)) fail(here + '/funding', 'must be save_then_pay or each_year; a lump sum is a route useCash change.');
+      next.funding = entry.funding;
+    }
     if (entry.costKind !== undefined) {
       if (!['education', 'general'].includes(entry.costKind)) fail(here + '/costKind', 'must be education or general.');
       next.costKind = entry.costKind;

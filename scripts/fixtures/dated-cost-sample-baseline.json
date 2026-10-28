@@ -1,0 +1,106 @@
+{
+  "future": {
+    "totalCost": 87173.68806090273,
+    "requiredToday": 86066.1822762033,
+    "cases": [
+      {
+        "id": "lump",
+        "lumpSumToday": 86066.1822762033,
+        "yearlyAmount": 0,
+        "paidIn": 86066.1822762033,
+        "growth": 1107.5057846994314,
+        "openingBalanceAtCostStart": 86993.15049859688
+      },
+      {
+        "id": "yearly",
+        "lumpSumToday": 0,
+        "yearlyAmount": 10808.76277637173,
+        "paidIn": 86470.10221097384,
+        "growth": 703.5858499288879,
+        "openingBalanceAtCostStart": 86993.15049859691
+      },
+      {
+        "id": "half",
+        "lumpSumToday": 43033.09113810165,
+        "yearlyAmount": 5404.381388185865,
+        "paidIn": 86268.14224358858,
+        "growth": 905.5458173141524,
+        "openingBalanceAtCostStart": 86993.15049859691
+      },
+      {
+        "id": "delayed",
+        "lumpSumToday": 0,
+        "yearlyAmount": 17328.84356076705,
+        "paidIn": 86644.21780383526,
+        "growth": 529.4702570674708,
+        "openingBalanceAtCostStart": 86993.1504985969
+      }
+    ],
+    "costYears": [
+      {
+        "yearIndex": 8,
+        "cost": 20528.53575607911
+      },
+      {
+        "yearIndex": 9,
+        "cost": 21349.677186322275
+      },
+      {
+        "yearIndex": 10,
+        "cost": 22203.664273775164
+      },
+      {
+        "yearIndex": 11,
+        "cost": 23091.810844726173
+      }
+    ]
+  },
+  "college": [
+    {
+      "id": "living_at_home",
+      "costToday": 20000,
+      "nominalCost": 29057.89602030091,
+      "costByYear": [
+        {
+          "year": 2034,
+          "cost": 6842.845252026369
+        },
+        {
+          "year": 2035,
+          "cost": 7116.559062107425
+        },
+        {
+          "year": 2036,
+          "cost": 7401.221424591722
+        },
+        {
+          "year": 2037,
+          "cost": 7697.270281575391
+        }
+      ]
+    },
+    {
+      "id": "living_away",
+      "costToday": 60000,
+      "nominalCost": 87173.68806090273,
+      "costByYear": [
+        {
+          "year": 2034,
+          "cost": 20528.53575607911
+        },
+        {
+          "year": 2035,
+          "cost": 21349.677186322275
+        },
+        {
+          "year": 2036,
+          "cost": 22203.664273775164
+        },
+        {
+          "year": 2037,
+          "cost": 23091.810844726173
+        }
+      ]
+    }
+  ]
+}
