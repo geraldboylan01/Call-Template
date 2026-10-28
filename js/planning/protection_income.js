@@ -70,6 +70,9 @@ const ILLNESS_BENEFIT_WEEKS = 52;
 /** The months the default counts the payment for. */
 export const ILLNESS_BENEFIT_MONTHS = 12;
 
+const SURVIVOR_RULE_PREFIX = 'planeir.assumption.survivor_rule.';
+const SURVIVOR_DB_SHARE_ID = 'planeir.assumption.survivor_db_spouse_pension_share';
+
 const EMPLOYMENT_ITEM = 'employment';
 const PENSION_CONTRIBUTION_ITEM = 'employmentPensionContribution';
 const CENT = 1e-9;
@@ -77,11 +80,11 @@ const CENT = 1e-9;
 /* ----------------------------------------------------------------- scope */
 
 const SCOPE_REASONS = Object.freeze({
-  self_employed: 'No State payment has been assumed for self-employment. Give the payment expected, or confirm there is none.',
-  contractor: 'No State payment has been assumed, because it is not confirmed whether this is employment or self-employment. Give the payment expected, or confirm the employment.',
-  retired: 'No State payment has been assumed for someone who is retired. Give the payment expected, or confirm there is none.',
-  other: 'No State payment has been assumed, because the work is not described as employment. Give the payment expected, or confirm there is none.',
-  unknown: 'No State payment has been assumed, because employment has not been confirmed. Confirm that this is employment, or give the payment expected.',
+  self_employed: 'The standard Illness Benefit assumption is not used for self-employment, because Class S PRSI does not cover Illness Benefit.',
+  contractor: 'The standard Illness Benefit assumption is not used for contractor work, which is treated as self-employment, because Class S PRSI does not cover Illness Benefit.',
+  retired: 'The standard Illness Benefit assumption is not used for someone who is retired.',
+  other: 'The standard Illness Benefit assumption is not used until the work is confirmed as employment.',
+  unknown: 'The standard Illness Benefit assumption is not used until the work is confirmed as employment.',
   no_employment_income: 'There is no employment income to stop, so there is no income-stops case.'
 });
 
@@ -135,6 +138,34 @@ function registerRate(quantity, year) {
 
 function bereavedPartnerQuantity(age) {
   return BEREAVED_PARTNER_QUANTITIES.find((band) => age < band.upToAge).quantity;
+}
+
+/**
+ * What the story needs to explain an assumption: the register's own words for it,
+ * its source, the day it was checked and the catalogue version. Read from the
+ * register, never typed here.
+ */
+function provenance(figures) {
+  return figures.map((figure) => ({
+    id: figure.id,
+    label: figure.label,
+    valueShown: figure.valueShown,
+    status: figure.status,
+    effectiveFrom: figure.effectiveFrom,
+    checkedOn: figure.checkedOn,
+    catalogueVersion: figure.catalogueVersion,
+    source: { title: figure.source.title, url: figure.source.url }
+  }));
+}
+
+function registerFigures(ids) {
+  return getFigures({ ids });
+}
+
+/** The central rules a death follows, from the register, in a fixed order. */
+function survivorRuleFigures({ includeQualifies }) {
+  const rules = getFigures({ kinds: ['planeir_assumption'] }).filter((figure) => figure.id.startsWith(SURVIVOR_RULE_PREFIX));
+  return rules.filter((figure) => includeQualifies || !figure.id.endsWith('.qualifies'));
 }
 
 /* ------------------------------------------------------------- the maths */
@@ -270,7 +301,8 @@ function copyFacts(facts) {
     age: person.age,
     employment: person.employment,
     personalPensionContribution: person.personalPensionContribution || 0,
-    anchorTakeHome: typeof person.anchorTakeHome === 'number' ? person.anchorTakeHome : null
+    anchorTakeHome: typeof person.anchorTakeHome === 'number' ? person.anchorTakeHome : null,
+    definedBenefit: person.definedBenefit === true
   }));
   return { year: facts.year, status: facts.taxStatus, people, income: facts.income.map((item) => ({ ...item })) };
 }
@@ -303,6 +335,10 @@ function employmentIncomeOf(facts, personId) {
 
 function otherIncomeOf(facts, personId) {
   return sum(facts.income.filter((item) => item.personId === personId && item.type !== EMPLOYMENT_ITEM).map((item) => item.amount));
+}
+
+function otherIncomeOfType(facts, personId, type) {
+  return sum(facts.income.filter((item) => item.personId === personId && item.type === type).map((item) => item.amount));
 }
 
 function hasJointIncome(facts) {
@@ -457,6 +493,8 @@ function incomeStopsCase(facts, today, request) {
         phases
       }
     },
+    assumptions: stated ? [] : provenance(registerFigures([figure.figure.id])),
+    notes: [],
     reconciliation: {
       engineNetIncome: withPayment.netIncome,
       personalPension: withPayment.contributions,
@@ -477,6 +515,15 @@ function deathCase(facts, today, request) {
   }
   if (!(today.byPerson[gone.id].bank > 0)) {
     return notShown(request, 'no_income_to_stop', 'There is no take-home to stop.');
+  }
+  // Only the higher of a survivor's own State Pension and the Bereaved Partner's (Contributory) Pension is paid.
+  // That is a rule for the retirement years, so a survivor who already has a State Pension is not shown here.
+  if (otherIncomeOfType(facts, facts.people.find((entry) => entry.id !== request.personId).id, 'statePension') > 0) {
+    return notShown(
+      request,
+      'survivor_has_state_pension',
+      'The survivor already has a State Pension, and only the higher of that and the Bereaved Partner’s (Contributory) Pension is paid. That rule is used in the retirement years, not in this illustration.'
+    );
   }
 
   const stated = typeof request.survivorsPension === 'number';
@@ -546,6 +593,14 @@ function deathCase(facts, today, request) {
         phases: [buildPhase(facts, { takeHome: { [gone.id]: 0, [survivor.id]: anchored }, payment })]
       }
     },
+    assumptions: provenance([
+      ...(stated ? [] : registerFigures([figure.figure.id])),
+      ...survivorRuleFigures({ includeQualifies: !stated }),
+      ...(gone.definedBenefit ? registerFigures([SURVIVOR_DB_SHARE_ID]) : [])
+    ]),
+    notes: gone.definedBenefit
+      ? [`${gone.label}’s defined benefit pension would pay the survivor ${registerFigures([SURVIVOR_DB_SHARE_ID])[0].valueShown} of it, a central assumption. Its amount is not recorded, so nothing is counted for it.`]
+      : [],
     reconciliation: {
       engineNetIncome,
       personalPension: salaryRun.contributions,

@@ -857,7 +857,7 @@ export function runProtectionGapTests() {
     const entry = computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, dies] }).debug.cases[1];
     assertEqual(entry.segments[0].label, 'Survivor’s pension', 'the label');
     assertEqual(entry.segments[0].amount, 13_194, 'the amount, after tax');
-    assert(entry.sentence.startsWith('Niamh’s take-home stops and a survivor’s pension starts, shown after estimated tax. Assumes the standard personal rate of the Bereaved Partner’s Contributory Pension.'), entry.sentence);
+    assert(entry.sentence.startsWith('Niamh’s take-home stops and a survivor’s pension starts, shown after estimated tax. Assumes the standard personal rate of the Bereaved Partner’s (Contributory) Pension.'), entry.sentence);
     assertEqual(entry.intervals.length, 1, 'a survivor’s pension carries on, so one stretch');
     const stated = computeProtectionGapProjection({ ...PROTECTION_GAP_SAMPLE, scenarios: [{ id: 'today' }, {
       ...dies,

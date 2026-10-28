@@ -251,7 +251,7 @@ const TAX_YEAR_2026 = Object.freeze({
         sources: Object.freeze([S.revenueIllnessBenefit, S.revenueEmployeeCredit, S.revenueJointAssessment])
       }),
       /**
-       * The Bereaved Partner's Contributory Pension is taxable Department of
+       * The Bereaved Partner's (Contributory) Pension is taxable Department of
        * Social Protection income, treated exactly like Illness Benefit: income
        * tax only, the recipient's own income, never entered as a State Pension.
        */

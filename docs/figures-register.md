@@ -11,13 +11,13 @@ Every figure that can change: law, market prices and Planeir's own assumptions, 
 | Market | A price or rate that moves on its own, worked out from the quotes it was read from | The weekly job adds quotes; code does the arithmetic |
 | Planeir assumption | A choice Planeir makes | A person only; a job never changes these |
 
-Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Total 288.
+Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 33. Total 294.
 
 **Checked.** The day the value was read against its source. † means the figure has no check date of its own and shows the date its catalogue was last verified. ‡ means a Planeir choice with no review recorded, so the date shown is the day it was set.
 
 **From.** The day the value takes effect. A dash means the source states no date. A rule that a later tax year carries over unchanged is listed once, for the year it first took effect.
 
-Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.6.0`; Market figures `ie-market-2026.2`.
+Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.7.0`; Market figures `ie-market-2026.2`.
 
 ## Irish tax rules
 
@@ -403,7 +403,7 @@ Catalogue version `house-purchase-rules-2026.10`. 131 figures.
 
 ## Planeir central assumptions
 
-Catalogue version `planeir-assumptions-1.6.0`. 12 figures.
+Catalogue version `planeir-assumptions-1.7.0`. 18 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
@@ -415,6 +415,12 @@ Catalogue version `planeir-assumptions-1.6.0`. 12 figures.
 | Years of college assumed for each child | 4 years | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, goals_and_resources | `planeir.assumption.college_duration_years` |
 | Yearly college cost per child in today’s money, living at home | €5,000 a year | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, goals_and_resources | `planeir.assumption.college_annual_cost.living_at_home` |
 | Yearly college cost per child in today’s money, living away from home | €15,000 a year | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | college_funding, goals_and_resources | `planeir.assumption.college_annual_cost.living_away` |
+| Share of a defined benefit pension paid on to the surviving spouse | 50% | — | approved | Planeir central planning assumptions, approved 28 October 2026 | 2026-10-28 | protection_gap, net_retirement_cashflow | `planeir.assumption.survivor_db_spouse_pension_share` |
+| Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension | Assumed to qualify, at the standard personal rate for their age band | — | approved | Planeir central planning assumptions, approved 28 October 2026 | 2026-10-28 | protection_gap, net_retirement_cashflow | `planeir.assumption.survivor_rule.qualifies` |
+| The person who died: their pay, pensions and State Pension | They stop | — | approved | Planeir central planning assumptions, approved 28 October 2026 | 2026-10-28 | protection_gap, net_retirement_cashflow | `planeir.assumption.survivor_rule.diedStops` |
+| A State Pension is passed to a partner | Never | — | approved | Planeir central planning assumptions, approved 28 October 2026 | 2026-10-28 | protection_gap, net_retirement_cashflow | `planeir.assumption.survivor_rule.statePensionNotPassed` |
+| A survivor who would also have their own State Pension | Only the higher of the two is paid, which only arises once they are retired | — | approved | Planeir central planning assumptions, approved 28 October 2026 | 2026-10-28 | protection_gap, net_retirement_cashflow | `planeir.assumption.survivor_rule.higherOfTwoStatePayments` |
+| A defined contribution pot not yet drawn, and an ARF | Pass to the spouse | — | approved | Planeir central planning assumptions, approved 28 October 2026 | 2026-10-28 | protection_gap, net_retirement_cashflow | `planeir.assumption.survivor_rule.dcAndArfPassToSpouse` |
 | Cash reserve floor for a working household, in months of spending | 3 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis, house_purchase | `planeir.assumption.reserve_months.working.minimum` |
 | Cash reserve target for a working household, in months of spending | 6 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis, house_purchase | `planeir.assumption.reserve_months.working.target` |
 | Cash reserve floor for a retired household, in months of spending | 12 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis | `planeir.assumption.reserve_months.retired.minimum` |

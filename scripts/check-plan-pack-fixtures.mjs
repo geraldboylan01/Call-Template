@@ -202,7 +202,7 @@ await test('The Illness Benefit default never applies silently to self-employmen
   pack.household.partner.employmentStatus='self_employed';
   const entry=entryFor(await compilePlanPack(pack),'protection_gap','current');
   assert.ok(!entry.input.scenarios.some(c=>c.id==='dara-cannot-work'),'no case for the self-employed person');
-  assert.ok(entry.warnings.some(w=>w.includes('self-employment')&&w.includes('No State payment has been assumed')),JSON.stringify(entry.warnings));
+  assert.ok(entry.warnings.some(w=>w.includes('self-employment')&&w.includes('Class S PRSI does not cover Illness Benefit')),JSON.stringify(entry.warnings));
   assert.ok(entry.assumptionsUsed.find(a=>a.key==='protectionIncome').value.notShown.some(n=>n.code==='self_employed'));
   assert.ok(entry.input.scenarios.some(c=>c.id==='niamh-cannot-work'),'the employee still has theirs');
 });

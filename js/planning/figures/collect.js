@@ -666,6 +666,11 @@ function collectPlaneirAssumptions(out) {
   for (const scenario of a.collegeFunding.scenarios) {
     row(`college_annual_cost.${scenario.id}`, `Yearly college cost per child in today’s money, ${scenario.title.toLowerCase()}`, scenario.annualCostTodayPerChild, 'eur_a_year', approved, ['college_funding', 'goals_and_resources']);
   }
+  const survivor = a.survivor;
+  row('survivor_db_spouse_pension_share', 'Share of a defined benefit pension paid on to the surviving spouse', survivor.dbSpousePensionShare, 'rate', approved, ['protection_gap', 'net_retirement_cashflow'], survivor.approvedOn);
+  for (const [key, rule] of Object.entries(survivor.rules)) {
+    row(`survivor_rule.${key}`, rule.label, rule.value, 'text', approved, ['protection_gap', 'net_retirement_cashflow'], survivor.approvedOn);
+  }
   const reserve = (key, who) => {
     row(`reserve_months.${key}.minimum`, `Cash reserve floor for a ${who} household, in months of spending`, a.liquidity[key].minimumBufferMonths, 'months', approved, ['liquidity_analysis', ...(key === 'working' ? ['house_purchase'] : [])]);
     row(`reserve_months.${key}.target`, `Cash reserve target for a ${who} household, in months of spending`, a.liquidity[key].targetBufferMonths, 'months', approved, ['liquidity_analysis', ...(key === 'working' ? ['house_purchase'] : [])]);

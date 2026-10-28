@@ -738,7 +738,7 @@ function durationText(months) {
 }
 
 const ILLNESS_BENEFIT_ASSUMPTION = 'Assumes the standard personal rate of Illness Benefit';
-const BEREAVED_PENSION_ASSUMPTION = 'Assumes the standard personal rate of the Bereaved Partner’s Contributory Pension';
+const BEREAVED_PENSION_ASSUMPTION = 'Assumes the standard personal rate of the Bereaved Partner’s (Contributory) Pension';
 
 /**
  * The words a case adds when its State payment came from a rate, or when it

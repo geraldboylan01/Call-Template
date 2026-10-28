@@ -93,17 +93,18 @@ export function runProtectionIncomeTests() {
   cases.push(runCase('Scope: only a confirmed employee with employment income gets the Illness Benefit default', () => {
     assertEqual(illnessBenefitScope({ employment: 'employee', employmentIncome: 40_000 }).applies, true, 'an employee');
     [
-      ['self_employed', 'self_employed', /self-employment/],
+      ['self_employed', 'self_employed', /self-employment, because Class S PRSI does not cover Illness Benefit/],
       ['retired', 'retired', /retired/],
-      ['contractor', 'contractor', /employment or self-employment/],
-      ['other', 'other', /not described as employment/],
-      [undefined, 'unknown', /has not been confirmed/],
-      ['unknown', 'unknown', /has not been confirmed/]
+      ['contractor', 'contractor', /self-employment, because Class S PRSI/],
+      ['other', 'other', /until the work is confirmed as employment/],
+      [undefined, 'unknown', /until the work is confirmed as employment/],
+      ['unknown', 'unknown', /until the work is confirmed as employment/]
     ].forEach(([employment, code, pattern]) => {
       const scope = illnessBenefitScope({ employment, employmentIncome: 40_000 });
       assertEqual(scope.applies, false, `${employment}: not applied`);
       assertEqual(scope.code, code, `${employment}: code`);
       assert(pattern.test(scope.reason), `${employment}: reason "${scope.reason}"`);
+      assert(!/payment (expected|you expect)|give the/i.test(scope.reason), `${employment}: a reason never asks anyone for a payment`);
     });
     assertEqual(illnessBenefitScope({ employment: 'employee', employmentIncome: 0 }).code, 'no_employment_income', 'an employee with no employment income');
   }));
@@ -215,7 +216,7 @@ export function runProtectionIncomeTests() {
       const found = onlyCase(facts, stops('dara'));
       assertEqual(found.shown, false, `${employment}: not shown`);
       assert(typeof found.reason === 'string' && found.reason.length > 20, `${employment}: a reason is given`);
-      assert(!/Illness Benefit/.test(found.reason) || /No State payment has been assumed/.test(found.reason), `${employment}: the reason says nothing was assumed`);
+      assert(/standard Illness Benefit assumption is not used/.test(found.reason), `${employment}: the reason says the assumption is not used`);
       assertEqual(found.scenario, undefined, `${employment}: no case is made`);
     });
     // A payment the person states is used as given, for anyone.
@@ -336,6 +337,47 @@ export function runProtectionIncomeTests() {
     const lone = onlyCase(SINGLE, { kind: 'death', personId: 'ann' });
     assertEqual(lone.shown, false, 'a household of one has no survivor');
     assertEqual(lone.code, 'needs_two_people', 'and says so');
+  }));
+
+  cases.push(runCase('Every assumption carries its source and checked date from the register, so the story can explain it', () => {
+    const facts = withFacts(COUPLE, {});
+    facts.people[0].definedBenefit = true;
+    const ill = onlyCase(facts, stops('dara'));
+    assertEqual(ill.assumptions.length, 1, 'the Illness Benefit rate');
+    const [rate] = ill.assumptions;
+    assertEqual(rate.id, ill.scenario.income.phases[0].statePayment.figure.id, 'the same register entry the payment names');
+    assertEqual(rate.valueShown, '€254 a week', 'the register’s own words for the value');
+    assert(/^\d{4}-\d{2}-\d{2}$/.test(rate.checkedOn) && rate.source.url.startsWith('https://'), 'a checked date and a source');
+    assertEqual(rate.catalogueVersion, ill.scenario.income.versions.socialWelfare, 'and the catalogue version');
+
+    const death = onlyCase(facts, { kind: 'death', personId: 'niamh' });
+    const ids = death.assumptions.map((entry) => entry.id);
+    assert(ids.some((id) => /bereaved_partners_contributory\.personal_under_66\.from_2026_01_01$/.test(id)), 'the survivor’s pension rate');
+    ['qualifies', 'diedStops', 'statePensionNotPassed', 'higherOfTwoStatePayments', 'dcAndArfPassToSpouse'].forEach((key) => {
+      assert(ids.includes(`planeir.assumption.survivor_rule.${key}`), `the rule ${key} is in the register and returned`);
+    });
+    assert(ids.includes('planeir.assumption.survivor_db_spouse_pension_share'), 'the defined benefit share');
+    death.assumptions.forEach((entry) => assert(entry.checkedOn && entry.source.title && entry.catalogueVersion, `${entry.id} has a source, a date and a version`));
+    assertEqual(death.assumptions.find((entry) => entry.id.endsWith('spouse_pension_share')).valueShown, '50%', 'the central 50%');
+    assertEqual(death.notes.length, 1, 'a defined benefit pension with no amount is disclosed');
+    assert(/Niamh’s defined benefit pension would pay the survivor 50% of it, a central assumption\. Its amount is not recorded, so nothing is counted for it\./.test(death.notes[0]), death.notes[0]);
+
+    const noDb = onlyCase(withFacts(COUPLE, {}), { kind: 'death', personId: 'niamh' });
+    assertEqual(noDb.notes.length, 0, 'no pension, no note');
+    assert(!noDb.assumptions.some((entry) => entry.id.endsWith('spouse_pension_share')), 'and no share');
+    const stated = onlyCase(withFacts(COUPLE, {}), { kind: 'death', personId: 'niamh', survivorsPension: 9_000 });
+    assert(!stated.assumptions.some((entry) => /bereaved_partners|survivor_rule\.qualifies/.test(entry.id)), 'a stated pension assumes no qualifying and no rate');
+    assert(stated.assumptions.some((entry) => entry.id.endsWith('survivor_rule.statePensionNotPassed')), 'but the fixed rules still apply');
+    assert(death.scenario.income.phases[0].statePayment.scheme === 'bereavedPartnerPension', 'and the survivor’s payment is the register’s rate when nothing is stated');
+  }));
+
+  cases.push(runCase('A survivor who already has a State Pension is not shown a Bereaved Partner’s (Contributory) Pension: only the higher of the two is paid, which is a rule for the retirement years', () => {
+    const facts = withFacts(COUPLE, {});
+    facts.income.push({ personId: 'dara', type: 'statePension', amount: 15_000 });
+    const found = onlyCase(facts, { kind: 'death', personId: 'niamh' });
+    assertEqual(found.shown, false, 'not shown');
+    assertEqual(found.code, 'survivor_has_state_pension', 'the code');
+    assert(/only the higher of that and the Bereaved Partner’s \(Contributory\) Pension is paid/.test(found.reason), found.reason);
   }));
 
   cases.push(runCase('Every case the adapter makes is accepted by the protection gap engine and speaks in its approved words', () => {

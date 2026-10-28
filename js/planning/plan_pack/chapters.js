@@ -292,7 +292,8 @@ function protectionIncomeFacts(context, pack, protectionPeople) {
         age: person.age,
         employment: person.employmentStatus,
         personalPensionContribution: currentPension(profile, pack, person.personId),
-        anchorTakeHome: protectionPeople[index].takeHome
+        anchorTakeHome: protectionPeople[index].takeHome,
+        definedBenefit: profile.pensions.some(pension => pension.ownerId === person.personId && pension.type === 'defined_benefit')
       };
     }),
     income: householdIncomeItems(profile)
@@ -414,10 +415,12 @@ export async function buildChapter(context, pack, chapter) {
       input.scenarios.push(...shown.map(entry => entry.scenario));
       const named = id => input.people.find(person => person.id === id)?.label ?? id;
       for (const entry of built.cases.filter(row => !row.shown)) warnings.push(named(entry.personId) + ': ' + entry.reason);
+      for (const entry of shown) warnings.push(...entry.notes);
       assumptionsUsed.push({ key: 'protectionIncome', value: {
         today: { year: built.today.year, versions: built.today.versions, creditAllocation: built.today.creditAllocation },
         cases: shown.map(entry => ({ id: entry.id, basis: entry.scenario.income.basis, calculationYear: entry.scenario.income.calculationYear,
-          versions: entry.scenario.income.versions, creditAllocation: entry.scenario.income.creditAllocation, reconciliation: entry.reconciliation })),
+          versions: entry.scenario.income.versions, creditAllocation: entry.scenario.income.creditAllocation, reconciliation: entry.reconciliation,
+          assumptions: entry.assumptions, notes: entry.notes })),
         notShown: built.cases.filter(row => !row.shown).map(row => ({ id: row.id, personId: row.personId, code: row.code, reason: row.reason }))
       } });
       basis = pay.estimated ? 'includes_estimated_bank_pay_with_recalculated_tax_and_register_state_payments'

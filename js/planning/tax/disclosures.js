@@ -231,7 +231,7 @@ export const TAX_DISCLOSURE_CATALOGUE = Object.freeze({
     kind: 'applied',
     label: 'Bereaved Partner’s Pension',
     render: () => (
-      'The Bereaved Partner’s Contributory Pension is taxed as the recipient’s own income, with no USC or PRSI. '
+      'The Bereaved Partner’s (Contributory) Pension is taxed as the recipient’s own income, with no USC or PRSI. '
       + 'It earns their Employee Tax Credit.'
     )
   },

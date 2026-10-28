@@ -909,7 +909,7 @@
           },
           {
             "key": "assumptionsVersion",
-            "value": "planeir-assumptions-1.6.0"
+            "value": "planeir-assumptions-1.7.0"
           },
           {
             "key": "taxStatus",
@@ -950,12 +950,12 @@
           {
             "key": "investmentGrowthRate",
             "value": 0.05,
-            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "inflationRate",
             "value": 0.02,
-            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "statePensionContributory",
@@ -979,22 +979,22 @@
           {
             "key": "collegeAnnualCostsToday",
             "value": "Living at home: €5,000 a year per child; Living away from home: €15,000 a year per child",
-            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.6.0)"
+            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "educationInflationRate",
             "value": 0.04,
-            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.6.0)"
+            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "collegeStartAge",
             "value": 18,
-            "reason": "Standard assumed college start age (planeir-assumptions-1.6.0)."
+            "reason": "Standard assumed college start age (planeir-assumptions-1.7.0)."
           },
           {
             "key": "collegeDurationYears",
             "value": 4,
-            "reason": "Four years of college for each child (planeir-assumptions-1.6.0)."
+            "reason": "Four years of college for each child (planeir-assumptions-1.7.0)."
           }
         ],
         "warnings": [
@@ -1015,7 +1015,7 @@
                 "year": 2026,
                 "versions": {
                   "taxRules": "ie-tax-2026.7",
-                  "assumptions": "planeir-assumptions-1.6.0"
+                  "assumptions": "planeir-assumptions-1.7.0"
                 },
                 "creditAllocation": "allocated"
               },
@@ -1026,7 +1026,7 @@
                   "calculationYear": 2026,
                   "versions": {
                     "taxRules": "ie-tax-2026.7",
-                    "assumptions": "planeir-assumptions-1.6.0",
+                    "assumptions": "planeir-assumptions-1.7.0",
                     "socialWelfare": "ie-social-welfare-2026.2"
                   },
                   "creditAllocation": "allocated",
@@ -1035,7 +1035,23 @@
                     "personalPension": 2400,
                     "statedPayAdjustment": -1184.1800000000003,
                     "statedPaymentAdded": 0
-                  }
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.2",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
                 },
                 {
                   "id": "partner-cannot-work",
@@ -1043,7 +1059,7 @@
                   "calculationYear": 2026,
                   "versions": {
                     "taxRules": "ie-tax-2026.7",
-                    "assumptions": "planeir-assumptions-1.6.0",
+                    "assumptions": "planeir-assumptions-1.7.0",
                     "socialWelfare": "ie-social-welfare-2026.2"
                   },
                   "creditAllocation": "allocated",
@@ -1052,7 +1068,23 @@
                     "personalPension": 6560,
                     "statedPayAdjustment": 1184.3699999999953,
                     "statedPaymentAdded": 0
-                  }
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.2",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
                 },
                 {
                   "id": "primary-died",
@@ -1060,7 +1092,7 @@
                   "calculationYear": 2026,
                   "versions": {
                     "taxRules": "ie-tax-2026.7",
-                    "assumptions": "planeir-assumptions-1.6.0",
+                    "assumptions": "planeir-assumptions-1.7.0",
                     "socialWelfare": "ie-social-welfare-2026.2"
                   },
                   "creditAllocation": "own",
@@ -1069,7 +1101,88 @@
                     "personalPension": 2400,
                     "statedPayAdjustment": -1184.1800000000003,
                     "statedPaymentAdded": 0
-                  }
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+                      "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, under 66",
+                      "valueShown": "€259.50 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.2",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.qualifies",
+                      "label": "Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension",
+                      "valueShown": "Assumed to qualify, at the standard personal rate for their age band",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.diedStops",
+                      "label": "The person who died: their pay, pensions and State Pension",
+                      "valueShown": "They stop",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.statePensionNotPassed",
+                      "label": "A State Pension is passed to a partner",
+                      "valueShown": "Never",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+                      "label": "A survivor who would also have their own State Pension",
+                      "valueShown": "Only the higher of the two is paid, which only arises once they are retired",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+                      "label": "A defined contribution pot not yet drawn, and an ARF",
+                      "valueShown": "Pass to the spouse",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    }
+                  ],
+                  "notes": []
                 }
               ],
               "notShown": []
@@ -1532,7 +1645,7 @@
           },
           {
             "key": "assumptionsVersion",
-            "value": "planeir-assumptions-1.6.0"
+            "value": "planeir-assumptions-1.7.0"
           },
           {
             "key": "taxStatus",
@@ -1560,12 +1673,12 @@
           {
             "key": "investmentGrowthRate",
             "value": 0.05,
-            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "inflationRate",
             "value": 0.02,
-            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "statePensionContributory",
@@ -1604,7 +1717,7 @@
                 "year": 2026,
                 "versions": {
                   "taxRules": "ie-tax-2026.7",
-                  "assumptions": "planeir-assumptions-1.6.0"
+                  "assumptions": "planeir-assumptions-1.7.0"
                 },
                 "creditAllocation": "own"
               },
@@ -1615,7 +1728,7 @@
                   "calculationYear": 2026,
                   "versions": {
                     "taxRules": "ie-tax-2026.7",
-                    "assumptions": "planeir-assumptions-1.6.0",
+                    "assumptions": "planeir-assumptions-1.7.0",
                     "socialWelfare": "ie-social-welfare-2026.2"
                   },
                   "creditAllocation": "own",
@@ -1624,7 +1737,23 @@
                     "personalPension": 0,
                     "statedPayAdjustment": -0.43000000000029104,
                     "statedPaymentAdded": 0
-                  }
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.2",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
                 },
                 {
                   "id": "partner-cannot-work",
@@ -1632,7 +1761,7 @@
                   "calculationYear": 2026,
                   "versions": {
                     "taxRules": "ie-tax-2026.7",
-                    "assumptions": "planeir-assumptions-1.6.0",
+                    "assumptions": "planeir-assumptions-1.7.0",
                     "socialWelfare": "ie-social-welfare-2026.2"
                   },
                   "creditAllocation": "own",
@@ -1641,7 +1770,23 @@
                     "personalPension": 9600,
                     "statedPayAdjustment": 0.11999999999534339,
                     "statedPaymentAdded": 0
-                  }
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.illness_benefit.personal_highest.from_2026_01_01",
+                      "label": "Illness Benefit, highest weekly personal rate",
+                      "valueShown": "€254 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.2",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    }
+                  ],
+                  "notes": []
                 },
                 {
                   "id": "primary-died",
@@ -1649,7 +1794,7 @@
                   "calculationYear": 2026,
                   "versions": {
                     "taxRules": "ie-tax-2026.7",
-                    "assumptions": "planeir-assumptions-1.6.0",
+                    "assumptions": "planeir-assumptions-1.7.0",
                     "socialWelfare": "ie-social-welfare-2026.2"
                   },
                   "creditAllocation": "own",
@@ -1658,7 +1803,88 @@
                     "personalPension": 0,
                     "statedPayAdjustment": -0.43000000000029104,
                     "statedPaymentAdded": 0
-                  }
+                  },
+                  "assumptions": [
+                    {
+                      "id": "ie.social_welfare.bereaved_partners_contributory.personal_under_66.from_2026_01_01",
+                      "label": "Bereaved Partner’s (Contributory) Pension, highest weekly personal rate, under 66",
+                      "valueShown": "€259.50 a week",
+                      "status": "in_force",
+                      "effectiveFrom": "2026-01-01",
+                      "checkedOn": "2026-10-22",
+                      "catalogueVersion": "ie-social-welfare-2026.2",
+                      "source": {
+                        "title": "Department of Social Protection, Budget 2026 (maximum weekly rates from January 2026)",
+                        "url": "https://www.gov.ie/en/department-of-social-protection/publications/budget-2026/"
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.qualifies",
+                      "label": "Whether the surviving partner qualifies for the Bereaved Partner’s (Contributory) Pension",
+                      "valueShown": "Assumed to qualify, at the standard personal rate for their age band",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.diedStops",
+                      "label": "The person who died: their pay, pensions and State Pension",
+                      "valueShown": "They stop",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.statePensionNotPassed",
+                      "label": "A State Pension is passed to a partner",
+                      "valueShown": "Never",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.higherOfTwoStatePayments",
+                      "label": "A survivor who would also have their own State Pension",
+                      "valueShown": "Only the higher of the two is paid, which only arises once they are retired",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    },
+                    {
+                      "id": "planeir.assumption.survivor_rule.dcAndArfPassToSpouse",
+                      "label": "A defined contribution pot not yet drawn, and an ARF",
+                      "valueShown": "Pass to the spouse",
+                      "status": "approved",
+                      "effectiveFrom": null,
+                      "checkedOn": "2026-10-28",
+                      "catalogueVersion": "planeir-assumptions-1.7.0",
+                      "source": {
+                        "title": "Planeir central planning assumptions, approved 28 October 2026",
+                        "url": null
+                      }
+                    }
+                  ],
+                  "notes": []
                 }
               ],
               "notShown": []
@@ -1945,14 +2171,6 @@
         "factId": "other_dated_costs",
         "fieldPath": "/household/goals",
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
-        "kind": "household_fact",
-        "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
         "kind": "household_fact",
         "importance": "recommended",
         "blockingModuleIds": []
@@ -2336,7 +2554,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/household/primaryPerson/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -2384,7 +2602,7 @@
       {
         "factId": "employment_tax_basis",
         "fieldPath": "/household/partner/employmentStatus",
-        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.",
+        "reason": "The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.",
         "kind": "household_fact",
         "importance": "required",
         "blockingModuleIds": []
@@ -2585,14 +2803,6 @@
         "factId": "other_dated_costs",
         "fieldPath": "/household/goals",
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
-        "kind": "household_fact",
-        "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_scope",
-        "fieldPath": "/household/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
         "kind": "household_fact",
         "importance": "recommended",
         "blockingModuleIds": []

@@ -1142,7 +1142,7 @@ export function runIeTaxTests() {
     assert(sickInput.items.length === 2 && sickInput.items[1].amount === 13_208, 'the input is as it was');
   }));
 
-  cases.push(runCase('The Bereaved Partner’s Contributory Pension is treated like Illness Benefit: income tax only, the recipient’s own income', () => {
+  cases.push(runCase('The Bereaved Partner’s (Contributory) Pension is treated like Illness Benefit: income tax only, the recipient’s own income', () => {
     const survivor = (items, status = 'widowed_or_surviving_civil_partner') => illnessYear([single('a', 45)], items, status);
     const pensionOnly = survivor([item('a', 'bereavedPartnerPension', 13_494)]);
     assertCents(pensionOnly.totals.usc, 0, 'no USC');

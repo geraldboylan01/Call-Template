@@ -36,7 +36,7 @@ export function planFactsMissing(profile) {
   for (const [key, person] of people) {
     requireValue('person_current_age', `/${key}/age`, 'Current age sets pension, mortgage and dependant timelines.');
     if (!person.employmentStatus || ['unknown', 'other'].includes(person.employmentStatus)) add('employment_tax_basis', `/${key}/employmentStatus`,
-      'The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee.');
+      'The work/tax basis must distinguish employment, self-employment and retirement; director/not working cannot safely be treated as an employee. Is this work as an employee or self-employed? It also decides whether the standard Illness Benefit assumption applies, which it does for an employee only.');
     const incomes = (profile.incomeSources ?? []).filter(income => income.ownerIds.includes(person.personId));
     const earned = ['employee', 'self_employed', 'contractor'].includes(person.employmentStatus)
       ? incomes.filter(income => ['employment', 'self_employment'].includes(income.type)) : incomes;
@@ -127,10 +127,8 @@ export function planFactsMissing(profile) {
   }
   add('other_dated_costs', '/goals',
     'Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.', 'household_fact', 'recommended');
-  // The Illness Benefit assumption (section 6) is built into the income-stops case for an employee,
-  // so there is nothing to collect for one. It is never a question about a predicted entitlement.
-  if (people.some(([, person]) => ['self_employed', 'contractor', 'other', 'unknown'].includes(person.employmentStatus))) add('illness_scenario_scope', '/assumptions/values/protection/illnessScenario',
-    'The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.', 'household_fact', 'recommended');
+  // The Illness Benefit assumption (section 6) is built into the income-stops case for an employee, so nothing is asked about it.
+  // The employment-status question above is the only one: unknown or "other" work is asked as employee or self-employed, and no payment is ever asked for.
   // A death case needs no question: the survivor's State payment is the Bereaved Partner's pension at the register's rate,
   // and a survivor's pension the household volunteers (assumptions.values.protection.survivorPayment) is used as given but never listed as missing.
   profile.properties.filter(property => property.use !== 'home').forEach(property => add('property_plan_facts', `/properties/${profile.properties.indexOf(property)}`,
