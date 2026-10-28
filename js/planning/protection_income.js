@@ -2,7 +2,7 @@
  * Protection in the plan: what each "if income stopped" case takes home, and
  * the State payment beside it, worked out from the shared tax engine and the
  * figures register. The protection gap engine holds no tax rule and no rate, so
- * everything it is given for a case is built here (plan document, section 6,
+ * everything it is given for a case is built here (the implementation plan, section 6,
  * "Approved illness-scenario assumption").
  *
  * THE ILLNESS BENEFIT DEFAULT
