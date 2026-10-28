@@ -440,7 +440,7 @@ Prompt:
 
 Checks:
 - no JSON yet: Tom's take-home and the State payment are both missing
-- NOTES suggests Tom's take-home with its working, and names the State payment that would fit with its weekly rate and the PRSI caveat
+- NOTES suggests Tom's take-home with its working, and states no State payment rate, weekly amount or scheme: it says the figures register holds the standard rate and asks for Tom's State payment
 - one bold question asks Gerry to confirm the figures or give his own
 - once Gerry confirms, the payload uses exactly the figures he confirmed
 
