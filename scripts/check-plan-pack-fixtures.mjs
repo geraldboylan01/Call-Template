@@ -10,6 +10,7 @@ import { checkCasePack } from '../js/module_pipeline.js';
 import { computeHouseholdCashFlowProjection } from '../js/household_cash_flow_math.js';
 import { computeMortgageComparison } from '../js/mortgage_math.js';
 import { computePensionProjection } from '../js/pension_math.js';
+import { computeProtectionGapProjection } from '../js/protection_gap_math.js';
 
 const originalInfo = console.info;
 console.info = () => {}; // Existing renderer diagnostics are not test results.
@@ -164,6 +165,60 @@ await test('Explicit-zero State payments survive compilation and missing payment
   const r=await compilePlanPack(base());
   assert.equal(entryFor(r,'protection_gap','current').input.scenarios[1].event.statePayment,0);
   await refused(p=>{delete p.planningInputs.protectionCases[0].event.statePayment;},'invalid','/chapters');
+});
+await test('A pack that lists no protection cases gets the Illness Benefit default for each employee, and the death of the higher earner',async()=>{
+  const pack=base();pack.planningInputs.protectionCases=[];oneRoute(pack);
+  const r=await compilePlanPack(pack);
+  assert.equal(r.status,'compiled',JSON.stringify(r.diagnostics));
+  const entry=entryFor(r,'protection_gap','current');
+  assert.deepEqual(entry.input.scenarios.map(c=>c.id),['today','niamh-cannot-work','dara-cannot-work','niamh-died']);
+  const [,niamh,dara,died]=entry.input.scenarios;
+  for(const c of [niamh,dara]){
+    assert.equal(c.event.type,'cannotWork');
+    assert.equal(c.income.basis,'estimated');
+    assert.equal(c.income.calculationYear,2026,'the plan’s year');
+    assert.equal(c.income.phases[0].statePayment.scheme,'illnessBenefit');
+    assert.equal(c.income.phases[0].statePayment.weeklyRate,254,'the register’s rate');
+    assert.equal(c.income.phases[0].months,12,'a full year');
+    assert.equal(c.income.phases[1].statePayment,null,'and not after');
+  }
+  assert.equal(died.income.phases[0].statePayment.scheme,'bereavedPartnerPension');
+  assert.equal(entry.input.people.map(p=>p.takeHome).join(),'50000,45000','stated bank pay sets today');
+  const projection=computeProtectionGapProjection(entry.input);
+  assert.ok(projection.debug.footnote.includes('Tax is recalculated for each case. If one of you stops working, the other person’s take-home may change.'));
+  assert.ok(projection.debug.cases[1].sentence.includes('Assumes the standard personal rate of Illness Benefit'));
+  assert.ok(entry.assumptionsUsed.some(a=>a.key==='protectionIncome'&&a.value.cases.length===3&&a.value.notShown.length===0));
+  assert.equal(entry.basis,'stated_bank_pay_with_recalculated_tax_and_register_state_payments');
+  for(const key of ['moneyIn','gap'])assert.ok(`niamh-cannot-work.${key}` in entry.metrics);
+  assert.deepEqual(JSON.parse(JSON.stringify(pack)),JSON.parse(JSON.stringify(pack)),'inputs untouched');
+});
+await test('A pack that lists its own protection cases gets exactly those',async()=>{
+  const entry=entryFor(await compilePlanPack(base()),'protection_gap','current');
+  assert.deepEqual(entry.input.scenarios.map(c=>c.id),['today','niamh_stops']);
+  assert.equal(entry.basis,'stated_bank_pay_and_confirmed_state_payments');
+});
+await test('The Illness Benefit default never applies silently to self-employment, and says why the case is not shown',async()=>{
+  const pack=base();pack.planningInputs.protectionCases=[];oneRoute(pack);
+  pack.household.partner.employmentStatus='self_employed';
+  const entry=entryFor(await compilePlanPack(pack),'protection_gap','current');
+  assert.ok(!entry.input.scenarios.some(c=>c.id==='dara-cannot-work'),'no case for the self-employed person');
+  assert.ok(entry.warnings.some(w=>w.includes('self-employment')&&w.includes('No State payment has been assumed')),JSON.stringify(entry.warnings));
+  assert.ok(entry.assumptionsUsed.find(a=>a.key==='protectionIncome').value.notShown.some(n=>n.code==='self_employed'));
+  assert.ok(entry.input.scenarios.some(c=>c.id==='niamh-cannot-work'),'the employee still has theirs');
+});
+await test('A stated survivor payment is used as given for the death case, and the register’s rate otherwise',async()=>{
+  const pack=base();pack.planningInputs.protectionCases=[];oneRoute(pack);
+  pack.household.assumptions.values.protection={survivorPayment:{niamh:9000}};
+  const stated=entryFor(await compilePlanPack(pack),'protection_gap','current').input.scenarios.find(c=>c.id==='niamh-died');
+  assert.equal(stated.income.phases[0].statePayment.scheme,'stated');
+  assert.equal(stated.income.phases[0].statePayment.amount,9000);
+});
+await test('Default protection case ids are narration placeholders',async()=>{
+  const pack=base();pack.planningInputs.protectionCases=[];oneRoute(pack);
+  pack.narration={current:'If Niamh could not work, the gap would be {protection_gap.niamh-cannot-work.gap} a year.'};
+  const r=await compilePlanPack(pack);
+  assert.equal(r.status,'compiled',JSON.stringify(r.diagnostics));
+  assert.match(r.routes[0].narration.text,/gap would be €[\d,]+(\.00)? a year/);
 });
 await test('Unknown fields, owners, goals, outgoing IDs and duplicated facts fail at their paths',async()=>{
   for(const [mutate,path] of [

@@ -4,6 +4,7 @@ import { hasOwnerConfirmedNone } from '../profile.js';
 import { cloneJson } from '../utils.js';
 import { computeHouseholdCashFlowProjection } from '../../household_cash_flow_math.js';
 import { computeProtectionGapProjection } from '../../protection_gap_math.js';
+import { buildProtectionIncomeCases } from '../protection_income.js';
 import { computeMortgageComparison } from '../../mortgage_math.js';
 import { computePensionProjection } from '../../pension_math.js';
 import { computeNetRetirementProjection } from '../../net_retirement_math.js';
@@ -197,16 +198,20 @@ function outgoings(profile, pack) {
 function cashBalance(profile) {
   return profile.assets.filter(a => a.type === 'cash').reduce((sum, a) => sum + amount(a.currentValue, '/household/assets/' + profile.assets.indexOf(a) + '/currentValue'), 0);
 }
-function cashFlowInput(context, pack) {
-  const profile = context.profile;
-  if (!pack.planningInputs.householdTaxStatus) missing('/planningInputs/householdTaxStatus', 'State the tax assessment status; the compiler does not infer it from a partner record.');
+/** The household's recurring income as the tax engine takes it: one item per source, shared income as 'joint'. */
+function householdIncomeItems(profile) {
   const incomeTypes = { employment: 'employment', rental: 'rentalProfit', pension: 'occupationalPension', state_pension: 'statePension' };
-  const income = profile.incomeSources.flatMap((entry, index) => {
+  return profile.incomeSources.flatMap((entry, index) => {
     if (entry.grossAnnual?.amount === 0) return [];
     if (!incomeTypes[entry.type]) throw new LaterStage('/household/incomeSources/' + index + '/type', 'Cash flow does not support this income type.', 'B2', 'requires_profile_adapter');
     if (entry.ownerIds.some(owner => !people(profile).some(p => p.personId === owner))) missing('/household/incomeSources/' + index + '/ownerIds', 'Name actual people as the owners of this income.');
     return [{ personId: entry.ownerIds.length > 1 ? 'joint' : entry.ownerIds[0], type: incomeTypes[entry.type], amount: amount(entry.grossAnnual, '/household/incomeSources/' + index + '/grossAnnual') }];
   });
+}
+function cashFlowInput(context, pack) {
+  const profile = context.profile;
+  if (!pack.planningInputs.householdTaxStatus) missing('/planningInputs/householdTaxStatus', 'State the tax assessment status; the compiler does not infer it from a partner record.');
+  const income = householdIncomeItems(profile);
   const rows = outgoings(profile, pack);
   if (context.ledgerFunding?.goalSaving > 0) {
     if (!pack.planningInputs.goalFundingLabel) missing('/planningInputs/goalFundingLabel', 'Supply display wording for goal-saving transfers.');
@@ -231,6 +236,69 @@ const nativeKeys = {
   liquidity_analysis: 'liquidityPlan', mortgage_analysis: 'mortgageInputs', loan_analysis: 'loanInputs',
   pension_projection: 'pensionInputs', net_retirement_cashflow: 'netRetirementInputs', college_funding: 'collegeFundingInputs'
 };
+/**
+ * The protection cases a profile-built plan shows beside today: an income-stops
+ * case for each person, and the death of the higher earner of a couple (the
+ * survivor's payment is a stated amount if the household gave one, else the
+ * register's rate). A pack that lists its own cases gets exactly those, so
+ * nothing already authored changes. A module shows at most four cases.
+ */
+export function protectionDefaultRequests(profile, pack) {
+  if (pack.planningInputs.protectionCases.length > 0) return [];
+  const members = people(profile);
+  const requests = members.map(person => ({ kind: 'incomeStops', personId: person.personId }));
+  if (members.length === 2) {
+    const higher = members.reduce((best, person) => (annualEmployment(profile, person.personId) > annualEmployment(profile, best.personId) ? person : best), members[0]);
+    const stated = profile.assumptions?.values?.protection?.survivorPayment?.[higher.personId];
+    requests.push({ kind: 'death', personId: higher.personId, ...(Number.isFinite(stated) && stated >= 0 ? { survivorsPension: Math.round(stated) } : {}) });
+  }
+  return requests;
+}
+
+/**
+ * Each person's bank pay for today. A stated figure wins (a payslip beats an
+ * estimate). A household that stated none, with a gross figure for every source,
+ * uses the cash-flow engine's own estimate, so the plan shows one figure for the
+ * same person in both chapters. A household that stated some but not all is
+ * refused: its stated pay is never mixed with an estimate or divided.
+ */
+function protectionBankPay(context, pack, profile, year) {
+  const members = people(profile);
+  const stated = members.map(person => context.bankTakeHomeByPerson?.[person.personId] ?? ownerBankPay(profile, person.personId, { optional: true }));
+  if (stated.every(value => value !== null)) return { byPerson: stated, estimated: false };
+  const grossOnly = profile.incomeSources.length > 0 && profile.incomeSources.every(income => !income.netAnnual && income.grossAnnual);
+  if (stated.some(value => value !== null) || !grossOnly) {
+    missing('/household/incomeSources', 'Per-person bank take-home is missing or jointly owned. It is not inferred from gross income or split between people.');
+  }
+  const today = computeHouseholdCashFlowProjection(cashFlowInput(context, pack), { calculationYear: year }).summary.cases[0];
+  return {
+    byPerson: members.map(person => today.takeHome.byPerson.find(row => row.personId === person.personId).bankTakeHome),
+    estimated: true
+  };
+}
+
+/** What the income adapter needs to build the protection cases, from facts the plan already holds. */
+function protectionIncomeFacts(context, pack, protectionPeople) {
+  const profile = context.profile;
+  if (!pack.planningInputs.householdTaxStatus) missing('/planningInputs/householdTaxStatus', 'State the tax assessment status; the compiler does not infer it from a partner record.');
+  return {
+    year: Number(pack.calculationDate.slice(0, 4)),
+    taxStatus: pack.planningInputs.householdTaxStatus,
+    people: people(profile).map((person, index) => {
+      if (!Number.isInteger(person.age)) missing('/household', 'Each protection person needs a current age.');
+      return {
+        id: person.personId,
+        label: protectionPeople[index].label,
+        age: person.age,
+        employment: person.employmentStatus,
+        personalPensionContribution: currentPension(profile, pack, person.personId),
+        anchorTakeHome: protectionPeople[index].takeHome
+      };
+    }),
+    income: householdIncomeItems(profile)
+  };
+}
+
 export async function buildChapter(context, pack, chapter) {
   if (context.usableCashDeductions && ['liquidity_analysis', 'protection_gap'].includes(chapter)) {
     const profile = cloneJson(context.profile);
@@ -318,16 +386,43 @@ export async function buildChapter(context, pack, chapter) {
     }
     // This native illustration takes whole euros. Round only at its boundary;
     // reserve allocation, tax and the route ledger retain full precision.
-    const protectionAmount = value => context.ledgerFunding ? Math.round(value) : value;
+    const pay = protectionBankPay(context, pack, profile, year);
+    const rounded = Boolean(context.ledgerFunding) || pay.estimated;
+    const protectionAmount = value => rounded ? Math.round(value) : value;
     const input = {
-      people: people(profile).map(p => {
-        const stated = ownerBankPay(profile, p.personId);
-        return { id: p.personId, label: p.displayName ?? p.personId, takeHome: protectionAmount(context.bankTakeHomeByPerson?.[p.personId] ?? stated) };
-      }),
+      people: people(profile).map((p, index) => ({ id: p.personId, label: p.displayName ?? p.personId, takeHome: protectionAmount(pay.byPerson[index]) })),
       needed: protectionAmount(amount(profile.expenses.annualTotal, '/household/expenses/annualTotal')),
       savings: protectionAmount(cashBalance(profile)),
       scenarios: [{ id: 'today' }, ...cloneJson(pack.planningInputs.protectionCases)]
     };
+    // A profile-built plan lists no cases of its own, so it gets the defaults: an
+    // income-stops case for each person (the Illness Benefit assumption, for an
+    // employee only) and the death of the higher earner of a couple. Each is its
+    // own full tax calculation; none is passed into another.
+    const warnings = pay.estimated
+      ? ['Some bank pay is estimated by the cash-flow engine because a complete per-person net income was not stated.'] : [];
+    const assumptionsUsed = rounded
+      ? [{ key: 'protectionInputRounding', value: context.ledgerFunding
+        ? 'Route amounts rounded to whole euros for the native protection illustration; ledger amounts retain full precision.'
+        : 'Estimated amounts rounded to whole euros for the native protection illustration.' }]
+      : [];
+    let basis = 'stated_bank_pay_and_confirmed_state_payments';
+    const requests = protectionDefaultRequests(profile, pack);
+    if (requests.length) {
+      const built = buildProtectionIncomeCases(protectionIncomeFacts(context, pack, input.people), requests);
+      const shown = built.cases.filter(entry => entry.shown).slice(0, 3);
+      input.scenarios.push(...shown.map(entry => entry.scenario));
+      const named = id => input.people.find(person => person.id === id)?.label ?? id;
+      for (const entry of built.cases.filter(row => !row.shown)) warnings.push(named(entry.personId) + ': ' + entry.reason);
+      assumptionsUsed.push({ key: 'protectionIncome', value: {
+        today: { year: built.today.year, versions: built.today.versions, creditAllocation: built.today.creditAllocation },
+        cases: shown.map(entry => ({ id: entry.id, basis: entry.scenario.income.basis, calculationYear: entry.scenario.income.calculationYear,
+          versions: entry.scenario.income.versions, creditAllocation: entry.scenario.income.creditAllocation, reconciliation: entry.reconciliation })),
+        notShown: built.cases.filter(row => !row.shown).map(row => ({ id: row.id, personId: row.personId, code: row.code, reason: row.reason }))
+      } });
+      basis = pay.estimated ? 'includes_estimated_bank_pay_with_recalculated_tax_and_register_state_payments'
+        : 'stated_bank_pay_with_recalculated_tax_and_register_state_payments';
+    }
     const projection = computeProtectionGapProjection(input);
     const metrics = {};
     for (const scenario of projection.debug.cases) {
@@ -336,8 +431,7 @@ export async function buildChapter(context, pack, chapter) {
       if (Number.isFinite(scenario.months)) metrics[scenario.id + '.months'] = scenario.months;
     }
     return { input, payload: { title: 'If income stops', generated: { protectionGapInputs: input } }, metrics, builderHousehold: profile,
-      assumptionsUsed: context.ledgerFunding ? [{ key: 'protectionInputRounding', value: 'Route amounts rounded to whole euros for the native protection illustration; ledger amounts retain full precision.' }] : [],
-      basis: 'stated_bank_pay_and_confirmed_state_payments' };
+      assumptionsUsed, warnings, basis };
   }
   const definition = getPlanningModuleDefinition(chapter);
   if (!definition?.buildInput || !definition.run) throw new LaterStage('/chapters', 'No complete builder exists for ' + chapter + '.');

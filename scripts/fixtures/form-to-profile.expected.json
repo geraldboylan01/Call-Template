@@ -660,12 +660,6 @@
           "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
           "blockingModuleIds": [],
           "importance": "recommended"
-        },
-        {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
         }
       ],
       "consent": [],
@@ -708,14 +702,6 @@
         "reason": "Review whether care, school fees or other dated costs exist. Each needs a start, duration and yearly amount; the profile has no duration field yet.",
         "kind": "household_fact",
         "importance": "recommended",
-        "blockingModuleIds": []
-      },
-      {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
         "blockingModuleIds": []
       }
     ]
@@ -2120,16 +2106,10 @@
           "importance": "recommended"
         },
         {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
           "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+          "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
           "blockingModuleIds": [],
-          "importance": "required"
+          "importance": "recommended"
         }
       ],
       "consent": [],
@@ -2215,19 +2195,11 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "survivor_payment",
         "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
         "kind": "plan_pack_fact",
-        "importance": "required",
+        "importance": "recommended",
         "blockingModuleIds": []
       }
     ]
@@ -3333,16 +3305,10 @@
           "importance": "recommended"
         },
         {
-          "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-          "blockingModuleIds": [],
-          "importance": "required"
-        },
-        {
           "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+          "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
           "blockingModuleIds": [],
-          "importance": "required"
+          "importance": "recommended"
         }
       ],
       "consent": [],
@@ -3404,19 +3370,11 @@
         "blockingModuleIds": []
       },
       {
-        "factId": "illness_scenario_contract",
-        "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "Section 6 requires the central sourced, dated Illness Benefit assumption, versioned scenario tax and a bounded duration/savings-runway contract. This later B2 work is not a question about predicted entitlement.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": []
-      },
-      {
         "factId": "survivor_payment",
         "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
         "kind": "plan_pack_fact",
-        "importance": "required",
+        "importance": "recommended",
         "blockingModuleIds": []
       }
     ]
@@ -4290,9 +4248,9 @@
         },
         {
           "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+          "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
           "blockingModuleIds": [],
-          "importance": "required"
+          "importance": "recommended"
         }
       ],
       "consent": [],
@@ -4388,9 +4346,9 @@
       {
         "factId": "illness_scenario_scope",
         "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
+        "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
+        "kind": "household_fact",
+        "importance": "recommended",
         "blockingModuleIds": []
       }
     ]
@@ -4934,15 +4892,15 @@
         },
         {
           "fieldPath": "/assumptions/values/protection/illnessScenario",
-          "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
+          "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
           "blockingModuleIds": [],
-          "importance": "required"
+          "importance": "recommended"
         },
         {
           "fieldPath": "/assumptions/values/protection/survivorPayment",
-          "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+          "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
           "blockingModuleIds": [],
-          "importance": "required"
+          "importance": "recommended"
         }
       ],
       "consent": [],
@@ -5234,17 +5192,17 @@
       {
         "factId": "illness_scenario_scope",
         "fieldPath": "/assumptions/values/protection/illnessScenario",
-        "reason": "The employee Illness Benefit assumption cannot silently apply to self-employment, unknown work or retirement; the later scenario contract must resolve its scope.",
-        "kind": "implementation",
-        "importance": "required",
+        "reason": "The employee Illness Benefit assumption is not applied to self-employment, work that is not confirmed as employment, or retirement. Give the State payment expected if the work stopped, including an explicit zero, or confirm the work is employment.",
+        "kind": "household_fact",
+        "importance": "recommended",
         "blockingModuleIds": []
       },
       {
         "factId": "survivor_payment",
         "fieldPath": "/assumptions/values/protection/survivorPayment",
-        "reason": "A death scenario retains the separate stated survivor-payment contract, including an explicit zero. The illness assumption cannot supply it.",
+        "reason": "A death scenario uses a survivor’s pension the household states, including an explicit zero, and otherwise the Bereaved Partner’s Contributory Pension at the register’s rate. The illness assumption never supplies it.",
         "kind": "plan_pack_fact",
-        "importance": "required",
+        "importance": "recommended",
         "blockingModuleIds": []
       }
     ]

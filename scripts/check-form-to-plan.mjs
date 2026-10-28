@@ -32,9 +32,12 @@ for (const fixture of fixtures) {
   assert.equal(result.omittedChapters.length + (result.planPack?.chapters.length ?? 0), 11);
   assert.ok(result.omittedChapters.every(row => row.reasons.length && row.reasons.every(reason => reason.fieldPath && reason.reason)));
   assert.ok(result.missingFacts.every(fact => fact.fieldPath && fact.reason));
-  for (const chapter of ['protection_gap', 'future_cost_fund', 'goals_and_resources']) {
+  for (const chapter of ['future_cost_fund', 'goals_and_resources']) {
     assert.ok(result.omittedChapters.some(row => row.chapter === chapter && row.reasons.some(reason => reason.code === 'requires_profile_adapter')));
   }
+  // Protection is built from the profile now (the Illness Benefit default): it is either in the plan or left out for a missing fact, never for a missing adapter.
+  assert.ok(result.planPack?.chapters.includes('protection_gap')
+    || result.omittedChapters.some(row => row.chapter === 'protection_gap' && row.reasons.every(reason => reason.code !== 'requires_profile_adapter')));
   let current = null;
   if (result.planPack) {
     assert.deepEqual(result.planPack, normalizePlanPack(result.planPack));
