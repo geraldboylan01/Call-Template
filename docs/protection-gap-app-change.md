@@ -130,6 +130,30 @@ The two events that have been designed, and so the only two in Stage 1:
 
 A case states what changes, never the result. There is no gap, months or left-over field: a payload that states any of them is rejected.
 
+#### A case's own income (added 28 October 2026)
+
+A case may also carry `income` and `received`. They are optional, and a case without them behaves exactly as above.
+
+| Field | Rule |
+|---|---|
+| `income.basis` | `estimated` (worked out from the shared tax engine) or `stated`. |
+| `income.calculationYear` | The tax year the case was calculated for. |
+| `income.versions` | `{ taxRules, assumptions, socialWelfare }`, text. `taxRules` is required when estimated. |
+| `income.creditAllocation` | `own`, or `allocated` when a joint assessment was shared between two people. |
+| `income.phases` | 1 or 2. Each is `{ months?, takeHome, statePayment, householdNetIncome }`. Only the last has no `months`. |
+| `phases[].takeHome` | Recalculated take-home for every person, whole euros. The person whose pay stops has 0. |
+| `phases[].statePayment` | The State payment kept apart, after estimated tax: `{ personId, scheme, amount, grossAmount, estimatedTax, weeklyRate, weeks, figure }`. `scheme` is `illnessBenefit`, `bereavedPartnerPension` or `stated` (a stated one is just `{ personId, scheme, amount }`). The gross less the tax is the amount. `figure` names the register entry (id, status, effective date, date checked, catalogue version, source). |
+| `phases[].householdNetIncome` | The shared tax engine's household net income for the phase. The take-home and the State payment must add up to it (within a euro), or the case is refused. |
+| `received` | Up to 3 of `{ type: "lumpSum", amount }` (on a `dies` case, counted with the savings) and `{ type: "regularPayment", amount, months, afterMonths? }` (on a `cannotWork` case, money in for those months). Stated by the client; never a cover amount, a premium, a product or a provider. |
+
+With `income`, the event carries no `statePayment` or `survivorsPension` (the phase does). The engine holds no tax rule and no rate; the caller builds the block (`js/planning/protection_income.js`). Phase one is the first stretch of the case; a second phase is a full calculation of the household after the State payment has ended, so a payment is counted for the months given and never extended. Savings fill the gap month by month through the change. A case that is covered at first and short later says so in its answer ("After a year you would be €X a year short, and your savings would last N months in all.") and its strip says "Nothing to fill at first". The Illness Benefit case says "Assumes the standard personal rate of Illness Benefit". The footnote of a module with a recalculated case reads "Tax is recalculated for each case. If one of you stops working, the other person’s take-home may change." (without the second sentence for one person), then "State payments are shown after estimated tax and depend on eligibility."
+
+#### Where the income comes from
+
+`js/planning/protection_income.js` builds each case from `computeTaxYear` and the figures register: the register's `ie.social_welfare.illness_benefit.personal_highest` for the plan's year (52 weeks, 12 months, an announced rate says so), for an employee only; the Bereaved Partner's Contributory Pension at the register's rate for the survivor's age band (or a stated amount as given) for a death. Every case and phase runs `computeTaxYear` for the whole household afresh from the same facts, passes no state between runs, and changes no input. A joint assessment is shared between two people by one stated convention (the extra band belongs to the lower income; each person's Employee Tax Credit is their own; credit one person cannot use is set against the other's tax), so the people's take-home plus the State payment always add up to the engine's household net income, less the personal pension contributions that come out of pay. Where a person's own bank pay is stated it sets today's level and each case moves it by what the engine says changes.
+
+It never applies silently to self-employment, retirement or work not confirmed as employment: those cases are not shown, with the reason, unless the payment is stated. A person with other income that carries on is not shown either, because the screen cannot yet draw that income beside the State payment.
+
 ### The model
 
 - `computeProtectionGapProjection(rawInputs)` per case:
