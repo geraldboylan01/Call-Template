@@ -43,7 +43,7 @@ export async function checkFormToPlanRoutes() {
   try {
     const reports = [], originals = [];
     const catalogue = getLeverCatalogue();
-    assert.deepEqual(catalogue.levers.map(row => row.type), ['useCash', 'clearOutgoing', 'sellAsset', 'moveGoal', 'pensionContribution', 'spendLess']);
+    assert.deepEqual(catalogue.levers.map(row => row.type), ['useCash', 'clearOutgoing', 'sellAsset', 'moveGoal', 'pensionContribution', 'tradeDownHome', 'sellProperty', 'spendLess']);
     assert.equal(catalogue.levers.find(row => row.type === 'spendLess').scale.approvalStatus, 'proposed');
     catalogue.levers[0].parameters.amount.minimum = -1;
     assert.equal(getLeverCatalogue().levers[0].parameters.amount.minimum, 1, 'Catalogue callers cannot change shared settings');

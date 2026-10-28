@@ -99,9 +99,9 @@ export function runRentalKeepOrSellWiringTests() {
 
   cases.push(runCase('A figure out of range, a scenarios array, a bad base case or an unknown key is refused with the engine\'s own message', () => {
     assertEqual(
-      refusalOf({ rentPerYear: 0 }),
-      `${FIELD}.rentPerYear must be a number greater than 0.`,
-      'no rent'
+      refusalOf({ rentPerYear: -1 }),
+      `${FIELD}.rentPerYear must be a number greater than or equal to 0.`,
+      'negative rent'
     );
     assertEqual(
       refusalOf({ taxOnGain: -1 }),

@@ -11,13 +11,13 @@ Every figure that can change: law, market prices and Planeir's own assumptions, 
 | Market | A price or rate that moves on its own, worked out from the quotes it was read from | The weekly job adds quotes; code does the arithmetic |
 | Planeir assumption | A choice Planeir makes | A person only; a job never changes these |
 
-Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 27. Total 288.
+Counts: Law in force 226, Announced law 32, Market 3, Planeir assumption 32. Total 293.
 
 **Checked.** The day the value was read against its source. † means the figure has no check date of its own and shows the date its catalogue was last verified. ‡ means a Planeir choice with no review recorded, so the date shown is the day it was set.
 
 **From.** The day the value takes effect. A dash means the source states no date. A rule that a later tax year carries over unchanged is listed once, for the year it first took effect.
 
-Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.7.0`; Market figures `ie-market-2026.2`.
+Catalogues: Irish tax rules `ie-tax-2026.7`; Irish planning rules `ie-planning-rules-2026.02`; Social welfare rates `ie-social-welfare-2026.2`; House Purchase rules `house-purchase-rules-2026.10`; Planeir central assumptions `planeir-assumptions-1.8.0`; Market figures `ie-market-2026.2`.
 
 ## Irish tax rules
 
@@ -403,7 +403,7 @@ Catalogue version `house-purchase-rules-2026.10`. 131 figures.
 
 ## Planeir central assumptions
 
-Catalogue version `planeir-assumptions-1.7.0`. 12 figures.
+Catalogue version `planeir-assumptions-1.8.0`. 17 figures.
 
 | Figure | Value | From | Status | Source | Checked | Used by | Id |
 |---|---|---|---|---|---|---|---|
@@ -419,6 +419,11 @@ Catalogue version `planeir-assumptions-1.7.0`. 12 figures.
 | Cash reserve target for a working household, in months of spending | 6 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis, house_purchase | `planeir.assumption.reserve_months.working.target` |
 | Cash reserve floor for a retired household, in months of spending | 12 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis | `planeir.assumption.reserve_months.retired.minimum` |
 | Cash reserve target for a retired household, in months of spending | 24 months | — | approved | Planeir central planning assumptions, approved 21 October 2026 | 2026-10-21 † | liquidity_analysis | `planeir.assumption.reserve_months.retired.target` |
+| Proposed selling-agent allowance including VAT | 1.845% | — | proposed | Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast. | 2026-10-28 | plan_pack, home_trade_down, rental_keep_or_sell | `planeir.assumption.property_agent_fee` |
+| Proposed sale legal and outlay allowance including VAT | €2,500 | — | proposed | Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast. | 2026-10-28 | plan_pack, home_trade_down, rental_keep_or_sell | `planeir.assumption.property_sale_legal` |
+| Proposed minimum replacement-home share of current value | 50% | — | proposed | Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast. | 2026-10-28 | plan_pack, home_trade_down, rental_keep_or_sell | `planeir.assumption.replacement_home_minimum_share` |
+| Proposed maximum replacement-home share of current value | 95% | — | proposed | Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast. | 2026-10-28 | plan_pack, home_trade_down, rental_keep_or_sell | `planeir.assumption.replacement_home_maximum_share` |
+| Maximum years ahead in the proposed property-move search | 20 years | — | proposed | Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast. | 2026-10-28 | plan_pack, home_trade_down, rental_keep_or_sell | `planeir.assumption.property_move_horizon` |
 
 ## Market figures
 

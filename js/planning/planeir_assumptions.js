@@ -15,7 +15,7 @@
 
 import { marketFigure, marketFigureValue } from './figures/market_math.js';
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.7.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.8.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-21';
 
 const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
@@ -25,6 +25,18 @@ export const PLANEIR_ASSUMPTIONS = Object.freeze({
   approvedOn: PLANEIR_ASSUMPTIONS_APPROVED_ON,
 
   routes: Object.freeze({
+    propertyMoves: Object.freeze({
+      approvalStatus: 'proposed', checkedOn: '2026-10-28',
+      agentFeeRate: 0.01845,
+      saleLegalCosts: 2500,
+      minimumReplacementShare: 0.5, maximumReplacementShare: 0.95,
+      maximumYearsAhead: 20,
+      basis: 'Proposed illustrations for review. Agent allowance is 1.5% plus the quoted 23% VAT (1.845% gross), from one published fee example, not a market average. The EUR 2,500 gross legal/outlay allowance is editorial: CCPC says fees vary and quotes must itemise VAT and outlays. Actual quotes and additional sale costs may differ. Replacement prices from half to 95% of today’s home value expose a material move without implying local availability; a twenty-year search horizon is a computation bound. Values are held flat, not forecast.',
+      sources: Object.freeze([
+        Object.freeze({ title: 'Published estate-agent commission example', url: 'https://ckp.ie/topic/vendors-sellers/how-much-does-an-estate-agent-cost/' }),
+        Object.freeze({ title: 'CCPC: selling a home, variable solicitor fees and outlays', url: 'https://www.ccpc.ie/manage-your-money/buying-a-home/selling-a-home/' })
+      ])
+    }),
     defaultCashAmount: 'remaining',
     clearOutgoingPaidFrom: 'savings',
     majorWorkingLongerYears: 2,

@@ -6,9 +6,9 @@ import { missing, people, LaterStage } from './chapters.js';
 import { fail, finiteJson } from './schema.js';
 
 /** One route's complete sale batch; never reuse an alternative's nextState. */
-export function priceInvestmentSales(profile, assetIds, calculationDate, taxStatus, openingState) {
+export function priceInvestmentSales(profile, assetIds, calculationDate, taxStatus, openingState, propertyEvents = []) {
   if (new Set(assetIds).size !== assetIds.length) fail('/routes', 'an investment can be sold only once in a route.');
-  if (!assetIds.length) return { netProceeds: 0, grossProceeds: 0, tax: 0, sales: [], disclosures: [] };
+  if (!assetIds.length && !propertyEvents.length) return { netProceeds: 0, grossProceeds: 0, tax: 0, sales: [], disclosures: [] };
   if (!taxStatus) missing('/planningInputs/householdTaxStatus', 'State the tax status before pricing investment sales.');
   const year = Number(calculationDate.slice(0, 4));
   const owners = people(profile);
@@ -29,14 +29,15 @@ export function priceInvestmentSales(profile, assetIds, calculationDate, taxStat
       sellingCosts: asset.sellingCosts?.amount ?? 0,
       ...(asset.acquisitionDate ? { acquisitionDate: asset.acquisitionDate } : {}) };
   });
-  const input = { year, status: taxStatus, people: owners.map(p => ({ id: p.personId, age: p.age })), items: [], events };
+  const input = { year, status: taxStatus, people: owners.map(p => ({ id: p.personId, age: p.age })), items: [], events: [...events, ...propertyEvents] };
   const taxRun = computeTaxYear({ input, ...(openingState ? { state: cloneJson(openingState) } : {}) });
   const capital = taxRun.result.capitalGains;
-  const sales = capital.disposals.map((disposal, index) => ({ assetId: assetIds[index], grossProceeds: events[index].proceeds,
+  const sales = capital.disposals.slice(0, assetIds.length).map((disposal, index) => ({ assetId: assetIds[index], grossProceeds: events[index].proceeds,
     baseCost: events[index].acquisitionCost, baseCostBasis: events[index].acquisitionCostBasis,
     sellingCosts: events[index].sellingCosts, tax: disposal.tax, netProceeds: disposal.netProceedsAfterTax }));
   return finiteJson({ input, result: capital, nextState: taxRun.nextState, sales,
     grossProceeds: sales.reduce((sum, sale) => sum + sale.grossProceeds, 0),
-    netProceeds: sales.reduce((sum, sale) => sum + sale.netProceeds, 0), tax: capital.total,
+    netProceeds: sales.reduce((sum, sale) => sum + sale.netProceeds, 0), tax: sales.reduce((sum, sale) => sum + sale.tax, 0),
+    ...(propertyEvents.length ? { propertyDisposals: capital.disposals.slice(assetIds.length), combinedCapitalTax: capital.total } : {}),
     disclosures: renderTaxDisclosures(taxRun.result.disclosures.filter(row => row.code.startsWith('CGT_')), { rules: resolveTaxRules(year) }) });
 }

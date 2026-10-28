@@ -267,7 +267,14 @@ export function normalizePlanPack(raw) {
       if (!lever) fail(here + '/type', 'unsupported route change.');
       object(change, here, ['type', 'sources', ...Object.keys(lever.parameters)]);
       const result = cloneJson(change);
-      if (['pensionContribution', 'spendLess'].includes(change.type)) {
+      if (['tradeDownHome', 'sellProperty'].includes(change.type)) {
+        number(change.year, here + '/year', { min: Number(calculationDate.slice(0, 4)), integer: true });
+        if (change.type === 'tradeDownHome') {
+          number(change.newHomePrice, here + '/newHomePrice', { min: 0.01 });
+          if (Math.abs(change.newHomePrice * 100 - Math.round(change.newHomePrice * 100)) > 1e-6) fail(here + '/newHomePrice', 'Use a whole number of cents.');
+        }
+        else reference(change.propertyId, new Set(household.properties.map(property => property.propertyId)), here + '/propertyId');
+      } else if (['pensionContribution', 'spendLess'].includes(change.type)) {
         number(change.annualAmount, here + '/annualAmount');
         if (change.annualAmount <= lever.parameters.annualAmount.exclusiveMinimum) fail(here + '/annualAmount', 'must be positive.');
         if (change.type === 'pensionContribution') reference(change.personId, new Set([household.primaryPerson.personId, household.partner?.personId].filter(Boolean)), here + '/personId');
@@ -301,7 +308,7 @@ export function normalizePlanPack(raw) {
         }
       }
       const sourcePack = { household, planningInputs, goalFlexibility, calculationDate };
-      const strict = household.assumptions.values.application?.schema === 'planeir.application.v1' || ['pensionContribution', 'spendLess'].includes(change.type);
+      const strict = household.assumptions.values.application?.schema === 'planeir.application.v1' || ['pensionContribution', 'spendLess', 'tradeDownHome', 'sellProperty'].includes(change.type);
       validateLeverSources(sourcePack, change, here, { required: strict });
       if (strict || change.sources !== undefined) validateLeverFacts(sourcePack, change, here);
       for (const key of Object.keys(result).filter(k => !['type', 'goalId', 'outgoingId', 'paidFrom', 'sources'].includes(k))) {

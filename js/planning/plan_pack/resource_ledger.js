@@ -7,6 +7,7 @@ import { planWorkingShares } from './working_shares.js';
 import { computeAmortizationMonthlySchedule } from '../../mortgage_math.js';
 import { GOAL_STATE_WORDS, pricePlanMortgage, pricePlanRetirement, pricePlanPensionContributions } from '../../goals_and_resources_math.js';
 import { classifyLever } from './lever_catalogue.js';
+import { pricePropertyRoute } from './property_moves.js';
 import { routeContext, buildChapter, missing, people, LaterStage } from './chapters.js';
 import { priceInvestmentSales } from './investment_sales.js';
 import { fail, finiteJson } from './schema.js';
@@ -212,9 +213,13 @@ function loanEnds(pack, context, quotes, current) {
       annualInterestRate: opening.annualInterestRate, startDateIso: pack.calculationDate, remainingTermYears: opening.remainingTermMonths / 12,
       repaymentType: 'repayment', fixedPaymentAmount: monthly, baseScenarioId: 'today', scenarios: [{ id: 'today', title: 'As it is today' }] };
     const schedule = computeAmortizationMonthlySchedule(input, { scenarioId: routeInput ? 'clear-by-age' : 'today' });
+    const sale = context.propertyMove?.debts.some(d => d.liabilityId === opening.liabilityId) ? context.propertyMove.offset : null;
+    if (!schedule.payoffDateIso && sale !== null) return [{ ...event, payoffDateIso: context.propertyMove.date,
+      fromOffset: sale, fromYear: year + sale, basis: 'property_sale' }];
     if (!schedule.payoffDateIso) return never('not_repaid_within_term');
     const fromOffset = Math.ceil(schedule.monthsSimulated / 12);
-    return [{ ...event, payoffDateIso: schedule.payoffDateIso, fromOffset, fromYear: year + fromOffset, basis: routeInput ? 'route_schedule' : 'contract_schedule' }];
+    const end = sale === null ? fromOffset : Math.min(fromOffset, sale);
+    return [{ ...event, payoffDateIso: schedule.payoffDateIso, fromOffset: end, fromYear: year + end, basis: sale !== null && end === sale ? 'property_sale' : routeInput ? 'route_schedule' : 'contract_schedule' }];
   });
 }
 
@@ -271,9 +276,11 @@ export async function prepareResourceRoute(pack, route, index) {
   const reserve = reserveFor(pack);
   const saleIds = route.changes.filter(c => c.type === 'sellAsset').map(c => c.assetId);
   if (saleIds.some(id => pack.planningInputs.assetAssignments.some(a => a.assetId === id))) fail('/routes/' + index, 'An assigned asset cannot fund another goal without an explicit reassignment contract.');
-  const sales = priceInvestmentSales(pack.household, saleIds, pack.calculationDate, pack.planningInputs.householdTaxStatus, pack.planningInputs.openingTaxState);
+  const propertyPricing = pricePropertyRoute(pack, route, index);
+  const sales = propertyPricing.sales;
+  let propertyMove = propertyPricing.move;
   const movedOnly = { ...route, changes: route.changes.filter(c => ['moveGoal', 'spendLess', 'pensionContribution'].includes(c.type)) };
-  const preview = routeContext(pack, movedOnly, index, { allowGoalMoves: true, saleResult: sales });
+  const preview = routeContext(pack, movedOnly, index, { allowGoalMoves: true, saleResult: sales, propertyMove });
   await routeIncome(preview, pack);
   const preliminary = quoteGoals(preview, pack);
   if (preview.pensionContributions.length && !preliminary.some(goal => goal.kind === 'retirement')) missing('/household/goals', 'A contribution lever needs one combined retirement goal.');
@@ -282,7 +289,8 @@ export async function prepareResourceRoute(pack, route, index) {
   }
   const assigned = new Set(pack.planningInputs.assetAssignments.map(a => a.assetId));
   const openingCash = sum(cashAssets(pack.household).filter(a => !assigned.has(a.assetId)).map(a => money(a.currentValue, '/household/assets/currentValue')));
-  const cashAvailable = Math.max(0, openingCash + sales.netProceeds - reserve.protectedAmount);
+  const propertyCashNow = propertyMove?.offset === 0 ? propertyMove.cashReleased : 0;
+  const cashAvailable = Math.max(0, openingCash + sales.netProceeds + propertyCashNow - reserve.protectedAmount);
   let left = cashAvailable;
   const resolved = cloneJson(route);
   const cashByGoal = Object.create(null);
@@ -305,7 +313,7 @@ export async function prepareResourceRoute(pack, route, index) {
     }
   }
   const context = routeContext(pack, resolved, index, {
-    allowGoalMoves: true, fundingGoalIds: new Set(preliminary.filter(g => g.kind === 'dated_cost').map(g => g.goalId)), saleResult: sales
+    allowGoalMoves: true, fundingGoalIds: new Set(preliminary.filter(g => g.kind === 'dated_cost').map(g => g.goalId)), saleResult: sales, propertyMove
   });
   if (context.cashAssetId && assigned.has(context.cashAssetId)) fail('/planningInputs/cashAssetId', 'The funding cash account is already assigned to a goal.');
   const baselineLeftOver = await routeIncome(context, pack);
@@ -335,6 +343,16 @@ export async function prepareResourceRoute(pack, route, index) {
     }
   }
   const loans = loanEnds(pack, context, quotes, current);
+  if (propertyMove?.offset > 0) {
+    propertyMove = pricePropertyRoute(pack, route, index, context.ledgerFunding.debtInputs).move;
+    context.propertyMove = propertyMove;
+    const changeRecord = context.changedFacts.find(row => row.propertyId === propertyMove.propertyId);
+    if (changeRecord) changeRecord.cashReleased = propertyMove.cashReleased;
+    for (const goal of quotes.filter(g => g.kind === 'debt' && propertyMove.debts.some(d => d.liabilityId === g.liabilityId))) {
+      goal.needs = goal.needs.slice(0, propertyMove.offset);
+      goal.freed = goal.freed.slice(0, propertyMove.offset);
+    }
+  }
   for (const goal of quotes.filter(g => g.kind === 'debt')) {
     // A loan cannot need, or free, money after it has ended.
     const ends = loans.find(e => e.liabilityId === goal.liabilityId)?.fromOffset;
@@ -361,10 +379,17 @@ export async function prepareResourceRoute(pack, route, index) {
   } else if (pack.chapters.includes('protection_gap') && context.ledgerFunding.pensionChanges.length) {
     missing('/chapters', 'Include household_cash_flow so protection uses the changed per-person bank pay after pension contributions.');
   }
-  const horizon = Math.max(1, ...quotes.map(g => g.needs.length),
+  const horizon = Math.max(1, propertyMove ? propertyMove.offset + 1 : 0, ...quotes.map(g => g.needs.length),
     ...costs.map(g => (g.contract.moneyEachYear.at(-1)?.year ?? calendarYear - 1) - calendarYear + 1));
   // Today's surplus is earned; a repayment the route clears or that ends is spending that stops.
   const earnedLeftOver = baselineLeftOver - context.spendingRemoved;
+  // Only property proceeds are implicitly used to fill this route's yearly
+  // gaps. Existing savings still need an explicit useCash instruction. No
+  // interest is invented on unallocated sale proceeds.
+  const baseSpare = Math.max(0, openingCash + sales.netProceeds - reserve.protectedAmount);
+  const reserveTopUp = Math.max(0, reserve.protectedAmount - openingCash - sales.netProceeds);
+  let capital = propertyCashNow ? Math.max(0, propertyCashNow - reserveTopUp - Math.max(0, context.cashUsed - baseSpare)) : 0;
+  let capitalUsedTotal = 0;
   const years = Array.from({ length: horizon }, (_, offset) => {
     const freed = context.spendingRemoved + (current ? 0 : sum(quotes.map(g => g.freed?.[offset] ?? 0)))
       + sum(loans.filter(e => e.fromOffset !== null && offset >= e.fromOffset).map(e => e.annualAmount));
@@ -374,18 +399,32 @@ export async function prepareResourceRoute(pack, route, index) {
     // never a deficit. Stopped repayments come back in full while anyone still
     // has an income; once no one has, there is no yearly money for goals.
     const stillEarning = earningShare > 1e-9;
-    const resources = (earnedLeftOver > 0 ? earnedLeftOver * (stillEarning ? earningShare : 0) : earnedLeftOver) + (stillEarning ? freed : 0);
+    const propertyRecurring = propertyMove?.offset > 0 && offset >= propertyMove.offset
+      ? (propertyMove.rental?.running ?? 0) - sum(context.original.incomeSources.filter(income => propertyMove.rental?.incomeIds.includes(income.incomeId)
+        && earning.some(person => income.ownerIds.includes(person.personId) && (person.stopsFromOffset === null || offset < person.stopsFromOffset)))
+        .map(income => income.netAnnual.amount)) : 0;
+    const resources = (earnedLeftOver > 0 ? earnedLeftOver * (stillEarning ? earningShare : 0) : earnedLeftOver) + (stillEarning ? freed + propertyRecurring : 0);
+    const receipt = propertyMove?.offset > 0 && offset === propertyMove.offset ? propertyMove.cashReleased : 0;
+    capital += receipt;
+    const deficitPaid = Math.min(capital, Math.max(0, -resources));
+    capital -= deficitPaid;
+    let capitalUsed = deficitPaid;
     let available = Math.max(0, resources);
     const goals = quotes.map(goal => {
       const required = goal.needs[offset] ?? 0;
       const planned = current ? goal.kind === 'dated_cost' && offset < goal.needs.length ? goal.currentAnnualSaving : 0 : required;
-      const allocated = Math.min(planned, available);
-      available -= allocated;
+      const yearlyAllocated = Math.min(planned, available);
+      available -= yearlyAllocated;
+      const capitalAllocated = Math.min(Math.max(0, planned - yearlyAllocated), capital);
+      capital -= capitalAllocated; capitalUsed += capitalAllocated;
+      const allocated = yearlyAllocated + capitalAllocated;
       return { goalId: goal.goalId, required, planned, allocated, shortfall: Math.max(0, planned - allocated) };
     });
     const planned = sum(goals.map(g => g.planned));
-    return { offset, year: calendarYear + offset, leftOver, freed, earningShare, available: resources, cashflowDeficit: Math.max(0, -resources), goals,
-      required: sum(goals.map(g => g.required)), planned, remaining: resources - planned, shortfall: Math.max(0, planned - resources) };
+    capitalUsedTotal += capitalUsed;
+    return { offset, year: calendarYear + offset, leftOver: leftOver + (stillEarning ? propertyRecurring : 0), freed, earningShare, available: resources, cashflowDeficit: Math.max(0, -resources - deficitPaid), goals,
+      ...(propertyMove ? { propertyCapitalReceived: receipt, propertyCapitalUsed: capitalUsed, propertyCapitalRemaining: capital } : {}),
+      required: sum(goals.map(g => g.required)), planned, remaining: resources + capitalUsed - planned, shortfall: Math.max(0, planned - resources - capitalUsed) };
   });
   const goalStates = quotes.map(goal => {
     const rows = years.map(row => row.goals.find(g => g.goalId === goal.goalId));
@@ -402,12 +441,15 @@ export async function prepareResourceRoute(pack, route, index) {
       firstMoneyYear: years.find(row => row.goals.find(g => g.goalId === goal.goalId).allocated > 0.005)?.offset ?? null,
       coveredFromYear: lastShort === undefined || goal.unreachable ? null : years.find(row => row.offset > lastShort && row.goals.find(g => g.goalId === goal.goalId).required > 0.005)?.offset ?? null };
   });
-  const cashRemaining = openingCash + sales.netProceeds - context.cashUsed;
+  const cashRemaining = openingCash + sales.netProceeds + propertyCashNow - context.cashUsed;
+  if (propertyCashNow && capitalUsedTotal > 0) context.usableCashDeductions.push({ assetId: context.cashAssetId, amount: capitalUsedTotal });
   const reserveProtected = cashRemaining >= reserve.protectedAmount - 0.005;
   const ledger = finiteJson({ version: 1, status: 'priced', currentPositionUnchanged: current,
     reserve, openingCash, investments: investmentInventory(pack, sales), investmentSales: sales, cashAvailableAfterReserve: cashAvailable,
     cashAllocated: context.cashUsed, cashRemaining, spareCashRemaining: cashRemaining - reserve.protectedAmount, reserveProtected,
     baselineLeftOver, earnedLeftOver, freedCash, earners: earning, goalOrder: quotes.map(g => g.goalId), goals: goalStates, years,
+    ...(propertyMove ? { propertyMove, propertyCapitalCommitted: capitalUsedTotal, propertyCapitalRemaining: capital,
+      endingCash: cashRemaining + (propertyMove.offset > 0 ? propertyMove.cashReleased : 0) - capitalUsedTotal } : {}),
     annualFunding: { goalSaving, pensionChanges: context.ledgerFunding.pensionChanges,
       debtPayments: quotes.filter(g => g.kind === 'debt').map(g => ({ liabilityId: g.liabilityId,
         openingMonthlyPayment: pack.household.liabilities.find(d => d.liabilityId === g.liabilityId).monthlyPayment.amount,

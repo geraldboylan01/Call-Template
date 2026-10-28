@@ -22,6 +22,17 @@ const definitions = {
   pensionContribution: { parameters: { personId: id, annualAmount: { ...positive, bounds: 'current personal relief headroom from the pension engine; today’s gross annual extra, converted to a salary rate' } },
     requiredFacts: ['/household/pensions/*', '/household/incomeSources/*/grossAnnual', '/household/{primaryPerson|partner}/age', '/household/{primaryPerson|partner}/intendedRetirementAge',
       '/household/goals/*/targetAmount', '/planningInputs/retirementIncomeBasis', '/planningInputs/householdTaxStatus', '/planningInputs/personalPensionContributions'], engine: 'pension engine and goals-and-resources relief search', scale: { kind: 'ordinary' } },
+  tradeDownHome: { parameters: { newHomePrice: { ...positive, multipleOf: 0.01, bounds: 'central minimumReplacementShare through maximumReplacementShare times current home value, and sufficient equity for a cash purchase' }, year: { type: 'number', integer: true, bounds: 'calculation year through central maximumYearsAhead' } },
+    policy: PLANEIR_ASSUMPTIONS.routes.propertyMoves,
+    requiredChapters: ['household_cash_flow'],
+    requiredFacts: ['/household/properties/*/currentValue', '/household/properties/*/ownerIds', '/household/properties/*/homeUse', '/household/properties/*/associatedLiabilityIds', '/household/liabilities/*', '/planningInputs/cashAssetId'],
+    engine: 'home_trade_down cash-purchase equity, native amortisation and House Purchase costs/stamp duty', scale: { kind: 'major' } },
+  sellProperty: { parameters: { propertyId: id, year: { type: 'number', integer: true, bounds: 'calculation year through central maximumYearsAhead' } },
+    policy: PLANEIR_ASSUMPTIONS.routes.propertyMoves,
+    requiredChapters: ['household_cash_flow'],
+    conditionalFacts: [{ when: 'two property owners', paths: ['/household/properties/*/jointEqualOwnership'] }],
+    requiredFacts: ['/household/properties/*/currentValue', '/household/properties/*/ownerIds', '/household/properties/*/associatedLiabilityIds', '/household/liabilities/*', '/household/properties/*/baseCost', '/household/properties/*/acquisitionDate', '/household/properties/*/acquiredBy', '/household/properties/*/homeUse', '/household/properties/*/rentalIncomeSourceIds', '/household/properties/*/rentAnnual', '/household/properties/*/runningCostsAnnual', '/household/properties/*/taxOnRentalProfitAnnual', '/planningInputs/householdTaxStatus', '/planningInputs/cashAssetId'],
+    engine: 'rental_keep_or_sell and shared property CGT', scale: { kind: 'major' } },
   spendLess: { parameters: { annualAmount: { ...positive, bounds: 'annualTotal minus twelve times stated monthlyEssential; checked again after debt clearances' } },
     requiredFacts: ['/household/expenses/annualTotal', '/household/expenses/monthlyEssential'], engine: 'resource_ledger and household_cash_flow',
     scale: { kind: 'conditional', ordinaryFractionOfAnnualSpending: PLANEIR_ASSUMPTIONS.routes.spendLess.ordinaryFractionOfAnnualSpending,
@@ -30,7 +41,7 @@ const definitions = {
 
 /** One serialisable catalogue for schemas, validation and the later analyst tools. */
 export function getLeverCatalogue() {
-  return { version: 'route-levers-1.0.0', assumptionsVersion: PLANEIR_ASSUMPTIONS_VERSION,
+  return { version: 'route-levers-1.1.0', assumptionsVersion: PLANEIR_ASSUMPTIONS_VERSION,
     sourceKinds: ['fact', 'default', 'bounded'], levers: Object.entries(definitions).map(([type, definition]) => ({ type, ...cloneJson(definition),
       parameters: Object.fromEntries(Object.entries(definition.parameters).map(([key, parameter]) => [key, {
         ...cloneJson(parameter), ...(parameter.defaultPath ? { default: readJsonPointer(PLANEIR_ASSUMPTIONS, parameter.defaultPath) } : {})
@@ -111,6 +122,8 @@ export function validateLeverFacts(pack, change, path) {
 }
 
 export function classifyLever(pack, change) {
+  if (['tradeDownHome', 'sellProperty'].includes(change.type)) return { scale: 'major', illustration: true,
+    classification: { ...cloneJson(PLANEIR_ASSUMPTIONS.routes.propertyMoves), assumptionsVersion: PLANEIR_ASSUMPTIONS_VERSION } };
   if (change.type === 'spendLess') return { scale: change.annualAmount > pack.household.expenses.annualTotal.amount * PLANEIR_ASSUMPTIONS.routes.spendLess.ordinaryFractionOfAnnualSpending ? 'major' : 'ordinary',
     classification: { ...cloneJson(PLANEIR_ASSUMPTIONS.routes.spendLess), assumptionsVersion: PLANEIR_ASSUMPTIONS_VERSION } };
   if (change.type === 'moveGoal' && change.retirementAge !== undefined) {

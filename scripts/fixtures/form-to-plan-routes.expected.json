@@ -2363,7 +2363,7 @@
           "application": {
             "schema": "planeir.application.v1",
             "version": 1,
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "snapshotBound": true,
             "revision": 7,
             "unsurePaths": [],
@@ -2476,7 +2476,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The form explicitly includes a separate partner."
           }
@@ -2493,7 +2493,7 @@
             "paths": [
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2509,7 +2509,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2525,7 +2525,7 @@
             "paths": [
               "household.married"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2541,7 +2541,7 @@
             "paths": [
               "topics.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2558,7 +2558,7 @@
             "paths": [
               "topics.1"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2575,7 +2575,7 @@
             "paths": [
               "household.children"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2591,7 +2591,7 @@
             "paths": [
               "none.0"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2608,7 +2608,7 @@
               "pensions.0.owner",
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2626,7 +2626,7 @@
               "pensions.1.owner",
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2644,7 +2644,7 @@
               "pensions.2.owner",
               "pensions.2.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2662,7 +2662,7 @@
               "loans.0.type",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2680,7 +2680,7 @@
               "home.status",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2697,7 +2697,7 @@
             "paths": [
               "household.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2713,7 +2713,7 @@
             "paths": [
               "household.partnerAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2730,7 +2730,7 @@
               "income.gross",
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2747,7 +2747,7 @@
             "paths": [
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2764,7 +2764,7 @@
               "income.partnerGross",
               "income.partnerWork"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2781,7 +2781,7 @@
             "paths": [
               "income.partnerGross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2797,7 +2797,7 @@
             "paths": [
               "income.work"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2813,7 +2813,7 @@
             "paths": [
               "income.partnerWork"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2829,7 +2829,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2853,7 +2853,7 @@
             "paths": [
               "home.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2870,7 +2870,7 @@
               "savings.cash",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2887,7 +2887,7 @@
             "paths": [
               "savings.cash"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2904,7 +2904,7 @@
               "savings.investments",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2921,7 +2921,7 @@
             "paths": [
               "savings.investments"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2938,7 +2938,7 @@
               "savings.employerShares",
               "household.partner"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Stable record identity and profile vocabulary derived from this form record; unspecified ownership stays empty."
           }
@@ -2955,7 +2955,7 @@
             "paths": [
               "savings.employerShares"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -2971,7 +2971,7 @@
             "paths": [
               "pensions.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type company mapped to canonical type occupational."
           }
@@ -2988,7 +2988,7 @@
             "paths": [
               "pensions.0.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3006,7 +3006,7 @@
               "pensions.0.youPayUnit",
               "income.gross"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Monthly contribution × 12 / this pension owner’s gross annual pay."
           }
@@ -3024,7 +3024,7 @@
               "pensions.0.employerPays",
               "pensions.0.employerPaysUnit"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Explicit percentage contribution / 100."
           }
@@ -3041,7 +3041,7 @@
             "paths": [
               "pensions.0.contributing"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3057,7 +3057,7 @@
             "paths": [
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type public mapped to canonical type defined_benefit."
           }
@@ -3074,7 +3074,7 @@
             "paths": [
               "pensions.1.dbPension"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3090,7 +3090,7 @@
             "paths": [
               "pensions.1.dbLumpSum"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3106,7 +3106,7 @@
             "paths": [
               "pensions.1.dbAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3122,7 +3122,7 @@
             "paths": [
               "pensions.2.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form pension type bond mapped to canonical type buyout_bond."
           }
@@ -3139,7 +3139,7 @@
             "paths": [
               "pensions.2.value"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3155,7 +3155,7 @@
             "paths": [
               "retirement.age"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3171,7 +3171,7 @@
             "paths": [
               "retirement.partnerAge"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3187,7 +3187,7 @@
             "paths": [
               "loans.0.balance"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3203,7 +3203,7 @@
             "paths": [
               "loans.0.rate"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Form percentage / 100; even rates below 1 are percentages."
           }
@@ -3220,7 +3220,7 @@
             "paths": [
               "loans.0.yearsLeft"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Remaining years × 12, rounded to the nearest whole month."
           }
@@ -3237,7 +3237,7 @@
             "paths": [
               "loans.0.payment"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3253,7 +3253,7 @@
             "paths": [
               "income.takeHome"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "Household monthly take-home × 12. It is never split into invented individual salaries."
           }
@@ -3270,7 +3270,7 @@
             "paths": [
               "retirement.income"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3286,7 +3286,7 @@
             "paths": [
               "spending.saved"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3302,7 +3302,7 @@
             "paths": [
               "pensions.1.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The existing pension contract excludes contributions to defined-benefit pensions and buy-out bonds."
           }
@@ -3319,7 +3319,7 @@
             "paths": [
               "pensions.2.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "The existing pension contract excludes contributions to defined-benefit pensions and buy-out bonds."
           }
@@ -3336,7 +3336,7 @@
             "paths": [
               "loans.0.type"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3352,7 +3352,7 @@
             "paths": [
               "creditCard.clears"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7
           }
         },
@@ -3369,7 +3369,7 @@
               "spending.spend",
               "home.status"
             ],
-            "mappingVersion": "1.0.0",
+            "mappingVersion": "1.1.0",
             "revision": 7,
             "derivation": "(Spending excluding rent/mortgage + stated rent or scheduled mortgage repayment + any stated extra mortgage payment) × 12. Owned outright/living with family adds no housing debt payment. Other loan/card payments are already within the stated spending question and are not added again."
           }
@@ -3519,12 +3519,12 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-ef47e240bae355783310",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-5ac9229bbcc89bcdcdb6",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [],
             "narration": null,
@@ -4152,7 +4152,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -4201,12 +4201,12 @@
             "title": "sell_investment",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-de2adb5524ce7dc600f4",
-              "liquidity_analysis": "case-8ab81059264446fadefc",
-              "household_cash_flow": "case-be4448fbb14e311ba201",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-d02765253b0d6ce08c92",
+              "liquidity_analysis": "case-5577d63f66ffeb0f566f",
+              "household_cash_flow": "case-82e8a7e41c994a98eb7e",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -4862,7 +4862,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -4911,12 +4911,12 @@
             "title": "use_cash",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-b86480034f69c0eef607",
-              "liquidity_analysis": "case-47ccb5db476270c8cba4",
-              "household_cash_flow": "case-94acbf5d8e0ff821e236",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-4fe9d79f43cbaa9a2ff7"
+              "personal_balance_sheet": "case-f969d5f406719032557c",
+              "liquidity_analysis": "case-33da3136e5c1954d431b",
+              "household_cash_flow": "case-6d06808022379b930117",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-96770d0a01e2e4559bb8"
             },
             "changes": [
               {
@@ -5577,7 +5577,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -5626,12 +5626,12 @@
             "title": "clear_loan",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-d936c3ab03199775db61",
-              "liquidity_analysis": "case-937e2bbba82547666550",
-              "household_cash_flow": "case-e545fc7d998c09dd1fd3",
-              "loan_analysis": "case-1cef7f863449f7880cff",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-11c33d203eefc2fdac07",
+              "liquidity_analysis": "case-2da74e570530e2a5cc47",
+              "household_cash_flow": "case-9f7fb1b6f68886aa52f7",
+              "loan_analysis": "case-84df79891308ea9ce092",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -6213,7 +6213,7 @@
                     "paidFrom": {
                       "kind": "default",
                       "path": "/routes/clearOutgoingPaidFrom",
-                      "version": "planeir-assumptions-1.7.0"
+                      "version": "planeir-assumptions-1.8.0"
                     }
                   }
                 }
@@ -6280,7 +6280,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -6491,12 +6491,12 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-ef47e240bae355783310",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-5ac9229bbcc89bcdcdb6",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [],
             "narration": null,
@@ -7124,7 +7124,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -7173,12 +7173,12 @@
             "title": "extra_pension",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-973073a178871fc739d0",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-107b715e37059320ac13",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-f08de974dac336f1d44c",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-8de8d8ba38408c3cae7e",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -7847,7 +7847,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -7896,12 +7896,12 @@
             "title": "spend_less",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-694bfbe78c8e187b5efd",
-              "liquidity_analysis": "case-012687d1d7e5eb852dca",
-              "household_cash_flow": "case-5681e7ce6de1fb6c501f",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-3ff19cf94d1f16e7236a",
+              "liquidity_analysis": "case-f1d5db944949d45828c9",
+              "household_cash_flow": "case-93b6305a88277011d938",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -8489,7 +8489,7 @@
                     "approvalStatus": "proposed",
                     "proposedOn": "2026-10-28",
                     "basis": "Proposed editorial boundary for review: a reduction of up to one tenth of stated annual regular spending is labelled ordinary; a larger reduction is labelled major to expose the greater lifestyle change. This is a classification, not evidence that a cut is feasible or accepted. The stated essential-spending floor always applies.",
-                    "assumptionsVersion": "planeir-assumptions-1.7.0"
+                    "assumptionsVersion": "planeir-assumptions-1.8.0"
                   },
                   "parameterSources": {
                     "annualAmount": {
@@ -8565,7 +8565,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -8614,12 +8614,12 @@
             "title": "retire_later",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-be4448fbb14e311ba201",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-da3f42b2736a422bcabd",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-82e8a7e41c994a98eb7e",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-b1d9f9371f4e62223d3d",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -9281,7 +9281,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -9492,12 +9492,12 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-ef47e240bae355783310",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-5ac9229bbcc89bcdcdb6",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [],
             "narration": null,
@@ -10125,7 +10125,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -10174,12 +10174,12 @@
             "title": "major_spending",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-c1182d7cf748346bba55",
-              "liquidity_analysis": "case-6f8403461be45060057c",
-              "household_cash_flow": "case-58b55a3410d2edfc8c6c",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-26f7e98dcfe3038e257b",
+              "liquidity_analysis": "case-a54e10428f69ab3cf8f7",
+              "household_cash_flow": "case-d0a4a451b2eb01e88935",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -10767,7 +10767,7 @@
                     "approvalStatus": "proposed",
                     "proposedOn": "2026-10-28",
                     "basis": "Proposed editorial boundary for review: a reduction of up to one tenth of stated annual regular spending is labelled ordinary; a larger reduction is labelled major to expose the greater lifestyle change. This is a classification, not evidence that a cut is feasible or accepted. The stated essential-spending floor always applies.",
-                    "assumptionsVersion": "planeir-assumptions-1.7.0"
+                    "assumptionsVersion": "planeir-assumptions-1.8.0"
                   },
                   "parameterSources": {
                     "annualAmount": {
@@ -10843,7 +10843,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -10892,12 +10892,12 @@
             "title": "major_delay",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-be4448fbb14e311ba201",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-30bf7b6f539787ba7a0d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-82e8a7e41c994a98eb7e",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-76fb43d1c0b69c4bf516",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -11594,7 +11594,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -11643,12 +11643,12 @@
             "title": "ordinary_boundary",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-04b70af8b875e59a8c52",
-              "liquidity_analysis": "case-af98bb4e2bc9433bde26",
-              "household_cash_flow": "case-5b77e093330f3ccf9890",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-11819f90880a33bca513",
+              "liquidity_analysis": "case-c1d38c3ef3b7bf438542",
+              "household_cash_flow": "case-b0bf0e50b94d129e32e7",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -12236,7 +12236,7 @@
                     "approvalStatus": "proposed",
                     "proposedOn": "2026-10-28",
                     "basis": "Proposed editorial boundary for review: a reduction of up to one tenth of stated annual regular spending is labelled ordinary; a larger reduction is labelled major to expose the greater lifestyle change. This is a classification, not evidence that a cut is feasible or accepted. The stated essential-spending floor always applies.",
-                    "assumptionsVersion": "planeir-assumptions-1.7.0"
+                    "assumptionsVersion": "planeir-assumptions-1.8.0"
                   },
                   "parameterSources": {
                     "annualAmount": {
@@ -12312,7 +12312,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -12523,12 +12523,12 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-7912ae49857f734c4484",
-              "liquidity_analysis": "case-e9ba1412f8087b62596e",
-              "household_cash_flow": "case-ef47e240bae355783310",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-3a230978b3db82b1856d",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-cf610175c2bd5ba36716",
+              "liquidity_analysis": "case-24c095a0780154118341",
+              "household_cash_flow": "case-5ac9229bbcc89bcdcdb6",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-e0f96b81828bd7126f47",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [],
             "narration": null,
@@ -13156,7 +13156,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",
@@ -13205,12 +13205,12 @@
             "title": "combined",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-441f56c39a2ed9d1409b",
-              "liquidity_analysis": "case-7107e9daadb33a2d2cb0",
-              "household_cash_flow": "case-94b18495fd2894caefd3",
-              "loan_analysis": "case-38cd1e45b68d52801fe5",
-              "pension_projection": "case-107b715e37059320ac13",
-              "future_cost_fund": "case-72b98d579feb00dcca10"
+              "personal_balance_sheet": "case-ba4f34bdeec966a9bc18",
+              "liquidity_analysis": "case-5dd2dbdde3c4fdcfd082",
+              "household_cash_flow": "case-3ccb27ef67cdd298641e",
+              "loan_analysis": "case-1fd239c1ee6f5f9c96c5",
+              "pension_projection": "case-8de8d8ba38408c3cae7e",
+              "future_cost_fund": "case-b1655e716fd1b5454f2f"
             },
             "changes": [
               {
@@ -13809,7 +13809,7 @@
                     "approvalStatus": "proposed",
                     "proposedOn": "2026-10-28",
                     "basis": "Proposed editorial boundary for review: a reduction of up to one tenth of stated annual regular spending is labelled ordinary; a larger reduction is labelled major to expose the greater lifestyle change. This is a classification, not evidence that a cut is feasible or accepted. The stated essential-spending floor always applies.",
-                    "assumptionsVersion": "planeir-assumptions-1.7.0"
+                    "assumptionsVersion": "planeir-assumptions-1.8.0"
                   },
                   "parameterSources": {
                     "annualAmount": {
@@ -13905,7 +13905,7 @@
                     "dirtRate": 0.33,
                     "dirtRuleId": "ie.dirt.2026",
                     "cashRateNet": 0.0013399999999999998,
-                    "assumptionsVersion": "planeir-assumptions-1.7.0",
+                    "assumptionsVersion": "planeir-assumptions-1.8.0",
                     "taxRulesVersion": "ie-tax-2026.7",
                     "calculationYear": 2026,
                     "timing": "start-of-year",

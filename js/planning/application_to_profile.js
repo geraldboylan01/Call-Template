@@ -7,7 +7,7 @@ import { getSemanticFactDefinition } from './semantic_facts.js';
 import { getGoalTitle } from './goal_catalogue.js';
 import { planFactsMissing } from './plan_facts_missing.js';
 
-export const APPLICATION_PROFILE_MAPPING_VERSION = '1.0.0';
+export const APPLICATION_PROFILE_MAPPING_VERSION = '1.1.0';
 // An unbound conversion is inspectable without inventing a capture/calculation
 // date. planFactsMissing reports the missing snapshot binding. Production callers
 // must pass the confirmed revision and timestamp from the saved snapshot.
@@ -269,6 +269,12 @@ export function applicationToProfile(information, options = {}) {
   // Other-property debts have a place even though the form did not mark them.
   (app.properties || []).forEach((property, sourceIndex) => {
     const prefix = `properties.${sourceIndex}`;
+    if ([property.rent, property.costs].some(present)) {
+      const index = record('properties', sourceIndex, { propertyId: `property_application_${sourceIndex}`, ownerIds: [...owners], use: 'other', associatedLiabilityIds: [] },
+        ['rent', 'costs'].filter(key => present(property[key])).map(key => `${prefix}.${key}`));
+      if (present(property.rent)) put(`/properties/${index}/rentAnnual`, money(property.rent), [`${prefix}.rent`]);
+      if (present(property.costs)) put(`/properties/${index}/runningCostsAnnual`, money(property.costs), [`${prefix}.costs`]);
+    }
     if (property.mortgage > 0) {
       const index = record('liabilities', `property_${sourceIndex}`, { liabilityId: `liability_application_property_${sourceIndex}`, ownerIds: [...owners], type: 'mortgage', label: `Other property ${sourceIndex + 1} mortgage` }, [`${prefix}.mortgage`, ...(app.household?.partner ? ['household.partner'] : [])]);
       put(`/liabilities/${index}/currentBalance`, money(property.mortgage), [`${prefix}.mortgage`]);
@@ -284,6 +290,9 @@ export function applicationToProfile(information, options = {}) {
     if (present(property.rent) && owners.length === 1) {
       const index = record('incomeSources', `property_${sourceIndex}`, { incomeId: `income_application_property_${sourceIndex}`, ownerIds: [...owners], type: 'rental', label: `Other property ${sourceIndex + 1} gross rent` }, [`${prefix}.rent`, 'household.partner']);
       put(`/incomeSources/${index}/grossAnnual`, money(property.rent), [`${prefix}.rent`]);
+      const position = profile.properties.findIndex(item => item.propertyId === `property_application_${sourceIndex}`);
+      if (position >= 0) put(`/properties/${position}/rentalIncomeSourceIds`, [profile.incomeSources[index].incomeId], [`${prefix}.rent`, 'household.partner'],
+        'This income record was created for this property and its known owner; bank receipts and rental tax remain separate facts.');
     }
   });
   if (app.creditCard?.clears === 'no') {
@@ -308,8 +317,6 @@ export function applicationToProfile(information, options = {}) {
     goodOutcome: 'Free text does not establish numerical goal flexibility.', worries: 'No structured profile field for this free text.',
     'children.*.saved': 'No profile earmarking field; this may already be included in total cash, so it is not added again.',
     'children.*.collegePlan': 'Not sure does not select living at home or away; no scenario is chosen.',
-    'properties.*.costs': 'No property running-cost field in HouseholdProfile v1.',
-    'properties.*.rent': 'Rental ownership is missing; the profile requires named income owners.',
     'retirement.statePension': 'Partly/not sure does not specify a numeric State Pension fraction.',
     'buying.deposit': 'May overlap total cash; no separate deposit earmarking field.',
     'buying.when': 'A relative time range is not an exact goal target date.',

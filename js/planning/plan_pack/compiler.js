@@ -9,7 +9,7 @@ import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.3.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.4.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -241,6 +241,8 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
       const delta = (before, after) => ({ current: before ?? null, route: after ?? null,
         difference: Number.isFinite(before) && Number.isFinite(after) ? after - before : null });
       route.differencesFromCurrent = {
+        ...(ledger.propertyMove ? { endingCash: delta(current.endingCash ?? current.cashRemaining, ledger.endingCash),
+          propertyCapitalCommitted: delta(current.propertyCapitalCommitted ?? 0, ledger.propertyCapitalCommitted) } : {}),
         cashAllocated: delta(current.cashAllocated, ledger.cashAllocated),
         cashRemaining: delta(current.cashRemaining, ledger.cashRemaining),
         annualSurplusBeforeGoalFunding: delta(current.baselineLeftOver, ledger.baselineLeftOver),
