@@ -140,10 +140,11 @@ await test('College and net-retirement builders either compile or name their req
 for (const amount of ['whole','remaining']) await test(amount+' is a known instruction that explicitly needs B1',async()=>{
   await refused(p=>{p.routes=[p.routes[0],{id:'later',changes:[{type:'useCash',goalId:'goal_mortgage',amount}]}];p.narration={};},'requires_later_stage','/routes/1/changes/0/amount');
 });
-await test('Goals are not relabelled as a route, and a fund without a date builder is explicit',async()=>{
+await test('Goals are not relabelled as a route, and a fund must name its dated cost',async()=>{
   let p=oneRoute(base());p.chapters=['goals_and_resources'];p.planningInputs.leftOverEachYear=11000;
   let r=await compilePlanPack(p);assert.equal(r.status,'requires_later_stage');assert.equal(r.diagnostics[0].code,'requires_resource_ledger');
-  p.chapters=['future_cost_fund'];r=await compilePlanPack(p);assert.equal(r.status,'requires_later_stage');assert.equal(r.casePacks,null);
+  p.chapters=['future_cost_fund'];r=await compilePlanPack(p);assert.equal(r.status,'invalid');assert.equal(r.casePacks,null);
+  assert.equal(r.diagnostics[0].path,'/planningInputs/chapterGoals/future_cost_fund');
 });
 await test('A missing goals left-over fact is not invented',async()=>{
   await refused(p=>{oneRoute(p);p.chapters=['goals_and_resources'];},'invalid','/planningInputs/leftOverEachYear');

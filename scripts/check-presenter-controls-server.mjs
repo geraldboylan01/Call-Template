@@ -9,7 +9,7 @@ for (const url of ['/', '/js/presenter_controls.js', '/js/presenter_obs.js', '/s
   const res = await request(url); assert.equal(res.status, 200); assert.equal(res.headers['Cache-Control'], 'no-store');
   assert.match(res.headers['Content-Security-Policy'], /frame-ancestors 'none'/); assert.equal(res.headers['Access-Control-Allow-Origin'], undefined);
 }
-for (const url of ['/private/aam-makeovers/', '/.env', '/../package.json', '/%2e%2e/package.json', '/api/record', '/?file=private']) assert.equal((await request(url)).status, 404);
+for (const url of ['/private/', '/private/presenter/', '/private/presenter/local-case/session.json', '/.env', '/../package.json', '/%2e%2e/package.json', '/api/record', '/?file=private']) assert.equal((await request(url)).status, 404);
 assert.equal((await request('/', 'POST')).status, 404);
 assert.equal((await request('/', 'GET', 'attacker.example:8790')).status, 404);
 console.log('Local controls server checks passed: four fixed assets, no client files/API, GET-only, exact Host, no CORS and restricted CSP.');
