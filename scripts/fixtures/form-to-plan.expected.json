@@ -92,9 +92,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -274,16 +274,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       },
       {
@@ -507,9 +497,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -753,16 +743,6 @@
         "blockingModuleIds": [
           "protection_gap"
         ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
-        ]
       }
     ],
     "planningInputs": {
@@ -961,7 +941,7 @@
           },
           {
             "key": "assumptionsVersion",
-            "value": "planeir-assumptions-1.6.0"
+            "value": "planeir-assumptions-1.7.0"
           },
           {
             "key": "taxStatus",
@@ -1002,12 +982,12 @@
           {
             "key": "investmentGrowthRate",
             "value": 0.05,
-            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "inflationRate",
             "value": 0.02,
-            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "statePensionContributory",
@@ -1031,22 +1011,22 @@
           {
             "key": "collegeAnnualCostsToday",
             "value": "Living at home: €5,000 a year per child; Living away from home: €15,000 a year per child",
-            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.6.0)"
+            "reason": "These are standard planning estimates in today’s money, not guaranteed future costs. Actual costs vary by course, institution and circumstances. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "educationInflationRate",
             "value": 0.04,
-            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.6.0)"
+            "reason": "Education and healthcare costs have tended to rise faster than general consumer prices, so a higher long-term inflation assumption of 4% a year is used for education and care planning. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "collegeStartAge",
             "value": 18,
-            "reason": "Standard assumed college start age (planeir-assumptions-1.6.0)."
+            "reason": "Standard assumed college start age (planeir-assumptions-1.7.0)."
           },
           {
             "key": "collegeDurationYears",
             "value": 4,
-            "reason": "Four years of college for each child (planeir-assumptions-1.6.0)."
+            "reason": "Four years of college for each child (planeir-assumptions-1.7.0)."
           }
         ],
         "warnings": [
@@ -1135,9 +1115,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -1349,16 +1329,6 @@
         "blockingModuleIds": [
           "protection_gap"
         ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
-        ]
       }
     ],
     "planningInputs": {
@@ -1540,7 +1510,7 @@
           },
           {
             "key": "assumptionsVersion",
-            "value": "planeir-assumptions-1.6.0"
+            "value": "planeir-assumptions-1.7.0"
           },
           {
             "key": "taxStatus",
@@ -1568,12 +1538,12 @@
           {
             "key": "investmentGrowthRate",
             "value": 0.05,
-            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.6.0)"
+            "reason": "A 5% nominal growth assumption is intended to represent a medium-risk diversified portfolio held over the long term. This is a planning assumption, not a guaranteed return. Actual investment returns vary and can be negative. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "inflationRate",
             "value": 0.02,
-            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.6.0)"
+            "reason": "A 2% general inflation assumption is used to express future amounts in today’s money. (planeir-assumptions-1.7.0)"
           },
           {
             "key": "statePensionContributory",
@@ -1693,9 +1663,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -1923,16 +1893,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       },
       {
@@ -2242,9 +2202,9 @@
         "chapter": "future_cost_fund",
         "reasons": [
           {
-            "fieldPath": "/chapters/future_cost_fund",
-            "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-            "code": "requires_profile_adapter"
+            "fieldPath": "/household/goals",
+            "reason": "No dated cost is recorded for the future-cost-fund chapter.",
+            "code": "not_relevant"
           }
         ]
       }
@@ -2771,16 +2731,6 @@
         "importance": "required",
         "blockingModuleIds": [
           "protection_gap"
-        ]
-      },
-      {
-        "factId": "requires_profile_adapter",
-        "fieldPath": "/chapters/future_cost_fund",
-        "reason": "The later fund step needs an explicit dated-cost contract and a builder passing the pack date into the payload pipeline.",
-        "kind": "implementation",
-        "importance": "required",
-        "blockingModuleIds": [
-          "future_cost_fund"
         ]
       },
       {

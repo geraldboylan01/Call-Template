@@ -15,7 +15,7 @@
 
 import { marketFigure, marketFigureValue } from './figures/market_math.js';
 
-export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.6.0';
+export const PLANEIR_ASSUMPTIONS_VERSION = 'planeir-assumptions-1.7.0';
 export const PLANEIR_ASSUMPTIONS_APPROVED_ON = '2026-10-21';
 
 const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
@@ -23,6 +23,19 @@ const CASH_RATE_FIGURE_ID = 'ie.market.cash.instant_access_gross_rate';
 export const PLANEIR_ASSUMPTIONS = Object.freeze({
   version: PLANEIR_ASSUMPTIONS_VERSION,
   approvedOn: PLANEIR_ASSUMPTIONS_APPROVED_ON,
+
+  routes: Object.freeze({
+    defaultCashAmount: 'remaining',
+    clearOutgoingPaidFrom: 'savings',
+    majorWorkingLongerYears: 2,
+    workingLongerBasis: 'The analyst architecture classifies working more than two additional years as a major move.',
+    spendLess: Object.freeze({
+      ordinaryFractionOfAnnualSpending: 0.10,
+      approvalStatus: 'proposed',
+      proposedOn: '2026-10-28',
+      basis: 'Proposed editorial boundary for review: a reduction of up to one tenth of stated annual regular spending is labelled ordinary; a larger reduction is labelled major to expose the greater lifestyle change. This is a classification, not evidence that a cut is feasible or accepted. The stated essential-spending floor always applies.'
+    })
+  }),
 
   investment: Object.freeze({
     /** Nominal, before inflation. */
