@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Planeir plan story preview</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="../styles/base.css" />
+  <link rel="stylesheet" href="../styles/plan_story.css" />
+  <style>
+    /* base.css locks the app shell to the viewport; the preview wants one scrollable page. */
+    html { height: auto; overflow: auto; }
+    body { height: auto; overflow: visible; }
+    body { margin: 0; background: linear-gradient(180deg, #070c10, #11171c) fixed; color: #f7f4ee; }
+    .preview-bar { display: flex; gap: 16px; align-items: center; padding: 16px 24px; border-bottom: 1px solid rgba(190, 202, 207, 0.18); }
+    .preview-stub { margin: 0 24px; padding: 28px; border: 1.5px dashed rgba(160, 190, 205, 0.45); border-radius: 18px; color: #c5ced4; font: 500 15px/1.6 'Manrope', sans-serif; }
+    .preview-stub b { color: #f7f4ee; }
+  </style>
+</head>
+<body>
+  <div class="preview-bar" id="bar"></div>
+  <main id="mount"></main>
+  <script type="module" src="./plan_story_preview.js"></script>
+</body>
+</html>

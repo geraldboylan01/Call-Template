@@ -111,6 +111,7 @@ import { debugNormalizeComparisonGrid } from './education_svg.js';
 import { validateReportPayload } from './report.js';
 import { normalizeVideoSummary, extractYouTubeVideoId, buildYouTubeThumbnailUrl } from './video_summary.js';
 import { createSuccessTakeover } from './success_takeover.js';
+import { createPlanStoryController } from './plan_story_app.js';
 import { buildVideoSceneManifest, saveVideoSceneManifest } from './video_scene.js';
 import {
   buildCodexVideoBrief,
@@ -168,6 +169,20 @@ function getMetaContent(name) {
 
 const ui = getUiElements();
 const appShell = document.getElementById('app');
+// The plan story above the overview. Sessions without one never reach any of it.
+const planStory = createPlanStoryController({
+  ui,
+  app: {
+    getSession: () => appState.session,
+    getMode: () => appState.mode,
+    getActiveModuleId: () => appState.session.activeModuleId,
+    openModule: (moduleId) => openModuleFromStory(moduleId),
+    showOverview: () => showOverviewFromStory(),
+    refreshOverview: () => refreshOverview({ enableSortable: !runtimeConfig.readOnly }),
+    save: () => scheduleSessionSave(),
+    toast: (message, kind) => showToast(message, kind)
+  }
+});
 const publishSuccessOverlay = document.getElementById('publishSuccessOverlay');
 const publishSuccessTarget = document.getElementById('publishSuccessTarget');
 const publishSuccessTitle = document.getElementById('publishSuccessTitle');
@@ -6144,6 +6159,7 @@ async function replaceSession(nextSession, options = {}) {
   destroyAllCharts();
   clearUndoActionState();
   clearCompareScrollSyncCleanup();
+  planStory.reset();
 
   appState.transitionLock = false;
   appState.session = nextSession;
@@ -6174,7 +6190,12 @@ async function replaceSession(nextSession, options = {}) {
 
   renderGreeting(ui, appState.session.clientName);
 
-  if (appState.session.modules.length > 0) {
+  if (appState.session.modules.length > 0 && appState.session.planStory) {
+    appState.mode = 'overview';
+    setMode(ui, 'overview');
+    refreshOverview({ enableSortable: !runtimeConfig.readOnly });
+    updateUiChrome();
+  } else if (appState.session.modules.length > 0) {
     appState.mode = 'focused';
     await renderFocused({ useSwipe: false, revealMode: true });
   } else {
@@ -7798,6 +7819,8 @@ function updateUiChrome() {
       }
     });
   }
+
+  planStory.syncChrome();
 }
 
 function makeModuleMediaId(prefix = 'image') {
@@ -8791,8 +8814,9 @@ function refreshOverview({ enableSortable = appState.mode === 'overview' } = {})
   const modules = getModulesInOrder();
   const scrollPosition = getOverviewScrollPosition();
 
+  const { chromeTop } = planStory.syncOverview();
   const width = ui.overviewViewport.clientWidth;
-  const height = ui.overviewViewport.clientHeight;
+  const height = Math.max(1, ui.overviewViewport.clientHeight - chromeTop);
   const layout = computeBestOverviewLayout(modules.length, width, height, {
     maxCols: 6,
     gap: width < 900 ? 14 : 18,
@@ -8922,6 +8946,11 @@ async function zoomOutToOverviewMode() {
     return;
   }
 
+  // A module opened from the story goes back to the paragraph it came from, not to a card.
+  if (planStory.hasOpenLink() && await planStory.backToStory()) {
+    return;
+  }
+
   appState.transitionLock = true;
   destroySortable();
 
@@ -8951,6 +8980,25 @@ async function zoomOutToOverviewMode() {
   }
 
   appState.transitionLock = false;
+}
+
+/** The plan story opens a module full size without the zoom, then comes back the same way. */
+async function openModuleFromStory(moduleId) {
+  if (appState.transitionLock || getIsZoomAnimating()) {
+    return;
+  }
+  destroySortable();
+  appState.session.activeModuleId = moduleId;
+  await renderFocused({ useSwipe: false, revealMode: true });
+  scheduleSessionSave();
+}
+
+async function showOverviewFromStory() {
+  destroyAllCharts();
+  appState.mode = 'overview';
+  setMode(ui, 'overview');
+  refreshOverview({ enableSortable: true });
+  updateUiChrome();
 }
 
 async function toggleOverview() {
@@ -10298,6 +10346,7 @@ export async function initApp(options = {}) {
       options.startInOverview === true
       || getLocationViewMode() === 'overview'
       || Boolean(startupPublishedAccess)
+      || Boolean(appState.session.planStory)
     );
     appState.mode = hasModules() ? (startInOverview ? 'overview' : 'focused') : 'greeting';
 
