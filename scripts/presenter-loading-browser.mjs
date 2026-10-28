@@ -4,8 +4,7 @@ import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { computeMortgageProjection } from '../js/mortgage_math.js';
 
-export async function checkPresenterLoading(source = 'private/aam-makeovers/presenter-regression') {
-  const directory = 'private/aam-makeovers/presenter-loading-regression';
+export async function checkPresenterLoading(source = 'private/presenter/presenter-regression', directory = 'private/presenter/presenter-loading-regression') {
   await fs.mkdir(directory, { recursive: true });
   const html = await fs.readFile(path.join(source, 'index.html'), 'utf8');
   const bootstrap = (await fs.readFile(path.join(source, 'preview.js'), 'utf8'))

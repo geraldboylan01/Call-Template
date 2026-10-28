@@ -2,7 +2,7 @@
 // tracks. Does not request the user's camera/microphone or OS capture picker.
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-export async function checkNativeCapture() {
+export async function checkNativeCapture(source = 'private/presenter/presenter-regression') {
  const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true,args:['--no-sandbox','--autoplay-policy=no-user-gesture-required']});
  try {
   const page=await browser.newPage();await page.goto('http://127.0.0.1:8788/');
@@ -25,7 +25,7 @@ export async function checkNativeCapture() {
     } finally {await recorder.dispose();clearInterval(interval);oscillator.stop();await audio.close();}
   });
   assert.ok(result.bytes>1000);assert.deepEqual(result.magic,[26,69,223,163]);assert.deepEqual(result.dimensions,{width:1280,height:720});assert.ok(result.callbackIsObject&&result.callbackHasRecording);
-  await page.goto('http://127.0.0.1:8788/private/aam-makeovers/presenter-regression/');
+  await page.goto(`${process.env.PRESENTER_BASE_URL || 'http://127.0.0.1:8788'}/${source}/`);
   await page.waitForFunction(()=>window.planeirPresenter?.state().active&&!window.planeirPresenter.state().busy);
   for (const viewport of [{width:1920,height:1080},{width:1280,height:720}]) {
     await page.setViewportSize(viewport);await page.locator('.presenter-camera').evaluate(el=>el.hidden=false);

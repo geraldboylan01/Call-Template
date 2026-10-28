@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 
-export async function checkPresenterRecording() {
+export async function checkPresenterRecording(source = 'private/presenter/presenter-regression', dir = 'private/presenter/presenter-recording-regression') {
   const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'] });
-  const dir = 'private/aam-makeovers/presenter-recording-regression'; await fs.mkdir(dir, { recursive: true });
+  await fs.mkdir(dir, { recursive: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, reducedMotion: 'reduce', acceptDownloads: true });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
-    await page.goto(`${process.env.PRESENTER_BASE_URL || 'http://127.0.0.1:8788'}/private/aam-makeovers/presenter-regression/`);
+    await page.goto(`${process.env.PRESENTER_BASE_URL || 'http://127.0.0.1:8788'}/${source}/`);
     await page.waitForFunction(() => window.planeirPresenter?.state().active && !window.planeirPresenter.state().busy);
     const original = await page.evaluate(() => ({ catalogue: JSON.stringify(window.planeirPresenter.discover()), storage: JSON.stringify({ ...localStorage }) }));
     await page.keyboard.press('c');

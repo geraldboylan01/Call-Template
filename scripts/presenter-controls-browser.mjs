@@ -2,9 +2,9 @@ import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 
-export async function checkPresenterControls() {
+export async function checkPresenterControls(sourceDirectory = 'private/presenter/presenter-regression', caseDirectory = 'private/presenter/local-case', dir = 'private/presenter/presenter-controls-regression') {
   const browser = await chromium.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--no-sandbox'] });
-  const dir = 'private/aam-makeovers/presenter-controls-regression'; await fs.mkdir(dir, { recursive: true });
+  await fs.mkdir(dir, { recursive: true });
   try {
     const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, reducedMotion: 'reduce', acceptDownloads: true });
     await context.addInitScript(() => {
@@ -33,7 +33,7 @@ export async function checkPresenterControls() {
       assert.equal(await page.locator('.presenter-setup').isVisible(), false);
       assert.equal(await page.evaluate(() => window.planeirPresenter.state().index), -1); cleanChecks++;
     });
-    await page.goto('http://127.0.0.1:8788/private/aam-makeovers/presenter-regression/');
+    await page.goto(`${process.env.PRESENTER_BASE_URL || 'http://127.0.0.1:8788'}/${sourceDirectory}/`);
     await page.waitForFunction(() => window.planeirPresenter?.state().active && !window.planeirPresenter.state().busy);
     const source = await page.evaluate(() => ({ case: JSON.stringify(window.planeirPresenter.discover()), storage: JSON.stringify({ ...localStorage }) }));
     console.log('Checking real chart hover and pinned point restoration');
@@ -48,30 +48,30 @@ export async function checkPresenterControls() {
     await page.waitForFunction(() => [...document.querySelectorAll('canvas')].map(c => window.Chart.getChart(c)).find(c => c?.data.labels?.join(',') === '60,65')?.tooltip.getActiveElements()[0]?.index === 0);
     await page.mouse.move(5, 5);
     await page.waitForFunction(() => [...document.querySelectorAll('canvas')].map(c => window.Chart.getChart(c)).find(c => c?.data.labels?.join(',') === '60,65')?.tooltip.getActiveElements()[0]?.index === 1);
-    console.log('Checking mortgage timing exploration on the real Frasier case');
-    const frasier = await context.newPage(); frasier.on('pageerror', e => errors.push(e.message));
-    await frasier.goto('http://127.0.0.1:8788/private/aam-makeovers/2026-09-23-frasier-presenter/');
-    await frasier.waitForFunction(() => window.planeirPresenter?.state().active && !window.planeirPresenter.state().busy);
-    const fsource = await frasier.evaluate(() => JSON.stringify(window.planeirPresenter.discover()));
-    const mortgageIndex = await frasier.evaluate(() => window.planeirPresenter.recordingBundle().compiled.steps.findIndex(s => s.operations.some(o => o.action === 'state' && o.scenarioId === 'clear-mortgage')));
+    console.log('Checking mortgage timing exploration on a local case');
+    const localCase = await context.newPage(); localCase.on('pageerror', e => errors.push(e.message));
+    await localCase.goto(`${process.env.PRESENTER_BASE_URL || 'http://127.0.0.1:8788'}/${caseDirectory}/`);
+    await localCase.waitForFunction(() => window.planeirPresenter?.state().active && !window.planeirPresenter.state().busy);
+    const fsource = await localCase.evaluate(() => JSON.stringify(window.planeirPresenter.discover()));
+    const mortgageIndex = await localCase.evaluate(() => window.planeirPresenter.recordingBundle().compiled.steps.findIndex(s => s.operations.some(o => o.action === 'state' && o.scenarioId === 'clear-mortgage')));
     assert.ok(mortgageIndex >= 0);
-    await frasier.evaluate(index => window.planeirPresenter.goTo(index), mortgageIndex);
-    const authoredYear = await frasier.locator('.rcm-timing-pills [aria-checked=true]').innerText();
-    const beforeText = await frasier.locator('.rcm').innerText();
-    await frasier.locator('.rcm-timing-pills button:not([aria-checked=true]):enabled').first().click();
-    await frasier.waitForFunction(() => window.planeirPresenter.state().exploring);
-    assert.notEqual(await frasier.locator('.rcm-timing-pills [aria-checked=true]').innerText(), authoredYear);
-    assert.notEqual(await frasier.locator('.rcm').innerText(), beforeText);
-    await frasier.evaluate(() => window.planeirPresenter.resume());
-    assert.equal(await frasier.locator('.rcm-timing-pills [aria-checked=true]').innerText(), authoredYear);
-    assert.equal(await frasier.evaluate(() => window.planeirPresenter.state().exploring), false);
-    await frasier.locator('.rcm-timing-pills button:not([aria-checked=true]):enabled').first().click();
-    await frasier.evaluate(() => window.planeirPresenter.next());
-    assert.equal(await frasier.evaluate(() => window.planeirPresenter.state().index), mortgageIndex + 1);
-    await frasier.evaluate(() => window.planeirPresenter.previous());
-    assert.equal(await frasier.locator('.rcm-timing-pills [aria-checked=true]').innerText(), authoredYear);
-    assert.equal(await frasier.evaluate(() => JSON.stringify(window.planeirPresenter.discover())), fsource);
-    await frasier.evaluate(() => window.planeirPresenter.exit()); await frasier.close();
+    await localCase.evaluate(index => window.planeirPresenter.goTo(index), mortgageIndex);
+    const authoredYear = await localCase.locator('.rcm-timing-pills [aria-checked=true]').innerText();
+    const beforeText = await localCase.locator('.rcm').innerText();
+    await localCase.locator('.rcm-timing-pills button:not([aria-checked=true]):enabled').first().click();
+    await localCase.waitForFunction(() => window.planeirPresenter.state().exploring);
+    assert.notEqual(await localCase.locator('.rcm-timing-pills [aria-checked=true]').innerText(), authoredYear);
+    assert.notEqual(await localCase.locator('.rcm').innerText(), beforeText);
+    await localCase.evaluate(() => window.planeirPresenter.resume());
+    assert.equal(await localCase.locator('.rcm-timing-pills [aria-checked=true]').innerText(), authoredYear);
+    assert.equal(await localCase.evaluate(() => window.planeirPresenter.state().exploring), false);
+    await localCase.locator('.rcm-timing-pills button:not([aria-checked=true]):enabled').first().click();
+    await localCase.evaluate(() => window.planeirPresenter.next());
+    assert.equal(await localCase.evaluate(() => window.planeirPresenter.state().index), mortgageIndex + 1);
+    await localCase.evaluate(() => window.planeirPresenter.previous());
+    assert.equal(await localCase.locator('.rcm-timing-pills [aria-checked=true]').innerText(), authoredYear);
+    assert.equal(await localCase.evaluate(() => JSON.stringify(window.planeirPresenter.discover())), fsource);
+    await localCase.evaluate(() => window.planeirPresenter.exit()); await localCase.close();
     console.log('Checking separate controls and mocked OBS start/stop');
     assert.equal((await page.evaluate(() => window.planeirPresenter.validateLive())).status, 'passed');
     await page.keyboard.press('c');
