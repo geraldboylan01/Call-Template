@@ -928,6 +928,11 @@ function buildCaseModels(inputs, year, options) {
     // because a payslip cannot know it, and never more than the tax that was
     // there to relieve, which is why it is measured person by person.
     let taxRelief = 0;
+    people.forEach(person => {
+      person.pensionGross = contributions[person.personId];
+      person.pensionRelief = 0;
+      person.pensionCost = contributions[person.personId];
+    });
     if (pensionsGross > 0) {
       const without = estimate(`${scenario.id}:without-contributions`, noContributions);
       people.forEach((person) => {
@@ -948,7 +953,10 @@ function buildCaseModels(inputs, year, options) {
             ? (person.gross - inputs.todayContributions[person.personId] - statedHere) + (withoutEstimated - personEstimatedInBase[person.personId])
             : withoutEstimated
         );
-        taxRelief += Math.max(0, withoutTax - person.tax);
+        const personalRelief = Math.max(0, withoutTax - person.tax);
+        person.pensionRelief = personalRelief;
+        person.pensionCost = person.pensionGross - personalRelief;
+        taxRelief += personalRelief;
       });
     }
 
@@ -1389,6 +1397,9 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
           takeHome: person.takeHome,
           bankTakeHome: person.bankTakeHome,
           estimatedBankTakeHome: person.estimatedBankTakeHome,
+          pensionGross: person.pensionGross,
+          pensionRelief: person.pensionRelief,
+          pensionCost: person.pensionCost,
           taxSource: person.taxSource,
           basis: person.basis,
           estimatedTakeHome: person.estimatedTakeHome
