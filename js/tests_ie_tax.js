@@ -1142,6 +1142,25 @@ export function runIeTaxTests() {
     assert(sickInput.items.length === 2 && sickInput.items[1].amount === 13_208, 'the input is as it was');
   }));
 
+  cases.push(runCase('The Bereaved Partner’s Contributory Pension is treated like Illness Benefit: income tax only, the recipient’s own income', () => {
+    const survivor = (items, status = 'widowed_or_surviving_civil_partner') => illnessYear([single('a', 45)], items, status);
+    const pensionOnly = survivor([item('a', 'bereavedPartnerPension', 13_494)]);
+    assertCents(pensionOnly.totals.usc, 0, 'no USC');
+    assertCents(pensionOnly.totals.prsi, 0, 'no PRSI');
+    assert(pensionOnly.people[0].income.bereavedPartnerPension === 13_494, 'its own income type, not the State Pension');
+    assert(pensionOnly.people[0].income.statePension === 0, 'never entered as a State Pension');
+    assert(pensionOnly.disclosureCodes.includes('IT_BEREAVED_PARTNER_PENSION') && !pensionOnly.disclosureCodes.includes('USC_STATE_PENSION_EXEMPT'), 'and described as itself');
+    const withSalary = survivor([item('a', 'employment', 30_000), item('a', 'bereavedPartnerPension', 10_000)]);
+    const salaryOnly = survivor([item('a', 'employment', 30_000)]);
+    assertCents(withSalary.totals.usc, salaryOnly.totals.usc, 'USC does not move');
+    assertCents(withSalary.totals.prsi, salaryOnly.totals.prsi, 'PRSI does not move');
+    assert(withSalary.totals.incomeTax > salaryOnly.totals.incomeTax, 'income tax does');
+    assertThrows(() => illnessYear(couple, [item('joint', 'bereavedPartnerPension', 1)], 'married_or_civil_partners'), /recipient's own income/, 'never shared');
+    const joint = illnessYear(couple, [item('a', 'employment', 75_000), item('b', 'illnessBenefit', 13_208)], 'married_or_civil_partners').assessments[0];
+    assertCents(joint.taxableIncomeByPerson.a, 75_000, 'each person’s taxable income is reported, for allocating a joint assessment');
+    assertCents(joint.taxableIncomeByPerson.b, 13_208, 'including the benefit');
+  }));
+
   cases.push(runCase('Every disclosure renders in plain words, with its figures filled in and no em dashes', () => {
     const rules = resolveTaxRules(2031);
     const params = {

@@ -33,6 +33,7 @@ function taxableIncome(income) {
     + Math.max(0, income.employment - income.employmentPensionContribution)
     + income.rentalProfit
     + income.illnessBenefit
+    + income.bereavedPartnerPension
     + income.lumpSumScheduleE;
 }
 
@@ -47,6 +48,7 @@ function employeeCreditIncome(income) {
     + income.arfDistribution
     + Math.max(0, income.employment - income.employmentPensionContribution)
     + income.illnessBenefit
+    + income.bereavedPartnerPension
     + income.lumpSumScheduleE;
 }
 
@@ -161,12 +163,16 @@ function assessUnit(unit, rules) {
   if (unit.people.some((person) => person.income.illnessBenefit > 0)) {
     disclosures.push({ code: 'IT_ILLNESS_BENEFIT' });
   }
+  if (unit.people.some((person) => person.income.bereavedPartnerPension > 0)) {
+    disclosures.push({ code: 'IT_BEREAVED_PARTNER_PENSION' });
+  }
 
   return {
     assessment: {
       basis: unit.basis,
       personIds,
       totalIncome,
+      taxableIncomeByPerson: Object.fromEntries(personIds.map((id, index) => [id, incomes[index]])),
       nursingHomeExpenses,
       incomeAfterNursingHome,
       standardRateBand: band,

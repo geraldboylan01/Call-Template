@@ -65,6 +65,10 @@ export const IE_TAX_SOURCES = Object.freeze({
     title: 'Revenue, taxation of Illness Benefit (liable to income tax, not USC or PRSI)',
     url: 'https://www.revenue.ie/en/jobs-and-pensions/taxation-of-social-welfare-payments/illness-occupational-injury-partial-capacity-benefits.aspx'
   }),
+  revenueTaxableSocialWelfare: Object.freeze({
+    title: 'Revenue, taxation of social welfare payments (taxable payments are liable to income tax, not USC or PRSI)',
+    url: 'https://www.revenue.ie/en/jobs-and-pensions/taxation-of-social-welfare-payments/index.aspx'
+  }),
   revenueJointAssessment: Object.freeze({
     title: 'Revenue, joint assessment (the extra standard rate band belongs to the lower income)',
     url: 'https://www.revenue.ie/en/life-events-and-personal-circumstances/marital-status/marriage-and-civil-partnerships/joint-assessment.aspx'
@@ -246,6 +250,15 @@ const TAX_YEAR_2026 = Object.freeze({
         ruleId: 'ie.income_tax.illness_benefit.2026',
         sources: Object.freeze([S.revenueIllnessBenefit, S.revenueEmployeeCredit, S.revenueJointAssessment])
       }),
+      /**
+       * The Bereaved Partner's Contributory Pension is taxable Department of
+       * Social Protection income, treated exactly like Illness Benefit: income
+       * tax only, the recipient's own income, never entered as a State Pension.
+       */
+      bereavedPartnerPension: Object.freeze({
+        ruleId: 'ie.income_tax.bereaved_partner_pension.2026',
+        sources: Object.freeze([S.revenueTaxableSocialWelfare, S.revenueEmployeeCredit, S.revenueJointAssessment])
+      }),
       sources: Object.freeze([S.revenueTaxReliefCharts, S.revenueEmployeeCredit, S.arfEmolumentsNoteForGuidance])
     }),
 
@@ -423,6 +436,7 @@ const TAX_YEAR_2027 = Object.freeze({
     nursingHomeExpenses: TAX_YEAR_2026.incomeTax.nursingHomeExpenses,
     /** Not touched by the Budget: the treatment is the 2026 rule itself. */
     illnessBenefit: TAX_YEAR_2026.incomeTax.illnessBenefit,
+    bereavedPartnerPension: TAX_YEAR_2026.incomeTax.bereavedPartnerPension,
     /** Said alongside the figure wherever it is shown, so a derived amount is never presented as printed. */
     notes: Object.freeze({
       widowedCredit: 'Derived, not printed in the sources: the 2,125 personal credit (s.461(c)) plus the separate 540 widowed person tax credit (s.461A), which the Bill does not amend.'
