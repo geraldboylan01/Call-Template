@@ -9,7 +9,7 @@ import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.4.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.5.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -185,7 +185,7 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
           proposed.push([chapter, {
             id: caseId, inputHash, input, payload: json(built.payload),
             nativeCaseId: built.nativeCaseId ?? 'today', basis: built.basis,
-            metrics: json(built.metrics ?? {}), derived: derivedOutputs(checked.module),
+            metrics: json(built.metrics ?? {}), calculationFacts: json(built.calculationFacts ?? {}), derived: derivedOutputs(checked.module),
             assumptionsUsed: json(built.assumptionsUsed ?? []),
             warnings: json([...(built.warnings ?? []), ...checked.warnings]),
             provenance: {
@@ -215,7 +215,8 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
       }
       const narration = pack.narration[route.id] === undefined ? null
         : resolvePlanNarration(pack.narration[route.id], placeholders(pack, context, proposed), '/narration/' + route.id);
-      routes.push({ id: route.id, title: route.title ?? route.id, status: 'compiled', chapterCases: mapping, changes: context.changedFacts, narration });
+      routes.push({ id: route.id, title: route.title ?? route.id, status: 'compiled', chapterCases: mapping,
+        sourceHousehold: cloneJson(context.profile), changes: context.changedFacts, narration });
       pendingCasePacks.push({ routeId: route.id, casePack });
     } catch (error) {
       diagnostics.push(errorRow(error, route.id, error.chapter));

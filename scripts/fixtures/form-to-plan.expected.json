@@ -545,6 +545,9 @@
             "takeHome": 61542.99923076923,
             "bankTakeHome": 54982.99923076923,
             "estimatedBankTakeHome": 54982.99923076923,
+            "pensionGross": 6560,
+            "pensionRelief": 2260.676923076924,
+            "pensionCost": 4299.323076923076,
             "taxSource": "estimated",
             "basis": "allocated",
             "estimatedTakeHome": 61542.99923076923
@@ -556,6 +559,9 @@
             "takeHome": 36568.81076923077,
             "bankTakeHome": 34168.81076923077,
             "estimatedBankTakeHome": 34168.81076923077,
+            "pensionGross": 2400,
+            "pensionRelief": 1323.3230769230777,
+            "pensionCost": 1076.6769230769223,
             "taxSource": "estimated",
             "basis": "allocated",
             "estimatedTakeHome": 36568.81076923077
@@ -1312,6 +1318,9 @@
             "takeHome": 56908.880000000005,
             "bankTakeHome": 47308.880000000005,
             "estimatedBankTakeHome": 47308.880000000005,
+            "pensionGross": 9600,
+            "pensionRelief": 3840,
+            "pensionCost": 5760,
             "taxSource": "estimated",
             "basis": "own",
             "estimatedTakeHome": 56908.880000000005
@@ -1323,6 +1332,9 @@
             "takeHome": 43869.43,
             "bankTakeHome": 43869.43,
             "estimatedBankTakeHome": 43869.43,
+            "pensionGross": 0,
+            "pensionRelief": 0,
+            "pensionCost": 0,
             "taxSource": "estimated",
             "basis": "own",
             "estimatedTakeHome": 43869.43

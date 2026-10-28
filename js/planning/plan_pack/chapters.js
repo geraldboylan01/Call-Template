@@ -406,7 +406,7 @@ export async function buildChapter(context, pack, chapter) {
     return {
       input, payload: { title: 'Your cash flow', generated: { summaryHtml: '<p>Compare the income and regular costs for this route.</p>', householdCashFlowInputs: input } },
       metrics: { income: summary.income.total, bankTakeHome: summary.takeHome.bankTotal, tax: summary.outgoings.tax, pensions: summary.outgoings.pensionContributions, leftOver: summary.leftOver.amount },
-      builderHousehold: context.profile, cashFlowSummary: projection.summary,
+      builderHousehold: context.profile, cashFlowSummary: projection.summary, calculationFacts: projection.summary,
       nativeCaseId: summary.id,
       assumptionsUsed: Object.entries(projection.debug.assumptionsUsed).map(([key, value]) => ({ key, value })),
       warnings: [...projection.debug.warnings, ...(input.people.some(p => p.statedTakeHome === undefined)
