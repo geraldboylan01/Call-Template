@@ -11,6 +11,8 @@ import { computeAmortizationMonthlySchedule } from '../js/mortgage_math.js';
 import { priceInvestmentSales } from '../js/planning/plan_pack/investment_sales.js';
 import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
+import { getFigures } from '../js/planning/figures/get_figures.js';
+import { SECTIONS } from '../js/case_application/schema.js';
 
 const base = () => JSON.parse(readFileSync('scripts/fixtures/plan-packs/valid-b1.json', 'utf8'));
 const compile = async p => {
@@ -26,7 +28,7 @@ const fact = (s, key, id = 'current') => route(s, id).facts[key];
 const value = (s, key, id = 'current') => fact(s, key, id)?.value;
 const issue = (s, name, id = 'current') => route(s, id).issues.find(row => row.id === name);
 const freeze = obj => { if (obj && typeof obj === 'object') { Object.values(obj).forEach(freeze); Object.freeze(obj); } return obj; };
-let count = 0, failures = 0, sourceChecks = 0;
+let count = 0, failures = 0, sourceChecks = 0, basisChecks = 0;
 const originalInfo = console.info; console.info = () => {};
 async function test(name, fn) {
   count++;
@@ -35,10 +37,34 @@ async function test(name, fn) {
 }
 // These assertions use the compiled cases, never module samples. This tests the
 // registry's sources; the story/link checker is a separate, later component.
+function checkBasis(basis, calculationDate) {
+  assert.ok(basis && ['stated', 'calculated', 'assumption', 'official'].includes(basis.kind)); basisChecks++;
+  if (basis.kind === 'calculated') assert.ok(basis.engine && basis.calculation && Array.isArray(basis.inputs));
+  if (basis.kind === 'stated') {
+    assert.ok(basis.inputPath && Array.isArray(basis.formQuestions));
+    if (!basis.formQuestions.length) assert.equal(basis.reason.code, 'no_form_provenance');
+    for (const question of basis.formQuestions) {
+      assert.ok(question.path && (question.label || question.reason));
+      if (question.label && !question.path.startsWith('topics.')) {
+        const field = SECTIONS.flatMap(section => [...(section.fields ?? []), ...(section.repeater?.fields ?? [])])
+          .find(field => field.label === question.label);
+        assert.ok(field, 'Question wording comes from the form schema');
+      }
+    }
+  }
+  if (basis.kind === 'assumption') assert.ok(basis.assumptionId && basis.version && basis.description);
+  if (basis.kind === 'official') {
+    const figure = getFigures({ ids: [basis.registerId], onDate: calculationDate })[0]; assert.ok(figure);
+    assert.deepEqual(basis.source, figure.source); assert.equal(basis.checkedOn, figure.checkedOn);
+    assert.equal(basis.value, figure.value); assert.equal(basis.catalogueVersion, figure.catalogueVersion);
+  }
+  for (const evidence of basis.evidence ?? []) checkBasis(evidence, calculationDate);
+}
 function checkSources(c, s) {
   for (const r of s.routes) for (const f of Object.values(r.facts)) {
     assert.equal(r.facts[f.key], f);
     assert.ok(f.display !== undefined && f.source.versions.storyFacts);
+    checkBasis(f.basis, c.calculationDate);
     assert.deepEqual(Object.fromEntries(Object.keys(c.versions).map(key => [key, f.source.versions[key]])), c.versions);
     if (f.status !== 'available') { assert.equal(f.value, null); assert.ok(f.reason.code && f.reason.message); continue; }
     assert.ok(f.unit);
@@ -67,6 +93,30 @@ function checkSources(c, s) {
 
 const compiled = await compile(base()), stories = readPlanPosition(compiled);
 await test('B1: every direct fact equals its compiled source in the correct route case', () => checkSources(compiled, stories));
+await test('Bases identify the engine, reserve assumption, cash assumption and the dated official DIRT figure', () => {
+  assert.equal(fact(stories, 'position.netWorth').basis.engine, 'personal_balance_sheet');
+  assert.equal(fact(stories, 'leftOverAfterGoals.yearly').basis.engine, 'resource_ledger');
+  const reserve = fact(stories, 'position.reserveMonths').basis;
+  assert.equal(reserve.kind, 'assumption'); assert.equal(reserve.description, PLANEIR_ASSUMPTIONS.liquidity.working.basis);
+  const cash = fact(stories, 'issues.idle_cash_vs_debt.car_loan.cashRateAfterTax').basis;
+  assert.equal(cash.kind, 'calculated'); assert.equal(cash.engine, 'irish_tax_engine');
+  assert.equal(cash.evidence[0].description, PLANEIR_ASSUMPTIONS.cash.basis);
+  assert.equal(cash.evidence[1].registerId, 'ie.dirt.2026.rate'); checkBasis(cash, compiled.calculationDate);
+  assert.equal(fact(stories, 'issues.mortgage_could_be_shorter.home_loan.endDate').basis.engine, 'mortgage_math');
+  const manual = fact(stories, 'issues.debts_other_than_mortgage.car_loan.balance').basis;
+  assert.equal(manual.kind, 'stated'); assert.equal(manual.origin, 'adviser');
+  assert.equal(manual.reason.code, 'no_form_provenance');
+});
+await test('Route-changed answers are calculated facts and retain the originally stated input as evidence', async () => {
+  const p = base(); p.routes = [{ id: 'current' }, { id: 'part_loan', changes: [{ type: 'useCash', goalId: 'goal_loan', amount: 5000 }] }]; p.narration = {};
+  const c = await compile(p), s = readPlanPosition(c);
+  const basis = fact(s, 'issues.debts_other_than_mortgage.car_loan.balance', 'part_loan').basis;
+  assert.equal(basis.kind, 'calculated'); assert.equal(basis.engine, 'resource_ledger');
+  assert.equal(basis.evidence[0].inputPath, '/source/normalizedPlanPack/household/liabilities/1/currentBalance');
+  assert.equal(value(s, 'issues.debts_other_than_mortgage.car_loan.balance', 'part_loan'), 10000);
+  assert.deepEqual(fact(s, 'current.issues.debts_other_than_mortgage.car_loan.balance', 'part_loan').basis,
+    fact(s, 'issues.debts_other_than_mortgage.car_loan.balance').basis);
+});
 await test('Facts are deterministic, JSON-safe, leave the compiled plan untouched, and work without samples', () => {
   const lean = structuredClone(compiled); delete lean.casePacks;
   const before = JSON.stringify(lean); freeze(lean);
@@ -302,6 +352,21 @@ for (const fixture of JSON.parse(readFileSync('scripts/fixtures/form-to-profile.
       assert.equal(value(s, 'issues.debts_other_than_mortgage.liability_application_loan_1.rate'), 0.005);
       assert.equal(fact(s, 'issues.debts_other_than_mortgage.liability_application_credit_card.rate').status, 'missing');
       assert.equal(value(s, 'position.spareCash'), 0);
+      const balanceBasis = fact(s, 'issues.debts_other_than_mortgage.liability_application_loan_0.balance').basis;
+      assert.equal(balanceBasis.kind, 'stated');
+      assert.equal(balanceBasis.formQuestions[0].path, 'loans.0.balance');
+      assert.equal(balanceBasis.formQuestions[0].label, SECTIONS.find(section => section.repeater?.path === 'loans').repeater.fields.find(field => field.key === 'balance').label);
+      assert.equal(balanceBasis.form.revision, 7);
+      const rateBasis = fact(s, 'issues.debts_other_than_mortgage.liability_application_loan_0.rate').basis;
+      assert.equal(rateBasis.kind, 'calculated'); assert.equal(rateBasis.engine, 'application_to_profile');
+      assert.equal(rateBasis.evidence[0].formQuestions[0].path, 'loans.0.rate');
+      assert.equal(fact(s, 'issues.debts_other_than_mortgage.liability_application_credit_card.rate').basis.engine, 'story_facts');
+      const oldSchema = structuredClone(c);
+      oldSchema.routes[0].sourceHousehold.fieldMetadata['/liabilities/0/currentBalance'].application.version = 99;
+      const oldBasis = fact(readPlanPosition(oldSchema), 'issues.debts_other_than_mortgage.liability_application_loan_0.balance').basis;
+      assert.equal(oldBasis.formQuestions[0].path, 'loans.0.balance');
+      assert.equal(oldBasis.formQuestions[0].label, null);
+      assert.match(oldBasis.formQuestions[0].reason, /schema version is unavailable/);
     }
     if (!profile.properties.some(row => row.use === 'home')) {
       assert.equal(fact(s, 'position.homeShare').status, 'not_applicable');
@@ -310,5 +375,5 @@ for (const fixture of JSON.parse(readFileSync('scripts/fixtures/form-to-profile.
   });
 }
 console.info = originalInfo;
-console.log(`${count - failures}/${count} story-facts checks passed; ${sourceChecks} direct compiled-source values checked.`);
+console.log(`${count - failures}/${count} story-facts checks passed; ${sourceChecks} direct compiled-source values and ${basisChecks} bases checked.`);
 if (failures) process.exitCode = 1;

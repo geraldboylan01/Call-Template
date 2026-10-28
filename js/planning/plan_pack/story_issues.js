@@ -27,9 +27,11 @@ export function scanStoryIssues(r) {
   };
   const field = (issue, id, name, value, unit, inputs, calculation) => {
     const key = `issues.${issue}.${id}.${name}`;
+    const stated = calculation.startsWith('stated_') || calculation === 'bound_tax_liability';
+    const source = r.source(null, { kind: 'calculation', inputs, calculation, ...(stated ? { statedPath: inputs[0] } : {}) });
     if (value === null || value === undefined) r.unavailable(key, 'This fact was not given or could not be calculated.',
-      r.source(null, { kind: 'calculation', inputs, calculation }), false, 'not_stated_or_not_computed');
-    else r.calculated(key, value, unit, inputs, calculation);
+      source, false, 'not_stated_or_not_computed');
+    else r.add(key, value, unit, source);
     return key;
   };
   const debtRows = household.liabilities.map((debt, index) => ({ debt, path: r.householdPath + '/liabilities/' + index }))
@@ -99,13 +101,13 @@ export function scanStoryIssues(r) {
     } catch (error) { unavailable.push({ id: 'investment_at_a_loss', entityId: asset.assetId, reason: error.message }); }
   }
   add('investment_at_a_loss', losses);
-  add('tax_due', (r.pack.planningInputs.taxDue ?? []).flatMap(binding => {
+  add('tax_due', (r.pack.planningInputs.taxDue ?? []).flatMap((binding, bindingIndex) => {
     const index = household.liabilities.findIndex(debt => debt.liabilityId === binding.liabilityId);
     const debt = household.liabilities[index], amount = euro(debt?.currentBalance);
     if (!number(amount)) { unavailable.push({ id: 'tax_due', entityId: binding.liabilityId, reason: 'The bound tax liability has no stated EUR balance.' }); return []; }
     if (amount === 0) return [];
-    return [{ id: binding.liabilityId, factKeys: [field('tax_due', binding.liabilityId, 'amount', amount, 'EUR', [r.householdPath + '/liabilities/' + index], 'bound_tax_liability'),
-      field('tax_due', binding.liabilityId, 'dueDate', binding.dueDate, 'date', ['/source/normalizedPlanPack/planningInputs/taxDue'], 'stated_due_date')] }];
+    return [{ id: binding.liabilityId, factKeys: [field('tax_due', binding.liabilityId, 'amount', amount, 'EUR', [r.householdPath + '/liabilities/' + index + '/currentBalance'], 'bound_tax_liability'),
+      field('tax_due', binding.liabilityId, 'dueDate', binding.dueDate, 'date', ['/source/normalizedPlanPack/planningInputs/taxDue/' + bindingIndex + '/dueDate'], 'stated_due_date')] }];
   }));
   const shorter = [];
   for (const [index, debt] of (compatible ? household.liabilities : []).entries()) {

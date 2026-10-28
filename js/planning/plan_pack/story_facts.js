@@ -337,6 +337,6 @@ export function readPlanPosition(compiled) {
       }
     }
   }
-  return { version: 'story-facts-1.0.0', calculationDate: compiled.calculationDate, versions: { ...compiled.versions },
+  return { version: 'story-facts-1.1.0', calculationDate: compiled.calculationDate, versions: { ...compiled.versions },
     currentRouteId: 'current', routes: results };
 }

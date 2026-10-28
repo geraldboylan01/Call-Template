@@ -64,6 +64,8 @@ A run is pinned to one confirmed revision. A follow-up form produces a new revis
 
 Every tool result registers its figures as facts: an ID, the value, the unit, how it is shown, and its source (the chapter, the route, the module's case and the focus target where one exists, and the versions). The story refers to them only as `{key}`, `{@key}` for a link into a module, or `{figure.<id>}` for the figures register. Code fills them in and builds the links, so a link can never point at the wrong module or route.
 
+Every fact also carries its basis for the story screen's hover: **stated**, with its form question and confirmed revision; **calculated**, naming the engine; **assumption**, naming the central assumption and its plain basis; or **official**, with its register ID, source and checked date. Mixed calculations retain their component evidence. An optional explainer ID can point to a fuller explanation. The [story-facts contract](story-facts.md) defines these fields; adviser-authored inputs without form provenance say so explicitly.
+
 The story facts in B1.5 section 1 are computed by code for exactly this reason: running surplus after each step, freed cash, differences from the current position, goal states. The AI compares and explains them; it never derives them.
 
 ### 3.3 The tools

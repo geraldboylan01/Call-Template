@@ -1,4 +1,5 @@
 import { buildPresentationCatalogue } from '../../presenter_catalogue.js';
+import { StoryBasis } from './story_basis.js';
 
 export function pointerValue(root, pointer) {
   return pointer.split('/').slice(1).reduce((value, part) => value?.[part.replaceAll('~1', '/').replaceAll('~0', '~')], root);
@@ -18,7 +19,7 @@ function display(value, unit) {
 export class StoryRegistry {
   constructor(compiled, route, index) {
     this.compiled = compiled; this.route = route; this.routePath = '/routes/' + index;
-    this.facts = {}; this.catalogues = new Map();
+    this.facts = {}; this.catalogues = new Map(); this.bases = new StoryBasis(this);
     const i = compiled.resourceLedger?.routes?.findIndex(row => row.routeId === route.id) ?? -1;
     this.ledger = i >= 0 ? compiled.resourceLedger.routes[i] : null;
     this.ledgerPath = i >= 0 ? '/resourceLedger/routes/' + i : null;
@@ -40,12 +41,12 @@ export class StoryRegistry {
   }
   source(path, extra = {}) {
     return { kind: 'plan', chapter: null, routeId: this.route.id, caseId: null, nativeCaseId: null, focusTargetId: null,
-      panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.0.0' }, ...extra };
+      panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.1.0' }, ...extra };
   }
   chapterSource(chapter, relative, value, requestedCaseId = chapter.entry.nativeCaseId) {
     const { entry } = chapter;
     const source = this.source(chapter.path + relative, { kind: 'chapter', chapter: chapter.id, caseId: entry.id,
-      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.0.0' },
+      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.1.0' },
       basis: entry.basis, inputHash: entry.inputHash });
     // Discover actual existing targets from the compiled payload and outputs.
     // No target is invented when the catalogue offers no corresponding figure.
@@ -79,7 +80,8 @@ export class StoryRegistry {
     if (value === undefined || value === null || (typeof value === 'number' && !finite(value))) {
       return this.unavailable(key, 'This figure was not produced by the compiled plan.', source);
     }
-    const fact = { key, value: structuredClone(value), unit, display: shown ?? source.display ?? display(value, unit), status: 'available', source };
+    const fact = { key, value: structuredClone(value), unit, display: shown ?? source.display ?? display(value, unit), status: 'available', source,
+      basis: this.bases.for(key, value, source), ...(source.explainerId ? { explainerId: source.explainerId } : {}) };
     this.facts[key] = fact; return fact;
   }
   from(key, path, unit, extra = {}) { return this.add(key, pointerValue(this.compiled, path), unit, this.source(path, extra)); }
@@ -95,7 +97,8 @@ export class StoryRegistry {
   }
   unavailable(key, message, source = this.source(null), notApplicable = false, code = 'not_produced') {
     const reason = { code, message };
-    this.facts[key] = { key, value: null, unit: null, display: message, status: notApplicable ? 'not_applicable' : 'missing', reason, source };
+    this.facts[key] = { key, value: null, unit: null, display: message, status: notApplicable ? 'not_applicable' : 'missing', reason, source,
+      basis: this.bases.calculated('story_facts', source, { description: message }), ...(source.explainerId ? { explainerId: source.explainerId } : {}) };
     if (notApplicable) {
       const { path, ...origin } = source;
       this.add(key + '.notApplicable', message, 'text', { ...origin, kind: 'calculation', chapter: null, caseId: null, nativeCaseId: null, focusTargetId: null, panel: 'plan_facts',
