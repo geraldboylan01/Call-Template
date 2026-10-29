@@ -1,0 +1,308 @@
+{
+  "fictional-single-renter": {
+    "routeId": "current",
+    "headline": "Your recorded position",
+    "summary": "A view of your confirmed details, with gaps kept visible.",
+    "whatifs": [],
+    "sections": [
+      {
+        "id": "current_position",
+        "title": "Where you stand",
+        "parts": {
+          "does": "This view keeps your current arrangements.",
+          "why": "Your recorded net worth is {@position.netWorth}.",
+          "gives": "Spare cash is {position.spareCash}; solvency is {position.solvency}. Recorded pressure points: {position.pressurePoints}.",
+          "costs": "Cash assigned to a reserve stays assigned.",
+          "check": "{limitations.current_position.position.leftOver}"
+        },
+        "limitationIds": [
+          "current_position.position.leftOver"
+        ]
+      },
+      {
+        "id": "ledger",
+        "title": "Walking your resources",
+        "parts": {
+          "does": "Assets already assigned are listed here: {ledger.crossedOff}.",
+          "why": "After the reserve, spare cash is {steps.reserve.cashAfter}.",
+          "gives": "After the retirement step, spare cash is {steps.goal_application_retire.cashAfter}.",
+          "costs": "Assigning cash limits its use elsewhere.",
+          "check": "{limitations.ledger.steps.reserve.surplusAfter} {limitations.ledger.steps.goal_application_retire.surplusAfter}"
+        },
+        "limitationIds": [
+          "ledger.steps.reserve.surplusAfter",
+          "ledger.steps.goal_application_retire.surplusAfter"
+        ]
+      },
+      {
+        "id": "protecting",
+        "title": "Keeping a reserve",
+        "parts": {
+          "does": "The emergency reserve is {position.reserve}.",
+          "why": "The reserve uses {position.reserveMonths} months of spending.",
+          "gives": "Your recorded cash is kept visible alongside the reserve.",
+          "costs": "Reserve cash is kept aside from goal funding.",
+          "check": "{limitations.whatif.incomeStops.primary}"
+        },
+        "limitationIds": [
+          "whatif.incomeStops.primary"
+        ]
+      },
+      {
+        "id": "inefficiencies",
+        "title": "Cash and borrowing",
+        "parts": {
+          "does": "This view lists the issues the code found.",
+          "why": "The list follows the recorded balances and rates.",
+          "gives": "No borrowing issue is listed in this position.",
+          "costs": "The view depends on the details supplied.",
+          "check": "Review changes in borrowing when you review the plan."
+        },
+        "issues": []
+      },
+      {
+        "id": "goals",
+        "title": "Your goals",
+        "parts": {
+          "does": "Your retirement goal stays in this view.",
+          "why": "The goal is kept alongside the resources recorded.",
+          "gives": "The detail is shown with its available facts.",
+          "costs": "Goal funding can use resources needed elsewhere.",
+          "check": "The registered reasons keep missing results visible."
+        },
+        "goals": [
+          {
+            "goalId": "goal_application_retire",
+            "title": "{goals.goal_application_retire.title}",
+            "parts": {
+              "does": "The chosen funding description is {goals.goal_application_retire.chosenWay}.",
+              "why": "The current arrangements are retained.",
+              "gives": "Cash committed now is {goals.goal_application_retire.routeCash}.",
+              "costs": "Committed resources cannot also meet other goals.",
+              "check": "{limitations.goals.goals.goal_application_retire.state} {limitations.goals.goals.goal_application_retire.routeYearly}"
+            },
+            "limitationIds": [
+              "goals.goals.goal_application_retire.state",
+              "goals.goals.goal_application_retire.routeYearly"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cash_flow_after",
+        "title": "Money after the goals",
+        "parts": {
+          "does": "The current recorded cash remains visible.",
+          "why": "Goal funding must be priced before an after-goals result can be stated.",
+          "gives": "{limitations.cash_flow_after.leftOverAfterGoals.yearly}",
+          "costs": "This view cannot establish an additional spending budget.",
+          "check": "Review the missing funding facts."
+        },
+        "limitationIds": [
+          "cash_flow_after.leftOverAfterGoals.yearly"
+        ],
+        "freedCash": []
+      },
+      {
+        "id": "net_worth_after",
+        "title": "Net worth after this view",
+        "parts": {
+          "does": "This view retains your current arrangements.",
+          "why": "Net worth comes from the compiled balance sheet.",
+          "gives": "Net worth is {@position.netWorth}.",
+          "costs": "A balance-sheet value does not establish that an asset is available as cash.",
+          "check": "Review changed values and balances."
+        }
+      },
+      {
+        "id": "risks",
+        "title": "Risks to keep visible",
+        "parts": {
+          "does": "The illustration uses the recorded facts.",
+          "why": "Income and spending can change.",
+          "gives": "The missing results remain visible beside the facts.",
+          "costs": "Those missing results limit what can be concluded.",
+          "check": "Review the position when circumstances change."
+        },
+        "risks": []
+      },
+      {
+        "id": "check_next",
+        "title": "What to check next",
+        "parts": {
+          "does": "Review the missing facts in this view.",
+          "why": "Those facts affect which results can be shown.",
+          "gives": "The code records the affected results.",
+          "costs": "Until those results exist, no extra spending amount is established.",
+          "check": "{limitations.current_position.position.leftOver} {limitations.ledger.steps.reserve.surplusAfter} {limitations.ledger.steps.goal_application_retire.surplusAfter} {limitations.goals.goals.goal_application_retire.state} {limitations.goals.goals.goal_application_retire.routeYearly} {limitations.cash_flow_after.leftOverAfterGoals.yearly} {limitations.whatif.incomeStops.primary}"
+        },
+        "limitationIds": [
+          "current_position.position.leftOver",
+          "ledger.steps.reserve.surplusAfter",
+          "ledger.steps.goal_application_retire.surplusAfter",
+          "goals.goals.goal_application_retire.state",
+          "goals.goals.goal_application_retire.routeYearly",
+          "cash_flow_after.leftOverAfterGoals.yearly",
+          "whatif.incomeStops.primary"
+        ]
+      }
+    ]
+  },
+  "fictional-borrower-with-card": {
+    "routeId": "current",
+    "headline": "Your recorded borrowing and resources",
+    "summary": "A view of your confirmed details, with gaps kept visible.",
+    "whatifs": [],
+    "sections": [
+      {
+        "id": "current_position",
+        "title": "Where you stand",
+        "parts": {
+          "does": "This view keeps your current arrangements.",
+          "why": "Your recorded net worth is {@position.netWorth}.",
+          "gives": "Spare cash is {position.spareCash}. {position.solvency.notApplicable} Recorded pressure points: {position.pressurePoints}.",
+          "costs": "Cash assigned to a reserve stays assigned.",
+          "check": "{limitations.current_position.position.leftOver}"
+        },
+        "limitationIds": [
+          "current_position.position.leftOver"
+        ]
+      },
+      {
+        "id": "ledger",
+        "title": "Walking your resources",
+        "parts": {
+          "does": "Assets already assigned are listed here: {ledger.crossedOff}.",
+          "why": "After the reserve, spare cash is {steps.reserve.cashAfter}.",
+          "gives": "After the loan goal, spare cash is {steps.goal_application_manage_loan.cashAfter}.",
+          "costs": "Assigning cash limits its use elsewhere.",
+          "check": "{limitations.ledger.steps.reserve.surplusAfter} {limitations.ledger.steps.goal_application_manage_loan.surplusAfter}"
+        },
+        "limitationIds": [
+          "ledger.steps.reserve.surplusAfter",
+          "ledger.steps.goal_application_manage_loan.surplusAfter"
+        ]
+      },
+      {
+        "id": "protecting",
+        "title": "Keeping a reserve",
+        "parts": {
+          "does": "The emergency reserve is {position.reserve}.",
+          "why": "The reserve uses {position.reserveMonths} months of spending.",
+          "gives": "Your recorded cash is kept visible alongside the reserve.",
+          "costs": "Reserve cash is kept aside from goal funding.",
+          "check": "{limitations.whatif.incomeStops.primary}"
+        },
+        "limitationIds": [
+          "whatif.incomeStops.primary"
+        ]
+      },
+      {
+        "id": "inefficiencies",
+        "title": "Cash and borrowing",
+        "parts": {
+          "does": "{issues.debts_other_than_mortgage.headline}.",
+          "why": "The list follows the recorded balances and rates.",
+          "gives": "{issues.debts_other_than_mortgage.liability_application_loan_0.label}: balance {issues.debts_other_than_mortgage.liability_application_loan_0.balance}, rate {issues.debts_other_than_mortgage.liability_application_loan_0.rate}, annual interest at that balance {issues.debts_other_than_mortgage.liability_application_loan_0.yearlyCost}. {issues.debts_other_than_mortgage.liability_application_loan_1.label}: balance {issues.debts_other_than_mortgage.liability_application_loan_1.balance}, rate {issues.debts_other_than_mortgage.liability_application_loan_1.rate}, annual interest at that balance {issues.debts_other_than_mortgage.liability_application_loan_1.yearlyCost}. {issues.debts_other_than_mortgage.liability_application_credit_card.label}: balance {issues.debts_other_than_mortgage.liability_application_credit_card.balance}.",
+          "costs": "The view depends on the details supplied.",
+          "check": "{limitations.inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.rate} {limitations.inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.yearlyCost}"
+        },
+        "issues": [
+          "debts_other_than_mortgage"
+        ],
+        "limitationIds": [
+          "inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.rate",
+          "inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.yearlyCost"
+        ]
+      },
+      {
+        "id": "goals",
+        "title": "Your goals",
+        "parts": {
+          "does": "Your loan goal stays in this view.",
+          "why": "The goal is kept alongside the resources recorded.",
+          "gives": "The detail is shown with its available facts.",
+          "costs": "Goal funding can use resources needed elsewhere.",
+          "check": "The registered reasons keep missing results visible."
+        },
+        "goals": [
+          {
+            "goalId": "goal_application_manage_loan",
+            "title": "{goals.goal_application_manage_loan.title}",
+            "parts": {
+              "does": "The chosen funding description is {goals.goal_application_manage_loan.chosenWay}.",
+              "why": "The current arrangements are retained.",
+              "gives": "Cash committed now is {goals.goal_application_manage_loan.routeCash}.",
+              "costs": "Committed resources cannot also meet other goals.",
+              "check": "{limitations.goals.goals.goal_application_manage_loan.state} {limitations.goals.goals.goal_application_manage_loan.routeYearly}"
+            },
+            "limitationIds": [
+              "goals.goals.goal_application_manage_loan.state",
+              "goals.goals.goal_application_manage_loan.routeYearly"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "cash_flow_after",
+        "title": "Money after the goals",
+        "parts": {
+          "does": "The current recorded cash remains visible.",
+          "why": "Goal funding must be priced before an after-goals result can be stated.",
+          "gives": "{limitations.cash_flow_after.leftOverAfterGoals.yearly}",
+          "costs": "This view cannot establish an additional spending budget.",
+          "check": "Review the missing funding facts."
+        },
+        "limitationIds": [
+          "cash_flow_after.leftOverAfterGoals.yearly"
+        ],
+        "freedCash": []
+      },
+      {
+        "id": "net_worth_after",
+        "title": "Net worth after this view",
+        "parts": {
+          "does": "This view retains your current arrangements.",
+          "why": "Net worth comes from the compiled balance sheet.",
+          "gives": "Net worth is {@position.netWorth}.",
+          "costs": "A balance-sheet value does not establish that an asset is available as cash.",
+          "check": "Review changed values and balances."
+        }
+      },
+      {
+        "id": "risks",
+        "title": "Risks to keep visible",
+        "parts": {
+          "does": "The illustration uses the recorded facts.",
+          "why": "Income and spending can change.",
+          "gives": "The missing results remain visible beside the facts.",
+          "costs": "Those missing results limit what can be concluded.",
+          "check": "Review the position when circumstances change."
+        },
+        "risks": []
+      },
+      {
+        "id": "check_next",
+        "title": "What to check next",
+        "parts": {
+          "does": "Review the missing facts in this view.",
+          "why": "Those facts affect which results can be shown.",
+          "gives": "The code records the affected results.",
+          "costs": "Until those results exist, no extra spending amount is established.",
+          "check": "{limitations.current_position.position.leftOver} {limitations.ledger.steps.reserve.surplusAfter} {limitations.ledger.steps.goal_application_manage_loan.surplusAfter} {limitations.goals.goals.goal_application_manage_loan.state} {limitations.goals.goals.goal_application_manage_loan.routeYearly} {limitations.cash_flow_after.leftOverAfterGoals.yearly} {limitations.whatif.incomeStops.primary} {limitations.inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.rate} {limitations.inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.yearlyCost}"
+        },
+        "limitationIds": [
+          "current_position.position.leftOver",
+          "ledger.steps.reserve.surplusAfter",
+          "ledger.steps.goal_application_manage_loan.surplusAfter",
+          "goals.goals.goal_application_manage_loan.state",
+          "goals.goals.goal_application_manage_loan.routeYearly",
+          "cash_flow_after.leftOverAfterGoals.yearly",
+          "whatif.incomeStops.primary",
+          "inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.rate",
+          "inefficiencies.issues.debts_other_than_mortgage.liability_application_credit_card.yearlyCost"
+        ]
+      }
+    ]
+  }
+}

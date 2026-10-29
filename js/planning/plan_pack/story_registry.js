@@ -1,5 +1,7 @@
 import { buildPresentationCatalogue } from '../../presenter_catalogue.js';
 import { StoryBasis } from './story_basis.js';
+import { euroText as protectionEuroText } from '../../protection_gap_math.js';
+import { euroText as cashFlowEuroText } from '../../household_cash_flow_view.js';
 
 export function pointerValue(root, pointer) {
   return pointer.split('/').slice(1).reduce((value, part) => value?.[part.replaceAll('~1', '/').replaceAll('~0', '~')], root);
@@ -10,7 +12,7 @@ const money = value => new Intl.NumberFormat('en-IE', { style: 'currency', curre
 function display(value, unit) {
   if (unit === 'EUR' || unit === 'EUR/year' || unit === 'EUR/month') return money(value);
   if (unit === 'ratio') return new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 2 }).format(value);
-  if (unit === 'list') return value.map(row => typeof row === 'string' ? row : row.label ?? row.title ?? row.text ?? row.message ?? row.id).join(', ');
+  if (unit === 'list') return value.length ? value.map(row => typeof row === 'string' ? row : row.label ?? row.title ?? row.text ?? row.message ?? row.id).join(', ') : 'None';
   if (unit === 'year' || unit === 'date' || unit === 'text') return String(value);
   return new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 }).format(value);
 }
@@ -41,12 +43,12 @@ export class StoryRegistry {
   }
   source(path, extra = {}) {
     return { kind: 'plan', chapter: null, routeId: this.route.id, caseId: null, nativeCaseId: null, focusTargetId: null,
-      panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.1.0' }, ...extra };
+      panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.1.1' }, ...extra };
   }
   chapterSource(chapter, relative, value, requestedCaseId = chapter.entry.nativeCaseId) {
     const { entry } = chapter;
-    const source = this.source(chapter.path + relative, { kind: 'chapter', chapter: chapter.id, caseId: entry.id,
-      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.1.0' },
+    const source = this.source(chapter.path + relative, { kind: 'chapter', chapter: chapter.id, panel: null, caseId: entry.id,
+      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.1.1' },
       basis: entry.basis, inputHash: entry.inputHash });
     // Discover actual existing targets from the compiled payload and outputs.
     // No target is invented when the catalogue offers no corresponding figure.
@@ -64,14 +66,19 @@ export class StoryRegistry {
     const metric = relative.split('/').at(-1);
     const labels = metric.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
     const liquidityKey = { currentCash: 'current-cash', targetCash: 'target-reserve' }[metric];
+    const cashFlowColumn = relative.startsWith('/metrics/') && chapter.id === 'household_cash_flow'
+      ? { tax: 'Tax (€)', pensions: 'Pensions (€)', leftOver: 'Left over (€)' }[metric] : null;
     const target = chapter.id === 'liquidity_analysis'
       ? candidates.find(row => liquidityKey && row.ref.key === liquidityKey && row.value === value)
+      : cashFlowColumn ? candidates.find(row => row.kind === 'table-row' && row.cells?.[0] === native?.label && row.columns?.includes(cashFlowColumn))
+      : chapter.id === 'household_cash_flow' ? null
       : candidates.find(row => row.kind === 'holding' && row.label.toLowerCase() === labels && row.value === value)
         ?? candidates.find(row => row.kind === 'table-row' && String(row.cells?.[0]).toLowerCase() === labels && row.cells.some(cell => cell === value))
         ?? candidates.find(row => row.kind === 'table-row' && native && row.cells?.[0] === native.label && row.cells.some(cell => cell === value));
     if (target) {
       source.focusTargetId = target.id;
       if (target.value === value && target.displayValue) source.display = target.displayValue;
+      if (cashFlowColumn) source.display = cashFlowEuroText(target.cells[target.columns.indexOf(cashFlowColumn)]);
     }
     return source;
   }
@@ -90,7 +97,8 @@ export class StoryRegistry {
     if (!chapter) return this.unavailable(key, 'This plan has no compiled ' + id.replaceAll('_', ' ') + ' chapter.');
     const value = chapter.entry.metrics[metric];
     return this.add(key, value, unit, this.chapterSource(chapter, '/metrics/' + pointerPart(metric), value,
-      id === 'protection_gap' ? metric.split('.')[0] : chapter.entry.nativeCaseId));
+      id === 'protection_gap' ? metric.split('.')[0] : chapter.entry.nativeCaseId),
+    id === 'protection_gap' && typeof value === 'number' ? unit === 'months' ? String(value) : protectionEuroText(value) : undefined);
   }
   calculated(key, value, unit, inputs, calculation, extra = {}) {
     return this.add(key, value, unit, this.source(null, { kind: 'calculation', inputs, calculation, panel: 'plan_facts', ...extra }));

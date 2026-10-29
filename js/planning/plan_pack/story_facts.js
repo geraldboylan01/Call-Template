@@ -1,5 +1,6 @@
 import { StoryRegistry } from './story_registry.js';
 import { scanStoryIssues } from './story_issues.js';
+import { storyRequirements } from './story_requirements.js';
 
 const RETIREMENT = ['retire', 'retire_early', 'improve_pension'];
 const active = goal => !['paused', 'completed'].includes(goal.status);
@@ -342,6 +343,9 @@ export function readPlanPosition(compiled) {
       }
     }
   }
-  return { version: 'story-facts-1.1.0', calculationDate: compiled.calculationDate, versions: { ...compiled.versions },
+  // Missing-result words are code facts too. Both the screen and checker read
+  // them here, so an accepted limitation never becomes an unknown screen key.
+  for (const route of results) Object.assign(route.facts, storyRequirements(compiled, route).facts);
+  return { version: 'story-facts-1.1.1', calculationDate: compiled.calculationDate, versions: { ...compiled.versions },
     currentRouteId: 'current', routes: results };
 }

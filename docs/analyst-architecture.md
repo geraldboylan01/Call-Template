@@ -92,7 +92,7 @@ The tool catalogue is B1.5 section 7's, with two additions, `goal_ways` and `sug
 | `balancing_moves` | The smallest single goal moves, and the smallest lever sizes, that would balance a route | To build |
 | `run_whatif` | One what-if's facts, with every parameter's source checked | Income stops and death before retirement through the protection gap first; the full catalogue and the retirement-years run later (B1.5 sections 6b to 6d) |
 | `missing_facts` | Each missing fact as a form question, with the result it affects | #97's and #102's missing-fact lists (built); the question form is to build |
-| `submit_story` | The checker's verdict with paths | The story model's checks (#99) now; the full checker is to build |
+| `submit_story` | The checker's verdict with paths | Full `checkStory` is built; the analyst chat wires it in. The current tool stub still runs the existing story-model checks |
 
 ### 3.4 Routes: the ledger walk, each goal's ways, and the levers
 
@@ -190,7 +190,7 @@ The same call, facts and versions give the same result in either harness and in 
 | Story screen, on samples | #99, green |
 | Care: Fair Deal rules and the care builder | #101, green; conflicts in `package.json` and the regression workflow once #100 lands, which a merge of main resolves. #98 makes the same price-list edit and is superseded by it |
 | Home trade down and rental keep-or-sell engines | On main, as modules; not yet levers in a plan |
-| Story facts, issue list, checker | Specified (B1.5 sections 1 to 3); not built |
+| Story facts, issue list, checker | Built (B1.5 sections 1 to 3); the analyst chat wires the full checker into submission |
 | Alternatives for profile-built plans, the ledger walk, the levers, `suggest_routes` | Not built |
 | Protection with the Illness Benefit default | Specified (plan document section 6); not built |
 | Tool layer, case file, local harness | Not built |
@@ -210,7 +210,7 @@ Three drafts, each a working whole. Each line names the chat it belongs to; line
 
 A made-up household's confirmed form becomes a checked story with up to three routes, built by walking the ledger and including a major lever where the goals need one, written by Claude Code through the tools, and opened in the story screen with working links.
 
-1. **Story facts and the issue list** as code (B1.5 sections 1 and 2) are built in `readPlanPosition(compiled)`, with `check:story-facts` in the consumer gate. Next is **the checker** (B1.5 section 3's floor, wording rules, and the linked-figure match). Plan chat, two pull requests.
+1. **Story facts and the issue list** as code (B1.5 sections 1 and 2) are built in `readPlanPosition(compiled)`, with `check:story-facts` in the consumer gate. **The checker** is built in `checkStory(compiledPlan, story)`, covering B1.5 section 3's floor, wording rules and linked-figure match, with `check:story-checker` in the gate. Its [contract](story-checker.md) includes code limitations and compiled evidence. The analyst chat wires it into `submit_story`; no tool or screen wiring is included here.
 2. **Routes**, in three pull requests: (a) alternatives for profile-built plans and the new ordinary levers (`pensionContribution`, `spendLess`); (b) the major levers `tradeDownHome` and `sellProperty`, with central selling and buying costs in the register; (c) `goal_ways`, `balancing_moves` with lever sizes, and `suggest_routes`. Routes chat (the chat that built #97 and #102).
 3. **Protection with the Illness Benefit default** (plan document section 6), with the protection playbook's change to stop stating rates as its own prompt-pack commit. Protection chat.
 4. **The tool layer and the local harness**: the case file, the fact registry, the executors wired to what exists, the local tool server and the command line. Each tool picks up 1, 2 and 3 as they land. Analyst chat (new).
