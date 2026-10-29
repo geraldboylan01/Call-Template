@@ -1,6 +1,6 @@
 # The B1.5 story checker
 
-`checkStory(compiledPlan, story)` from `js/planning/plan_pack/story_checker.js` is the full Draft 1 check for the future `submit_story` executor. It is synchronous, does no I/O, uses no system date, changes neither argument, and returns every applicable refusal as `{code, path, message}`. Its result is `{ok, verdict, checkerVersion, routeId, refusals, links, limitations}`. A pass never releases an analysis.
+`checkStory(compiledPlan, story)` from `js/planning/plan_pack/story_checker.js` is the full Draft 1 check used by the `submit_story` executor. It is synchronous, does no I/O, uses no system date, changes neither argument, and returns every applicable refusal as `{code, path, message}`. Its result is `{ok, verdict, checkerVersion, routeId, refusals, links, limitations}`. A pass never releases an analysis.
 
 ```js
 import { checkStory, getStoryRequirements } from '../js/planning/plan_pack/story_checker.js';
@@ -73,4 +73,4 @@ For `{@key}`, code follows the fact's route through `chapterCases`, checks its p
 
 The existing fact registry now gives chapter sources a null plan-panel target and uses native protection/cash-flow display formatting. It never invents a focus for an undisplayed per-person figure. A missing target, changed case, unequal value or unit, stale version, unsupported exact adapter or mismatched display is a refusal at the story text path. There is no sample lookup, nearest case or silent formatting repair. The current chapter-backed story facts use balance sheet, liquidity, cash flow and protection; a new chapter-backed fact needs its exact native adapter before it can be linked.
 
-`npm run check:story-checker` runs in `check:consumer`. It includes independently authored placeholder stories for the invented renter and borrower, the B1 fixture, a negative case for every rule, native rounding/case/target comparisons, major-move evidence and immutable-input checks. Both authored accepted stories also build and import a complete screen session, including their limitation placeholders. No tool or screen is wired in this PR.
+`npm run check:story-checker` runs in `check:consumer`. It includes independently authored placeholder stories for the invented renter and borrower, the B1 fixture, a negative case for every rule, native rounding/case/target comparisons, major-move evidence and immutable-input checks. Both authored accepted stories also build and import a complete screen session, including their limitation placeholders. The analyst tool runs this checker before accepting a draft, and `analyst:open` requires a matching passing report.

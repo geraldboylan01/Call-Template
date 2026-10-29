@@ -20,10 +20,13 @@ import { missingFactQuestions } from '../js/planning/analyst/questions.js';
 import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
 import { compactStoryFacts } from '../js/plan_story_registry.js';
 import { checkAnalystWiring } from './check-analyst-wiring.mjs';
+import { checkReply } from './lib/analyst-reply-check.mjs';
+import { compilerBudget } from '../js/planning/analyst/budget.js';
+import { minimalAnalystStory } from './fixtures/minimal-analyst-story.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const execFileAsync = promisify(execFile);
-// A native walk can perform up to sixty compiler runs. Transport parity checks
+// A native walk can perform up to eighty compiler runs. Transport parity checks
 // its result, not a one-minute latency target on a shared CI runner. Both
 // harnesses get the same finite deadline and CLI results have an explicit cap.
 const harnessTimeoutMs = 5 * 60_000;
@@ -81,19 +84,27 @@ try {
       const initial = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7,
         calculationDate: c.pinned.calculationDate, clientLabel: fixture.id, beforeCompile });
       await compilePlanPack(initial.planPack, { ...initial.compileOptions, beforeCompile });
-      assert.equal(c.budget.engineRuns, initialCompiles, 'Case creation includes every compiler preflight');
+      assert.equal(c.budget.compilerRuns, initialCompiles, 'Case creation includes every compiler preflight');
     }
     const position = await executeTool(c, 'read_position', {});
     assert.equal(position.result.ok, true);
     assert.deepEqual(position.result.data.facts, readPlanPosition(c.pinned.currentPosition).routes[0].facts);
     assert.deepEqual(position.result.data.storyFacts, compactStoryFacts(readPlanPosition(c.pinned.currentPosition), 'current'));
+    const compact = checkReply('read_position', position.result, {}, fixture.id);
+    assert.ok(Object.keys(compact.data.facts).every(key => !key.startsWith('current.')));
+    assert.ok(Object.values(compact.data.facts).every(fact => !fact.source && !fact.basis));
+    const keys = Object.keys(position.result.data.facts).slice(0, 20);
+    const detail = await executeTool(c, 'read_position', { keys });
+    checkReply('read_position', detail.result, { keys }, fixture.id);
+    assert.deepEqual(detail.result.data.facts, Object.fromEntries(keys.map(key => [key, position.result.data.facts[key]])));
     for (const fact of Object.values(position.result.data.facts)) {
       assert.ok(fact.key && fact.status && fact.basis && fact.source.routeId === 'current' && fact.source.versions);
     }
     for (const tool of TOOL_CATALOGUE) {
       const input = tool.name === 'price_route' ? { route: { id: 'trial', changes: [] } }
-        : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: c.pinned.profile.goals[0].goalId } : {};
+        : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: c.pinned.profile.goals[0].goalId } : tool.name === 'run_whatif' ? { routeId: 'trial' } : {};
       const out = await executeTool(c, tool.name, input);
+      checkReply(tool.name, out.result, input, fixture.id);
       assert.equal(out.caseFile.runLog.length, 2);
       assert.deepEqual(out.caseFile.runLog.at(-1).result, out.result);
       if (tool.unavailable) { assertRefusal(out.result); assert.equal(firstCode(out), 'not_built_yet'); }
@@ -157,6 +168,21 @@ try {
     assert.deepEqual(result.result.data.figures, getFigures(input).map(figure => ({ ...figure, explainers: figure.explainers ?? [] })));
     assert.ok(!JSON.stringify(result.result.data.figures).includes('"quotes"'));
   }
+  const allFigures = getFigures();
+  const unfunded = checkReply('goal_ways', { ok: true, data: { ways: [{ kind: 'lump_sum',
+    pricing: { ledger: null, refusals: [{ code: 'missing_information', path: '/household/assets', message: 'Cash is unavailable.' }] },
+    shortfall: { cash: 2000, yearly: [{ year: 2028, amount: 1000 }] } }] } });
+  assert.deepEqual(unfunded.data.ways[0].shortfall, { cash: 2000, yearly: [{ year: 2028, amount: 1000 }] }, 'An unpriced way keeps its native shortfall and calendar year');
+  const indexIds = [];
+  for (let offset = 0; offset < allFigures.length; offset += 100) {
+    const raw = (await executeTool(base, 'read_figures', { offset })).result;
+    indexIds.push(...checkReply('read_figures', raw, { offset }).data.figures.map(row => row.id));
+  }
+  assert.deepEqual(indexIds, allFigures.map(row => row.id), 'Index pages omit no figures');
+  for (let offset = 0; offset < allFigures.length; offset += 10) {
+    const ids = allFigures.slice(offset, offset + 10).map(row => row.id);
+    checkReply('read_figures', (await executeTool(base, 'read_figures', { ids })).result, { ids });
+  }
   const a = await executeTool(base, 'read_position', {});
   const b = await executeTool(a.caseFile, 'read_figures', { kinds: ['law'] });
   const again = await executeTool(b.caseFile, 'read_position', {});
@@ -173,10 +199,13 @@ try {
   ];
   for (const edit of badStories) { const s = story(); edit(s); assertRefusal((await executeTool(base, 'submit_story', { story: s })).result); }
   const checked = await executeTool(base, 'submit_story', { story: story() });
+  assert.equal(checked.result.ok, false, 'A shape-only story is no longer accepted');
+  assert.equal(checked.result.data.report.checkerVersion, 'story-checker-1.0.0');
+  assert.deepEqual(checked.caseFile.storyDrafts, {});
   assert.equal(checked.result.data.releaseEligible, false);
   assert.equal(checked.caseFile.reviewStatus, 'pending');
   assert.equal(checked.caseFile.checkerReports.length, 1);
-  const nativeStory = story(); nativeStory.summary = 'Your net worth is {@position.netWorth}.';
+  const nativeStory = minimalAnalystStory(base.pinned.currentPosition); nativeStory.summary = 'Your net worth is {@position.netWorth}.';
   assert.equal((await executeTool(base, 'submit_story', { story: nativeStory })).result.ok, true);
   const missingKey = Object.entries(readPlanPosition(base.pinned.currentPosition).routes[0].facts).find(([, fact]) => fact.status === 'missing')[0];
   nativeStory.summary = '{' + missingKey + '}';
@@ -191,7 +220,7 @@ try {
   assert.equal(priced.result.ok, true, JSON.stringify(priced.result));
   const compiler = await compilePlanPack({ ...lean.pinned.planPack, routes: [{ id: 'current' }, route] }, { resourceLedger: true });
   assert.deepEqual(priced.result.data.ledger, compiler.resourceLedger.routes.find(row => row.routeId === route.id));
-  assert.ok(priced.caseFile.budget.engineRuns > 1 && priced.caseFile.budget.engineRuns <= 60);
+  assert.ok(priced.caseFile.budget.compilerRuns > 1 && priced.caseFile.budget.compilerRuns <= RUN_LIMITS.compilerRuns);
   for (const change of [
     { type: 'useCash', goalId: 'missing', amount: 'whole' },
     { type: 'moveGoal', goalId: 'missing', targetDate: '2030-01-01' },
@@ -202,22 +231,29 @@ try {
     assertRefusal(result.result);
     assert.ok(result.result.refusals[0].path.startsWith('/input/route/') || result.result.refusals[0].path.startsWith('/routes/'), 'Catalogue schema and compiler own lever validation');
   }
-  const linked = story('unchanged'); linked.summary = '{@position.netWorth}';
+  const linked = minimalAnalystStory(priced.caseFile.pricedRoutes.unchanged, 'unchanged'); linked.summary = '{@position.netWorth}';
   assert.equal((await executeTool(priced.caseFile, 'submit_story', { story: linked })).result.ok, true);
   const otherRoute = story(); otherRoute.summary = '{unchanged.ledger.cashRemaining}';
   assertRefusal((await executeTool(priced.caseFile, 'submit_story', { story: otherRoute })).result);
 
-  assert.deepEqual(RUN_LIMITS, { routes: 3, whatifsPerRoute: 8, engineRuns: 60 });
-  lean.budget.engineRuns = 59;
+  assert.deepEqual(RUN_LIMITS, { routes: 3, whatifsPerRoute: 8, pricingCalls: 30, compilerRunsPerCall: 80, compilerRuns: 1500 });
+  const callCase = clone(lean), meter = compilerBudget(callCase);
+  for (let i = 0; i < 80; i++) meter.beforeCompile();
+  assert.throws(() => meter.beforeCompile(), error => error.path === '/budget/compilerRunsPerCall');
+  assert.equal(callCase.budget.compilerRuns, lean.budget.compilerRuns + 80);
+  lean.budget.compilerRuns = 1499;
   const last = await executeTool(lean, 'price_route', { route });
-  assert.equal(last.caseFile.budget.engineRuns, 60);
+  assert.equal(last.caseFile.budget.compilerRuns, 1500);
   const beyond = await executeTool(last.caseFile, 'price_route', { route });
   assert.equal(firstCode(beyond), 'budget_exceeded');
-  assert.equal(beyond.caseFile.budget.engineRuns, 60);
+  assert.equal(beyond.caseFile.budget.compilerRuns, 1500);
   assert.equal(beyond.caseFile.runLog.length, last.caseFile.runLog.length + 1);
-  for (const tool of ['goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']) {
-    assert.equal(budgetRefusal(last.caseFile, tool, { routeId: 'unchanged' }).refusals[0].path, '/budget/engineRuns');
-  }
+  const calls = clone(lean); calls.budget.pricingCalls = 29;
+  const thirtieth = await executeTool(calls, 'run_whatif', { routeId: 'unchanged' });
+  assert.equal(thirtieth.result.refusals[0].code, 'not_built_yet');
+  assert.equal(thirtieth.caseFile.budget.pricingCalls, 30);
+  for (const tool of ['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif'])
+    assert.equal(budgetRefusal(thirtieth.caseFile, tool, { routeId: 'unchanged' }).refusals[0].path, '/budget/pricingCalls');
   const whatifs = clone(base); whatifs.budget.whatifsByRoute.example = 7;
   assert.equal(budgetRefusal(whatifs, 'run_whatif', { routeId: 'example' }), null);
   whatifs.budget.whatifsByRoute.example++;
@@ -242,25 +278,25 @@ try {
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map(({ name, inputSchema }) => ({ name, inputSchema })), TOOL_CATALOGUE.map(({ name, inputSchema }) => ({ name, inputSchema })));
   for (const tool of [...TOOL_CATALOGUE, { name: 'unknown' }]) {
-    const input = tool.name === 'price_route' ? { route } : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: 'goal_application_understand_position' } : {};
+    const input = tool.name === 'price_route' ? { route } : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: 'goal_application_understand_position' } : tool.name === 'run_whatif' ? { routeId: 'trial' } : {};
     const saved = await readFile(join(directory, 'case.json'), 'utf8');
     await writeFile(inputFile, JSON.stringify(input));
     const cliResult = await cliTool(tool.name, directory, inputFile);
     await writeFile(join(directory, 'case.json'), saved);
     const mcp = await mcpTool(tool.name, input);
     assert.deepEqual(JSON.parse(mcp.content[0].text), cliResult, tool.name + ': real stdio and CLI parity');
-    assert.deepEqual(mcp.structuredContent, cliResult);
+    assert.equal(mcp.structuredContent, undefined);
   }
   await writeFile(join(directory, '.lock'), '');
   assert.equal((await callLocalTool(directory, 'price_route', { route })).refusals[0].code, 'case_busy');
   await rm(join(directory, '.lock'));
   const stored = JSON.parse(await readFile(join(directory, 'case.json'), 'utf8'));
   assert.equal(stored.runLog.length, 1 + TOOL_CATALOGUE.length + 1);
-  assert.ok(stored.budget.engineRuns > 1 && stored.budget.engineRuns <= 60, 'Both harnesses share one persisted budget');
-  const persistedFull = { ...stored, budget: { ...stored.budget, engineRuns: 60 } };
+  assert.ok(stored.budget.compilerRuns > 1 && stored.budget.compilerRuns <= RUN_LIMITS.compilerRuns, 'Both harnesses share one persisted budget');
+  const persistedFull = { ...stored, budget: { ...stored.budget, pricingCalls: 30, compilerRuns: 1500 } };
   await writeFile(join(directory, 'case.json'), JSON.stringify(persistedFull));
   assert.equal((await callLocalTool(directory, 'price_route', { route })).refusals[0].code, 'budget_exceeded');
-  assert.equal(JSON.parse(await readFile(join(directory, 'case.json'), 'utf8')).budget.engineRuns, 60);
+  assert.equal(JSON.parse(await readFile(join(directory, 'case.json'), 'utf8')).budget.compilerRuns, 1500);
   const tracked = spawnSync('git', ['ls-files', '--', 'private/analyses/'], { cwd: root, encoding: 'utf8' });
   assert.equal(tracked.status, 0); assert.equal(tracked.stdout.trim(), '', 'No analysis path may be tracked');
   assert.equal(spawnSync('git', ['check-ignore', '--quiet', join(directory, 'case.json')], { cwd: root }).status, 0);
@@ -294,7 +330,10 @@ try {
     assert.equal(expected.ok, true, JSON.stringify(expected.refusals));
     await writeFile(join(wiring.directory, 'case.json'), snapshot);
     const actual = await mcpTool(name, input);
-    assert.deepEqual(actual.structuredContent, expected, 'Native wiring parity: ' + name);
+    assert.equal(actual.structuredContent, undefined);
+    assert.equal(actual.content.length, 1);
+    assert.deepEqual(JSON.parse(actual.content[0].text), expected, 'Native wiring parity: ' + name);
+    assert.ok(Buffer.byteLength(actual.content[0].text) < 60_000, name + ': MCP reply exceeds 60 KB');
     if (!replaySeed) replaySeed = await readFile(join(wiring.directory, 'case.json'), 'utf8');
   }
   console.log('[AnalystTools] schemas, confirmed cases, all tools, refusals, budgets, CLI/MCP parity and private paths passed.');

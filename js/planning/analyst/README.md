@@ -6,7 +6,7 @@ It includes fixture creation, Claude Code registration, the opening prompt and
 
 ```sh
 npm run analyst -- list-fixtures
-npm run analyst -- new-case --fixture fictional-mortgage-college-family
+npm run analyst -- new-case --fixture fictional-trade-down
 npm run --silent analyst -- read_position --case <directory> --input <file.json>
 npm run --silent analyst:mcp -- --case <directory>
 npm run --silent analyst:open -- <directory>
@@ -20,13 +20,13 @@ starts a new run; older calculations are never spliced into it.
 
 ## Facts and story keys
 
-`read_position({routeId?})` defaults to the pinned current position. It can also
-read any retained successfully priced alternative. `facts`, `issues`,
-`unavailableIssues`, `goalWalk`, `steps` and `freedCash` come from
-`readPlanPosition` for that route. `storyFacts` comes from `compactStoryFacts`
-in `js/plan_story_registry.js`: these are the only household placeholder keys a
-story may use. `price_route` returns the same route's native facts and
-`storyFacts`, with its ledger and setting-source checks.
+`read_position({routeId?, keys?})` defaults to current and also reads retained
+priced routes. Its default facts contain only key, display, unit, status and
+basis kind, with no `current.*` aliases. Asking for up to twenty keys returns
+those facts' full source and basis. `storyFacts` lists canonical screen keys;
+`storyRequirements` supplies the checker's section floor and limitation IDs.
+The full native facts, issues, goal walk, steps and provenance remain in the
+case, and the screen shows their bases on hover.
 
 Submission resolves through `storyFactRegistry`, just as the screen does.
 Older metric aliases such as `ledger.cashRemaining` and
@@ -36,14 +36,12 @@ never rendered as amounts; use a returned `.notApplicable` key when available.
 `figure.<id>` uses the same effective-date lookup as the screen, and
 `{?explainer.<id>}` uses the code-owned explainer catalogue.
 
-`submit_story({story})` checks the nine sections and five parts and runs the
-existing model against these shared keys, including goal subsections and
-explainers. It validates the proposed story together with previously accepted
-stories on their shared compilation. Only accepted drafts become active in
-`storyDrafts`; refused drafts remain in the call log. `analyst:open` uses the
-same compilation selection and writes `session.json` next to `case.json`.
-The full method-floor and linked-value checker is still pending; passing the
-available checks never releases or publishes a result.
+`submit_story({story})` runs the full `checkStory` contract, including the
+section floor, ordered goals, limitations, wording and native linked figures.
+It checks all selected stories against the same compilation. Only a passing
+draft becomes active; refusals and full reports remain in the run log and
+`checkerReports`. `analyst:open` requires a matching passing report and checks
+again before preparing `session.json`. Passing never releases a result.
 
 ## Pricing and exploration
 
@@ -58,14 +56,23 @@ calls `suggestRoutes`, returning up to five independent native walks.
 moves and lever sizes; an explicit `type: tradeDownHome` or `sellProperty`
 uses `sizeMajorMove`, with optional `year` and the recorded `propertyId` for a
 sale. Omitted drafts start an empty walk. A `routeId` refers to a saved draft.
-Choose an exploration's returned wire changes, assign the selected route its
-own ID, then retain it through `price_route`. Exploration never silently picks
-one of several choices sharing a draft ID. Explicit major sizing retains its
-sized draft and compilation for `read_position`.
+Each candidate has a reusable `candidateId` and a priced wire route with its
+own ID. Select it with `price_route({candidateId})` or its unchanged wire route;
+the stored compilation is reused. Changed settings or IDs require fresh pricing.
+Exploration results retain every full compilation in the case. Explicit major
+sizing also retains its sized route for `read_position`.
 
-`read_figures` includes explainer IDs; `read_explainers({ids?, figureIds?})`
-returns `getExplainers` unchanged. `missing_facts` returns form questions and
-implementation gaps. `run_whatif` retains its explicit `not built yet` refusal.
+Replies contain compact goals and shortfalls, annual remaining money, changes
+and sources, major sizes/bounds, refusals and story keys. They never expose a
+compilation or plan pack. Both harnesses use the same projection; MCP sends the
+JSON once as text, with no structuredContent. The fixture checks enforce a
+60 KB limit per reply. Pricing calls can take up to a minute.
+
+`read_figures` returns a hundred-entry index page with `nextOffset`; ask for up
+to ten `ids` for full detail. `read_explainers({ids?, figureIds?})` returns the
+code-owned wording unchanged. `missing_facts` returns form questions and
+implementation gaps. `run_whatif` still returns `not built yet`; the story must
+report that limitation in risks, alongside the checker's code limitations.
 
 ## Private state and budget
 
@@ -77,11 +84,14 @@ version drift requires a fresh run. After a crash, check that no caller is
 running before removing a stale `.lock` or `case.json.next` file.
 
 The limits are three alternatives in the story, eight what-ifs per route and
-sixty compiler runs. Case creation counts its bridge preflights and the initial
-current-position compilation.
+thirty pricing tool calls per plan. Each call permits at most eighty compiler
+runs, with a separate fifteen-hundred-run guard for the plan. Case creation
+counts its bridge preflights and initial compilation against the plan guard.
 After creation, every actual `compilePlanPack` invocation is charged through a
 call-local `beforeCompile` callback, including profile-bridge preflights and
 nested part c/major-search compiles. The callback stays outside wire packs,
-results and files, and refuses before a sixty-first compile. Cached compilation
-reads and schema/source validation consume no runs. Budgets survive retries,
+results and files, and refuses before exceeding either compiler guard. Selecting
+a cached candidate uses a pricing call but no compiler runs. Read-only tools
+and schema validation consume no pricing calls. Valid pricing attempts that
+return refusals still count, including the unavailable what-if tool. Budgets survive retries,
 process restarts and caller changes. Tests use only invented households.

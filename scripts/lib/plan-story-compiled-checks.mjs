@@ -1,3 +1,4 @@
+import { minimalAnalystStory } from '../fixtures/minimal-analyst-story.mjs';
 // The story screen reading a compiled plan (check:plan-story): real compiles of made-up households, the
 // story built from `readPlanPosition`'s facts, links that follow the routes' `chapterCases`, the words for
 // every kind of basis, explainers and the refusals. No browser.
@@ -241,33 +242,36 @@ export async function runPlanStoryCompiledTests() {
       // The analyst is told the keys the screen can open.
       const position = await callLocalTool(created.directory, 'read_position', {});
       assert.equal(position.ok, true);
-      assert.ok(position.data.storyFacts['position.netWorth'] && position.data.storyFacts['issues.debts_other_than_mortgage.liability_application_loan_0.balance'], 'the story facts are listed');
-      assert.equal(position.data.storyFacts['position.netWorth'].opens, 'module');
-      assert.equal(position.data.storyFacts['position.spareCash'].opens, 'plan');
+      assert.ok(position.data.storyFacts.includes('position.netWorth') && position.data.storyFacts.includes('issues.debts_other_than_mortgage.liability_application_loan_0.balance'), 'the story facts are listed');
 
       const empty = run();
       assert.equal(empty.status, 1);
       assert.match(empty.stderr, /No story has been submitted/);
 
+      const saved = JSON.parse(await readFile(join(created.directory, 'case.json'), 'utf8'));
+      const complete = minimalAnalystStory(saved.pinned.currentPosition);
+      complete.summary = 'Your net worth is {@position.netWorth}.';
+      complete.sections[3].parts.why += ' The tax rule is explained here{?explainer.dirt}.';
+
       // A metrics-only key is refused before it can become an active story.
-      const legacy = { ...madeUpBorrowerStory(), summary: 'Your cash is {ledger.cashRemaining}.' };
+      const legacy = { ...complete, summary: 'Your cash is {ledger.cashRemaining}.' };
       const legacyResult = await submit(legacy);
       assert.equal(legacyResult.ok, false);
-      assert.match(legacyResult.refusals[0].path, /ledger\.cashRemaining/);
+      assert.match(legacyResult.refusals[0].path, /\/story\/summary/);
       const stuck = run();
       assert.equal(stuck.status, 1);
       assert.match(stuck.stderr, /No story has been submitted/);
 
       // An invented key, and an explainer the catalogue does not hold, are refused at submission, with their paths.
-      const invented = await submit({ ...madeUpBorrowerStory(), summary: 'Your net worth is {position.invented}.' });
+      const invented = await submit({ ...complete, summary: 'Your net worth is {position.invented}.' });
       assert.equal(invented.ok, false);
       assert.match(invented.refusals[0].path, /\/story\/summary/);
-      const badExplainer = madeUpBorrowerStory();
+      const badExplainer = structuredClone(complete);
       badExplainer.sections[0].parts.why = 'A rule{?explainer.state_pension_not_inherited}.';
       assert.equal((await submit(badExplainer)).refusals[0].code, 'unknown_explainer');
 
       // A story using the screen's keys, with an explainer, is accepted and opens.
-      const accepted = await submit(madeUpBorrowerStory());
+      const accepted = await submit(complete);
       assert.equal(accepted.ok, true, JSON.stringify(accepted));
       assert.equal(accepted.data.openOnStoryScreen, true);
       const opened = run();

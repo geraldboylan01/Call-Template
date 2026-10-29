@@ -60,7 +60,7 @@ export function prefix(ledger, goalId) {
 /** A call-local cache only. Financial probes call the very same B1 preparer;
  * every returned choice is then compiled with all original chapters/options.
  */
-export function walkSession(input, { beforeCompile } = {}) {
+export function walkSession(input, { beforeCompile, candidatePrefix } = {}) {
   const pack = sourcePack(input), probes = new Map(), compiled = new Map(), majorProofs = new Map();
   const candidate = draft => ({ ...cloneJson(pack), narration: {}, routes: [{ id: 'current' }, wireDraft(draft)] });
   const fast = async draft => {
@@ -85,6 +85,7 @@ export function walkSession(input, { beforeCompile } = {}) {
   const price = async draft => {
     const key = JSON.stringify(draft);
     if (!compiled.has(key)) compiled.set(key, (async () => {
+      if (candidatePrefix) draft = { ...draft, id: candidatePrefix + '_' + (compiled.size + 1) };
       let raw;
       try { raw = candidate(draft); } catch (error) { return { kind: 'priced_route', status: 'refused', routeDraft: cloneJson(draft), ledger: null, refusals: [refusal(error)] }; }
       const compilation = await compilePlanPack(raw, { resourceLedger: true, beforeCompile });

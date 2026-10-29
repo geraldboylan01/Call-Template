@@ -158,7 +158,7 @@ The analyst works through stages, like a task list. Each stage has an exit condi
 5. **Write.** The story for each route, section by section, in the five parts, placeholders only.
 6. **Check.** `submit_story`, then fix and resubmit within the budget. Exit: the checker passes, or the budget is spent and the run is marked for Gerry with the refusals listed.
 
-**Budget:** up to three routes in the story, eight what-ifs a route and sixty engine runs a plan, as B1.5 sets them; the walk's `goal_ways` calls count towards the engine runs. Tuned once real runs exist.
+**Budget:** up to three alternatives in the story and eight what-ifs a route. A plan permits thirty pricing tool calls (`goal_ways`, `suggest_routes`, `balancing_moves`, `price_route`, `run_whatif`). A valid pricing attempt counts even if it returns a refusal. Each call permits at most eighty compiler runs, and the whole plan has a separate fifteen-hundred-compiler-run runaway guard. Every preflight and nested compile counts; case creation consumes compiler runs but no pricing call. Reusing a retained priced candidate consumes a pricing call and no compiler runs. Read-only calls consume neither. Refusals identify the exhausted counter by path.
 
 ### 3.7 Review and release
 
@@ -204,13 +204,19 @@ A trial merge of main with #99, #100 and #102 passes `check:dated-cost-contract`
 
 ## 6. The order of work
 
+For the first local test, the budget unit is a pricing tool call, not an internal
+compiler probe: thirty calls per plan, eighty compiler runs inside a call, and
+fifteen hundred compiler runs across the plan. Keep three alternatives and eight
+what-ifs per route. These guards apply identically through the CLI and MCP, and
+the case log records each call's pricing-call and compiler-run usage.
+
 Three drafts, each a working whole. Each line names the chat it belongs to; lines in the same chat run one after another, and different chats run together.
 
 ### Draft 1: the analyst works end to end on made-up households, locally
 
 A made-up household's confirmed form becomes a checked story with up to three routes, built by walking the ledger and including a major lever where the goals need one, written by Claude Code through the tools, and opened in the story screen with working links.
 
-1. **Story facts and the issue list** as code (B1.5 sections 1 and 2) are built in `readPlanPosition(compiled)`, with `check:story-facts` in the consumer gate. **The checker** is built in `checkStory(compiledPlan, story)`, covering B1.5 section 3's floor, wording rules and linked-figure match, with `check:story-checker` in the gate. Its [contract](story-checker.md) includes code limitations and compiled evidence. The analyst chat wires it into `submit_story`; no tool or screen wiring is included here.
+1. **Story facts and the issue list** as code (B1.5 sections 1 and 2) are built in `readPlanPosition(compiled)`, with `check:story-facts` in the consumer gate. **The checker** is built in `checkStory(compiledPlan, story)`, covering B1.5 section 3's floor, wording rules and linked-figure match, with `check:story-checker` in the gate. Its [contract](story-checker.md) includes code limitations and compiled evidence. `submit_story` runs it before accepting a draft; `analyst:open` requires a matching passing report.
 2. **Routes**, in three pull requests: (a) alternatives for profile-built plans and the new ordinary levers (`pensionContribution`, `spendLess`); (b) the major levers `tradeDownHome` and `sellProperty`, with central selling and buying costs in the register; (c) `goal_ways`, `balancing_moves` with lever sizes, and `suggest_routes`. Routes chat (the chat that built #97 and #102).
 3. **Protection with the Illness Benefit default** (plan document section 6), with the protection playbook's change to stop stating rates as its own prompt-pack commit. Protection chat.
 4. **The tool layer and the local harness**: the case file, the fact registry, the executors wired to what exists, the local tool server and the command line. Each tool picks up 1, 2 and 3 as they land. Analyst chat (new).

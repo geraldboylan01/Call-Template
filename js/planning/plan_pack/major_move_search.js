@@ -19,7 +19,7 @@ export async function sizeMajorMove(rawPack, route, options = {}, { maxProbes = 
   try { return await searchMajorMove(rawPack, route, options, probes, maxProbes, beforeCompile); }
   catch (error) {
     if (error.code !== 'budget_exceeded') throw error;
-    return { status: 'refused', refusals: [{ path: '/budget/engineRuns', code: error.code, message: error.message }], probes };
+    return { status: 'refused', refusals: [{ path: error.path ?? '/budget/compilerRunsPerCall', code: error.code, message: error.message }], probes };
   }
 }
 

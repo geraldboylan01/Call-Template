@@ -14,6 +14,6 @@ server.setRequestHandler(CallToolRequestSchema, async request => {
   let result;
   try { result = await callLocalTool(values.case, request.params.name, request.params.arguments ?? {}); }
   catch (error) { result = refused(error.code ?? 'invalid_case', error.path ?? '/case', error.message); }
-  return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
+  return { content: [{ type: 'text', text: JSON.stringify(result) }] };
 });
 await server.connect(new StdioServerTransport());

@@ -32,10 +32,10 @@ export async function createCaseFile({ requestId, runId, revision, confirmedRevi
   assertIsoDateTime(confirmedAt, 'confirmedAt');
   const date = assertIsoDate(calculationDate ?? confirmedAt.slice(0, 10), 'calculationDate');
   const profile = applicationToProfile(information, { revision: confirmedRevision, confirmedAt, calculationDateIso: date });
-  let engineRuns = 0;
+  let compilerRuns = 0;
   const beforeCompile = () => {
-    if (engineRuns >= RUN_LIMITS.engineRuns) throw Object.assign(new Error('The plan has used its engine runs.'), { code: 'budget_exceeded', path: '/budget/engineRuns' });
-    engineRuns++;
+    if (compilerRuns >= RUN_LIMITS.compilerRuns) throw Object.assign(new Error('The plan has used its engine runs.'), { code: 'budget_exceeded', path: '/budget/compilerRuns' });
+    compilerRuns++;
   };
   const assembly = await profileToPlanPack(profile, { confirmedRevision, calculationDate: date, clientLabel, beforeCompile });
   if (!assembly.planPack) throw Object.assign(new Error('The confirmed form cannot become a plan.'), { path: '/information', diagnostics: assembly.missingFacts });
@@ -52,7 +52,7 @@ export async function createCaseFile({ requestId, runId, revision, confirmedRevi
     whatifs: {}, checkerReports: [], taskList: [], reviewStatus: 'pending',
     // The initial bridge preflights and current-position compilation consume
     // the same compiler budget as subsequent tool calls.
-    budget: { engineRuns, whatifsByRoute: {} },
+    budget: { pricingCalls: 0, compilerRuns, whatifsByRoute: {} },
     runLog: [{ sequence: 1, tool: 'create_case', input: { confirmedRevision, calculationDate: date },
       result: { ok: true, status: 'ok', sourceHash: compiled.source.hash, versions: pinned.versions } }]
   };
