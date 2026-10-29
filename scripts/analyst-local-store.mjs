@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, rename, unlink, lstat, open } from 'node:fs/promises';
 import { resolve, relative, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCaseFile } from '../js/planning/analyst/case_file.js';
+import { createCaseFile, caseRefusal } from '../js/planning/analyst/case_file.js';
 import { executeTool } from '../js/planning/analyst/executors.js';
 import { refused } from '../js/planning/analyst/contracts.js';
 import { toolReply } from '../js/planning/analyst/replies.js';
@@ -32,7 +32,12 @@ async function save(directory, caseFile) {
 }
 
 export async function createLocalCase(input) {
-  const caseFile = await createCaseFile(input);
+  return storeNewCase(await createCaseFile(input));
+}
+
+export async function storeNewCase(caseFile) {
+  const refusal = await caseRefusal(caseFile);
+  if (refusal) throw new Error(refusal.refusals[0].message);
   const directory = directoryPath(join(ANALYSES_ROOT, caseFile.pinned.requestId, caseFile.pinned.runId));
   await mkdir(join(directory, '..'), { recursive: true, mode: 0o700 });
   await mkdir(directory, { mode: 0o700 }); // Exclusive: an existing run can never be reset.

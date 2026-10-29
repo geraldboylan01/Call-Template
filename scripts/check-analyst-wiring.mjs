@@ -4,7 +4,6 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createCaseFile } from '../js/planning/analyst/case_file.js';
 import { executeTool } from '../js/planning/analyst/executors.js';
-import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
 import { profileToPlanPack } from '../js/planning/profile_to_plan_pack.js';
 import { getLeverCatalogue } from '../js/planning/plan_pack/lever_catalogue.js';
 import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
@@ -16,7 +15,7 @@ import { getExplainers } from '../js/planning/figures/get_explainers.js';
 import { getFigures } from '../js/planning/figures/get_figures.js';
 import { sha256Json } from '../js/planning/utils.js';
 import { reviewedRouteExample } from './fixtures/form-to-plan-reviewed.mjs';
-import { majorHouseholds } from './fixtures/major-levers.households.mjs';
+import { REVIEWED_FIXTURES, buildReviewedAnalystCase, buildReviewedFixture } from './fixtures/analyst-households.mjs';
 import { createLocalCase } from './analyst-local-store.mjs';
 import { checkReply } from './lib/analyst-reply-check.mjs';
 import { TOOL_CATALOGUE, RUN_LIMITS } from '../js/planning/analyst/contracts.js';
@@ -27,28 +26,12 @@ const bounded = path => ({ kind: 'bounded', reason: 'Fictional illustration with
 const route = (id, ...changes) => ({ id, changes });
 
 export async function checkAnalystWiring({ fixtures, options }) {
-  // Only these tests install the existing, explicitly fictional supplemental
-  // review facts. Neither new-case nor the production form bridge adds them.
-  async function reviewedCase(profile, runId) {
-    const c = await createCaseFile(options(fixtures[2], runId));
-    const assembly = await profileToPlanPack(profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate, clientLabel: c.pinned.planPack.clientName });
-    const compiled = await compilePlanPack(assembly.planPack, assembly.compileOptions);
-    assert.equal(compiled.status, 'compiled');
-    c.pinned = clone({ ...c.pinned, profile, planPack: assembly.planPack, currentPosition: compiled,
-      planningFacts: assembly.planPack.planningInputs, missingFacts: assembly.missingFacts,
-      omittedChapters: assembly.omittedChapters, provenance: assembly.provenance,
-      notes: ['Explicit invented supplemental review facts from the route-lever fixtures.'] });
-    c.pinHash = await sha256Json(c.pinned);
-    return (await executeTool(c, 'read_position', {})).caseFile;
-  }
+  // The same builders power new-case and every successful reviewed test.
+  const reviewedCase = (profile, runId) => buildReviewedAnalystCase(profile, options(fixtures[2], runId));
   const example = reviewedRouteExample(fixtures[2]);
-  const reviewed = await reviewedCase(example.profile, 'reviewed');
-  const properties = majorHouseholds();
-  // Make the invented rental bill large enough to require a sale; the smaller
-  // native fixture can already fund its bill without a major move.
-  properties.rental.goals.find(goal => goal.goalId === 'fictional_dated_cost').targetAmount.amount = 150000;
-  const trade = await reviewedCase(properties.tradeDown, 'trade');
-  const rental = await reviewedCase(properties.rental, 'rental');
+  const reviewed = await buildReviewedFixture('fictional-reviewed-couple', fixtures, options(fixtures[2], 'reviewed'));
+  const trade = await buildReviewedFixture('fictional-trade-down', fixtures, options(fixtures[2], 'trade'));
+  const rental = await buildReviewedFixture('fictional-rental-sale', fixtures, options(fixtures[2], 'rental'));
   for (const c of [reviewed, trade, rental]) for (const tool of TOOL_CATALOGUE) {
     if (['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves'].includes(tool.name)) continue; // Exercised below with actual priced choices.
     const input = tool.name === 'price_route' ? { route: route('compact_check') }
@@ -217,7 +200,8 @@ export async function checkAnalystWiring({ fixtures, options }) {
     return { ...result, json: JSON.parse(result.stdout) };
   };
   const listed = cli('list-fixtures');
-  assert.deepEqual(listed.json.data.fixtures.map(row => row.name), fixtures.map(row => row.id));
+  assert.deepEqual(listed.json.data.fixtures.map(row => row.name), [...fixtures.map(row => row.id), ...REVIEWED_FIXTURES.map(row => row.name)]);
+  assert.deepEqual(listed.json.data.fixtures.filter(row => row.reachesRoutes).map(row => row.name), REVIEWED_FIXTURES.map(row => row.name));
   assert.equal(cli('new-case', '--fixture', 'missing').json.refusals[0].path, '/fixture');
   for (const fixture of fixtures.slice(0, 4)) {
     const created = cli('new-case', '--fixture', fixture.id);
@@ -230,6 +214,17 @@ export async function checkAnalystWiring({ fixtures, options }) {
       await writeFile(join(directory, 'input.json'), '{}');
       assert.equal(cli('read_position', '--case', directory, '--input', join(directory, 'input.json')).json.ok, true);
     } finally { await rm(directory, { recursive: true, force: true }); }
+  }
+  for (const [index, fixture] of REVIEWED_FIXTURES.entries()) {
+    const created = cli('new-case', '--fixture', fixture.name);
+    assert.equal(created.status, 0, created.stderr);
+    try {
+      const c = JSON.parse(await readFile(join(created.json.directory, 'case.json'), 'utf8'));
+      assert.deepEqual(c.pinned.profile, [reviewed, trade, rental][index].pinned.profile, 'CLI and wiring use the same supplemented profile');
+      assert.ok(c.pinned.notes.some(note => /invented supplemental/.test(note)));
+      assert.ok(c.pinned.planPack.planningInputs.goalBindings.length);
+      assert.equal(created.json.reachesRoutes, true);
+    } finally { await rm(created.json.directory, { recursive: true, force: true }); }
   }
   const blank = cli('new-case', '--fixture', fixtures[4].id);
   assert.equal(blank.json.ok, false); assert.ok(blank.json.data.diagnostics.length);
