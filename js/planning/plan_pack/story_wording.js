@@ -1,7 +1,7 @@
 import { findForbiddenWording, findTypedFigures, parseNarration } from '../../plan_story_model.js';
 import { namesAProvider } from '../figures/kinds.js';
 
-const NUMBER_WORDS = /\b(?:zero|nil|nought|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion|half|halves|quarter|quarters|dozen|once|twice|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i;
+const NUMBER_WORDS = /\b(?:zero|nil|nought|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|billions?|trillions?|half|halves|quarters?|dozens?|once|twice|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|thirtieth|fortieth|fiftieth|sixtieth|seventieth|eightieth|ninetieth|hundredth|thousandth)\b/i;
 const GENDERED = /\b(?:he|him|his|himself|she|her|hers|herself)\b/i;
 const COVER = /\b(?:premiums?|providers?|products?|sum\s+assured|cover\s+(?:amount|need|needed|required|gap|shortfall)|(?:amount|gap|shortfall|need)\s+(?:of|in|against|for)\s+(?:life\s+)?cover|(?:need|needs|required)\s+(?:more\s+)?(?:life\s+)?(?:insurance|cover)|(?:enough|adequate|sufficient|insufficient|additional|extra|more|less|suitable)\s+(?:life\s+)?(?:insurance|cover))\b/i;
 const ESCAPE = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -10,7 +10,7 @@ export function storyWordRefusals(text, path, { otherRoutes = [] } = {}) {
   const errors = [], plain = text.normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/\s+/gu, ' ');
   const add = (code, message) => errors.push({ code, path, message });
   if (findTypedFigures(text).length || findTypedFigures(plain).length || NUMBER_WORDS.test(plain)
-    || /\b(?:for|after|within|lasts?|lasting)\s+(?:a|an|a couple of|a single)\s+(?:day|week|month|year)s?\b/i.test(plain)) add('typed_figure', 'Use a registered placeholder for every figure, including figures written in words.');
+    || /\b(?:a|an|a (?:couple|pair) of|a single)\s+(?:(?:second|minute|hour|day|week|fortnight|month|year|decade|euro|pound|dollar|percent)s?|centur(?:y|ies)|percentage points?|per cent)\b/i.test(plain)) add('typed_figure', 'Use a registered placeholder for every figure, including figures written in words.');
   if (findForbiddenWording(plain).length || namesAProvider(plain)) add('forbidden_wording', 'Use neutral education-only wording without advice, ranking or provider names.');
   if (GENDERED.test(plain)) add('gendered_pronoun', 'Use names or you instead of gendered pronouns.');
   if (/\b(?:covered|affordable|balanced|fully funded|on track)\b/i.test(plain)) add('typed_state', 'Use a registered goal-state placeholder instead of typing a calculated conclusion.');

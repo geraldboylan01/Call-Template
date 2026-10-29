@@ -164,7 +164,7 @@ await test('A repayment beyond the ledger horizon creates no mandatory freed-cas
 for (const phrase of ['You should use this route.', 'We recommend this route.', 'This is better.', 'The cheapest route.', 'The preferred route.', 'AIB has an option.']) {
   await test('Banned/ranking/provider wording: ' + phrase, () => { const story = clone(renterStory); story.summary = phrase; fails(renter, story, 'forbidden_wording'); });
 }
-for (const phrase of ['It costs €100.', 'At 3%.', 'Until 2045.', 'For twelve months.', 'At age sixty-five.', 'At twenty twenty-seven.', 'It uses half your savings.', 'It costs a thousand euro.', 'For Ⅻ years.', 'For s\u200bixty years.', 'For a year.', 'After a couple of months.']) {
+for (const phrase of ['It costs €100.', 'At 3%.', 'Until 2045.', 'For twelve months.', 'At age sixty-five.', 'At twenty twenty-seven.', 'It uses half your savings.', 'It costs a thousand euro.', 'For Ⅻ years.', 'For s\u200bixty years.', 'For a year.', 'After a couple of months.', 'Under a month.', 'A decade remains.', 'It costs a euro.', 'At a percentage point higher.', 'Until the eleventh year.', 'Within an hour.', 'For a couple of centuries.']) {
   await test('Typed figures are refused in digits and words: ' + phrase, () => { const story = clone(renterStory); story.summary = phrase; fails(renter, story, 'typed_figure'); });
 }
 for (const phrase of ['He can review the result.', 'Her savings remain.', 'His income changes.', 'She can review the result.']) {
