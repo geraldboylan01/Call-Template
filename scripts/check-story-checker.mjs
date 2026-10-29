@@ -11,6 +11,8 @@ import { getExplainers } from '../js/planning/figures/get_explainers.js';
 import { buildPresentationCatalogue } from '../js/presenter_catalogue.js';
 import { computeHouseholdCashFlowProjection } from '../js/household_cash_flow_math.js';
 import { euroText } from '../js/household_cash_flow_view.js';
+import { buildPlanStory, buildSessionFromPlan } from '../js/plan_story_compiled.js';
+import { storyFactRegistry, figureEntry, referencedPlaceholders } from '../js/plan_story_registry.js';
 
 const read = file => JSON.parse(readFileSync(file, 'utf8')), clone = structuredClone;
 const authored = read('scripts/fixtures/story-checker-stories.json');
@@ -18,7 +20,7 @@ const households = read('scripts/fixtures/form-to-profile.households.json');
 const info = console.info; console.info = () => {};
 let total = 0, failures = 0;
 async function test(name, fn) { total++; try { await fn(); console.log('PASS ' + name); } catch (error) { failures++; console.error('FAIL ' + name + ': ' + error.stack); } }
-const pass = (compiled, story) => { const result = checkStory(compiled, story); assert.equal(result.ok, true, JSON.stringify(result.refusals)); assert.equal(result.verdict, 'pass'); return result; };
+const pass = (compiled, story) => { const result = checkStory(compiled, story); assert.equal(result.ok, true, JSON.stringify(result.refusals)); assert.equal(result.verdict, 'pass'); buildPlanStory(compiled, story); return result; };
 const fails = (compiled, story, code, path = null) => {
   const result = checkStory(compiled, story); assert.equal(result.ok, false); assert.equal(result.verdict, 'refused');
   assert.ok(result.refusals.some(row => row.code === code && (path === null || row.path === path)), JSON.stringify(result.refusals));
@@ -34,6 +36,20 @@ for (const fixture of households.filter(row => Object.hasOwn(authored, row.id)))
 }
 const renter = compiledHouseholds['fictional-single-renter'], renterStory = authored['fictional-single-renter'];
 const borrower = compiledHouseholds['fictional-borrower-with-card'], borrowerStory = authored['fictional-borrower-with-card'];
+await test('Both authored accepted stories open as complete screen sessions with the same registry, including limitations', () => {
+  for (const [id, compiled] of Object.entries(compiledHouseholds)) {
+    const story = authored[id], position = readPlanPosition(compiled);
+    const registry = storyFactRegistry(position, story.routeId);
+    const session = buildSessionFromPlan(compiled, story);
+    assert.ok(session.planStory.stories[story.routeId]);
+    for (const key of referencedPlaceholders(story).keys) {
+      assert.ok(registry[key], key + ' is a shared screen key');
+      assert.equal(session.planStory.registries[story.routeId][key].text, registry[key].text);
+    }
+    assert.ok(Object.keys(registry).some(key => key.startsWith('limitations.')));
+  }
+});
+
 const compile = async p => { const c = await compilePlanPack(p, { resourceLedger: true }); assert.equal(c.status, 'compiled', JSON.stringify(c.diagnostics)); return c; };
 const base = () => read('scripts/fixtures/plan-packs/valid-b1.json');
 const b1 = await compile(base());
@@ -57,7 +73,7 @@ function completeDraft(compiled, routeId = 'current') {
     ...parts(), gives: r.required.filter(row => row.section === 'goals' && row.key.includes('.' + id + '.')).map(row => '{' + row.key + '}').join(' ')
   } }));
   sections[3].issues = r.issues.map(row => row.id); sections[5].freedCash = r.freed.map(row => row.id);
-  sections[7].risks = routeId === 'current' ? [] : [{ changeIds: r.mainChangeIds, parts: parts() }];
+  sections[7].risks = routeId === 'current' ? [] : [{ changeIds: r.mainChangeIds }];
   sections[4].majorMoves = r.majorMoves.map(row => row.id);
   return { routeId, headline: 'Your recorded position', summary: 'This view follows the compiled route.', sections,
     whatifs: r.whatifs.filter(row => row.status === 'compiled').map(row => ({ id: row.id })) };
@@ -131,7 +147,7 @@ await test('The emergency reserve belongs in protecting', () => {
 });
 await test('An alternative risk must cite its main change, not a generic warning or another change', () => {
   const story = clone(alternative); story.sections[7].risks = []; fails(b1, story, 'risk_floor');
-  story.sections[7].risks = [{ changeIds: ['unknown'], parts: clone(story.sections[7].parts) }]; fails(b1, story, 'unknown_reference'); fails(b1, story, 'risk_floor');
+  story.sections[7].risks = [{ changeIds: ['unknown'] }]; fails(b1, story, 'unknown_reference'); fails(b1, story, 'risk_floor');
 });
 await test('Every issue is named and its actual item facts are narrated', () => {
   const story = clone(borrowerStory); story.sections[3].issues = []; fails(borrower, story, 'issue_floor');
@@ -184,6 +200,21 @@ await test('Register figures and explainers must exist, with the compiled regist
   story.summary = '{?explainer.missing}'; fails(renter, story, 'unknown_explainer');
   story.summary = '{@figure.' + figure.id + '}'; fails(renter, story, 'register_link');
   const c = clone(renter); c.versions.figures = 'older'; story.summary = '{figure.' + figure.id + '}'; fails(c, story, 'register_versions');
+});
+await test('Dated register placeholders follow the screen’s reader, including a future figure it cannot show', () => {
+  const future = getFigures().find(row => row.effectiveFrom > renter.calculationDate);
+  assert.ok(future); assert.equal(figureEntry(future.id, renter.calculationDate), null);
+  const story = clone(renterStory); story.summary = '{figure.' + future.id + '}';
+  fails(renter, story, 'unknown_figure', '/story/summary');
+});
+await test('An empty list has code-produced words that the screen can draw', () => {
+  const story = clone(renterStory); story.summary = '{vsCurrent.goalsChanged}';
+  const fact = readPlanPosition(renter).routes[0].facts['vsCurrent.goalsChanged'];
+  assert.deepEqual(fact.value, []); assert.equal(fact.display, 'None'); pass(renter, story);
+});
+await test('Risk words must be in the visible risks section, never in metadata the screen ignores', () => {
+  const story = clone(alternative); story.sections[7].risks[0].parts = clone(story.sections[7].parts);
+  fails(b1, story, 'unknown_field', '/story/sections/7/risks/0/parts');
 });
 await test('A link must have an available native focus and an equal compiled figure', () => {
   const c = clone(renter), chapter = c.chapters.find(row => row.id === 'personal_balance_sheet').cases[0];
@@ -277,7 +308,7 @@ await test('The combined-major exception requires actual unmet-goal singleton ev
   combined.majorMoveEvidence.singleMoveRouteIds.pop(); fails(c, story, 'major_move_count');
 });
 await test('Malformed metadata produces refusals without throwing', () => {
-  for (const changeIds of [null, 'change_0', [null], {}]) { const story = clone(alternative); story.sections[7].risks = [{ changeIds, parts: clone(story.sections[7].parts) }]; assert.equal(checkStory(b1, story).ok, false); }
+  for (const changeIds of [null, 'change_0', [null], {}]) { const story = clone(alternative); story.sections[7].risks = [{ changeIds }]; assert.equal(checkStory(b1, story).ok, false); }
 });
 await test('Malformed major-move metadata is refused rather than throwing', () => {
   const story = clone(majorStory); story.sections[4].majorMoves = {}; assert.equal(checkStory(major, story).ok, false);

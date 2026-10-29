@@ -2,9 +2,11 @@ import { readPlanPosition } from './story_facts.js';
 import { storyRequirements, STORY_SECTIONS, STORY_PARTS } from './story_requirements.js';
 import { storyTokens, storyWordRefusals, protectionOnly } from './story_wording.js';
 import { checkStoryLink } from './story_links.js';
-import { getFigures, figuresVersionLabel } from '../figures/get_figures.js';
+import { figuresVersionLabel } from '../figures/get_figures.js';
 import { getExplainers } from '../figures/get_explainers.js';
 import { PLANEIR_ASSUMPTIONS_VERSION } from '../planeir_assumptions.js';
+import { storyFactRegistry, figureEntry } from '../../plan_story_registry.js';
+import { resolveNarration } from '../../plan_story_model.js';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const meaningful = value => typeof value === 'string' && /[\p{L}\p{N}{]/u.test(value.replace(/\p{Cf}/gu, '').trim());
@@ -41,8 +43,10 @@ export function checkStory(compiledPlan, story) {
   const uses = new Map(), limitUses = new Map(), goalUses = new Map();
   const otherRoutes = compiledPlan.routes.filter(row => row.id !== story.routeId && row.id !== 'current');
   const registered = compiledPlan.versions.figures === figuresVersionLabel();
-  const figures = new Map(getFigures().map(row => [row.id, row]));
   const explainers = new Map(getExplainers().map(row => [row.id, row]));
+  // Use the screen's registry and dated figure reader, never a second list of
+  // accepted keys. Limitations also come from readPlanPosition.
+  const screenRegistry = storyFactRegistry({ routes: [requirements] }, story.routeId);
   const narrative = (text, path, sectionId, scope = null) => {
     if (!meaningful(text)) { refuse('empty_part', path, 'Write a non-empty education-only part, including what it costs.'); return; }
     const parsed = storyTokens(text, path); refusals.push(...parsed.errors);
@@ -58,22 +62,28 @@ export function checkStory(compiledPlan, story) {
         continue;
       }
       if (token.key.startsWith('figure.')) {
-        const figure = figures.get(token.key.slice('figure.'.length));
+        const figure = figureEntry(token.key.slice('figure.'.length), compiledPlan.calculationDate);
         if (!registered) refuse('register_versions', path, 'Use the register version recorded in the compiled plan.');
-        if (!figure) refuse('unknown_figure', path, 'The dated register has no figure named ' + token.key + '.');
+        if (!figure) refuse('unknown_figure', path, 'The screen has no figure named ' + token.key + ' for the plan’s calculation date.');
+        else screenRegistry[token.key] = figure;
         if (token.kind === 'link') refuse('register_link', path, 'Register figures use {figure.id}; module links use {@key}.');
-        if (figure && typeof figure.value === 'number') numericRegistry[token.key] = { unit: 'ratio' };
+        if (figure && typeof figure.basis.value === 'number') numericRegistry[token.key] = { unit: 'ratio' };
         continue;
       }
       const fact = Object.hasOwn(facts, token.key) ? facts[token.key] : null;
       if (!fact) { refuse('unknown_placeholder', path, 'This route has no registered fact named ' + token.key + '.'); continue; }
-      if (fact.status !== 'available' || fact.value === null) { refuse('unavailable_placeholder', path, 'This result was not calculated; cite its code-produced limitation or not-applicable reason.'); continue; }
+      if (!Object.hasOwn(screenRegistry, token.key) || fact.value === null) { refuse('unavailable_placeholder', path, 'This result was not calculated; cite its code-produced limitation or not-applicable reason.'); continue; }
+      if (!screenRegistry[token.key].basis) refuse('missing_basis', path, 'The screen needs the code-produced basis for this fact.');
       seen.add(token.key); local.add(token.key);
       if (token.kind === 'link') {
         const checked = checkStoryLink(compiledPlan, fact, path);
         if (!checked.ok) refusals.push(checked.refusal); else links.push({ path, ...checked });
       }
     }
+    // The screen owns placeholder parsing, display/source shape and explainer
+    // shape. Its own resolver must also accept every narration we accept.
+    if (!parsed.errors.length) try { resolveNarration(text, screenRegistry, { path, explainers: Object.fromEntries(explainers) }); }
+    catch (error) { refuse(error.code, error.path, error.message); }
     const keys = parsed.tokens.filter(token => token.kind !== 'text').map(token => token.key);
     for (const key of protectionOnly(literal, keys, numericRegistry, sectionId)) refuse('protection_figure', path,
       'Protection may use only the income gap, savings duration and stated money received; ' + key + ' is outside that scope.');
@@ -136,8 +146,8 @@ export function checkStory(compiledPlan, story) {
       const risks = Array.isArray(section.risks) ? section.risks : [];
       risks.forEach((risk, i) => {
         const here = path + '/risks/' + i;
-        if (!shape(risk, ['changeIds', 'parts'], here)) return;
-        ids(risk.changeIds, requirements.changes.map(row => row.id), here + '/changeIds'); parts(risk.parts, here + '/parts', sectionId);
+        if (!shape(risk, ['changeIds'], here)) return;
+        ids(risk.changeIds, requirements.changes.map(row => row.id), here + '/changeIds');
       });
       if (story.routeId !== 'current' && !risks.some(risk => Array.isArray(risk?.changeIds) && risk.changeIds.some(id => requirements.mainChangeIds.includes(id)))) refuse('risk_floor', path + '/risks', 'Include a risk tied to the compiled route’s main change.');
     }

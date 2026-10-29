@@ -8,7 +8,7 @@ const requirements = getStoryRequirements(compiledPlan, 'current');
 const verdict = checkStory(compiledPlan, authoredStory);
 ```
 
-`getStoryRequirements` supplies code-owned requirements and limitation facts to the caller preparing a draft. It combines `readPlanPosition` with the compiled goal order, ledger years, protection cases and shared lever classification. Its `facts` include the route facts and `limitations.<id>` text facts. The story cannot supply facts, sources, missing-fact descriptions, classifications or evidence of its own. Unknown fields are refused.
+`getStoryRequirements` supplies code-owned requirements and limitation facts to the caller preparing a draft. It combines `readPlanPosition` with the compiled goal order, ledger years, protection cases and shared lever classification. Its `facts` come from `readPlanPosition`, including `limitations.<id>` text facts. The checker and screen use the same `storyFactRegistry`, `figureEntry` and narration parser; a checked placeholder must resolve on the screen too. The story cannot supply facts, sources, missing-fact descriptions, classifications or evidence of its own. Unknown fields are refused.
 
 ## Story shape
 
@@ -40,7 +40,7 @@ The current-position facts, running cash and surplus at every ledger step, assig
 
 The current adapter recognizes native compiled protection scenarios: `cannotWork` supplies `incomeStops.<personId>` and `dies` supplies `death`. Every earner needs an income-stop illustration; a partner or dependants require a death illustration. A claimed run must be present in the compiled route's protection case, and its gap and savings duration must be narrated in protecting. A metadata tag alone does not meet the floor. An unavailable case needs the code limitation instead. This checker does not run what-ifs, and unknown or unrun what-if IDs are refused; later result adapters must preserve this code-owned evidence boundary.
 
-The risks section has `risks: [{changeIds, parts}]`. Each alternative needs a risk citing its main compiled change. Change IDs are `change_<authored index>`; the main change is the major move when present, otherwise the first authored change. B1 alternatives whose funding walk changes without an authored primitive use `goal_funding`. Current needs no change risk. Risk prose still has all five parts.
+The risks section has `risks: [{changeIds}]`, tying its visible five parts to the compiled change. Risk prose belongs in the section’s parts, never in metadata the screen would ignore. Each alternative needs a risk citing its main compiled change. Change IDs are `change_<authored index>`; the main change is the major move when present, otherwise the first authored change. B1 alternatives whose funding walk changes without an authored primitive use `goal_funding`. Current needs no change risk. Risk prose still has all five parts.
 
 A section describing a major move includes `majorMoves: [changeId]` beside its costs and check parts. Classification comes from `classifyLever`, including working longer and substantial spending cuts. The story cannot label a move ordinary. At most one major move is allowed unless the **compiled route** has:
 
@@ -61,7 +61,7 @@ For each required limitation, list its ID in `limitationIds` and narrate `{limit
 
 ## Words and placeholders
 
-Only narration is checked for typed figures; code IDs in metadata may contain digits. Narration uses `{key}`, `{@key}`, `{figure.<register id>}` and `{?explainer.<register id>}`. Unknown markers, braces, unavailable values and other-route facts fail. Figure and explainer IDs come from the pinned register version; explicit registered future/announced figures remain identifiable by their dated IDs. The checker never substitutes a different rule or rewrites an explainer.
+Only narration is checked for typed figures; code IDs in metadata may contain digits. Narration uses `{key}`, `{@key}`, `{figure.<register id>}` and `{?explainer.<register id>}`. Unknown markers, braces, unavailable values and other-route facts fail. Figure and explainer IDs come from the pinned register version. Figures use the screen’s dated reader, so a figure not in force on the plan’s calculation date is refused even if it exists in the full register. The checker never substitutes a different rule or rewrites an explainer.
 
 The existing advice, provider and ranking lists apply, with gendered pronouns, typed conclusions and number words refused too. Counts, amounts, rates, ages, years and durations are placeholders, including written-out and Unicode numbers. A story can refer to its own route and current; another alternative's ID, title or a generic comparison is refused. Authored markup and links are refused. These are deterministic checks, not a judgement of sentence quality.
 
@@ -73,4 +73,4 @@ For `{@key}`, code follows the fact's route through `chapterCases`, checks its p
 
 The existing fact registry now gives chapter sources a null plan-panel target and uses native protection/cash-flow display formatting. It never invents a focus for an undisplayed per-person figure. A missing target, changed case, unequal value or unit, stale version, unsupported exact adapter or mismatched display is a refusal at the story text path. There is no sample lookup, nearest case or silent formatting repair. The current chapter-backed story facts use balance sheet, liquidity, cash flow and protection; a new chapter-backed fact needs its exact native adapter before it can be linked.
 
-`npm run check:story-checker` runs in `check:consumer`. It includes independently authored placeholder stories for the invented renter and borrower, the B1 fixture, a negative case for every rule, native rounding/case/target comparisons, major-move evidence and immutable-input checks. No tool or screen is wired in this PR.
+`npm run check:story-checker` runs in `check:consumer`. It includes independently authored placeholder stories for the invented renter and borrower, the B1 fixture, a negative case for every rule, native rounding/case/target comparisons, major-move evidence and immutable-input checks. Both authored accepted stories also build and import a complete screen session, including their limitation placeholders. No tool or screen is wired in this PR.

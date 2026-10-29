@@ -15,7 +15,9 @@ An available fact has `key`, `value`, `unit`, `display`, `status: "available"`, 
 
 Sources retain the route, chapter, compiled `caseId`, native case, exact JSON pointer and versions. Focus targets come from the compiled case's presenter catalogue. A metric without a precise focus target keeps its chapter and case with a null target. Plan-owned totals, orderings, ratios and differences use `panel: "plan_facts"`, a calculation identifier and references to their inputs. Current aliases retain the current route's source.
 
-Every fact, including missing and not-applicable results, carries `basis` for the story screen's future hover. The fact contract is `story-facts-1.1.1`. The basis has one of four kinds:
+`readPlanPosition` also registers code-produced `limitations.<id>` text for missing results and what-ifs, with the actual missing-fact paths and the affected result. These keys reach the checker and screen through the same registry.
+
+Every fact, including missing and not-applicable results, carries `basis` for the story screen's hover. The fact contract is `story-facts-1.1.1`. The basis has one of four kinds:
 
 - `stated`: the exact input path and `formQuestions` (each question's recorded form path, schema label and type), with the form schema, mapping version, confirmed revision and confirmation date. B1's adviser-authored inputs have no form question; they retain their stated input path and an explicit `no_form_provenance` reason instead of invented wording.
 - `calculated`: the engine, calculation identifier and input references. Form-to-profile conversions name `application_to_profile` and retain the stated question as evidence. A balance changed by a route names `resource_ledger` and retains the original stated input as evidence. A code-produced missing-result explanation names `story_facts`.

@@ -190,7 +190,7 @@ The same call, facts and versions give the same result in either harness and in 
 | Story screen, on samples | #99, green |
 | Care: Fair Deal rules and the care builder | #101, green; conflicts in `package.json` and the regression workflow once #100 lands, which a merge of main resolves. #98 makes the same price-list edit and is superseded by it |
 | Home trade down and rental keep-or-sell engines | On main, as modules; not yet levers in a plan |
-| Story facts, issue list, checker | Specified (B1.5 sections 1 to 3); not built |
+| Story facts, issue list, checker | Built (B1.5 sections 1 to 3); the analyst chat wires the full checker into submission |
 | Alternatives for profile-built plans, the ledger walk, the levers, `suggest_routes` | Not built |
 | Protection with the Illness Benefit default | Specified (plan document section 6); not built |
 | Tool layer, case file, local harness | Not built |

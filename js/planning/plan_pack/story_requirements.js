@@ -19,11 +19,12 @@ export function storyRequirements(compiled, position) {
     const message = `${result} is not shown. ${reason} Missing fact: ${missingFacts.map(row => row.label).join('; ')}.`;
     const limitation = { id, section, result, missingFacts, factKey, key, message };
     limitations.push(limitation);
+    const inputs = ['/routes/' + compiled.routes.indexOf(route), '/source/normalizedPlanPack/planningInputs'];
     facts[key] = { key, value: message, display: message, unit: 'text', status: 'available',
-      basis: { kind: 'calculated', engine: 'story_requirements', calculation: 'missing_result', inputs: missingFacts.map(row => row.path) },
+      basis: { kind: 'calculated', engine: 'story_requirements', calculation: 'missing_result', inputs, description: message },
       source: { kind: 'calculation', chapter: null, routeId: route.id, caseId: null, nativeCaseId: null, focusTargetId: null,
         panel: 'plan_facts', versions: { ...compiled.versions, storyFacts: position.facts['position.netWorth'].source.versions.storyFacts },
-        calculation: 'missing_result', inputs: missingFacts.map(row => row.path) } };
+        calculation: 'missing_result', inputs, missingFacts } };
     return limitation;
   };
   const missingFor = (chapter, fallback) => {

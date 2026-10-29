@@ -1,4 +1,4 @@
-import { findForbiddenWording, findTypedFigures } from '../../plan_story_model.js';
+import { findForbiddenWording, findTypedFigures, parseNarration } from '../../plan_story_model.js';
 import { namesAProvider } from '../figures/kinds.js';
 
 const NUMBER_WORDS = /\b(?:zero|nil|nought|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|million|billion|trillion|half|halves|quarter|quarters|dozen|once|twice|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b/i;
@@ -25,17 +25,12 @@ export function storyWordRefusals(text, path, { otherRoutes = [] } = {}) {
 
 /** The grammar has exactly three placeholders; malformed braces are refused. */
 export function storyTokens(text, path) {
-  const tokens = [], errors = [], pattern = /\{(@|\?explainer\.)?([a-z][A-Za-z0-9_.-]*)\}/g;
-  let last = 0;
-  for (const match of text.matchAll(pattern)) {
-    if (match.index > last) tokens.push({ kind: 'text', text: text.slice(last, match.index) });
-    tokens.push({ kind: match[1] === '?explainer.' ? 'explainer' : match[1] === '@' ? 'link' : 'fact', key: match[2] });
-    last = match.index + match[0].length;
+  try {
+    return { tokens: parseNarration(text, path).map(token => token.type === 'text' ? { kind: 'text', text: token.text }
+      : { kind: token.explainer ? 'explainer' : token.link ? 'link' : 'fact', key: token.explainer ? token.key.slice('explainer.'.length) : token.key }), errors: [] };
+  } catch (error) {
+    return { tokens: [], errors: [{ code: error.code, path: error.path, message: error.message }] };
   }
-  if (last < text.length) tokens.push({ kind: 'text', text: text.slice(last) });
-  if (tokens.some(token => token.kind === 'text' && /[{}]/.test(token.text))) errors.push({ code: 'bad_placeholder', path,
-    message: 'Use {key}, {@key}, {figure.id} or {?explainer.id}, with no other marker or stray brace.' });
-  return { tokens, errors };
 }
 
 export function protectionOnly(text, keys, registry, sectionId) {

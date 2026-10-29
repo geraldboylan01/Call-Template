@@ -12,7 +12,7 @@ const money = value => new Intl.NumberFormat('en-IE', { style: 'currency', curre
 function display(value, unit) {
   if (unit === 'EUR' || unit === 'EUR/year' || unit === 'EUR/month') return money(value);
   if (unit === 'ratio') return new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 2 }).format(value);
-  if (unit === 'list') return value.map(row => typeof row === 'string' ? row : row.label ?? row.title ?? row.text ?? row.message ?? row.id).join(', ');
+  if (unit === 'list') return value.length ? value.map(row => typeof row === 'string' ? row : row.label ?? row.title ?? row.text ?? row.message ?? row.id).join(', ') : 'None';
   if (unit === 'year' || unit === 'date' || unit === 'text') return String(value);
   return new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 }).format(value);
 }
