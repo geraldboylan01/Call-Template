@@ -19,6 +19,7 @@ import { REVIEWED_FIXTURES, buildReviewedAnalystCase, buildReviewedFixture } fro
 import { createLocalCase } from './analyst-local-store.mjs';
 import { checkReply } from './lib/analyst-reply-check.mjs';
 import { TOOL_CATALOGUE, RUN_LIMITS } from '../js/planning/analyst/contracts.js';
+import { minimalAnalystStory } from './fixtures/minimal-analyst-story.mjs';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const fact = path => ({ kind: 'fact', path });
@@ -35,7 +36,8 @@ export async function checkAnalystWiring({ fixtures, options }) {
   for (const c of [reviewed, trade, rental]) for (const tool of TOOL_CATALOGUE) {
     if (['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves'].includes(tool.name)) continue; // Exercised below with actual priced choices.
     const input = tool.name === 'price_route' ? { route: route('compact_check') }
-      : tool.name === 'goal_ways' ? { goalId: example.costId } : tool.name === 'run_whatif' ? { routeId: 'trial' } : {};
+      : tool.name === 'goal_ways' ? { goalId: example.costId } : tool.name === 'run_whatif' ? { routeId: 'trial' }
+        : tool.name === 'submit_story' ? { story: minimalAnalystStory(c.pinned.currentPosition) } : {};
     const out = await executeTool(c, tool.name, input);
     checkReply(tool.name, out.result, input, c.pinned.runId);
   }
@@ -237,14 +239,19 @@ export async function checkAnalystWiring({ fixtures, options }) {
   await writeFile(join(local.directory, 'case.json'), JSON.stringify(localCase));
   const priced = await executeTool(localCase, 'price_route', { route: route('harness_property', inputs[6][1]) });
   assert.equal(priced.result.ok, true, JSON.stringify(priced.result.refusals));
-  const sections = ['current_position', 'ledger', 'protecting', 'inefficiencies', 'goals', 'cash_flow_after', 'net_worth_after', 'risks', 'check_next'];
-  const acceptedStory = { routeId: 'harness_property', headline: 'Your position', summary: 'Your net worth is {@position.netWorth}.',
-    sections: sections.map(id => ({ id, title: id.replaceAll('_', ' '), ...(id === 'goals' ? { goals: [] } : {}),
-      parts: { does: 'This route illustrates a change.', why: 'The figures follow your details.', gives: 'Your net worth is {position.netWorth}.', costs: 'Moving changes your home.', check: 'Check the recorded details.' } })) };
+  const acceptedStory = minimalAnalystStory(priced.caseFile.pricedRoutes.harness_property, 'harness_property');
+  acceptedStory.summary = 'Your net worth is {@position.netWorth}.';
   acceptedStory.sections[3].parts.why = 'Tax follows the recorded rule{?explainer.dirt}.';
   const accepted = await executeTool(priced.caseFile, 'submit_story', { story: acceptedStory });
   assert.equal(accepted.result.ok, true, JSON.stringify(accepted.result));
   assert.equal(accepted.result.data.openOnStoryScreen, true);
+  assert.equal(accepted.caseFile.checkerReports.at(-1).report.ok, true);
+  checkReply('submit_story', accepted.result, { story: acceptedStory }, 'trade-down checker');
+  const uncheckedDraft = clone(priced.caseFile); uncheckedDraft.storyDrafts.harness_property = acceptedStory;
+  await writeFile(join(local.directory, 'case.json'), JSON.stringify(uncheckedDraft));
+  const blocked = spawnSync(process.execPath, ['scripts/analyst-open.mjs', local.directory], { encoding: 'utf8' });
+  assert.equal(blocked.status, 1);
+  assert.match(blocked.stderr, /has not passed the checker/);
   await writeFile(join(local.directory, 'case.json'), JSON.stringify(accepted.caseFile));
   const opened = spawnSync(process.execPath, ['scripts/analyst-open.mjs', local.directory], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   assert.equal(opened.status, 0, opened.stderr.slice(-3000));

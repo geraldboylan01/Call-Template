@@ -22,6 +22,7 @@ import { compactStoryFacts } from '../js/plan_story_registry.js';
 import { checkAnalystWiring } from './check-analyst-wiring.mjs';
 import { checkReply } from './lib/analyst-reply-check.mjs';
 import { compilerBudget } from '../js/planning/analyst/budget.js';
+import { minimalAnalystStory } from './fixtures/minimal-analyst-story.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const execFileAsync = promisify(execFile);
@@ -198,10 +199,13 @@ try {
   ];
   for (const edit of badStories) { const s = story(); edit(s); assertRefusal((await executeTool(base, 'submit_story', { story: s })).result); }
   const checked = await executeTool(base, 'submit_story', { story: story() });
+  assert.equal(checked.result.ok, false, 'A shape-only story is no longer accepted');
+  assert.equal(checked.result.data.report.checkerVersion, 'story-checker-1.0.0');
+  assert.deepEqual(checked.caseFile.storyDrafts, {});
   assert.equal(checked.result.data.releaseEligible, false);
   assert.equal(checked.caseFile.reviewStatus, 'pending');
   assert.equal(checked.caseFile.checkerReports.length, 1);
-  const nativeStory = story(); nativeStory.summary = 'Your net worth is {@position.netWorth}.';
+  const nativeStory = minimalAnalystStory(base.pinned.currentPosition); nativeStory.summary = 'Your net worth is {@position.netWorth}.';
   assert.equal((await executeTool(base, 'submit_story', { story: nativeStory })).result.ok, true);
   const missingKey = Object.entries(readPlanPosition(base.pinned.currentPosition).routes[0].facts).find(([, fact]) => fact.status === 'missing')[0];
   nativeStory.summary = '{' + missingKey + '}';
@@ -227,7 +231,7 @@ try {
     assertRefusal(result.result);
     assert.ok(result.result.refusals[0].path.startsWith('/input/route/') || result.result.refusals[0].path.startsWith('/routes/'), 'Catalogue schema and compiler own lever validation');
   }
-  const linked = story('unchanged'); linked.summary = '{@position.netWorth}';
+  const linked = minimalAnalystStory(priced.caseFile.pricedRoutes.unchanged, 'unchanged'); linked.summary = '{@position.netWorth}';
   assert.equal((await executeTool(priced.caseFile, 'submit_story', { story: linked })).result.ok, true);
   const otherRoute = story(); otherRoute.summary = '{unchanged.ledger.cashRemaining}';
   assertRefusal((await executeTool(priced.caseFile, 'submit_story', { story: otherRoute })).result);

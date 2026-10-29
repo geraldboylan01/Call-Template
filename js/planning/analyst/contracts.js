@@ -2,7 +2,7 @@ import Ajv from 'ajv';
 import { FIGURE_KINDS, FIGURE_MODULES } from '../figures/kinds.js';
 import { getLeverCatalogue } from '../plan_pack/lever_catalogue.js';
 
-export const ANALYST_VERSION = 'analyst-tools-2.1.0';
+export const ANALYST_VERSION = 'analyst-tools-3.0.0';
 export const RUN_LIMITS = Object.freeze({ routes: 3, whatifsPerRoute: 8, pricingCalls: 30, compilerRunsPerCall: 80, compilerRuns: 1500 });
 export const PRICING_TOOLS = Object.freeze(['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']);
 const object = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
@@ -33,12 +33,14 @@ const leverSchemas = getLeverCatalogue().levers.map(lever => object({
 const route = object({ id: routeId, title: text, changes: { type: 'array', items: { oneOf: leverSchemas } } }, ['id', 'changes']);
 const parts = object(Object.fromEntries(['does', 'why', 'gives', 'costs', 'check'].map(key => [key, text])), ['does', 'why', 'gives', 'costs', 'check']);
 const sectionIds = ['current_position', 'ledger', 'protecting', 'inefficiencies', 'goals', 'cash_flow_after', 'net_worth_after', 'risks', 'check_next'];
-const goal = object({ goalId: text, title: text, parts }, ['goalId', 'title', 'parts']);
+const ids = { type: 'array', items: text, uniqueItems: true };
+const goal = object({ goalId: text, title: text, parts, limitationIds: ids }, ['goalId', 'title', 'parts']);
 const story = object({
-  routeId, headline: text, summary: text,
+  routeId, headline: text, summary: text, whatifs: { type: 'array', items: object({ id: text }, ['id']) },
   sections: {
     type: 'array', minItems: 9, maxItems: 9,
-    items: sectionIds.map(id => object({ id: { const: id }, title: text, parts,
+    items: sectionIds.map(id => object({ id: { const: id }, title: text, parts, limitationIds: ids, issues: ids, freedCash: ids, majorMoves: ids,
+      risks: { type: 'array', items: object({ changeIds: ids }, ['changeIds']) },
       ...(id === 'goals' ? { goals: { type: 'array', items: goal } } : {})
     }, ['id', 'title', 'parts', ...(id === 'goals' ? ['goals'] : [])]))
   }
@@ -63,7 +65,7 @@ export const TOOL_CATALOGUE = Object.freeze([
   { name: 'run_whatif', description: 'Not built yet: run a sourced what-if.', unavailable: true,
     inputSchema: object({ routeId, kind: text, parameters: { type: 'object' }, sources: { type: 'object' } }, ['routeId']) },
   { name: 'missing_facts', description: 'Return missing household facts as form questions, and separate implementation gaps.', inputSchema: object() },
-  { name: 'submit_story', description: 'Check B1.5 story shape and the existing story model. Full completeness and link checking is pending; this never releases a story.',
+  { name: 'submit_story', description: 'Run the full B1.5 story checker on the selected compiled plan. Only a passing draft is accepted for analyst:open. Never releases a story.',
     inputSchema: object({ story }, ['story']) }
 ]);
 

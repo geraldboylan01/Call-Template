@@ -42,7 +42,7 @@ export function toolReply(name, result, input = {}) {
       { key, display: fact.display, unit: fact.unit, status: fact.status, basisKind: fact.basis?.kind }])),
     storyFacts: entries(data.storyFacts).map(([key]) => key),
     goalOrder: data.goalWalk?.map(row => row.goalId), issues: data.issues?.map(row => pick(row, ['id', 'headline', 'headlineKey'])),
-    unavailableIssues: data.unavailableIssues
+    unavailableIssues: data.unavailableIssues, storyRequirements: data.storyRequirements
   } };
   if (name === 'read_figures') {
     const offset = input?.offset ?? 0;
@@ -50,8 +50,13 @@ export function toolReply(name, result, input = {}) {
       pick(figure, ['id', 'label', 'valueShown', 'kind', 'effectiveFrom', 'effectiveTo', 'explainers'])),
     ...(!input?.ids ? { total: data.figures.length, nextOffset: offset + 100 < data.figures.length ? offset + 100 : null } : {}) } };
   }
+  if (name === 'submit_story') return { ...result, data: {
+    ...pick(data, ['verdict', 'accepted', 'reviewStatus', 'releaseEligible', 'openOnStoryScreen']),
+    ...(data.report ? { report: { ...pick(data.report, ['ok', 'verdict', 'checkerVersion', 'routeId', 'refusals', 'limitations']),
+      links: data.report.links.map(link => pick(link, ['ok', 'key'])) } } : {})
+  } };
   if (!['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves'].includes(name)) return result;
-  const out = pick(data, ['status', 'goalId', 'goalOrder', 'methodOrder', 'scope', 'ordering', 'settingSourceChecks', 'omittedChapters', 'refusals']);
+  const out = pick(data, ['status', 'goalId', 'goalOrder', 'methodOrder', 'scope', 'ordering', 'settingSourceChecks', 'omittedChapters', 'refusals', 'reusedCandidate', 'storyRequirements']);
   for (const key of ['ways', 'levers', 'moves', 'suggestions']) if (data[key]) out[key] = data[key].map(choiceView);
   if (data.route || data.ledger) Object.assign(out, choiceView(data), { ledger: ledgerView(data.ledger), storyFacts: Object.keys(data.storyFacts ?? {}).filter(key => !key.startsWith('current.')) });
   if (name === 'price_route' && input?.reason) out.why = input.reason;

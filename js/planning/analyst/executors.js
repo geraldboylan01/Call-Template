@@ -2,13 +2,11 @@ import { getFigures } from '../figures/get_figures.js';
 import { getExplainers } from '../figures/get_explainers.js';
 import { assembleCaseRoutes, compileCaseStories } from './compilation.js';
 import { goalWays, balancingMoves as nativeBalancingMoves, suggestRoutes, priceRoute as nativePriceRoute } from '../plan_pack/ledger_walk.js';
-import { FIGURE_PREFIX, figureEntry, storyFactRegistry, referencedPlaceholders } from '../../plan_story_registry.js';
-import { readPlanPosition } from '../plan_pack/story_facts.js';
+import { checkStory, getStoryRequirements } from '../plan_pack/story_checker.js';
 import { validateLeverSources } from '../plan_pack/lever_catalogue.js';
 import { sizeMajorMove } from '../plan_pack/major_move_search.js';
 import { PROPERTY_LEVERS } from '../plan_pack/property_moves.js';
-import { resolveStory } from '../../plan_story_model.js';
-import { cloneJson, assertIsoDate, stableStringify } from '../utils.js';
+import { cloneJson, assertIsoDate, stableStringify, sha256Json } from '../utils.js';
 import { compiledFacts } from './facts.js';
 import { missingFactQuestions } from './questions.js';
 import { TOOL_CATALOGUE, PRICING_TOOLS, RUN_LIMITS, validateToolInput, refused, budgetRefusal } from './contracts.js';
@@ -18,6 +16,11 @@ import { compilerBudget } from './budget.js';
 const ok = data => ({ ok: true, status: 'ok', data });
 const fromError = (error, fallback = '/input') => ({ ok: false, status: 'refused',
   refusals: error.diagnostics ?? [{ code: error.code ?? 'invalid_input', path: error.path ?? fallback, message: error.message }] });
+function storyRequirements(compiled, routeId) {
+  const requirements = getStoryRequirements(compiled, routeId);
+  delete requirements.facts;
+  return requirements;
+}
 
 function readPosition(caseFile, { routeId = 'current', keys }) {
   const compiled = routeId === 'current' ? caseFile.pinned.currentPosition : caseFile.pricedRoutes[routeId];
@@ -28,7 +31,8 @@ function readPosition(caseFile, { routeId = 'current', keys }) {
     if (unknown !== -1) return refused('unknown_fact', '/input/keys/' + unknown, 'Ask for a fact key returned by read_position.');
   }
   caseFile.factRegistry[routeId] = facts.registry;
-  return ok({ ...facts.selected, ...(keys ? { facts: Object.fromEntries(keys.map(key => [key, facts.selected.facts[key]])) } : {}), storyFacts: facts.storyFacts, versions: compiled.versions, calculationDate: compiled.calculationDate });
+  return ok({ ...facts.selected, ...(keys ? { facts: Object.fromEntries(keys.map(key => [key, facts.selected.facts[key]])) } : {}), storyFacts: facts.storyFacts,
+    storyRequirements: storyRequirements(compiled, routeId), versions: compiled.versions, calculationDate: compiled.calculationDate });
 }
 
 function readFigures(caseFile, input) {
@@ -103,7 +107,7 @@ async function priceRoute(caseFile, { route, candidateId, reason }, execution) {
   if (cached?.pinHash === caseFile.pinHash) {
     if (cached.compilation.status !== 'compiled') return { ...fromError({ diagnostics: cached.compilation.diagnostics }),
       data: { route, ledger: cached.compilation.resourceLedger?.routes.find(row => row.routeId === route.id), settingSourceChecks: checks } };
-    return ok({ ...pricedResult(caseFile, cached.compilation, route.id), settingSourceChecks: checks, reusedCandidate: candidateId ?? cached.id });
+    return ok({ ...pricedResult(caseFile, cached.compilation, route.id), storyRequirements: storyRequirements(cached.compilation, route.id), settingSourceChecks: checks, reusedCandidate: candidateId ?? cached.id });
   }
   // Full B1 assembly removes only chapters without route adapters. It preserves
   // refusals and never substitutes today's summary for a priced alternative.
@@ -112,7 +116,7 @@ async function priceRoute(caseFile, { route, candidateId, reason }, execution) {
   if (compiled?.status !== 'compiled') return { ...fromError({ diagnostics: assembly.routeRefusals ?? assembly.missingFacts.map(row => ({
     code: row.factId, path: row.fieldPath, message: row.reason
   })) }), data: { settingSourceChecks: checks, ledgers: compiled?.resourceLedger?.routes ?? [], omittedChapters: assembly.omittedChapters } };
-  return ok({ ...pricedResult(caseFile, compiled, route.id), settingSourceChecks: checks, omittedChapters: assembly.omittedChapters });
+  return ok({ ...pricedResult(caseFile, compiled, route.id), storyRequirements: storyRequirements(compiled, route.id), settingSourceChecks: checks, omittedChapters: assembly.omittedChapters });
 }
 
 function toolDraft(caseFile, { route, routeId }, fallback) {
@@ -178,31 +182,18 @@ async function submitStory(caseFile, { story }, execution) {
   try {
     const prepared = await compileCaseStories(caseFile, stories, execution);
     const compiled = prepared.compilation;
-    const position = readPlanPosition(compiled);
-    const explainers = Object.fromEntries(getExplainers().map(entry => [entry.id, entry]));
-    for (const draft of Object.values(stories)) {
-      // No metrics aliases and no unfiltered register snapshot: use precisely
-      // the same registry and effective-date figure lookup as the screen.
-      const registry = storyFactRegistry(position, draft.routeId);
-      for (const key of referencedPlaceholders(draft).keys) if (key.startsWith(FIGURE_PREFIX)) {
-        const entry = figureEntry(key.slice(FIGURE_PREFIX.length), compiled.calculationDate);
-        if (entry) registry[key] = entry;
-      }
-      resolveStory({ story: draft, registry, explainers });
-      const ids = new Set();
-      const goals = position.routes.find(row => row.routeId === draft.routeId).goalWalk;
-      for (const [index, goal] of (draft.sections[4].goals ?? []).entries()) {
-        if ((!compiled.source.normalizedPlanPack.household.goals.some(row => row.goalId === goal.goalId)
-          && !goals.some(row => row.goalId === goal.goalId)) || ids.has(goal.goalId)) {
-          return refused('invalid_goal', '/story/sections/4/goals/' + index + '/goalId', 'Name a household goal once.');
-        }
-        ids.add(goal.goalId);
-      }
-    }
+    const reports = Object.values(stories).map(draft => checkStory(compiled, draft));
+    const failures = reports.flatMap(report => report.refusals);
+    const report = reports.find(row => row.routeId === routeId);
+    if (failures.length) return { ...fromError({ diagnostics: failures }), data: { accepted: false, releaseEligible: false, report, reports } };
     caseFile.storyDrafts = stories;
     caseFile.storyCompilation = prepared;
-    return ok({ verdict: 'passes_available_checks', scope: 'B1.5 shape and plan_story_model checks only',
-      fullChecker: 'not built yet', reviewStatus: 'pending', releaseEligible: false, openOnStoryScreen: true });
+    caseFile.storyChecks = {};
+    for (const draft of Object.values(stories)) caseFile.storyChecks[draft.routeId] = {
+      storyHash: await sha256Json(draft), compilationSignature: prepared.signature,
+      report: reports.find(row => row.routeId === draft.routeId)
+    };
+    return ok({ verdict: 'pass', accepted: true, report, reports, reviewStatus: 'pending', releaseEligible: false, openOnStoryScreen: true });
   } catch (error) { return fromError(error, '/story'); }
 }
 
@@ -264,6 +255,6 @@ export async function executeTool(rawCase, name, input) {
   retainCandidates(caseFile, result);
   const record = { sequence: caseFile.runLog.length + 1, tool: name, input: cloneJson(input ?? null), result: cloneJson(result), usage: { pricingCalls, ...meter.usage } };
   caseFile.runLog.push(record);
-  if (name === 'submit_story') caseFile.checkerReports.push({ sequence: record.sequence, result: record.result });
+  if (name === 'submit_story') caseFile.checkerReports.push({ sequence: record.sequence, result: record.result, ...(result.data?.report ? { report: result.data.report } : {}) });
   return { caseFile, result };
 }

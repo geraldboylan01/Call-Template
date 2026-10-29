@@ -13,6 +13,8 @@ import { readLocalCase } from './analyst-local-store.mjs';
 import { caseRefusal } from '../js/planning/analyst/case_file.js';
 import { compileCaseStories } from '../js/planning/analyst/compilation.js';
 import { buildSessionFromPlan } from '../js/plan_story_compiled.js';
+import { checkStory } from '../js/planning/plan_pack/story_checker.js';
+import { sha256Json } from '../js/planning/utils.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 // The engines write their own diagnostics; this command's output is its own.
@@ -39,9 +41,16 @@ const alternatives = routeIds.filter((id) => id !== 'current');
 const missing = alternatives.filter((id) => !caseFile.routeDrafts?.[id]?.route);
 if (missing.length) stop(`Route ${missing.join(', ')} has a story but no priced draft. Price it with price_route first.`);
 
-let compiled;
-try { ({ compilation: compiled } = await compileCaseStories(caseFile, stories)); }
+let compiled, signature;
+try { ({ compilation: compiled, signature } = await compileCaseStories(caseFile, stories)); }
 catch (error) { stop(`The plan did not compile: ${JSON.stringify(error.diagnostics ?? error.message)}`); }
+for (const [routeId, story] of Object.entries(stories)) {
+  const checked = caseFile.storyChecks?.[routeId];
+  if (!checked?.report?.ok || checked.compilationSignature !== signature || checked.storyHash !== await sha256Json(story))
+    stop(`The story for ${routeId} has not passed the checker for this compilation. Submit it with submit_story.`);
+  const report = checkStory(compiled, story);
+  if (!report.ok) stop(`The story no longer passes the checker: ${JSON.stringify(report.refusals)}`);
+}
 
 let session;
 try { session = buildSessionFromPlan(compiled, stories, { clientName: caseFile.pinned.profile?.displayName ?? compiled.clientName }); }
