@@ -24,7 +24,6 @@ import { openStoryLink, evaluateOffRoute } from '../js/plan_story_links.js';
 import { storyFactRegistry } from '../js/plan_story_registry.js';
 import { getStoryRequirements, checkStory } from '../js/planning/plan_pack/story_checker.js';
 import { checkStoryLink } from '../js/planning/plan_pack/story_links.js';
-import { propertyMoveRows } from '../js/planning/plan_pack/property_move_story.js';
 import { minimalAnalystStory } from './fixtures/minimal-analyst-story.mjs';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -93,11 +92,22 @@ export async function checkAnalystWiring({ fixtures, options }) {
       const requirements = getStoryRequirements(compiled, alternative.id);
       const move = requirements.majorMoves[0];
       const ledger = out.result.data.ledger;
-      const expected = propertyMoveRows(ledger.propertyMove, compiled.source.normalizedPlanPack.household.properties.find(row => row.propertyId === ledger.propertyMove.propertyId));
-      assert.deepEqual(move.factKeys.sort(), expected.map(row => 'moves.' + move.id + '.' + row.key).sort());
+      const transaction = ledger.propertyMove;
+      const property = compiled.source.normalizedPlanPack.household.properties.find(row => row.propertyId === transaction.propertyId);
+      const expected = { property: property.label ?? (change.type === 'tradeDownHome' ? 'Your home' : 'Your rental property'), year: transaction.year, sellingCosts: transaction.sellingCosts, tax: transaction.tax,
+        ...(change.type === 'tradeDownHome' ? { newHomePrice: transaction.newHomePrice, cashReleased: transaction.cashReleased,
+          buyingCosts: transaction.buyingCosts.total, stampDuty: transaction.buyingCosts.stampDuty }
+          : { netProceeds: transaction.cashReleased, rentStopped: transaction.rental.rent, runningCostsStopped: transaction.rental.running,
+            rentalTaxStopped: transaction.rental.tax, repaymentsStopped: transaction.debts.reduce((total, debt) => total + debt.annualPayment, 0) }) };
+      assert.deepEqual(move.factKeys.sort(), Object.keys(expected).map(key => 'moves.' + move.id + '.' + key).sort());
+      for (const [key, value] of Object.entries(expected)) assert.equal(selected.facts['moves.' + move.id + '.' + key].value, value);
       for (const key of move.factKeys) assert.equal(checkStoryLink(compiled, selected.facts[key], '/move').ok, true, key);
       const draft = minimalAnalystStory(compiled, alternative.id);
       assert.equal(checkStory(compiled, draft).ok, true);
+      const withoutMoveModule = clone(compiled);
+      withoutMoveModule.chapters = withoutMoveModule.chapters.filter(row => row.id !== 'property_move');
+      assert.deepEqual(getStoryRequirements(withoutMoveModule, alternative.id).majorMoves[0].factKeys.sort(), move.factKeys);
+      assert.equal(checkStory(withoutMoveModule, draft).ok, false, 'Missing move facts cannot shrink the checker floor');
       const session = buildSessionFromPlan(compiled, draft);
       assert.ok(session.modules.some(module => module.generated.report?.blocks.some(block => block.id === 'transaction')));
       const target = storyFactRegistry(position, alternative.id)[move.factKeys[0]].source;

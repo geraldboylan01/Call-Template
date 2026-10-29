@@ -5,6 +5,10 @@ import { pointerValue } from './story_registry.js';
 export const STORY_SECTIONS = Object.freeze(['current_position', 'ledger', 'protecting', 'inefficiencies', 'goals',
   'cash_flow_after', 'net_worth_after', 'risks', 'check_next']);
 export const STORY_PARTS = Object.freeze(['does', 'why', 'gives', 'costs', 'check']);
+const PROPERTY_MOVE_FIELDS = {
+  tradeDownHome: ['property', 'year', 'sellingCosts', 'tax', 'newHomePrice', 'cashReleased', 'buyingCosts', 'stampDuty'],
+  sellProperty: ['property', 'year', 'sellingCosts', 'tax', 'netProceeds', 'rentStopped', 'runningCostsStopped', 'rentalTaxStopped', 'repaymentsStopped']
+};
 const people = household => [household.primaryPerson, household.partner].filter(Boolean);
 
 /** Code-owned floor and limitation facts. No what-if is run by this reader. */
@@ -111,7 +115,7 @@ export function storyRequirements(compiled, position) {
     source: '/source/normalizedPlanPack/routes/' + sourceRouteIndex + '/changes/' + i,
     scale: classifyLever(pack, change).scale }));
   const majorMoves = changes.filter(change => change.scale === 'major').map(change => ({ ...change,
-    factKeys: Object.keys(facts).filter(key => key.startsWith('moves.' + change.id + '.')) }));
+    factKeys: (PROPERTY_MOVE_FIELDS[change.type] ?? []).map(field => 'moves.' + change.id + '.' + field) }));
   const mainChangeIds = (majorMoves.length ? majorMoves : changes.slice(0, 1)).map(change => change.id);
   if (route.id !== 'current' && !mainChangeIds.length) {
     changes.push({ id: 'goal_funding', type: 'goal_funding', scale: 'ordinary', source: '/routes/' + compiled.routes.indexOf(route) });

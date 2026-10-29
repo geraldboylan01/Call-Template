@@ -1060,6 +1060,11 @@
               "year": 2031,
               "surplus": 25461.59701866924,
               "priorGoalFunding": []
+            },
+            {
+              "year": 2032,
+              "surplus": 0,
+              "priorGoalFunding": []
             }
           ]
         },
@@ -1601,6 +1606,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -1628,6 +1666,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -1715,8 +1754,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -1878,6 +1916,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -2431,6 +2473,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -2458,6 +2533,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -2545,8 +2621,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -2727,6 +2802,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -3289,6 +3368,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -3316,6 +3428,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -3403,8 +3516,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -3586,6 +3698,10 @@
                 {
                   "year": 2031,
                   "amount": 0
+                },
+                {
+                  "year": 2032,
+                  "amount": 0
                 }
               ],
               "pensionPot": null,
@@ -3728,6 +3844,21 @@
             {
               "year": 2031,
               "surplus": 25461.59701866924,
+              "priorGoalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                }
+              ]
+            },
+            {
+              "year": 2032,
+              "surplus": 0,
               "priorGoalFunding": [
                 {
                   "goalId": "fictional_dated_cost",
@@ -4291,6 +4422,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -4318,6 +4482,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -4405,8 +4570,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -4549,6 +4713,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -4636,8 +4801,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -4663,6 +4827,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -5218,6 +5386,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -5245,6 +5446,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -5332,8 +5534,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -5476,6 +5677,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -5563,8 +5765,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -5590,6 +5791,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -6144,6 +6349,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -6171,6 +6409,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -6258,8 +6497,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -6402,6 +6640,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -6489,8 +6728,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -6516,6 +6754,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -7087,6 +7329,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -7114,6 +7389,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -7201,8 +7477,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -7363,6 +7638,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -7450,8 +7726,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -7477,6 +7752,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -8048,6 +8327,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -8075,6 +8387,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -8162,8 +8475,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -8324,6 +8636,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -8411,8 +8724,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -8438,6 +8750,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -9034,6 +9350,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -9061,6 +9410,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -9148,8 +9498,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -9824,6 +10173,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -9851,6 +10233,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -9938,8 +10321,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -10143,6 +10525,11 @@
             {
               "year": 2031,
               "surplus": 32661.59701866924,
+              "priorGoalFunding": []
+            },
+            {
+              "year": 2032,
+              "surplus": 0,
               "priorGoalFunding": []
             }
           ]
@@ -10826,6 +11213,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -10895,6 +11333,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -10982,8 +11421,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -11152,6 +11590,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -11854,6 +12296,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -11923,6 +12416,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -12010,8 +12504,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -12199,6 +12692,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -12902,6 +13399,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -12971,6 +13519,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -13058,8 +13607,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -13247,6 +13795,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -13438,6 +13990,30 @@
             {
               "year": 2031,
               "surplus": 32661.59701866924,
+              "priorGoalFunding": [
+                {
+                  "goalId": "invented_loan_goal",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                },
+                {
+                  "goalId": "fictional_dated_cost",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                }
+              ]
+            },
+            {
+              "year": 2032,
+              "surplus": 0,
               "priorGoalFunding": [
                 {
                   "goalId": "invented_loan_goal",
@@ -14169,6 +14745,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -14238,6 +14865,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -14325,8 +14953,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -14544,6 +15171,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -15274,6 +15905,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -15343,6 +16025,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -15430,8 +16113,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -15667,6 +16349,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -16398,6 +17084,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -16467,6 +17204,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -16554,8 +17292,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -16791,6 +17528,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -17528,6 +18269,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -17597,6 +18389,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -17684,8 +18477,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -17903,6 +18695,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -18714,6 +19510,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -18783,6 +19630,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -18870,8 +19718,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -19734,6 +20581,57 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "invented_loan_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "invented_mortgage_goal",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -19803,6 +20701,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -19890,8 +20789,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -20156,6 +21054,21 @@
             {
               "year": 2031,
               "surplus": 25461.59701866924,
+              "priorGoalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                }
+              ]
+            },
+            {
+              "year": 2032,
+              "surplus": 0,
               "priorGoalFunding": [
                 {
                   "goalId": "fictional_dated_cost",
@@ -20708,6 +21621,39 @@
                     "planned": 1074.8374744481239,
                     "remaining": 24386.759544221117,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -20735,6 +21681,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -20822,8 +21769,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -20958,6 +21904,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -21045,8 +21992,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -21072,6 +22018,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -21636,6 +22586,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -21663,6 +22646,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -21759,8 +22743,7 @@
                         "maximumAnnualGrossExtra": 20800,
                         "oneOffGross": 19273.44
                       }
-                    ],
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    ]
                   }
                 ],
                 "annualFunding": {
@@ -21913,6 +22896,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -22009,8 +22993,7 @@
                   "maximumAnnualGrossExtra": 20800,
                   "oneOffGross": 19273.44
                 }
-              ],
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              ]
             },
             "shortfall": {
               "yearly": [
@@ -22036,6 +23019,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -22607,6 +23594,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -22634,6 +23654,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -22730,8 +23751,7 @@
                         "maximumAnnualGrossExtra": 20800,
                         "oneOffGross": 10400
                       }
-                    ],
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    ]
                   }
                 ],
                 "annualFunding": {
@@ -22892,6 +23912,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -22988,8 +24009,7 @@
                   "maximumAnnualGrossExtra": 20800,
                   "oneOffGross": 10400
                 }
-              ],
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              ]
             },
             "shortfall": {
               "yearly": [
@@ -23015,6 +24035,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -23576,6 +24600,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -23603,6 +24660,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -23690,8 +24748,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -23834,6 +24891,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -23921,8 +24979,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -23948,6 +25005,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -24509,6 +25570,39 @@
                     "planned": 1074.8188122464805,
                     "remaining": 24386.778206422758,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -24536,6 +25630,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -24623,8 +25718,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -24778,6 +25872,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -24865,8 +25960,7 @@
                 "targetIncomeBasis": "net",
                 "householdTaxStatus": "single"
               },
-              "oneOffGross": 0,
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              "oneOffGross": 0
             },
             "shortfall": {
               "yearly": [
@@ -24892,6 +25986,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -25432,6 +26530,39 @@
               "planned": 0,
               "remaining": 25461.59701866924,
               "shortfall": 0
+            },
+            {
+              "offset": 6,
+              "year": 2032,
+              "leftOver": 50978.31,
+              "freed": 1800,
+              "earningShare": 0,
+              "available": 0,
+              "cashflowDeficit": 0,
+              "goals": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                }
+              ],
+              "required": 0,
+              "planned": 0,
+              "remaining": 0,
+              "shortfall": 0
             }
           ],
           "goalFunding": [
@@ -25459,6 +26590,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -25555,8 +26687,7 @@
                   "maximumAnnualGrossExtra": 20800,
                   "oneOffGross": 10000
                 }
-              ],
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              ]
             }
           ],
           "annualFunding": {
@@ -26227,6 +27358,39 @@
               "planned": 0,
               "remaining": 25461.59701866924,
               "shortfall": 0
+            },
+            {
+              "offset": 6,
+              "year": 2032,
+              "leftOver": 50978.31,
+              "freed": 1800,
+              "earningShare": 0,
+              "available": 0,
+              "cashflowDeficit": 0,
+              "goals": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "required": 0,
+                  "planned": 0,
+                  "allocated": 0,
+                  "yearlyAllocated": 0,
+                  "capitalAllocated": 0,
+                  "shortfall": 0
+                }
+              ],
+              "required": 0,
+              "planned": 0,
+              "remaining": 0,
+              "shortfall": 0
             }
           ],
           "goalFunding": [
@@ -26254,6 +27418,7 @@
               "kind": "retirement",
               "order": 3,
               "startsInYears": null,
+              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
               "wholeCash": null,
               "maximumCash": null,
               "cashAllocated": 0,
@@ -26350,8 +27515,7 @@
                   "maximumAnnualGrossExtra": 20800,
                   "oneOffGross": 5000
                 }
-              ],
-              "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+              ]
             }
           ],
           "annualFunding": {
@@ -26592,6 +27756,11 @@
             {
               "year": 2031,
               "surplus": 25461.59701866924,
+              "priorGoalFunding": []
+            },
+            {
+              "year": 2032,
+              "surplus": 0,
               "priorGoalFunding": []
             }
           ]
@@ -27143,6 +28312,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -27170,6 +28372,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -27257,8 +28460,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -27420,6 +28622,10 @@
                 },
                 {
                   "year": 2031,
+                  "amount": 0
+                },
+                {
+                  "year": 2032,
                   "amount": 0
                 }
               ],
@@ -28075,6 +29281,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -28102,6 +29341,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -28189,8 +29429,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -28372,6 +29611,10 @@
                 {
                   "year": 2031,
                   "amount": 0
+                },
+                {
+                  "year": 2032,
+                  "amount": 0
                 }
               ],
               "pensionPot": null,
@@ -28467,7 +29710,8 @@
                 "loan_analysis",
                 "pension_projection",
                 "protection_gap",
-                "future_cost_fund"
+                "future_cost_fund",
+                "property_move"
               ],
               "ledger": {
                 "routeId": "walk",
@@ -29012,6 +30256,44 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "propertyCapitalReceived": 0,
+                    "propertyCapitalOpening": 0,
+                    "propertyCapitalForExpenses": 0,
+                    "propertyCapitalUsed": 0,
+                    "propertyCapitalRemaining": 0,
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -29039,6 +30321,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -29126,8 +30409,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "propertyMove": {
@@ -29459,7 +30741,8 @@
                 "loan_analysis",
                 "pension_projection",
                 "protection_gap",
-                "future_cost_fund"
+                "future_cost_fund",
+                "property_move"
               ],
               "ledger": {
                 "routeId": "walk",
@@ -30004,6 +31287,44 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "propertyCapitalReceived": 0,
+                    "propertyCapitalOpening": 0,
+                    "propertyCapitalForExpenses": 0,
+                    "propertyCapitalUsed": 0,
+                    "propertyCapitalRemaining": 0,
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -30031,6 +31352,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -30118,8 +31440,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "propertyMove": {
@@ -30983,6 +32304,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -31010,6 +32364,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -31097,8 +32452,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -31781,6 +33135,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -31808,6 +33195,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -31895,8 +33283,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -32152,7 +33539,8 @@
                 "loan_analysis",
                 "pension_projection",
                 "protection_gap",
-                "future_cost_fund"
+                "future_cost_fund",
+                "property_move"
               ],
               "ledger": {
                 "routeId": "walk",
@@ -32697,6 +34085,44 @@
                     "planned": 0,
                     "remaining": 32661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 58178.31,
+                    "freed": 9000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "propertyCapitalReceived": 0,
+                    "propertyCapitalOpening": 0.004821957438252866,
+                    "propertyCapitalForExpenses": 0,
+                    "propertyCapitalUsed": 0,
+                    "propertyCapitalRemaining": 0.004821957438252866,
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -32724,6 +34150,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -32811,8 +34238,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "propertyMove": {
@@ -33671,6 +35097,39 @@
                   "planned": 0,
                   "remaining": 28198.887018669244,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 53715.600000000006,
+                  "freed": 4537.29,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -33698,6 +35157,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -33785,8 +35245,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -34505,6 +35964,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -34532,6 +36024,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -34619,8 +36112,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -35355,6 +36847,39 @@
                     "planned": 0,
                     "remaining": 29661.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 55178.31,
+                    "freed": 6000,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -35382,6 +36907,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -35469,8 +36995,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -36237,6 +37762,39 @@
                     "planned": 0,
                     "remaining": 25461.59701866924,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 50978.31,
+                    "freed": 1800,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -36264,6 +37822,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -36351,8 +37910,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "annualFunding": {
@@ -36565,7 +38123,8 @@
                 "loan_analysis",
                 "pension_projection",
                 "protection_gap",
-                "future_cost_fund"
+                "future_cost_fund",
+                "property_move"
               ],
               "ledger": {
                 "routeId": "walk",
@@ -37116,6 +38675,44 @@
                     "planned": 0,
                     "remaining": 37593.887018669244,
                     "shortfall": 0
+                  },
+                  {
+                    "offset": 6,
+                    "year": 2032,
+                    "leftOver": 63110.600000000006,
+                    "freed": 13932.29,
+                    "earningShare": 0,
+                    "available": 0,
+                    "cashflowDeficit": 0,
+                    "goals": [
+                      {
+                        "goalId": "fictional_dated_cost",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      },
+                      {
+                        "goalId": "goal_application_retire",
+                        "required": 0,
+                        "planned": 0,
+                        "allocated": 0,
+                        "yearlyAllocated": 0,
+                        "capitalAllocated": 0,
+                        "shortfall": 0
+                      }
+                    ],
+                    "propertyCapitalReceived": 0,
+                    "propertyCapitalOpening": 0,
+                    "propertyCapitalForExpenses": 0,
+                    "propertyCapitalUsed": 0,
+                    "propertyCapitalRemaining": 0,
+                    "required": 0,
+                    "planned": 0,
+                    "remaining": 0,
+                    "shortfall": 0
                   }
                 ],
                 "goalFunding": [
@@ -37143,6 +38740,7 @@
                     "kind": "retirement",
                     "order": 3,
                     "startsInYears": null,
+                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                     "wholeCash": null,
                     "maximumCash": null,
                     "cashAllocated": 0,
@@ -37230,8 +38828,7 @@
                       "targetIncomeBasis": "net",
                       "householdTaxStatus": "single"
                     },
-                    "oneOffGross": 0,
-                    "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                    "oneOffGross": 0
                   }
                 ],
                 "propertyMove": {
