@@ -805,6 +805,7 @@ export function pricePlanPensionContributions(raw, contributions, { calculationD
   const normalized = normalizePensionInputs(raw);
   const before = benchmark.costsToday;
   const extras = new Map();
+  const once = new Map();
   const quoted = contributions.map((change, index) => {
     const path = change.source ?? `/pensionContributions/${index}`;
     const member = normalized.pensions.find(member => member.id === change.personId);
@@ -815,14 +816,18 @@ export function pricePlanPensionContributions(raw, contributions, { calculationD
     if (!Number.isFinite(currentGross)) throw Object.assign(new Error('Establish the pension member’s current personal contributions and tax basis.'),
       { path: '/planningInputs/personalPensionContributions', code: 'missing_information' });
     const maximumExtra = Math.max(0, maxRelievablePersonalContribution(member.currentAge, member.currentSalary) - currentGross);
-    if (!Number.isFinite(change.annualAmount) || change.annualAmount <= 0 || change.annualAmount > maximumExtra + 1e-8 || extras.has(member.id)) {
-      throw Object.assign(new Error(`The extra for ${member.id} must be positive and at most the pension engine's current relief headroom (${maximumExtra} EUR a year), once per person.`), { path: path + '/annualAmount', code: 'invalid_input' });
+    const annual = change.annualAmount ?? 0, oneOff = change.oneOffAmount ?? 0;
+    if (!Number.isFinite(annual) || !Number.isFinite(oneOff) || annual < 0 || oneOff < 0 || annual + oneOff <= 0 || annual + oneOff > maximumExtra + 1e-8 || extras.has(member.id)) {
+      throw Object.assign(new Error(`The extra for ${member.id} must be positive and at most the pension engine's current relief headroom (${maximumExtra} EUR a year), once per person.`), { path: path + (oneOff ? '/oneOffAmount' : '/annualAmount'), code: 'invalid_input' });
     }
-    extras.set(member.id, change.annualAmount / member.currentSalary);
-    return { personId: member.id, annualGrossExtra: change.annualAmount, maximumAnnualGrossExtra: maximumExtra };
+    extras.set(member.id, annual / member.currentSalary);
+    once.set(member.id, oneOff);
+    return { personId: member.id, annualGrossExtra: annual, maximumAnnualGrossExtra: maximumExtra,
+      ...(oneOff ? { oneOffGross: oneOff } : {}) };
   });
   const plannedInput = { ...raw, pensions: raw.pensions.map(member => ({ ...member,
-    personalPct: member.personalPct + (extras.get(member.id) ?? 0) })) };
+    personalPct: member.personalPct + (extras.get(member.id) ?? 0),
+    ...(once.get(member.id) ? { oneOffPersonalContribution: (member.oneOffPersonalContribution ?? 0) + once.get(member.id) } : {}) })) };
   const after = computePersonalContributionCosts(plannedInput);
   const projection = computePensionProjection(plannedInput).debug;
   return { ...benchmark, plannedInput, costsWithExtra: after,
@@ -830,7 +835,7 @@ export function pricePlanPensionContributions(raw, contributions, { calculationD
     gapLeftOver: Math.max(0, projection.requiredPot - projection.projectedPotCurrent),
     projectedPotWithExtra: projection.projectedPotCurrent,
     explicitContributions: quoted,
-    contributionBasis: 'Today’s stated gross annual increase converted to a salary rate; future earnings, age limits, relief and growth use the existing pension engine.' };
+    contributionBasis: 'Recurring gross increases become salary rates; one-off gross contributions apply only in the calculation year. Future earnings, age limits, relief and growth use the existing pension engine.' };
 }
 
 /** Reuse the goals module's debt pricing and whole-goal search for the ledger. */

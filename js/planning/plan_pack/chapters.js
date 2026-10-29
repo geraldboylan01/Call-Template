@@ -69,8 +69,10 @@ export function routeContext(pack, route, index, { fundingGoalIds = new Set(), a
     }
     if (change.type === 'pensionContribution') {
       if (!allowGoalMoves) throw new LaterStage(path, 'Contribution levers require the full B1 ledger.', 'B1', 'requires_resource_ledger');
-      pensionContributions.push({ personId: change.personId, annualAmount: change.annualAmount, source: path });
-      changedFacts.push({ source: path, personId: change.personId, grossAnnualContribution: change.annualAmount });
+      pensionContributions.push({ personId: change.personId, annualAmount: change.annualAmount ?? 0, oneOffAmount: change.oneOffAmount ?? 0, source: path });
+      if (change.oneOffAmount) cashUsed += change.oneOffAmount;
+      changedFacts.push({ source: path, personId: change.personId, ...(change.annualAmount ? { grossAnnualContribution: change.annualAmount } : {}),
+        ...(change.oneOffAmount ? { grossOneOffContribution: change.oneOffAmount } : {}) });
       continue;
     }
     if (change.type === 'spendLess') {
@@ -498,6 +500,9 @@ export async function buildChapter(context, pack, chapter) {
   let input = definition.buildInput(profile);
   const chapterAssumptions = [];
   const chapterWarnings = [];
+  if (['pension_projection', 'household_cash_flow'].includes(chapter) && context.pensionContributions.some(change => change.oneOffAmount > 0)) {
+    chapterWarnings.push('The one-off pension contribution is paid gross from cash today. Estimated tax relief affects this calendar year only; it is not an immediate cash receipt or a recurring surplus.');
+  }
   if (chapter === 'pension_projection' && pack.planningInputs.householdTaxStatus) input.householdTaxStatus = pack.planningInputs.householdTaxStatus;
   if (chapter === 'pension_projection') {
     const targetSource = profile.fieldMetadata['/assumptions/values/retirement/targetIncomeToday']?.application;
@@ -516,6 +521,11 @@ export async function buildChapter(context, pack, chapter) {
     }
   }
   const balanceSheetAssignments = chapter === 'personal_balance_sheet' ? context.usableCashDeductions ?? [] : [];
+  if (chapter === 'personal_balance_sheet') for (const contribution of context.pensionContributions.filter(change => change.oneOffAmount > 0)) {
+    const goal = profile.goals.find(goal => retirementTypes.includes(goal.type) && !['paused', 'completed'].includes(goal.status));
+    input.assetPositions.push({ id: 'pension_cash_' + contribution.personId, label: goal.title,
+      amount: contribution.oneOffAmount, bucket: 'retirement_funding', source: 'plan_pension_contribution' });
+  }
   if (balanceSheetAssignments.length) {
     const committed = new Map();
     for (const row of balanceSheetAssignments) committed.set(row.assetId, (committed.get(row.assetId) ?? 0) + row.amount);

@@ -9,7 +9,10 @@
 //   - "Back to the story" returns to the paragraph the link was in;
 //   - changing the case inside the module shows "This screen no longer follows the route", and
 //     "Back to the route" puts it back;
-//   - a route with no story yet says it is updating, and the story survives a reload.
+//   - a route with no story yet says it is updating, and the story survives a reload;
+//   - the same screen reading a compiled made-up household (scripts/lib/plan-story-compiled-browser.mjs):
+//     links that open the module of the route's compiled case, hover or tap on every figure showing
+//     where it comes from, explainers, and focus and Esc, at both widths.
 //
 // Needs Google Chrome (CHROME_PATH to override). Nothing leaves the machine: the app's auth
 // call is answered locally and every other call to the API is refused.
@@ -22,6 +25,7 @@ import { chromium } from 'playwright-core';
 import { startPreviewServer } from './lib/preview-server.mjs';
 import { PLAN_STORY_CASE_BRIDGES } from '../js/plan_story_links.js';
 import { PLAN_STORY_SAMPLE_REGISTRY } from '../js/tests_plan_story_sample.js';
+import { runCompiledBrowserChecks } from './lib/plan-story-compiled-browser.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const output = resolve(root, '.worker-dry-run/plan-story');
@@ -191,6 +195,10 @@ try {
     await page.reload();
     await page.waitForSelector('.ps .ps-headline', { timeout: 20000 });
     note('a route with no story says it is updating; the story survives a reload');
+
+    // The same screen reading a compiled made-up household: links by compiled case, where each figure comes
+    // from, and explainers.
+    await runCompiledBrowserChecks({ page, origin: server.origin, size, output, note });
 
     assert.deepEqual(errors, [], `no page errors at ${size}`);
     await context.close();

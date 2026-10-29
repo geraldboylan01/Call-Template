@@ -28,7 +28,7 @@ const ready = result => ['ready', 'ready_with_assumptions'].includes(result.stat
  * and also returns compilation/routeRefusals. Omitting routes retains #102's
  * current-resource summary without claiming that goal funding was priced.
  */
-export async function profileToPlanPack(rawProfile, { confirmedRevision, calculationDate, clientLabel, routes } = {}) {
+export async function profileToPlanPack(rawProfile, { confirmedRevision, calculationDate, clientLabel, routes, beforeCompile } = {}) {
   const household = normalizeHouseholdProfile(rawProfile);
   const application = household.assumptions.values.application;
   const fromForm = application?.schema === APPLICATION_SCHEMA && application.snapshotBound === true;
@@ -264,7 +264,7 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
     // form's aggregate take-home or refusing calculable per-person pay.
     const trialChapters = chapter === 'future_cost_fund' && pack.chapters.includes('household_cash_flow')
       ? ['household_cash_flow', chapter] : [chapter];
-    const trial = await compilePlanPack({ ...pack, chapters: trialChapters }, nativePreflightOptions);
+    const trial = await compilePlanPack({ ...pack, chapters: trialChapters }, { ...nativePreflightOptions, beforeCompile });
     if (trial.status === 'compiled') pack.chapters.push(chapter);
     else omit(chapter, trial.diagnostics.map(item => gap(item.path, item.message, chapter, item.code,
       item.code.startsWith('requires_') ? 'implementation' : 'household_fact')));
@@ -278,7 +278,7 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
     // Remove only chapters lacking an exact B1 route adapter. Missing ledger
     // facts and refused routes stay visible; never fall back to B0 pricing.
     for (let attempt = 0; attempt <= CHAPTERS.length; attempt++) {
-      compilation = await compilePlanPack(pack, compileOptions);
+      compilation = await compilePlanPack(pack, { ...compileOptions, beforeCompile });
       const blocked = [...new Set(compilation.diagnostics.filter(row => row.chapter && row.code === 'requires_profile_adapter').map(row => row.chapter))];
       if (!blocked.length) break;
       for (const chapter of blocked) {
@@ -287,7 +287,7 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
       }
       if (!pack.chapters.length) break;
     }
-    try { if (pack.chapters.length) planPack = normalizePlanPack(pack); }
+    try { if (pack.chapters.length) planPack = normalizePlanPack(pack, { allowMultipleMajors: true }); }
     catch (error) { gap(error.path ?? '/routes', error.message, null, error.code ?? 'invalid_input'); }
     for (const error of compilation.diagnostics) gap(error.path, error.message, error.chapter, error.code, error.code.startsWith('requires_') ? 'implementation' : 'household_fact');
     return { planPack, compileOptions, missingFacts, omittedChapters, provenance, compilation, routeRefusals: compilation.diagnostics };

@@ -88,9 +88,11 @@ method.md, routes.md, whatifs.md, missing-facts.md, and wording.md, all under
 docs/analyst/skills/. Read wording.md again before writing the story.
 
 Run the stages for this case: understand, check for gaps, build routes, stress
-them, write, and check. Use read_position for current first, then for any route
-that price_route or balancing_moves successfully prices. Its facts, bases,
-issues, unavailableIssues, goal walk and steps are the code's evidence.
+them, write, and check. Use read_position for current first, then for any
+retained priced route. Its
+facts, bases, issues, unavailableIssues, goal walk and steps are the code's
+evidence. Write household placeholders only from that route's storyFacts, the
+keys the story screen opens. Never use the older metric aliases.
 
 Read rates, bands and payments through read_figures, using the case's pinned
 calculation date. Use read_explainers for the explainer IDs returned by those
@@ -100,20 +102,27 @@ Call missing_facts early. If a missing household fact blocks a required result,
 gather the returned questions and stop that analysis stage. Do not invent an
 answer or change the confirmed profile. Explain which stages could not run.
 
-When enough facts exist, price distinct routes with price_route. Each setting
-needs its fact path, a versioned central default, or a bounded reason citing a
-fact. Read the settingSourceChecks and refusal paths. If ordinary choices leave
-goals short, balancing_moves can size tradeDownHome or sellProperty from a route
-draft or a saved routeId. Use the returned route; never guess a move's size.
+When enough facts exist, use goal_ways to explore a goal at its point in a
+route draft, suggest_routes for whole walks, and balancing_moves for ordinary
+moves and lever sizes. Keep the engine's returned wire changes, give each
+selected alternative its own ID, and retain it with price_route. Every setting
+needs a fact path, a versioned central default, or a bounded reason citing a
+fact. Read the settingSourceChecks and refusal paths. For a specific major
+property illustration, balancing_moves also accepts type tradeDownHome or
+sellProperty and an optional transaction year. Never guess a move's size.
 
-goal_ways, suggest_routes, ordinary goal balancing and run_whatif are not built
-yet. Do not treat their refusals as successful calculations. Record the relevant
-limitations and stop where the method requires an unavailable result. A partial
-test is not a completed analysis. Do not add missing tools or edit source code.
+All three part c tools and the compiled-plan story screen are available. The
+full story checker is still to land. run_whatif retains its explicit not built
+yet result in this tool layer: never describe that as a completed calculation.
+Record the relevant limitations and stop where the method needs an unavailable
+result. A partial test is not a completed analysis. Do not implement missing
+tools or edit source code during this analysis run.
 
 If the available facts support a draft, write all nine sections in their order,
 with does, why, gives, costs and check, and the goal subsections. Every figure
-must use a returned placeholder key. Describe the routes without advice or
+must use a key from that route's storyFacts, or an effective register figure.
+Use explainer IDs returned by read_explainers for {?explainer.id} markers.
+Describe the routes without advice or
 ranking. Keep at most three alternatives. Submit the draft with submit_story
 and address its available checks within the recorded budget. Its present verdict
 covers shape and the existing story model, not the full checker. Explain that
@@ -126,23 +135,23 @@ the refusal paths or missing facts, and whether any story draft was submitted.
 ```
 
 `read_position` without arguments returns the pinned current position. With
-`{"routeId":"example"}` it returns the stored compilation's position: current
-and that priced alternative, including the full-B1 current comparison. Each
-route's facts and issues keep their original sources and bases. Reading an
+`{"routeId":"example"}` it returns that retained route's native facts, bases,
+issues and screen storyFacts, including its full-B1 current aliases and
+comparisons. Each fact keeps its original source and basis. Reading an
 alternative never replaces the pinned current position.
 
 `balancing_moves` accepts, for example,
 `{"route":{"id":"example","changes":[]},"type":"tradeDownHome"}` or
 `{"routeId":"example","type":"sellProperty","propertyId":"<recorded ID>"}`.
-An optional `year` fixes the transaction year within the native bounds. Other
-balancing requests return `not built yet`. The ledger search needs the recorded
+An optional `year` fixes the transaction year within the native bounds. Without
+a property type, it calls the native balancing search for ordinary goal moves
+and lever sizes. The ledger search needs the recorded
 property and funding facts, so a raw form fixture can still be refused.
 
 `read_explainers` accepts `{"ids":["state_pension_contributions"]}` or
-`{"figureIds":["<ID returned by read_figures>"]}`. Lookup is available now;
-rendering the `{?explainer.id}` marker belongs to the story work. The existing
-story model can still refuse that marker. Keep its returned ID in the test
-notes until the story integration supports it.
+`{"figureIds":["<ID returned by read_figures>"]}`. The
+story model and screen now share the `{?explainer.id}` marker. Use only returned
+IDs; the catalogue's wording, figures and sources remain code-owned.
 
 ## Inspect the result
 
@@ -161,21 +170,25 @@ git ls-files -- private/analyses/
 The Git command must print nothing. The check covers the plain form households,
 the existing invented reviewed households for successful lever runs, missing
 facts and source refusals, native story facts, explainers, major sizing, budgets,
-and identical results from the CLI and actual MCP stdio server. Every sizing
-probe consumes a compiler run; a search stops before exceeding the sixty-run
-limit. The other limits remain three story alternatives and eight what-ifs per
+and identical results from the CLI and actual MCP stdio server. Every actual
+compiler invocation consumes a run, including case creation, bridge preflights
+and compiles inside goal ways, suggestions and ordinary/major balancing.
+All callers share the same counter and refuse before exceeding sixty. The
+other limits remain three story alternatives and eight what-ifs per
 route, once those tools are available.
 
-## Open it in the app after `analyst:open` lands
+## Open it in the app
 
-The story chat owns this next command and the app integration. It is **not
-available on this PR's base**. After that work is merged into this checkout,
-create a fresh case using the new tool versions, run the test and submit a story.
-Then use its positional case-directory argument:
+After submit_story accepts a draft, use the same case directory:
 
 ```sh
 npm run --silent analyst:open -- "$case_dir"
 ```
+
+Submission and this command select the same compiled plan and story registry.
+A story using an older metrics-only alias is refused at submission. The command
+uses an accepted compilation when it matches the selected drafts; otherwise it
+rebuilds them through the same full-B1 bridge. It never marks a result released.
 
 The story command prepares `session.json` beside `case.json` and prints the
 local URL and launch instructions. Follow those instructions to run the local
@@ -183,7 +196,3 @@ static server and worker, sign in to the adviser app, and open the printed
 `/dev/plan-story-open.html?session=...` URL. That page loads the prepared session
 into the app and opens its story. It asks before replacing an existing local app
 session. This is a local preview for review; it does not release an analysis.
-
-Until that command is merged, inspect the logged facts, refusals and drafts in
-the case directory. The sample story screen is a design sample and does not
-display this run.

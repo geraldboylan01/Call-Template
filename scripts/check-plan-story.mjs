@@ -9,6 +9,8 @@
 import { runPlanStoryModelTests } from '../js/tests_plan_story_model.js';
 import { runPlanStoryLinksTests } from '../js/tests_plan_story_links.js';
 import { runPlanStorySessionTests } from '../js/tests_plan_story_session.js';
+import { runPlanStoryBasisTests } from '../js/tests_plan_story_basis.js';
+import { runPlanStoryCompiledTests } from './lib/plan-story-compiled-checks.mjs';
 
 let failures = 0;
 
@@ -25,6 +27,8 @@ async function check(name, fn) {
 await check('model rules', runPlanStoryModelTests);
 await check('link hand-off', runPlanStoryLinksTests);
 await check('story on a session', runPlanStorySessionTests);
+await check('where a figure comes from, and explainers', runPlanStoryBasisTests);
+await check('the story screen reading a compiled plan', runPlanStoryCompiledTests);
 
 if (failures) {
   console.error(`[PlanStoryAudit] ${failures} check(s) failed.`);

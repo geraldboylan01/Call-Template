@@ -228,7 +228,7 @@ function normalizePlanning(raw, household) {
   return result;
 }
 
-export function normalizePlanPack(raw) {
+export function normalizePlanPack(raw, { allowMultipleMajors = false } = {}) {
   try { assertJsonCompatible(raw, 'PlanPack'); } catch (error) { fail('/', error.message); }
   object(raw, '/', PLAN_PACK_CONTRACT.fields);
   if (raw.planPackVersion !== PLAN_PACK_VERSION) fail('/planPackVersion', 'must be exactly 1.');
@@ -284,8 +284,12 @@ export function normalizePlanPack(raw) {
         }
         else reference(change.propertyId, new Set(household.properties.map(property => property.propertyId)), here + '/propertyId');
       } else if (['pensionContribution', 'spendLess'].includes(change.type)) {
-        number(change.annualAmount, here + '/annualAmount');
-        if (change.annualAmount <= lever.parameters.annualAmount.exclusiveMinimum) fail(here + '/annualAmount', 'must be positive.');
+        const amounts = change.type === 'pensionContribution' ? ['annualAmount', 'oneOffAmount'].filter(key => change[key] !== undefined) : ['annualAmount'];
+        if (!amounts.length) fail(here, 'Supply an annualAmount, a oneOffAmount, or both.');
+        for (const key of amounts) {
+          number(change[key], here + '/' + key);
+          if (change[key] <= lever.parameters[key].exclusiveMinimum) fail(here + '/' + key, 'must be positive.');
+        }
         if (change.type === 'pensionContribution') reference(change.personId, new Set([household.primaryPerson.personId, household.partner?.personId].filter(Boolean)), here + '/personId');
       } else if (change.type === 'sellAsset') {
         const asset = household.assets.find(a => a.assetId === change.assetId);
@@ -298,7 +302,8 @@ export function normalizePlanPack(raw) {
         if (['completed', 'paused'].includes(goals.get(change.goalId).status)) fail(here + '/goalId', 'cannot change an inactive goal.');
         if (change.type === 'useCash') {
           if (!['whole', 'remaining'].includes(change.amount)) {
-            number(change.amount, here + '/amount', { min: 1, integer: true });
+            number(change.amount, here + '/amount', { min: 0.01 });
+            if (Math.abs(change.amount * 100 - Math.round(change.amount * 100)) > 1e-6) fail(here + '/amount', 'Use a whole number of cents.');
           }
         } else {
           const changes = Object.keys(change).filter(k => PLAN_PACK_CONTRACT.goalFields.includes(k));
@@ -332,7 +337,7 @@ export function normalizePlanPack(raw) {
       }
       return result;
     });
-    if (next.changes.filter(change => classifyLever({ household, planningInputs }, change).scale === 'major').length > 1) fail(path + '/changes', 'At most one major lever is supported per route; a combined-major search belongs to the later balancing tool.');
+    if (!allowMultipleMajors && next.changes.filter(change => classifyLever({ household, planningInputs }, change).scale === 'major').length > 1) fail(path + '/changes', 'At most one major lever is supported unless the compiler proves that a single major cannot fund the draft.');
     return next;
   });
   if (!routes.length || routes.length > 4) fail('/routes', 'must contain current plus at most three alternatives.');

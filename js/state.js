@@ -119,8 +119,10 @@ const RUNTIME_OWNED_INPUT_KEYS = Object.freeze([
 ]);
 
 function makeSessionId() {
-  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-    return `session-${window.crypto.randomUUID()}`;
+  // `globalThis` as well as `window`, so a session can be built outside a browser (the analyst's local tools).
+  const webCrypto = typeof window !== 'undefined' ? window.crypto : globalThis.crypto;
+  if (webCrypto && typeof webCrypto.randomUUID === 'function') {
+    return `session-${webCrypto.randomUUID()}`;
   }
 
   return `session-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;

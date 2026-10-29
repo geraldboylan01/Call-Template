@@ -2,9 +2,9 @@ import Ajv from 'ajv';
 import { FIGURE_KINDS, FIGURE_MODULES } from '../figures/kinds.js';
 import { getLeverCatalogue } from '../plan_pack/lever_catalogue.js';
 
-export const ANALYST_VERSION = 'analyst-tools-1.1.0';
+export const ANALYST_VERSION = 'analyst-tools-1.2.0';
 export const RUN_LIMITS = Object.freeze({ routes: 3, whatifsPerRoute: 8, engineRuns: 60 });
-export const ENGINE_TOOLS = Object.freeze(['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']);
+const ENGINE_TOOLS = Object.freeze(['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']);
 const object = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
 const text = { type: 'string', minLength: 1 };
 const routeId = { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -45,20 +45,20 @@ const story = object({
 }, ['routeId', 'headline', 'summary', 'sections']);
 
 export const TOOL_CATALOGUE = Object.freeze([
-  { name: 'read_position', description: 'Read story facts with their bases and the issue list. Select current (default) or a successfully priced route; the latter also includes its full-B1 current comparison.', inputSchema: object({ routeId }) },
+  { name: 'read_position', description: 'Read native facts, bases and issues for current (default) or a successfully priced route. storyFacts is the only placeholder key set the story screen opens.', inputSchema: object({ routeId }) },
   { name: 'read_figures', description: 'Read dated register values and their provenance.', inputSchema: object({
     ids: { type: 'array', items: text }, kinds: { anyOf: [{ type: 'array', items: { enum: FIGURE_KINDS } }, { enum: FIGURE_KINDS }] },
     module: { enum: FIGURE_MODULES }, onDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
   }) },
   { name: 'read_explainers', description: 'Read the code-owned explainers by ID or by the figures they explain. Read-only; wording is returned unchanged.',
     inputSchema: object({ ids: { type: 'array', items: text }, figureIds: { type: 'array', items: text } }) },
-  { name: 'goal_ways', description: 'Not built yet: price the ways to meet one goal.', unavailable: true,
-    inputSchema: object({ routeId, goalId: text, draft: { type: 'object' } }) },
-  { name: 'suggest_routes', description: 'Not built yet: suggest whole ledger walks.', unavailable: true, inputSchema: object() },
+  { name: 'goal_ways', description: 'Price the native ways to meet one goal at its point in a route draft. Supply route or a saved routeId; omitted route starts an empty walk. Choose a returned route and retain it with price_route.',
+    inputSchema: object({ routeId, goalId: text, route }, ['goalId']) },
+  { name: 'suggest_routes', description: 'Return up to five independently priced native ledger walks, with their source drafts and reasons. Choose candidates through price_route; the story still has at most three alternatives.', inputSchema: object() },
   { name: 'price_route', description: 'Price any catalogue lever through the full profile-to-plan compiler and resource ledger. Returns the ledger, route story facts with bases, issues, and setting-source checks.',
     inputSchema: object({ route, reason: text }, ['route']) },
-  { name: 'balancing_moves', description: 'Size tradeDownHome or sellProperty with the native major-move search. Supply a route draft or a saved routeId. Ordinary goal moves are not built yet. Search probes count against the engine budget.',
-    inputSchema: object({ route, routeId, type: text, propertyId: text, year: { type: 'integer' } }) },
+  { name: 'balancing_moves', description: 'Find native ordinary goal moves and lever sizes for a route or saved routeId. Omitted route starts an empty draft. An explicit tradeDownHome or sellProperty type uses the native major search, optionally in a fixed year. All compiler invocations count against the engine budget.',
+    inputSchema: object({ route, routeId, type: { enum: ['tradeDownHome', 'sellProperty'] }, propertyId: text, year: { type: 'integer' } }) },
   { name: 'run_whatif', description: 'Not built yet: run a sourced what-if.', unavailable: true,
     inputSchema: object({ routeId, kind: text, parameters: { type: 'object' }, sources: { type: 'object' } }) },
   { name: 'missing_facts', description: 'Return missing household facts as form questions, and separate implementation gaps.', inputSchema: object() },
@@ -66,7 +66,7 @@ export const TOOL_CATALOGUE = Object.freeze([
     inputSchema: object({ story }, ['story']) }
 ]);
 
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strict: false, multipleOfPrecision: 8 });
 const validators = new Map(TOOL_CATALOGUE.map(tool => [tool.name, ajv.compile(tool.inputSchema)]));
 export function validateToolInput(name, input) {
   const validate = validators.get(name);

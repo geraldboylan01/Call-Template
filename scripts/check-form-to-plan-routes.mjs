@@ -46,7 +46,7 @@ export async function checkFormToPlanRoutes() {
     assert.deepEqual(catalogue.levers.map(row => row.type), ['useCash', 'clearOutgoing', 'sellAsset', 'moveGoal', 'pensionContribution', 'tradeDownHome', 'sellProperty', 'spendLess']);
     assert.equal(catalogue.levers.find(row => row.type === 'spendLess').scale.approvalStatus, 'proposed');
     catalogue.levers[0].parameters.amount.minimum = -1;
-    assert.equal(getLeverCatalogue().levers[0].parameters.amount.minimum, 1, 'Catalogue callers cannot change shared settings');
+    assert.equal(getLeverCatalogue().levers[0].parameters.amount.minimum, 0.01, 'Catalogue callers cannot change shared settings');
     assert.equal(getLeverCatalogue().levers[0].parameters.amount.default, 'remaining');
     for (const fixture of fixtures) {
       const profile = freeze(applicationToProfile(fixture.information, { revision: 7, confirmedAt: '2026-10-20T12:00:00.000Z', profileId: `profile_${fixture.id}` }));

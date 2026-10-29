@@ -8,8 +8,10 @@ import { IE_TAX_RULES_VERSION } from '../tax/rules_ie.js';
 import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
+import { classifyLever } from './lever_catalogue.js';
+import { proveSingleMajorFailure } from './major_policy.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.5.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.6.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -74,7 +76,7 @@ export function resolvePlanNarration(template, values, path = '/narration') {
   });
   return { text: rendered, html: '<p>' + escapeHtml(rendered) + '</p>' };
 }
-export const PLAN_PACK_METRIC_TYPES = frozen({
+const PLAN_PACK_METRIC_TYPES = frozen({
   household_cash_flow: { income: 'money', bankTakeHome: 'money', tax: 'money', pensions: 'money', leftOver: 'money' },
   liquidity_analysis: { currentCash: 'money', monthlyExpenditure: 'money', monthsCovered: 'number', minimumCash: 'money', targetCash: 'money', surplusCash: 'money', shortfallCash: 'money' },
   personal_balance_sheet: { grossAssets: 'money', totalLiabilities: 'money', netWorth: 'money', spendableReserves: 'money', reserveMonths: 'number' },
@@ -143,10 +145,13 @@ function validateLiteralNarration(pack, resourceLedger) {
  * B0 compiles engine inputs; explicit resourceLedger mode also checks B1
  * allocation and route balance. Every route starts from the same opening facts.
  */
-export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false } = {}) {
+export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false, beforeCompile } = {}) {
+  // Caller-local execution accounting, never part of the financial wire pack.
+  // Throw before work so nested searches cannot exceed the caller's budget.
+  beforeCompile?.();
   let pack;
   try {
-    pack = frozen(normalizePlanPack(raw));
+    pack = frozen(normalizePlanPack(raw, { allowMultipleMajors: resourceLedger && !currentPositionOnly }));
     if (currentPositionOnly && (!resourceLedger || pack.routes.length !== 1 || pack.routes[0].id !== 'current' || pack.routes[0].changes.length)) {
       fail('/routes', 'Current-position mode requires resourceLedger and exactly the unchanged current route.');
     }
@@ -166,7 +171,10 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
     const proposed = [];
     try {
       if (resourceLedger) {
+        const multiple = route.changes.filter(change => classifyLever(pack, change).scale === 'major').length > 1;
+        const majorException = multiple ? await proveSingleMajorFailure(pack, route, index) : null;
         const prepared = currentPositionOnly ? await prepareCurrentPosition(pack) : await prepareResourceRoute(pack, route, index);
+        if (majorException) prepared.ledger.majorException = majorException;
         context = prepared.context;
         if (!currentPositionOnly) context.resourceLedger = prepared.ledger;
         ledgers.push({ routeId: route.id, ...prepared.ledger });

@@ -1,82 +1,87 @@
 # Local analyst tools
 
-See [Running a local analyst test](../../../docs/analyst/running-a-test.md) for
-fixture creation, the Claude Code registration command and the opening prompt.
+Start with [Running a local analyst test](../../../docs/analyst/running-a-test.md).
+It includes fixture creation, Claude Code registration, the opening prompt and
+`analyst:open` for the compiled-plan story screen.
 
 ```sh
 npm run analyst -- list-fixtures
 npm run analyst -- new-case --fixture fictional-mortgage-college-family
+npm run --silent analyst -- read_position --case <directory> --input <file.json>
+npm run --silent analyst:mcp -- --case <directory>
+npm run --silent analyst:open -- <directory>
 ```
 
-Create a case from an exported **confirmed payload**, using `revision`,
-`confirmedRevision`, `confirmedAt`, `information`, `requestId`, `runId` and
-`clientLabel`. The revision numbers must match. `calculationDate`, `notes`
-(evidence only) and `previousRun: {runId, confirmedRevision}` (a reference to a
-stopped run on an earlier confirmed revision) are optional.
-Never use the website's latest editable payload as a confirmed export.
+`init --input <confirmed-export.json>` still accepts a saved confirmed form:
+`requestId`, `runId`, matching `revision` and `confirmedRevision`, `confirmedAt`,
+`information` and `clientLabel`. Optional fields are `calculationDate`, `notes`
+(evidence only) and `previousRun: {runId, confirmedRevision}`. A new confirmation
+starts a new run; older calculations are never spliced into it.
 
-```sh
-npm run --silent analyst -- init --input /private/path/confirmed-export.json
-npm run --silent analyst -- read_position --case private/analyses/request/run --input /private/path/empty.json
-npm run --silent analyst:mcp -- --case private/analyses/request/run
-```
+## Facts and story keys
 
-`empty.json` contains `{}`. Other inputs follow the JSON Schemas in
-`contracts.js`, exposed unchanged by MCP `tools/list`. `price_route` accepts
-`{"route":{"id":"example","changes":[]},"reason":"Words explaining the route"}`.
-The tool schema is generated from `getLeverCatalogue()` and accepts every
-landed lever, including `pensionContribution`, `spendLess`, `tradeDownHome` and
-`sellProperty`. Each setting needs its `sources` entry. `settingSourceChecks`
-reports the native source validation, including refused paths. Full B1
-`profileToPlanPack(..., {routes})` pricing retains the ledger and uses
-`readPlanPosition` for the route's facts, bases and issues.
-The compiler validates every lever, reference and bound. It can refuse a
-profile-built alternative when the confirmed form lacks funding facts; the
-tool preserves that refusal instead of filling gaps. Use the `--silent` npm
-flag when stdout must contain only JSON/MCP frames.
+`read_position({routeId?})` defaults to the pinned current position. It can also
+read any retained successfully priced alternative. `facts`, `issues`,
+`unavailableIssues`, `goalWalk`, `steps` and `freedCash` come from
+`readPlanPosition` for that route. `storyFacts` comes from `compactStoryFacts`
+in `js/plan_story_registry.js`: these are the only household placeholder keys a
+story may use. `price_route` returns the same route's native facts and
+`storyFacts`, with its ledger and setting-source checks.
 
-`read_position` accepts an optional `routeId` (default `current`) and returns
-`readPlanPosition(compiled)` unchanged. A priced compilation also includes its
-own full-B1 current comparison; the pinned current is never overwritten.
-`read_figures` includes each figure's `explainers` IDs, and `read_explainers`
-wraps `getExplainers({ids?, figureIds?})` without changing its wording or sources.
-Story facts keep their `display`, `status`, `source` and `basis` in the case.
-The existing screen model receives an ephemeral text adaptation at submission.
+Submission resolves through `storyFactRegistry`, just as the screen does.
+Older metric aliases such as `ledger.cashRemaining` and
+`personal_balance_sheet.netWorth` are refused. Use the returned screen keys,
+for example `position.spareCash` and `position.netWorth`. Missing facts are
+never rendered as amounts; use a returned `.notApplicable` key when available.
+`figure.<id>` uses the same effective-date lookup as the screen, and
+`{?explainer.<id>}` uses the code-owned explainer catalogue.
 
-`submit_story` accepts `{story: {routeId, headline, summary, sections}}`.
-Sections follow B1.5 section 3 in order, with `id`, `title` and `parts` containing
-`does`, `why`, `gives`, `costs`, `check`. The goals section also contains
-`goals: [{goalId, title, parts}]`. Narration uses only the case's returned fact
-keys; module links require a registered source. The verdict covers shape and
-the existing story model's wording/placeholder checks. The full completeness,
-protection and module-link equality checker is pending. Passing never releases.
+`submit_story({story})` checks the nine sections and five parts and runs the
+existing model against these shared keys, including goal subsections and
+explainers. It validates the proposed story together with previously accepted
+stories on their shared compilation. Only accepted drafts become active in
+`storyDrafts`; refused drafts remain in the call log. `analyst:open` uses the
+same compilation selection and writes `session.json` next to `case.json`.
+The full method-floor and linked-value checker is still pending; passing the
+available checks never releases or publishes a result.
 
-`balancing_moves` calls `sizeMajorMove` for `tradeDownHome` and `sellProperty`.
-Supply `route: {id, changes}` or a saved `routeId`, plus `type`, optional `year`
-and (for a property sale) `propertyId`. It returns the native sizing verdict,
-bounds, probes and sourced route. A sized route is retained as a draft and
-priced compilation, ready for `read_position` or `price_route`.
-Ordinary balancing, `goal_ways`, `suggest_routes` and `run_whatif` return
-`not built yet`. No screens or website job are connected here.
+## Pricing and exploration
 
-Each run is saved in `private/analyses/<requestId>/<runId>/case.json` with private
-file permissions, immutable hashed inputs and rule versions, facts, drafts,
-checker reports and every dispatched call/result. The store rejects version
-drift and refuses to overwrite an existing run. A new confirmation starts a new
-case; no previous calculations are imported. The file lock spans CLI and MCP
-processes so concurrent calls cannot lose budget or log updates. A crashed
-process may leave `.lock` or `case.json.next`; after checking that no caller is
-running, retain the last complete `case.json` and remove those transient files.
+The `price_route` schema is generated from the lever catalogue, including
+one-off/recurring pension contributions and all property levers. Full-B1
+`profileToPlanPack(..., {routes})` selects the supported chapters and retains
+refusals, with `settingSourceChecks` from the native source validator.
 
-The central limits are three alternatives in the story, eight what-ifs per
-route and sixty engine runs. A compiler pricing pass counts once, including a
-refused pricing attempt; creating the current position uses the first run.
-Major sizing also consumes one run for its full-B1 assembly, then one per native
-compiler probe. The search stops before a probe would exceed the remaining
-budget; it cannot silently spend more engine runs inside one tool call.
-Schema validation and unavailable tools do not run engines. The dispatcher
-charges before each compiler call, even when the compiler refuses its inputs.
-Future `goal_ways` calls consume a run, and what-if calls consume both counters.
-Read calls and story revisions consume neither. Counters persist across callers
-and restarts. All case files stay git-ignored; checks use only #97's invented
-households and remove their temporary cases.
+`goal_ways({goalId, route?, routeId?})` calls `goalWays`. `suggest_routes({})`
+calls `suggestRoutes`, returning up to five independent native walks.
+`balancing_moves({route?, routeId?})` calls `balancingMoves` for ordinary goal
+moves and lever sizes; an explicit `type: tradeDownHome` or `sellProperty`
+uses `sizeMajorMove`, with optional `year` and the recorded `propertyId` for a
+sale. Omitted drafts start an empty walk. A `routeId` refers to a saved draft.
+Choose an exploration's returned wire changes, assign the selected route its
+own ID, then retain it through `price_route`. Exploration never silently picks
+one of several choices sharing a draft ID. Explicit major sizing retains its
+sized draft and compilation for `read_position`.
+
+`read_figures` includes explainer IDs; `read_explainers({ids?, figureIds?})`
+returns `getExplainers` unchanged. `missing_facts` returns form questions and
+implementation gaps. `run_whatif` retains its explicit `not built yet` refusal.
+
+## Private state and budget
+
+Runs live only under git-ignored `private/analyses/<requestId>/<runId>/` with
+private file permissions, immutable hashed inputs/rule versions, drafts, facts,
+checker reports, budgets and every dispatched call/result. File locking and
+atomic saves span CLI and MCP callers. An existing run cannot be overwritten;
+version drift requires a fresh run. After a crash, check that no caller is
+running before removing a stale `.lock` or `case.json.next` file.
+
+The limits are three alternatives in the story, eight what-ifs per route and
+sixty compiler runs. Case creation counts its bridge preflights and the initial
+current-position compilation.
+After creation, every actual `compilePlanPack` invocation is charged through a
+call-local `beforeCompile` callback, including profile-bridge preflights and
+nested part c/major-search compiles. The callback stays outside wire packs,
+results and files, and refuses before a sixty-first compile. Cached compilation
+reads and schema/source validation consume no runs. Budgets survive retries,
+process restarts and caller changes. Tests use only invented households.

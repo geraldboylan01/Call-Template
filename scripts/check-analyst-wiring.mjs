@@ -8,6 +8,9 @@ import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
 import { profileToPlanPack } from '../js/planning/profile_to_plan_pack.js';
 import { getLeverCatalogue } from '../js/planning/plan_pack/lever_catalogue.js';
 import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
+import { compactStoryFacts } from '../js/plan_story_registry.js';
+import { goalWays, balancingMoves, suggestRoutes, priceRoute as nativePriceRoute } from '../js/planning/plan_pack/ledger_walk.js';
+import { buildPlanStoryScreen } from '../js/plan_story_session.js';
 import { sizeMajorMove } from '../js/planning/plan_pack/major_move_search.js';
 import { getExplainers } from '../js/planning/figures/get_explainers.js';
 import { getFigures } from '../js/planning/figures/get_figures.js';
@@ -44,6 +47,9 @@ export async function checkAnalystWiring({ fixtures, options }) {
   properties.rental.goals.find(goal => goal.goalId === 'fictional_dated_cost').targetAmount.amount = 150000;
   const trade = await reviewedCase(properties.tradeDown, 'trade');
   const rental = await reviewedCase(properties.rental, 'rental');
+  const unknownMove = await executeTool(trade, 'balancing_moves', { type: 'invented_move' });
+  assert.equal(unknownMove.result.refusals[0].path, '/input/type');
+  assert.equal(unknownMove.caseFile.budget.engineRuns, trade.budget.engineRuns);
   const central = path => ({ kind: 'default', path, version: reviewed.pinned.versions.assumptions });
   const inputs = [
     [reviewed, { type: 'useCash', goalId: example.costId, amount: 1000,
@@ -78,8 +84,9 @@ export async function checkAnalystWiring({ fixtures, options }) {
     assert.equal(out.result.data.settingSourceChecks[0].status, 'passed');
     assert.deepEqual(out.result.data.settingSourceChecks[0].sources, change.sources);
     assert.ok(Object.values(out.result.data.facts).every(row => row.basis && row.source && row.status));
-    assert.deepEqual((await executeTool(out.caseFile, 'read_position', { routeId: alternative.id })).result.data, position);
-    assert.deepEqual((await executeTool(out.caseFile, 'read_position', {})).result.data, readPlanPosition(c.pinned.currentPosition), 'Reading an alternative never replaces pinned current');
+    assert.deepEqual((await executeTool(out.caseFile, 'read_position', { routeId: alternative.id })).result.data.facts, selected.facts);
+    assert.deepEqual(out.result.data.storyFacts, compactStoryFacts(position, alternative.id));
+    assert.deepEqual((await executeTool(out.caseFile, 'read_position', {})).result.data.facts, readPlanPosition(c.pinned.currentPosition).routes[0].facts, 'Reading an alternative never replaces pinned current');
     assert.deepEqual(c, before, 'Source and earlier routes remain unchanged');
     const bad = clone(change);
     const key = Object.keys(change.sources)[0];
@@ -121,12 +128,13 @@ export async function checkAnalystWiring({ fixtures, options }) {
     const out = await executeTool(c, 'balancing_moves', { route: draft, type, ...(propertyId ? { propertyId } : {}), year: 2026 });
     assert.equal(out.result.ok, true, JSON.stringify(out.result));
     assert.equal(out.result.data.status, 'sized');
-    const assembly = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate, clientLabel: c.pinned.planPack.clientName, routes: [] });
-    const native = await sizeMajorMove(assembly.planPack, draft, { type, propertyId, year: 2026 });
+    let compiles = 0; const execution = { beforeCompile: () => { compiles++; } };
+    const assembly = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate, clientLabel: c.pinned.planPack.clientName, routes: [], ...execution });
+    const native = await sizeMajorMove(assembly.planPack, draft, { type, propertyId, year: 2026 }, execution);
     assert.deepEqual(out.result.data.route, native.route);
     assert.deepEqual(out.result.data.ledger, native.ledger);
     assert.deepEqual(out.result.data.facts, readPlanPosition(native.compilation).routes.find(row => row.routeId === draft.id).facts);
-    assert.equal(out.caseFile.budget.engineRuns, c.budget.engineRuns + 1 + native.probes.length);
+    assert.equal(out.caseFile.budget.engineRuns, c.budget.engineRuns + compiles);
     assert.ok(out.result.data.settingSourceChecks.every(row => row.status === 'passed'));
     assert.equal((await executeTool(out.caseFile, 'read_position', { routeId: draft.id })).result.ok, true);
     // A proposed move is reusable through the ordinary price_route contract.
@@ -135,17 +143,54 @@ export async function checkAnalystWiring({ fixtures, options }) {
   const limited = clone(trade); limited.budget.engineRuns = 58;
   const exhausted = await executeTool(limited, 'balancing_moves', { route: route('limited'), type: 'tradeDownHome', year: 2026 });
   assert.equal(exhausted.result.refusals[0].code, 'budget_exceeded');
-  assert.equal(exhausted.caseFile.budget.engineRuns, 60);
-  assert.equal(exhausted.result.data.probes.length, 1, 'No probe runs after the final available compiler pass');
+  assert.equal(exhausted.caseFile.budget.engineRuns, 60, 'Bridge preflights and search share the same counter');
   assert.equal((await executeTool(exhausted.caseFile, 'balancing_moves', { route: route('limited'), type: 'tradeDownHome' })).result.refusals[0].code, 'budget_exceeded');
-  for (const input of [{}, { type: 'moveGoal', route: route('ordinary') }]) {
-    const out = await executeTool(trade, 'balancing_moves', input);
-    assert.equal(out.result.refusals[0].message, 'not built yet');
-    assert.equal(out.caseFile.budget.engineRuns, trade.budget.engineRuns);
-  }
   // A saved refused draft can be sized by ID without replacing its inputs.
   const draftCase = clone(trade); draftCase.routeDrafts.saved = { route: route('saved') };
   assert.equal((await executeTool(draftCase, 'balancing_moves', { routeId: 'saved', type: 'tradeDownHome', year: 2026 })).result.data.status, 'sized');
+
+  // The new wrappers preserve the native part-c results, and every compiler
+  // invocation (including bridge preflights) enters the same local counter.
+  const ordinaryProfile = clone(example.profile);
+  ordinaryProfile.assets.forEach(asset => { asset.currentValue.amount = asset.type === 'cash' ? 21000 : 0; });
+  ordinaryProfile.goals.find(goal => goal.goalId === example.costId).targetAmount.amount = 100000;
+  const ordinary = await reviewedCase(ordinaryProfile, 'ordinary');
+  for (const c of [reviewed, trade]) {
+    for (const [name, input] of [
+      ['goal_ways', { route: route('walk'), goalId: example.costId }],
+      ['suggest_routes', {}], ['balancing_moves', { route: route('walk') }]
+    ]) {
+      const before = clone(c);
+      const actual = await executeTool(c, name, input);
+      assert.equal(actual.result.ok, true, name + ': ' + JSON.stringify(actual.result.refusals));
+      let calls = 0; const execution = { beforeCompile: () => { calls++; } };
+      const assembly = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate,
+        clientLabel: c.pinned.planPack.clientName, routes: [], ...execution });
+      const expected = name === 'goal_ways' ? await goalWays(assembly, input.route, input.goalId, execution)
+        : name === 'suggest_routes' ? await suggestRoutes(assembly, execution)
+          : await balancingMoves(await nativePriceRoute(assembly, input.route, execution), execution);
+      const { settingSourceChecks, ...returned } = actual.result.data;
+      assert.deepEqual(returned, expected, name + ': native function result');
+      assert.equal(actual.caseFile.budget.engineRuns - c.budget.engineRuns, calls, name + ': exact compile accounting');
+      assert.ok(actual.caseFile.budget.engineRuns <= 60);
+      assert.deepEqual(c, before, name + ': input case unchanged');
+      if (c === trade && name === 'suggest_routes') assert.ok(returned.suggestions.some(row => row.allGoalsOnTime && row.what.some(change => change.type === 'tradeDownHome')));
+      if (c === trade && name === 'balancing_moves') assert.ok(returned.moves.some(row => row.kind.startsWith('tradeDownHome')));
+    }
+  }
+  const moved = await executeTool(ordinary, 'balancing_moves', { route: route('ordinary') });
+  assert.equal(moved.result.ok, true, JSON.stringify(moved.result.refusals));
+  assert.ok(moved.result.data.moves.some(row => row.kind === 'spendLess' && row.scale === 'ordinary'));
+  for (const [name, input] of [
+    ['goal_ways', { route: route('limited'), goalId: example.costId }], ['suggest_routes', {}], ['balancing_moves', { route: route('limited') }]
+  ]) {
+    const limited = clone(trade); limited.budget.engineRuns = 59;
+    const out = await executeTool(limited, name, input);
+    assert.equal(out.result.refusals[0].code, 'budget_exceeded');
+    assert.equal(out.caseFile.budget.engineRuns, 60, name + ': no sixty-first compile');
+    assert.equal(out.caseFile.runLog.at(-1).result.refusals[0].path, '/budget/engineRuns');
+  }
+  console.log('[AnalystPartC] goal ways, suggestions, ordinary and major balancing, exact compile accounting and cap passed.');
 
   const cli = (...args) => {
     const result = spawnSync(process.execPath, ['scripts/analyst.mjs', ...args], { encoding: 'utf8' });
@@ -175,6 +220,30 @@ export async function checkAnalystWiring({ fixtures, options }) {
   const localCase = clone(trade); localCase.pinned.runId = 'reviewed-harness';
   localCase.pinHash = await sha256Json(localCase.pinned);
   await writeFile(join(local.directory, 'case.json'), JSON.stringify(localCase));
+  const priced = await executeTool(localCase, 'price_route', { route: route('harness_property', inputs[6][1]) });
+  assert.equal(priced.result.ok, true, JSON.stringify(priced.result.refusals));
+  const sections = ['current_position', 'ledger', 'protecting', 'inefficiencies', 'goals', 'cash_flow_after', 'net_worth_after', 'risks', 'check_next'];
+  const acceptedStory = { routeId: 'harness_property', headline: 'Your position', summary: 'Your net worth is {@position.netWorth}.',
+    sections: sections.map(id => ({ id, title: id.replaceAll('_', ' '), ...(id === 'goals' ? { goals: [] } : {}),
+      parts: { does: 'This route illustrates a change.', why: 'The figures follow your details.', gives: 'Your net worth is {position.netWorth}.', costs: 'Moving changes your home.', check: 'Check the recorded details.' } })) };
+  acceptedStory.sections[3].parts.why = 'Tax follows the recorded rule{?explainer.dirt}.';
+  const accepted = await executeTool(priced.caseFile, 'submit_story', { story: acceptedStory });
+  assert.equal(accepted.result.ok, true, JSON.stringify(accepted.result));
+  assert.equal(accepted.result.data.openOnStoryScreen, true);
+  await writeFile(join(local.directory, 'case.json'), JSON.stringify(accepted.caseFile));
+  const opened = spawnSync(process.execPath, ['scripts/analyst-open.mjs', local.directory], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  assert.equal(opened.status, 0, opened.stderr.slice(-3000));
+  const session = JSON.parse(await readFile(join(local.directory, 'session.json'), 'utf8'));
+  const screen = buildPlanStoryScreen(session.planStory, session, acceptedStory.routeId);
+  assert.equal(screen.storyMissing, false);
+  assert.ok(screen.resolved.sections.length === 9 && session.modules.length);
+  assert.equal(session.planStory.registries.harness_property['position.netWorth'].text, priced.result.data.storyFacts['position.netWorth'].text);
+  const legacy = clone(acceptedStory); legacy.summary = '{ledger.cashRemaining}';
+  const refused = await executeTool(accepted.caseFile, 'submit_story', { story: legacy });
+  assert.equal(refused.result.ok, false);
+  assert.deepEqual(refused.caseFile.storyDrafts, accepted.caseFile.storyDrafts, 'Rejected drafts cannot break the accepted screen session');
+  // Restore the fresh seed for the main harness parity replays.
+  await writeFile(join(local.directory, 'case.json'), JSON.stringify(localCase));
   console.log('[AnalystWiring] native position/bases/issues, all eight sourced levers, explainers, major sizing, probe budget and fixture CLI passed.');
-  return { directory: local.directory, route: route('harness_property', inputs[6][1]) };
+  return { directory: local.directory, route: route('harness_property', inputs[6][1]), goalId: example.costId };
 }

@@ -2,7 +2,7 @@ import { applicationToProfile, APPLICATION_PROFILE_MAPPING_VERSION } from '../ap
 import { profileToPlanPack } from '../profile_to_plan_pack.js';
 import { compilePlanPack, PLAN_PACK_VERSIONS } from '../plan_pack/compiler.js';
 import { assertIsoDate, assertIsoDateTime, sha256Json, stableStringify } from '../utils.js';
-import { ANALYST_VERSION, refused } from './contracts.js';
+import { ANALYST_VERSION, RUN_LIMITS, refused } from './contracts.js';
 import { compiledFacts } from './facts.js';
 
 const versions = () => ({ ...PLAN_PACK_VERSIONS, tools: ANALYST_VERSION, applicationMapping: APPLICATION_PROFILE_MAPPING_VERSION });
@@ -32,9 +32,14 @@ export async function createCaseFile({ requestId, runId, revision, confirmedRevi
   assertIsoDateTime(confirmedAt, 'confirmedAt');
   const date = assertIsoDate(calculationDate ?? confirmedAt.slice(0, 10), 'calculationDate');
   const profile = applicationToProfile(information, { revision: confirmedRevision, confirmedAt, calculationDateIso: date });
-  const assembly = await profileToPlanPack(profile, { confirmedRevision, calculationDate: date, clientLabel });
+  let engineRuns = 0;
+  const beforeCompile = () => {
+    if (engineRuns >= RUN_LIMITS.engineRuns) throw Object.assign(new Error('The plan has used its engine runs.'), { code: 'budget_exceeded', path: '/budget/engineRuns' });
+    engineRuns++;
+  };
+  const assembly = await profileToPlanPack(profile, { confirmedRevision, calculationDate: date, clientLabel, beforeCompile });
   if (!assembly.planPack) throw Object.assign(new Error('The confirmed form cannot become a plan.'), { path: '/information', diagnostics: assembly.missingFacts });
-  const compiled = await compilePlanPack(assembly.planPack, assembly.compileOptions);
+  const compiled = await compilePlanPack(assembly.planPack, { ...assembly.compileOptions, beforeCompile });
   if (compiled.status !== 'compiled') throw Object.assign(new Error('The current position could not compile.'), { path: '/currentPosition', diagnostics: compiled.diagnostics });
   const pinned = JSON.parse(JSON.stringify({ requestId, runId, confirmedRevision, confirmedAt, calculationDate: date,
     information, profile, planningFacts: assembly.planPack.planningInputs, notes, previousRun,
@@ -45,9 +50,9 @@ export async function createCaseFile({ requestId, runId, revision, confirmedRevi
     caseFileVersion: 1, pinned, pinHash: await sha256Json(pinned),
     factRegistry: { current: facts.registry }, routeDrafts: {}, pricedRoutes: {}, storyDrafts: {},
     whatifs: {}, checkerReports: [], taskList: [], reviewStatus: 'pending',
-    // One engine run is a compiler/tool pricing pass, not each internal native
-    // engine call. Initial current-position compilation consumes the first one.
-    budget: { engineRuns: 1, whatifsByRoute: {} },
+    // The initial bridge preflights and current-position compilation consume
+    // the same compiler budget as subsequent tool calls.
+    budget: { engineRuns, whatifsByRoute: {} },
     runLog: [{ sequence: 1, tool: 'create_case', input: { confirmedRevision, calculationDate: date },
       result: { ok: true, status: 'ok', sourceHash: compiled.source.hash, versions: pinned.versions } }]
   };

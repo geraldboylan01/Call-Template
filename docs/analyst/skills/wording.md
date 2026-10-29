@@ -45,7 +45,7 @@ People trust a figure more when they can see where it came from. The screen does
 
 Your part is the rules. When a rule shapes a result and the person may not know it, say it in a few plain words and attach its explainer. For example:
 
-> **why:** If Niamh died, Niamh's State Pension would stop, because a State Pension isn't passed on to a partner{?explainer.state_pension_not_inherited}. Dara would receive the Bereaved Partner's Pension instead{?explainer.bereaved_partners_pension}.
+> **why:** If Niamh died, Niamh's State Pension would stop, because a State Pension isn't passed on to a partner{?explainer.state_pension_not_passed_on}. Dara would receive the Bereaved Partner's Pension instead{?explainer.bereaved_partners_pension}.
 
 - Attach an explainer where it answers a question the person would have at that moment: "why does that stop?", "where does that rate come from?", "why is there no tax on this sale?".
 - At most one or two in a paragraph. A story full of footnotes is hard to read.
