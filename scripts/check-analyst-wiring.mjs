@@ -19,6 +19,12 @@ import { REVIEWED_FIXTURES, buildReviewedAnalystCase, buildReviewedFixture } fro
 import { createLocalCase } from './analyst-local-store.mjs';
 import { checkReply } from './lib/analyst-reply-check.mjs';
 import { TOOL_CATALOGUE, RUN_LIMITS } from '../js/planning/analyst/contracts.js';
+import { buildSessionFromPlan } from '../js/plan_story_compiled.js';
+import { openStoryLink, evaluateOffRoute } from '../js/plan_story_links.js';
+import { storyFactRegistry } from '../js/plan_story_registry.js';
+import { getStoryRequirements, checkStory } from '../js/planning/plan_pack/story_checker.js';
+import { checkStoryLink } from '../js/planning/plan_pack/story_links.js';
+import { propertyMoveRows } from '../js/planning/plan_pack/property_move_story.js';
 import { minimalAnalystStory } from './fixtures/minimal-analyst-story.mjs';
 
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -83,6 +89,53 @@ export async function checkAnalystWiring({ fixtures, options }) {
     assert.deepEqual(out.result.data.storyFacts, compactStoryFacts(position, alternative.id));
     assert.deepEqual((await executeTool(out.caseFile, 'read_position', {})).result.data.facts, readPlanPosition(c.pinned.currentPosition).routes[0].facts, 'Reading an alternative never replaces pinned current');
     assert.deepEqual(c, before, 'Source and earlier routes remain unchanged');
+    if (['tradeDownHome', 'sellProperty'].includes(change.type)) {
+      const requirements = getStoryRequirements(compiled, alternative.id);
+      const move = requirements.majorMoves[0];
+      const ledger = out.result.data.ledger;
+      const expected = propertyMoveRows(ledger.propertyMove, compiled.source.normalizedPlanPack.household.properties.find(row => row.propertyId === ledger.propertyMove.propertyId));
+      assert.deepEqual(move.factKeys.sort(), expected.map(row => 'moves.' + move.id + '.' + row.key).sort());
+      for (const key of move.factKeys) assert.equal(checkStoryLink(compiled, selected.facts[key], '/move').ok, true, key);
+      const draft = minimalAnalystStory(compiled, alternative.id);
+      assert.equal(checkStory(compiled, draft).ok, true);
+      const session = buildSessionFromPlan(compiled, draft);
+      assert.ok(session.modules.some(module => module.generated.report?.blocks.some(block => block.id === 'transaction')));
+      const target = storyFactRegistry(position, alternative.id)[move.factKeys[0]].source;
+      const opened = await openStoryLink(target, { findModule: () => target.caseId,
+        setCase: () => { throw new Error('A transaction report has no scenario control.'); }, openModule: () => {}, outline: () => true });
+      assert.equal(opened.opened, true);
+      assert.equal(evaluateOffRoute({ target, currentCaseId: null }).offRoute, false);
+      for (const row of requirements.required.filter(row => /\.funding\./.test(row.key))) {
+        const incomplete = minimalAnalystStory(compiled, alternative.id);
+        for (const goal of incomplete.sections[4].goals) goal.parts.gives = goal.parts.gives.replace('{' + row.key + '}', '');
+        assert.ok(checkStory(compiled, incomplete).refusals.some(refusal => refusal.code === 'goal_fact'));
+      }
+      const key = move.factKeys[0]; draft.sections[4].parts.gives = draft.sections[4].parts.gives.replace('{' + key + '}', '');
+      draft.sections[0].parts.gives += ' {' + key + '}';
+      assert.ok(checkStory(compiled, draft).refusals.some(row => row.code === 'major_move_fact'));
+      for (const step of selected.steps) assert.ok(selected.facts[step.surplusAfter].value >= -0.005, step.surplusAfter);
+      const funding = selected.goalWalk.flatMap(goal => goal.fundingYears.map(year => ({ goalId: goal.goalId, year })));
+      for (const row of funding) {
+        const goal = ledger.years.find(year => year.year === row.year).goals.find(goal => goal.goalId === row.goalId);
+        assert.equal(selected.facts['goals.' + row.goalId + '.funding.' + row.year + '.capitalAllocated'].value, goal.capitalAllocated);
+      }
+      const read = await executeTool(out.caseFile, 'read_position', { routeId: alternative.id });
+      const reply = checkReply('read_position', read.result, { routeId: alternative.id }, change.type).data;
+      for (const entry of requirements.required.filter(row => ['current_position', 'inefficiencies'].includes(row.section))) {
+        assert.ok(reply.facts[entry.key], entry.key); assert.ok(reply.storyFacts.includes(entry.key), entry.key);
+      }
+      assert.ok(requirements.required.filter(row => row.section === 'current_position').every(row => row.key.startsWith('current.position.')));
+      for (const year of ledger.years) assert.equal(reply.facts['cashFlow.' + year.year + '.remaining'].display, selected.facts['cashFlow.' + year.year + '.remaining'].display);
+      const after = ledger.years.at(-1);
+      assert.equal(selected.facts['cashFlow.' + after.year + '.phase'].value, 'after goal funding ends');
+      assert.equal(selected.facts['cashFlow.' + after.year + '.remaining'].value, after.remaining);
+      const wrongToday = minimalAnalystStory(compiled, alternative.id);
+      wrongToday.sections[0].parts.gives = wrongToday.sections[0].parts.gives.replaceAll('current.position.', 'position.');
+      assert.ok(checkStory(compiled, wrongToday).refusals.some(row => row.code === 'required_fact'));
+      for (const fact of Object.values(selected.facts).filter(f => f.status === 'available' && ['EUR', 'EUR/year', 'EUR/month'].includes(f.unit))) assert.match(fact.display, /\.\d{2}$/);
+      const pots = selected.facts['ledger.crossedOff']; assert.doesNotMatch(pots.display, /Pension funding/);
+      for (const fact of Object.values(selected.facts).filter(f => f.status === 'available' && f.unit === 'date')) assert.match(fact.display, /^\d{1,2} [A-Z][a-z]+ \d{4}$/);
+    }
     const bad = clone(change);
     const key = Object.keys(change.sources)[0];
     bad.sources[key] = { kind: 'fact', path: '/household/missing_fact' };

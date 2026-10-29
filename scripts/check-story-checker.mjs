@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { NUMBER_WORD_TERMS, LIMITATION_WORDS, storyWordRefusals } from '../js/planning/plan_pack/story_wording.js';
+import { PLAN_STORY_RANKING_TERMS, findForbiddenWording } from '../js/plan_story_model.js';
+import { storyDisplay } from '../js/planning/plan_pack/story_display.js';
 import { checkStory, getStoryRequirements } from '../js/planning/plan_pack/story_checker.js';
 import { checkStoryLink } from '../js/planning/plan_pack/story_links.js';
 import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
@@ -75,6 +78,7 @@ function completeDraft(compiled, routeId = 'current') {
   sections[3].issues = r.issues.map(row => row.id); sections[5].freedCash = r.freed.map(row => row.id);
   sections[7].risks = routeId === 'current' ? [] : [{ changeIds: r.mainChangeIds }];
   sections[4].majorMoves = r.majorMoves.map(row => row.id);
+  sections[4].parts.gives += ' ' + r.majorMoves.flatMap(row => row.factKeys).map(key => '{' + key + '}').join(' ');
   return { routeId, headline: 'Your recorded position', summary: 'This view follows the compiled route.', sections,
     whatifs: r.whatifs.filter(row => row.status === 'compiled').map(row => ({ id: row.id })) };
 }
@@ -229,7 +233,7 @@ await test('Links reject the wrong route case, native case, target, unit, displa
     ['link_case', fact => { fact.source.nativeCaseId = 'wrong'; }],
     ['link_target', fact => { fact.source.focusTargetId = 'wrong'; }],
     ['link_unit', fact => { fact.unit = 'EUR/year'; }],
-    ['link_display', fact => { fact.display = '€175,000.00'; }],
+    ['link_display', fact => { fact.display = '€175,000.01'; }],
     ['link_versions', fact => { fact.source.versions.taxRules = 'older'; }]
   ];
   for (const [code, mutate] of mutations) { const fact = clone(original); mutate(fact); assert.equal(checkStoryLink(b1, fact, '/link').refusal.code, code); }
@@ -245,11 +249,11 @@ await test('Native cash-flow rounding comes from its shown result, not rounding 
   const summary = projection.summary.cases.find(row => row.id === entry.nativeCaseId);
   const catalogue = buildPresentationCatalogue({ modules: [{ id: entry.id, title: entry.payload.title, generated: { ...entry.payload.generated, ...entry.derived } }] });
   const target = catalogue.targets.find(row => row.kind === 'table-row' && row.cells[0] === summary.title);
-  const fact = { key: 'cashflow.leftOver', value: entry.metrics.leftOver, unit: 'EUR/year', display: euroText(summary.leftOver.shown),
+  const fact = { key: 'cashflow.leftOver', value: entry.metrics.leftOver, unit: 'EUR/year', display: storyDisplay(summary.leftOver.shown, 'EUR'),
     source: { kind: 'chapter', chapter: 'household_cash_flow', routeId: 'current', caseId: entry.id, nativeCaseId: entry.nativeCaseId,
       focusTargetId: target.id, panel: null, path: `/chapters/${chapterIndex}/cases/0/metrics/leftOver`, versions: b1.versions } };
   assert.equal(checkStoryLink(b1, fact, '/link').ok, true);
-  fact.display = euroText(fact.value); assert.equal(checkStoryLink(b1, fact, '/link').refusal.code, 'link_display');
+  fact.display = storyDisplay(fact.value, 'EUR'); assert.equal(checkStoryLink(b1, fact, '/link').refusal.code, 'link_display');
 });
 await test('A chapter-sourced cash-flow link uses the engine’s own table rounding in the registered display', async () => {
   const c = await compilePlanPack(read('scripts/fixtures/plan-packs/valid-small.json')); assert.equal(c.status, 'compiled');
@@ -312,6 +316,44 @@ await test('Malformed metadata produces refusals without throwing', () => {
 });
 await test('Malformed major-move metadata is refused rather than throwing', () => {
   const story = clone(majorStory); story.sections[4].majorMoves = {}; assert.equal(checkStory(major, story).ok, false);
+});
+await test('Wording guide lists the actual refused words and limitation phrases', () => {
+  const guide = readFileSync('docs/analyst/skills/wording.md', 'utf8').split('<!-- checker-refusals:start -->')[1].split('<!-- checker-refusals:end -->')[0].trim();
+  const expected = [
+    '## Words the checker refuses',
+    '- Number words: ' + NUMBER_WORD_TERMS.join(', ') + '. Use placeholders even for ordinary uses of one, first, once and second.',
+    '- Missing-result phrases outside a registered limitation: ' + LIMITATION_WORDS.join(', ') + '. Cite the code limitation or not-applicable reason.',
+    '- Indirect pronouns: they, their. Speak to you or use names.',
+    '- Ranking words: ' + ['best', 'ideal', 'optimal', ...PLAN_STORY_RANKING_TERMS].join(', ') + '.'
+  ].join('\n\n');
+  assert.equal(guide, expected, 'Update wording.md when the checker vocabulary changes.');
+  for (const word of NUMBER_WORD_TERMS) assert.ok(storyWordRefusals(word, '/word').some(row => row.code === 'typed_figure'), word);
+  for (const word of ['they', 'their', 'best', 'ideal', 'optimal', ...PLAN_STORY_RANKING_TERMS]) assert.ok(findForbiddenWording(word).length, word);
+});
+await test('Dated retirement income and ordinary solvency cover wording are allowed', () => {
+  const story = clone(b1Story);
+  story.sections[5].parts.does = 'Your working income stops in {retirement.niamh.fromYear}.';
+  // Use an actually returned year key, irrespective of fixture person IDs.
+  const key = Object.keys(getStoryRequirements(b1, 'current').facts).find(key => key.startsWith('retirement.') && key.endsWith('.fromYear'));
+  story.sections[5].parts.does = 'Your working income stops in {' + key + '}. Your yearly money left is {leftOverAfterGoals.yearly}.';
+  story.sections[6].parts.does = 'What you own would cover what you owe: {position.netWorth}.';
+  pass(b1, story);
+});
+await test('Protection scope follows the sentence, including placeholders before or after the event words', () => {
+  const story = clone(b1Story);
+  story.summary = 'On death your savings last {protection.niamh_stops.months}. Your net worth is {position.netWorth}.';
+  pass(b1, story);
+  for (const sentence of ['Your income stops and you have {position.netWorth}.', 'If your income stops you have {position.netWorth}.', '{position.netWorth} is available on death.']) {
+    story.summary = sentence; fails(b1, story, 'protection_figure');
+  }
+});
+await test('A year and a month label money placeholders; typed amounts and typed durations still fail', () => {
+  for (const suffix of ['a year', 'a month']) {
+    const story = clone(b1Story); story.summary = 'This leaves {position.netWorth} ' + suffix + '.'; pass(b1, story);
+    story.summary = 'This leaves €150 ' + suffix + '.'; fails(b1, story, 'typed_figure');
+    story.summary = 'This lasts {position.netWorth} for ' + suffix + '.'; fails(b1, story, 'typed_figure');
+    story.summary = 'This is {retirement.niamh.fromYear} ' + suffix + '.'; fails(b1, story, 'typed_figure');
+  }
 });
 console.info = info;
 console.log(`Story-checker checks: ${total - failures}/${total} passed.`);

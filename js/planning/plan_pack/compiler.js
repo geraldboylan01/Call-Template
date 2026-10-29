@@ -10,8 +10,9 @@ import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
 import { classifyLever } from './lever_catalogue.js';
 import { proveSingleMajorFailure } from './major_policy.js';
+import { propertyMoveChapter, propertyMoveRows } from './property_move_story.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.6.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.7.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -209,6 +210,18 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
           error.chapter = chapter;
           throw error;
         }
+      }
+      if (context.propertyMove) {
+        const chapter = 'property_move', move = context.propertyMove;
+        const property = pack.household.properties.find(row => row.propertyId === move.propertyId);
+        const built = propertyMoveChapter(move, property);
+        const checked = checkModulePayload(built.payload, { calculationYear: Number(pack.calculationDate.slice(0, 4)) });
+        if (!checked.ok) fail('/chapters/property_move', checked.error, 'engine_refusal');
+        const inputHash = await sha256Json({ chapter, input: json(built.input), versions });
+        proposed.push([chapter, { ...json(built), id: 'case-' + inputHash.replace(/^sha256:/, '').slice(0, 20), inputHash,
+          units: Object.fromEntries(propertyMoveRows(move, property).map(row => [row.key, row.unit])),
+          derived: derivedOutputs(checked.module), provenance: { versions, builder: 'property_moves', builderVersion: PLAN_PACK_COMPILER_VERSION } }]);
+        if (!chapterMap.has(chapter)) chapterMap.set(chapter, { id: chapter, cases: [] });
       }
       const casePack = { casePackVersion: 1, clientName: pack.clientName, modules: proposed.map(([, entry]) => entry.payload) };
       const checkedPack = checkCasePack(casePack, { calculationYear: Number(pack.calculationDate.slice(0, 4)) });

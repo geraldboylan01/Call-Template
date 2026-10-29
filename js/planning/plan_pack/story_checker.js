@@ -1,6 +1,6 @@
 import { readPlanPosition } from './story_facts.js';
 import { storyRequirements, STORY_SECTIONS, STORY_PARTS } from './story_requirements.js';
-import { storyTokens, storyWordRefusals, protectionOnly } from './story_wording.js';
+import { storyTokens, storyWordRefusals, protectionOnly, LIMITATION_PATTERN } from './story_wording.js';
 import { checkStoryLink } from './story_links.js';
 import { figuresVersionLabel } from '../figures/get_figures.js';
 import { getExplainers } from '../figures/get_explainers.js';
@@ -27,7 +27,7 @@ export function checkStory(compiledPlan, story) {
   const refusals = [], links = [];
   const refuse = (code, path, message) => refusals.push({ code, path, message });
   const verdict = requirements => ({ ok: !refusals.length, verdict: refusals.length ? 'refused' : 'pass',
-    checkerVersion: 'story-checker-1.0.0', routeId: story?.routeId ?? null, refusals, links, ...(requirements ? { limitations: requirements.limitations } : {}) });
+    checkerVersion: 'story-checker-1.1.0', routeId: story?.routeId ?? null, refusals, links, ...(requirements ? { limitations: requirements.limitations } : {}) });
   const shape = (value, fields, path) => {
     if (!object(value)) { refuse('shape', path, 'Use an object with the documented story fields.'); return false; }
     for (const key of Object.keys(value)) if (!fields.includes(key)) refuse('unknown_field', path + '/' + key, 'This field is not part of the story contract; nothing is silently discarded.');
@@ -53,7 +53,6 @@ export function checkStory(compiledPlan, story) {
     const seen = uses.get(sectionId) ?? new Set(); uses.set(sectionId, seen);
     const local = scope ?? new Set();
     const literal = parsed.tokens.filter(token => token.kind === 'text').map(token => token.text).join(' ');
-    refusals.push(...storyWordRefusals(literal, path, { otherRoutes }));
     const numericRegistry = { ...facts };
     for (const token of parsed.tokens.filter(row => row.kind !== 'text')) {
       if (token.kind === 'explainer') {
@@ -67,7 +66,7 @@ export function checkStory(compiledPlan, story) {
         if (!figure) refuse('unknown_figure', path, 'The screen has no figure named ' + token.key + ' for the plan’s calculation date.');
         else screenRegistry[token.key] = figure;
         if (token.kind === 'link') refuse('register_link', path, 'Register figures use {figure.id}; module links use {@key}.');
-        if (figure && typeof figure.basis.value === 'number') numericRegistry[token.key] = { unit: 'ratio' };
+        if (figure && typeof figure.basis.value === 'number') numericRegistry[token.key] = { unit: /[€£$]/.test(figure.text) ? 'EUR' : 'ratio' };
         continue;
       }
       const fact = Object.hasOwn(facts, token.key) ? facts[token.key] : null;
@@ -80,14 +79,15 @@ export function checkStory(compiledPlan, story) {
         if (!checked.ok) refusals.push(checked.refusal); else links.push({ path, ...checked });
       }
     }
+    refusals.push(...storyWordRefusals(literal, path, { otherRoutes, tokens: parsed.tokens, registry: numericRegistry }));
     // The screen owns placeholder parsing, display/source shape and explainer
     // shape. Its own resolver must also accept every narration we accept.
     if (!parsed.errors.length) try { resolveNarration(text, screenRegistry, { path, explainers: Object.fromEntries(explainers) }); }
     catch (error) { refuse(error.code, error.path, error.message); }
     const keys = parsed.tokens.filter(token => token.kind !== 'text').map(token => token.key);
-    for (const key of protectionOnly(literal, keys, numericRegistry, sectionId)) refuse('protection_figure', path,
+    for (const key of protectionOnly(parsed.tokens, numericRegistry, sectionId)) refuse('protection_figure', path,
       'Protection may use only the income gap, savings duration and stated money received; ' + key + ' is outside that scope.');
-    if (/\b(?:not shown|not calculated|not available|cannot calculate|could not show|unable to show)\b/i.test(literal)
+    if (LIMITATION_PATTERN.test(literal)
       && !keys.some(key => key.startsWith('limitations.') || key.endsWith('.notApplicable'))) refuse('unregistered_limitation', path,
       'Use the code limitation that names the missing fact and affected result.');
   };
@@ -140,6 +140,9 @@ export function checkStory(compiledPlan, story) {
       for (const event of requirements.freed) if (!found.includes(event.id)) refuse('freed_cash_floor', path + '/freedCash', 'Include this freed-cash event inside the ledger years: ' + event.id + '.');
     }
     const moveIds = ids(section.majorMoves, requirements.majorMoves.map(row => row.id), path + '/majorMoves');
+    for (const id of moveIds) for (const key of (requirements.majorMoves.find(move => move.id === id)?.factKeys ?? [])) {
+      if (!uses.get(sectionId)?.has(key)) refuse('major_move_fact', path + '/parts', 'Include {' + key + '} in the section naming this move.');
+    }
     if (moveIds.length && (!meaningful(section.parts?.costs) || !meaningful(section.parts?.check))) refuse('major_move_parts', path + '/parts', 'A major move needs its costs and what to check.');
     if (sectionId === 'risks') {
       if (section.risks !== undefined && !Array.isArray(section.risks)) refuse('shape', path + '/risks', 'Use a list of risks with compiled change identifiers and education-only parts.');

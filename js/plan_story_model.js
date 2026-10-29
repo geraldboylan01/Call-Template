@@ -33,17 +33,8 @@ export class PlanStoryError extends Error {
 const fail = (path, message, code) => { throw new PlanStoryError(path, message, code); };
 
 /** Words that rank routes. The plan never ranks, so a story may not either. */
-const PLAN_STORY_RANKING_WORDS = Object.freeze([
-  /\bbetter\b/i,
-  /\bworse\b/i,
-  /\bcheapest\b/i,
-  /\bsmartest\b/i,
-  /\bpreferred\b/i,
-  /\btop\b/i,
-  /\bwinners?\b/i,
-  /\branked\b/i,
-  /\bscores?\b/i
-]);
+export const PLAN_STORY_RANKING_TERMS = Object.freeze(['better', 'worse', 'cheapest', 'smartest', 'preferred', 'top', 'winner', 'winners', 'ranked', 'score', 'scores']);
+const PLAN_STORY_RANKING_WORDS = PLAN_STORY_RANKING_TERMS.map(word => new RegExp('\\b' + word + '\\b', 'i'));
 
 const FORBIDDEN = Object.freeze([
   ...HOUSEHOLD_CASH_FLOW_BANNED_PHRASES,
@@ -353,9 +344,14 @@ export function buildGlance(routes) {
   };
 }
 
-/** A link opens a module on the route's case. If the module is on another case, the screen no longer follows the route. */
+/** Transaction reports hold a fixed compiled case and have no scenario control. */
+export function storyNativeCase(target) {
+  return target?.chapter === 'property_move' ? null : target?.nativeCaseId ?? target?.caseId;
+}
+
+/** A link follows its compiled native case, or its fixed transaction report. */
 export function followsRoute(target, currentCaseId) {
-  const nativeCaseId = target?.nativeCaseId ?? target?.caseId;
+  const nativeCaseId = storyNativeCase(target);
   return !nativeCaseId || currentCaseId === nativeCaseId;
 }
 

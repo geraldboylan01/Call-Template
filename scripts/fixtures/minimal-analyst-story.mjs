@@ -18,6 +18,7 @@ export function minimalAnalystStory(compiled, routeId = 'current') {
   sections[3].issues = r.issues.map(row => row.id);
   sections[5].freedCash = r.freed.map(row => row.id);
   sections[4].majorMoves = r.majorMoves.map(row => row.id);
+  sections[4].parts.gives += ' ' + r.majorMoves.flatMap(row => row.factKeys).map(key => '{' + key + '}').join(' ');
   sections[7].risks = routeId === 'current' ? [] : [{ changeIds: r.mainChangeIds }];
   sections[7].parts.check += ' The what-if tool is not built. Further stress results remain unavailable.';
   return { routeId, headline: 'Your recorded position', summary: 'This view follows your compiled route.', sections,

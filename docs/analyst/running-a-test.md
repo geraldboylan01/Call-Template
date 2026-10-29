@@ -148,8 +148,8 @@ the refusal paths or missing facts, and whether any story draft was submitted.
 ```
 
 `read_position` without arguments returns current; `{"routeId":"example"}`
-returns a retained priced route. Default facts omit source/basis details and
-`current.*` aliases. For details, use
+returns a retained priced route. Default facts omit source/basis details. On a route read they include the
+`current.*` facts required for today's position and inefficiencies. For details, use
 `{"routeId":"example","keys":["position.netWorth"]}` (up to twenty keys).
 The full facts and provenance remain in `case.json` and on the screen's hover.
 The returned `storyRequirements` lists the full checker's section floor.

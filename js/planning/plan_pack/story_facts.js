@@ -1,6 +1,7 @@
 import { StoryRegistry } from './story_registry.js';
 import { scanStoryIssues } from './story_issues.js';
 import { storyRequirements } from './story_requirements.js';
+import { propertyMoveRows } from './property_move_story.js';
 
 const RETIREMENT = ['retire', 'retire_early', 'improve_pension'];
 const active = goal => !['paused', 'completed'].includes(goal.status);
@@ -97,6 +98,7 @@ function goalFacts(r) {
     const rowIndex = l?.years?.[0]?.goals?.findIndex(row => row.goalId === id) ?? -1;
     if (rowIndex >= 0) r.from(key + '.routeYearly', lp + '/years/0/goals/' + rowIndex + '/planned', 'EUR/year');
     else r.unavailable(key + '.routeYearly', 'Yearly funding for this goal has not been priced.');
+    if (cash > 0) r.calculated(key + '.routeCashYear', Number(r.compiled.calculationDate.slice(0, 4)), 'year', [r.routePath + '/changes'], 'cash_committed_today');
     const yearly = valueOf(r.facts[key + '.routeYearly']);
     const lumpNeed = quote?.priced?.requiredToday ?? quote?.priced?.wholeCash;
     if (number(lumpNeed)) r.calculated(key + '.lumpSumNeeded', lumpNeed, 'EUR', [qp + '/priced'], 'native_whole_goal_cash_requirement');
@@ -106,7 +108,19 @@ function goalFacts(r) {
     const way = !quote ? 'unpriced' : r.route.id === 'current' ? 'current' : cash > 0 ? yearly > 0 ? 'mixed' : 'cash' : yearly > 0 ? 'yearly' : 'existing';
     const labels = { unpriced: 'Funding not priced', current: 'Current arrangements', mixed: 'Cash and yearly money', cash: 'Cash now', yearly: 'Yearly money', existing: 'Existing funding' };
     r.calculated(key + '.chosenWay', labels[way], 'text', [r.routePath, ...(quote ? [qp] : [])], 'chosen_funding_way');
-    walk.push({ goalId: id, title: goal.title, way, cash: valueOf(r.facts[key + '.routeCash']), yearly,
+    if (l?.years?.some(year => year.goals.some(row => row.goalId === id && row.capitalAllocated > 0.005))) {
+      r.facts[key + '.chosenWay'].display = 'yearly money and property sale proceeds';
+    }
+    const fundingYears = [];
+    for (const [yi, year] of (l?.years ?? []).entries()) {
+      const index = year.goals.findIndex(row => row.goalId === id), row = year.goals[index];
+      if (!row || row.planned <= 0.005 && row.capitalAllocated <= 0.005) continue;
+      const prefix = key + '.funding.' + year.year, path = lp + '/years/' + yi;
+      r.from(prefix + '.year', path + '/year', 'year');
+      for (const field of ['capitalAllocated', 'yearlyAllocated']) r.from(prefix + '.' + field, path + '/goals/' + index + '/' + field, 'EUR');
+      fundingYears.push(year.year);
+    }
+    walk.push({ fundingYears, goalId: id, title: goal.title, way, cash: valueOf(r.facts[key + '.routeCash']), yearly,
       status: quote ? 'priced' : 'not_priced', factKeys: Object.keys(r.facts).filter(k => k.startsWith(key + '.')) });
   }
   return walk;
@@ -132,12 +146,12 @@ function ledgerWalk(r, walk) {
     // Pricing omits the engine's temporary freed arrays. The serialized payment
     // differences are also what the goal steps below use to release savings.
     const goalSavings = r.route.id === 'current' ? 0 : sum(debtPayments.filter(payment => !cleared.has(payment.liabilityId)).map(yearlySaving));
-    surplus = l.years[0].available - (fundingActive ? clearedAnnual + goalSavings : 0);
+    surplus = l.years[0].available + (l.years[0].propertyCapitalForExpenses ?? 0) - (fundingActive ? clearedAnnual + goalSavings : 0);
   }
   const step = (id, title, inputs, status = 'priced') => {
     const key = 'steps.' + id;
     r.calculated(key + '.cashAfter', cash, 'EUR', inputs, 'running_spare_cash');
-    r.calculated(key + '.surplusAfter', surplus, 'EUR/year', inputs, 'running_surplus');
+    r.calculated(key + '.surplusAfter', l?.balanced && surplus < 0 && surplus >= -0.005 ? 0 : surplus, 'EUR/year', inputs, 'running_surplus');
     steps.push({ id, title, status, cashAfter: key + '.cashAfter', surplusAfter: key + '.surplusAfter' });
   };
   if (surplus < 0) step('deficit', 'Yearly deficit', ['position.leftOver']);
@@ -157,8 +171,10 @@ function ledgerWalk(r, walk) {
     const payment = debtPayments.find(row => row.liabilityId === binding?.liabilityId);
     const freed = payment && !cleared.has(payment.liabilityId) && fundingActive ? yearlySaving(payment) : 0;
     cash = number(cash) && number(goal.cash) ? cash - goal.cash : null;
-    surplus = number(surplus) && number(goal.yearly) ? surplus + freed - goal.yearly : null;
-    step(goal.goalId, goal.title, ['goals.' + goal.goalId + '.routeCash', 'goals.' + goal.goalId + '.routeYearly', ...(lp ? [l.annualFunding ? lp + '/annualFunding' : lp] : [])], quote ? 'priced' : 'not_priced');
+    const allocation = l?.years?.[0]?.goals.find(row => row.goalId === goal.goalId);
+    const incomeUsed = allocation ? allocation.planned - (allocation.capitalAllocated ?? 0) : goal.yearly;
+    surplus = number(surplus) && number(incomeUsed) ? surplus + freed - incomeUsed : null;
+    step(goal.goalId, goal.title, ['goals.' + goal.goalId + '.routeCash', 'goals.' + goal.goalId + '.routeYearly', ...(lp ? [l.annualFunding ? lp + '/annualFunding' : lp, ...(l.years?.[0] ? [lp + '/years/0/goals'] : [])] : [])], quote ? 'priced' : 'not_priced');
   }
   const crossedOff = (r.pack.planningInputs.assetAssignments ?? []).map(row => ({ assetId: row.assetId, goalId: row.goalId,
     label: r.pack.household.assets.find(asset => asset.assetId === row.assetId)?.label ?? 'Assigned asset' }));
@@ -166,7 +182,19 @@ function ledgerWalk(r, walk) {
   if (retirement) for (const pension of r.pack.household.pensions) {
     if (!crossedOff.some(row => row.assetId === pension.pensionId)) crossedOff.push({ assetId: pension.pensionId, goalId: retirement.goalId, label: pension.label ?? 'Pension funding' });
   }
+  const pensionTypes = { occupational: 'workplace pension', prsa: 'PRSA', personal: 'personal pension',
+    defined_benefit: 'defined benefit pension', buyout_bond: 'buyout bond', state: 'State Pension', arf: 'approved retirement fund' };
+  const crossedOffDisplay = crossedOff.map(row => {
+    const pension = r.pack.household.pensions.find(p => p.pensionId === row.assetId);
+    if (!pension || pension.label) return row;
+    const owner = [r.pack.household.primaryPerson, r.pack.household.partner].find(p => p?.personId === pension.ownerId);
+    const name = owner?.name ?? (pension.ownerId === r.pack.household.primaryPerson.personId ? 'Your' : 'Your partner’s');
+    return { ...row, label: name === 'Your' || name.endsWith('’s') ? name + ' ' + (pensionTypes[pension.type] ?? 'pension')
+      : name + '’s ' + (pensionTypes[pension.type] ?? 'pension') };
+  });
   r.calculated('ledger.crossedOff', crossedOff, 'list', ['/source/normalizedPlanPack/planningInputs/assetAssignments', '/source/normalizedPlanPack/household/pensions'], 'assigned_assets_once');
+  r.facts['ledger.crossedOff'].display = crossedOffDisplay.length ? crossedOffDisplay.map(row => row.label).join(', ') : 'None';
+  cashFlowYears(r, walk);
   if (l?.years?.[0]) r.from('leftOverAfterGoals.yearly', lp + '/years/0/remaining', 'EUR/year');
   else r.unavailable('leftOverAfterGoals.yearly', 'The plan has not priced funding after all goals.', r.source(lp), false, 'goal_not_priced');
   const yearly = valueOf(r.facts['leftOverAfterGoals.yearly']);
@@ -175,6 +203,28 @@ function ledgerWalk(r, walk) {
   if (number(l?.cashRemaining)) r.from('cashAfterGoals', lp + '/cashRemaining', 'EUR');
   else r.unavailable('cashAfterGoals', 'Cash remaining has not been calculated.');
   return steps;
+}
+
+function cashFlowYears(r, walk) {
+  const years = r.ledger?.years ?? [];
+  const fundingYears = walk.flatMap(goal => goal.fundingYears);
+  for (const [i, year] of years.entries()) {
+    const key = 'cashFlow.' + year.year, path = r.ledgerPath + '/years/' + i;
+    r.from(key + '.year', path + '/year', 'year');
+    r.from(key + '.remaining', path + '/remaining', 'EUR/year');
+    const phase = !fundingYears.length ? 'no goal funding required' : year.year > Math.max(...fundingYears) ? 'after goal funding ends' : 'while goals are being paid';
+    r.calculated(key + '.phase', phase, 'text', [path + '/goals'], 'goal_funding_phase');
+  }
+}
+
+function moveFacts(r) {
+  const move = r.ledger?.propertyMove;
+  if (!move || !r.chapter('property_move')) return;
+  const changeId = 'change_' + move.source.split('/').at(-1);
+  const property = r.pack.household.properties.find(row => row.propertyId === move.propertyId);
+  for (const row of propertyMoveRows(move, property)) {
+    r.metric('moves.' + changeId + '.' + row.key, 'property_move', row.key, row.unit);
+  }
 }
 
 function freedCash(r) {
@@ -282,7 +332,7 @@ export function readPlanPosition(compiled) {
   const results = registries.map(r => {
     currentPosition(r);
     const goalWalk = goalFacts(r), steps = ledgerWalk(r, goalWalk), freed = freedCash(r);
-    pensions(r); protection(r); pressurePoints(r);
+    moveFacts(r); pensions(r); protection(r); pressurePoints(r);
     const scanned = scanStoryIssues(r);
     return { routeId: r.route.id, facts: r.facts, goalWalk, steps, freedCash: freed, issues: scanned.issues, unavailableIssues: scanned.unavailable };
   });
@@ -346,6 +396,6 @@ export function readPlanPosition(compiled) {
   // Missing-result words are code facts too. Both the screen and checker read
   // them here, so an accepted limitation never becomes an unknown screen key.
   for (const route of results) Object.assign(route.facts, storyRequirements(compiled, route).facts);
-  return { version: 'story-facts-1.1.1', calculationDate: compiled.calculationDate, versions: { ...compiled.versions },
+  return { version: 'story-facts-1.2.0', calculationDate: compiled.calculationDate, versions: { ...compiled.versions },
     currentRouteId: 'current', routes: results };
 }

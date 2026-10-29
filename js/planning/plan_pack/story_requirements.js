@@ -53,14 +53,24 @@ export function storyRequirements(compiled, position) {
     required.push({ key: limitation.key, section, limitationId: limitation.id });
   };
   for (const [key, label] of [['leftOver', 'Yearly surplus or deficit'], ['spareCash', 'Spare cash'], ['netWorth', 'Net worth'],
-    ['solvency', 'Solvency'], ['pressurePoints', 'Pressure points']]) requireFact('position.' + key, 'current_position', label);
+    ['solvency', 'Solvency'], ['pressurePoints', 'Pressure points']]) requireFact((route.id === 'current' ? '' : 'current.') + 'position.' + key, 'current_position', label);
   requireFact('ledger.crossedOff', 'ledger', 'Assets already assigned');
   for (const step of position.steps) for (const key of [step.cashAfter, step.surplusAfter]) requireFact(key, 'ledger', step.title + ' remaining resources');
   for (const key of ['position.reserve', 'position.reserveMonths']) requireFact(key, 'protecting', 'Emergency reserve');
   for (const goal of position.goalWalk) for (const field of ['title', 'state', 'chosenWay', 'routeCash', 'routeYearly']) {
     requireFact('goals.' + goal.goalId + '.' + field, 'goals', goal.title + ' ' + field.replace(/([a-z])([A-Z])/g, '$1 $2'));
   }
-  requireFact('leftOverAfterGoals.yearly', 'cash_flow_after', 'Yearly money after goals');
+  if (!ledger?.years?.length) requireFact('leftOverAfterGoals.yearly', 'cash_flow_after', 'Yearly money in the calculation year');
+  for (const year of ledger?.years ?? []) for (const field of ['year', 'remaining']) {
+    requireFact('cashFlow.' + year.year + '.' + field, 'cash_flow_after', 'Money left in ' + year.year);
+  }
+  for (const goal of position.goalWalk) if (facts['goals.' + goal.goalId + '.routeCashYear']) requireFact('goals.' + goal.goalId + '.routeCashYear', 'goals', goal.title + ' cash year');
+  for (const goal of position.goalWalk) for (const year of goal.fundingYears) for (const field of ['year', 'capitalAllocated', 'yearlyAllocated']) {
+    requireFact('goals.' + goal.goalId + '.funding.' + year + '.' + field, 'goals', goal.title + ' funding in ' + year);
+  }
+  for (const key of Object.keys(facts).filter(key => key.startsWith('retirement.') && key.endsWith('.fromYear'))) {
+    if (facts[key].status === 'available') requireFact(key, 'cash_flow_after', 'Working income stops');
+  }
   requireFact('position.netWorth', 'net_worth_after', 'Net worth after changes');
   if (route.id !== 'current') requireFact('vsCurrent.netWorth', 'net_worth_after', 'Net worth difference from current');
   const protection = compiled.chapters.find(row => row.id === 'protection_gap')?.cases.find(row => row.id === route.chapterCases.protection_gap);
@@ -100,7 +110,8 @@ export function storyRequirements(compiled, position) {
   const changes = (sourceRoute?.changes ?? []).map((change, i) => ({ id: 'change_' + i, type: change.type,
     source: '/source/normalizedPlanPack/routes/' + sourceRouteIndex + '/changes/' + i,
     scale: classifyLever(pack, change).scale }));
-  const majorMoves = changes.filter(change => change.scale === 'major');
+  const majorMoves = changes.filter(change => change.scale === 'major').map(change => ({ ...change,
+    factKeys: Object.keys(facts).filter(key => key.startsWith('moves.' + change.id + '.')) }));
   const mainChangeIds = (majorMoves.length ? majorMoves : changes.slice(0, 1)).map(change => change.id);
   if (route.id !== 'current' && !mainChangeIds.length) {
     changes.push({ id: 'goal_funding', type: 'goal_funding', scale: 'ordinary', source: '/routes/' + compiled.routes.indexOf(route) });

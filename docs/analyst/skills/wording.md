@@ -39,6 +39,21 @@ You never type a number. Not in digits, and not in words: no amounts, rates, per
 
 Use only keys and explainer ids the tools returned for this run. A key that does not exist is refused. If you want a number no tool gave you, the story does not say it.
 
+An amount may be followed directly by “a year” or “a month”, for example
+`{goals.example.routeYearly} a year`. A duration such as “for a year” still needs a placeholder.
+
+<!-- checker-refusals:start -->
+## Words the checker refuses
+
+- Number words: zero, nil, nought, one, two, three, four, five, six, seven, eight, nine, ten, eleven, twelve, thirteen, fourteen, fifteen, sixteen, seventeen, eighteen, nineteen, twenty, thirty, forty, fifty, sixty, seventy, eighty, ninety, hundred, hundreds, thousand, thousands, million, millions, billion, billions, trillion, trillions, half, halves, quarter, quarters, dozen, dozens, once, twice, first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth, eleventh, twelfth, thirteenth, fourteenth, fifteenth, sixteenth, seventeenth, eighteenth, nineteenth, twentieth, thirtieth, fortieth, fiftieth, sixtieth, seventieth, eightieth, ninetieth, hundredth, thousandth. Use placeholders even for ordinary uses of one, first, once and second.
+
+- Missing-result phrases outside a registered limitation: not shown, not calculated, not available, cannot calculate, could not show, unable to show. Cite the code limitation or not-applicable reason.
+
+- Indirect pronouns: they, their. Speak to you or use names.
+
+- Ranking words: best, ideal, optimal, better, worse, cheapest, smartest, preferred, top, winner, winners, ranked, score, scores.
+<!-- checker-refusals:end -->
+
 ## Helping the person understand
 
 People trust a figure more when they can see where it came from. The screen does some of this for you: every figure shows, on hover or tap, whether the person told us, the app worked it out, it is a Planeir assumption, or it is an official rate, with its source. You do not write that.

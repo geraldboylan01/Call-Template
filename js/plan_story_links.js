@@ -1,4 +1,4 @@
-import { followsRoute } from './plan_story_model.js';
+import { followsRoute, storyNativeCase } from './plan_story_model.js';
 
 /**
  * OPENING A STORY LINK.
@@ -43,7 +43,7 @@ export async function openStoryLink(target, deps, { routeId = null } = {}) {
   const moduleId = deps.findModule(target.chapter, target);
   if (!moduleId) return { opened: false, reason: 'module_missing', chapter: target.chapter, routeId };
 
-  const nativeCaseId = target.nativeCaseId ?? target.caseId;
+  const nativeCaseId = storyNativeCase(target);
   if (deps.validateTarget && !deps.validateTarget(target, moduleId)) {
     return { opened: false, reason: 'target_missing', chapter: target.chapter, routeId };
   }
@@ -71,14 +71,14 @@ export function evaluateOffRoute({ target, currentCaseId, caseTitles = {} }) {
   if (followsRoute(target, currentCaseId)) return { offRoute: false };
   return {
     offRoute: true,
-    caseWas: caseTitles[target.caseId] ?? caseTitles[target.nativeCaseId] ?? target.nativeCaseId ?? target.caseId,
+    caseWas: caseTitles[target.caseId] ?? caseTitles[target.nativeCaseId] ?? storyNativeCase(target),
     caseNow: caseTitles[currentCaseId] ?? currentCaseId
   };
 }
 
 /** "Back to the route": put the module back on the case the link opened. */
 export async function backToRoute(target, moduleId, deps) {
-  const nativeCaseId = target.nativeCaseId ?? target.caseId;
+  const nativeCaseId = storyNativeCase(target);
   if (!nativeCaseId) return true;
   const set = await deps.setCase(moduleId, nativeCaseId);
   return Boolean(set && (!deps.currentCase || deps.currentCase(moduleId) === nativeCaseId));

@@ -8,7 +8,7 @@ const ENGINES = Object.freeze({
   household_cash_flow: 'household_cash_flow_math', protection_gap: 'protection_gap_math',
   mortgage_analysis: 'mortgage_math', loan_analysis: 'mortgage_math', pension_projection: 'pension_math',
   college_funding: 'college_funding_math', future_cost_fund: 'future_cost_fund_math',
-  net_retirement_cashflow: 'net_retirement_math'
+  property_move: 'property_moves', net_retirement_cashflow: 'net_retirement_math'
 });
 function question(path) {
   for (const section of SECTIONS) {

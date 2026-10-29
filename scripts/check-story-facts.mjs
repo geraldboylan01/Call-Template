@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
 import { normalizePlanPack } from '../js/planning/plan_pack/schema.js';
+import { storyDisplay } from '../js/planning/plan_pack/story_display.js';
 import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
 import { pointerValue } from '../js/planning/plan_pack/story_registry.js';
 import { applicationToProfile } from '../js/planning/application_to_profile.js';
@@ -91,7 +92,7 @@ function checkSources(c, s) {
           const model = computeHouseholdCashFlowProjection(native.input, { calculationYear: Number(c.calculationDate.slice(0, 4)) }).debug.cases.find(row => row.id === source.nativeCaseId);
           const metric = source.path.split('/').at(-1);
           const shown = metric === 'leftOver' ? model.shownLeftOver : model.lines.find(row => row.id === (metric === 'pensions' ? 'pensions' : 'tax')).shownAmount;
-          assert.ok(target.cells.includes(shown)); assert.equal(f.display, cashFlowEuroText(shown));
+          assert.ok(target.cells.includes(shown)); assert.equal(f.display, storyDisplay(shown, 'EUR'));
         } else assert.ok(target.value === f.value || target.cells?.some(cell => cell === f.value), f.key + ': actual focused figure');
       }
     }
