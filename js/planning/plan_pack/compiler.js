@@ -8,8 +8,10 @@ import { IE_TAX_RULES_VERSION } from '../tax/rules_ie.js';
 import { IRELAND_RULES_CATALOGUE_VERSION } from '../ireland_rules.js';
 import { figuresVersionLabel, getFigures } from '../figures/get_figures.js';
 import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES } from '../../household_cash_flow_math.js';
+import { classifyLever } from './lever_catalogue.js';
+import { proveSingleMajorFailure } from './major_policy.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.5.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.6.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -146,7 +148,7 @@ function validateLiteralNarration(pack, resourceLedger) {
 export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false } = {}) {
   let pack;
   try {
-    pack = frozen(normalizePlanPack(raw));
+    pack = frozen(normalizePlanPack(raw, { allowMultipleMajors: resourceLedger && !currentPositionOnly }));
     if (currentPositionOnly && (!resourceLedger || pack.routes.length !== 1 || pack.routes[0].id !== 'current' || pack.routes[0].changes.length)) {
       fail('/routes', 'Current-position mode requires resourceLedger and exactly the unchanged current route.');
     }
@@ -166,7 +168,10 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
     const proposed = [];
     try {
       if (resourceLedger) {
+        const multiple = route.changes.filter(change => classifyLever(pack, change).scale === 'major').length > 1;
+        const majorException = multiple ? await proveSingleMajorFailure(pack, route, index) : null;
         const prepared = currentPositionOnly ? await prepareCurrentPosition(pack) : await prepareResourceRoute(pack, route, index);
+        if (majorException) prepared.ledger.majorException = majorException;
         context = prepared.context;
         if (!currentPositionOnly) context.resourceLedger = prepared.ledger;
         ledgers.push({ routeId: route.id, ...prepared.ledger });

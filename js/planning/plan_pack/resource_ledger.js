@@ -101,8 +101,11 @@ function quoteGoals(context, pack, cashByGoal = {}) {
       const explicit = context.pensionContributions?.length > 0;
       const priced = explicit ? pricePlanPensionContributions(input, context.pensionContributions, { calculationDate: pack.calculationDate })
         : pricePlanRetirement(input, { calculationDate: pack.calculationDate });
+      const once = sum(context.pensionContributions.map(change => change.oneOffAmount ?? 0));
       return { ...common, kind: 'retirement', order: 3, startsInYears: 999, input, priced, wholeCash: null,
-        needs: priced.extraCostByYear, alreadyCovered: priced.onTrackAtToday, hasCurrentFunding: priced.projectedPotAtToday > 0,
+        needs: priced.extraCostByYear.map((amount, offset) => Math.max(0, amount - (offset === 0 ? once : 0))),
+        freed: priced.extraCostByYear.map((amount, offset) => Math.max(0, (offset === 0 ? once : 0) - amount)),
+        alreadyCovered: priced.onTrackAtToday, hasCurrentFunding: priced.projectedPotAtToday > 0,
         fundingInsufficient: explicit && priced.gapLeftOver > 0.005,
         unreachable: priced.reachedCap && priced.gapLeftOver > 0 };
     }
@@ -292,6 +295,7 @@ export async function prepareResourceRoute(pack, route, index) {
   const propertyCashNow = propertyMove?.offset === 0 ? propertyMove.cashReleased : 0;
   const cashAvailable = Math.max(0, openingCash + sales.netProceeds + propertyCashNow - reserve.protectedAmount);
   let left = cashAvailable;
+  left -= sum(route.changes.filter(change => change.type === 'pensionContribution').map(change => change.oneOffAmount ?? 0));
   const resolved = cloneJson(route);
   const cashByGoal = Object.create(null);
   const clearances = route.changes.map((change, i) => ({ change, i })).filter(row => row.change.type === 'clearOutgoing');
@@ -339,7 +343,11 @@ export async function prepareResourceRoute(pack, route, index) {
       context.ledgerFunding.pensionInput = retirement.priced.plannedInput;
       const before = retirement.priced.costsToday.years[0]?.members ?? [];
       const after = retirement.priced.costsWithExtra.years[0]?.members ?? [];
-      context.ledgerFunding.pensionChanges = after.map(member => ({ type: 'extraPension', personId: member.id, amount: member.gross - (before.find(p => p.id === member.id)?.gross ?? 0) })).filter(row => row.amount > 0.005);
+      context.ledgerFunding.pensionChanges = after.map(member => {
+        const cashAmount = context.pensionContributions.find(change => change.personId === member.id)?.oneOffAmount ?? 0;
+        return { type: 'extraPension', personId: member.id, amount: member.gross - (before.find(p => p.id === member.id)?.gross ?? 0),
+          ...(cashAmount > 0 ? { cashAmount } : {}) };
+      }).filter(row => row.amount > 0.005);
     }
   }
   const loans = loanEnds(pack, context, quotes, current);
@@ -375,7 +383,10 @@ export async function prepareResourceRoute(pack, route, index) {
     const today = cashflow.cashFlowSummary.cases[0];
     const selected = cashflow.cashFlowSummary.cases.at(-1);
     context.bankTakeHomeByPerson = Object.fromEntries(selected.takeHome.byPerson.map(p => [p.personId, p.bankTakeHome]));
-    if (!current && retirement && retirement.needs.length) retirement.needs[0] = today.leftOver.amount - selected.leftOver.amount + (retirement.datedCostSaving?.[0] ?? 0);
+    if (!current && retirement && retirement.needs.length) {
+      const net = today.leftOver.amount - selected.leftOver.amount + (retirement.datedCostSaving?.[0] ?? 0);
+      retirement.needs[0] = Math.max(0, net); retirement.freed[0] = Math.max(0, -net);
+    }
   } else if (pack.chapters.includes('protection_gap') && context.ledgerFunding.pensionChanges.length) {
     missing('/chapters', 'Include household_cash_flow so protection uses the changed per-person bank pay after pension contributions.');
   }
@@ -406,6 +417,7 @@ export async function prepareResourceRoute(pack, route, index) {
     const resources = (earnedLeftOver > 0 ? earnedLeftOver * (stillEarning ? earningShare : 0) : earnedLeftOver) + (stillEarning ? freed + propertyRecurring : 0);
     const receipt = propertyMove?.offset > 0 && offset === propertyMove.offset ? propertyMove.cashReleased : 0;
     capital += receipt;
+    const capitalOpening = capital;
     const deficitPaid = Math.min(capital, Math.max(0, -resources));
     capital -= deficitPaid;
     let capitalUsed = deficitPaid;
@@ -418,12 +430,14 @@ export async function prepareResourceRoute(pack, route, index) {
       const capitalAllocated = Math.min(Math.max(0, planned - yearlyAllocated), capital);
       capital -= capitalAllocated; capitalUsed += capitalAllocated;
       const allocated = yearlyAllocated + capitalAllocated;
-      return { goalId: goal.goalId, required, planned, allocated, shortfall: Math.max(0, planned - allocated) };
+      return { goalId: goal.goalId, required, planned, allocated,
+        yearlyAllocated, capitalAllocated, shortfall: Math.max(0, planned - allocated) };
     });
     const planned = sum(goals.map(g => g.planned));
     capitalUsedTotal += capitalUsed;
     return { offset, year: calendarYear + offset, leftOver: leftOver + (stillEarning ? propertyRecurring : 0), freed, earningShare, available: resources, cashflowDeficit: Math.max(0, -resources - deficitPaid), goals,
-      ...(propertyMove ? { propertyCapitalReceived: receipt, propertyCapitalUsed: capitalUsed, propertyCapitalRemaining: capital } : {}),
+      ...(propertyMove ? { propertyCapitalReceived: receipt, propertyCapitalOpening: capitalOpening, propertyCapitalForExpenses: deficitPaid,
+        propertyCapitalUsed: capitalUsed, propertyCapitalRemaining: capital } : {}),
       required: sum(goals.map(g => g.required)), planned, remaining: resources + capitalUsed - planned, shortfall: Math.max(0, planned - resources - capitalUsed) };
   });
   const goalStates = quotes.map(goal => {
@@ -448,6 +462,15 @@ export async function prepareResourceRoute(pack, route, index) {
     reserve, openingCash, investments: investmentInventory(pack, sales), investmentSales: sales, cashAvailableAfterReserve: cashAvailable,
     cashAllocated: context.cashUsed, cashRemaining, spareCashRemaining: cashRemaining - reserve.protectedAmount, reserveProtected,
     baselineLeftOver, earnedLeftOver, freedCash, earners: earning, goalOrder: quotes.map(g => g.goalId), goals: goalStates, years,
+    goalFunding: quotes.map(goal => ({ goalId: goal.goalId, kind: goal.kind, order: goal.order,
+      startsInYears: goal.kind === 'retirement' ? null : goal.startsInYears,
+      ...(goal.kind === 'retirement' ? { timingBasis: 'per_person_retirement_ages_in_contributionBenchmark' } : {}),
+      wholeCash: goal.wholeCash, maximumCash: goal.maximumCash ?? null,
+      cashAllocated: cashByGoal[goal.goalId] ?? context.cashByLiability[goal.liabilityId] ?? 0,
+      needsByYear: goal.needs.map((amount, offset) => ({ year: calendarYear + offset, amount })),
+      ...(goal.kind === 'retirement' ? { projectedPotGap: goal.priced.gapLeftOver, contributionBenchmark: goal.priced.plannedInput,
+        oneOffGross: sum(context.pensionContributions.map(change => change.oneOffAmount ?? 0)),
+        ...(goal.priced.explicitContributions ? { explicitContributions: goal.priced.explicitContributions } : {}) } : {}) })),
     ...(propertyMove ? { propertyMove, propertyCapitalCommitted: capitalUsedTotal, propertyCapitalRemaining: capital,
       endingCash: cashRemaining + (propertyMove.offset > 0 ? propertyMove.cashReleased : 0) - capitalUsedTotal } : {}),
     annualFunding: { goalSaving, pensionChanges: context.ledgerFunding.pensionChanges,
@@ -458,12 +481,14 @@ export async function prepareResourceRoute(pack, route, index) {
     levers: route.changes.map((change, ci) => ({ type: change.type, source: `/routes/${index}/changes/${ci}`,
       ...classifyLever(pack, change), parameterSources: cloneJson(change.sources ?? {}),
       ...(change.type === 'spendLess' ? { annualSpendingReduction: change.annualAmount } : {}),
-      ...(change.type === 'pensionContribution' ? { personId: change.personId, annualGrossExtra: change.annualAmount } : {}) })),
+      ...(change.type === 'pensionContribution' ? { personId: change.personId, ...(change.annualAmount ? { annualGrossExtra: change.annualAmount } : {}),
+        ...(change.oneOffAmount ? { grossOneOffContribution: change.oneOffAmount } : {}) } : {}) })),
     goalsCovered: goalStates.every(g => g.state === 'covered'),
     assumptions: ['Dated costs use calendar-year offsets. Annual left over is held at today’s figure while people work; no salary rise is credited.',
       'A loan’s repayment comes back in full from the first ledger year after its last repayment on the native amortisation schedule. Saving for a dated cost stops when the cost starts, because the fund then pays it.',
       'Each working person’s share of today’s annual left over, in proportion to their bank take-home, stops funding goals from their own retirement year. Someone already retired keeps their share, because today’s left over already comes from their retirement income. A repayment that stops comes back in full while anyone still has an income. Dated-cost money after every payer’s working share stops becomes a cash capital requirement under retirement, funded before that boundary. A deficit is not reduced by retirement.',
-      'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.'],
+      'The opening central-policy reserve remains protected.', 'Goal-saving transfers are excluded from stated regular spending.',
+      ...(context.pensionContributions.some(change => change.oneOffAmount > 0) ? ['One-off personal contributions are paid gross from cash today and credited to the pension once. Estimated income-tax relief affects this calendar year only; it is not an immediate cash receipt or a recurring surplus.'] : [])],
     datedCosts: costs.map(g => g.contract),
     pricing: quotes.map(g => ({ goalId: g.goalId, kind: g.kind, input: g.input, priced: g.priced })) });
   return { context, ledger };

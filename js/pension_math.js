@@ -635,6 +635,7 @@ function normalizePensionMember(rawMember, index, defaults, prefix) {
     currentSalary: requireFiniteNumber(rawMember.currentSalary, `${prefix}.currentSalary`),
     currentPot: requireFiniteNumber(rawMember.currentPot, `${prefix}.currentPot`),
     personalPct: requireFiniteNumber(rawMember.personalPct, `${prefix}.personalPct`),
+    ...(rawMember.oneOffPersonalContribution !== undefined ? { oneOffPersonalContribution: optionalNonNegativeNumber(rawMember.oneOffPersonalContribution, 0, `${prefix}.oneOffPersonalContribution`) } : {}),
     employerPct: requireFiniteNumber(rawMember.employerPct, `${prefix}.employerPct`),
     growthRate: optionalFiniteNumber(rawMember.growthRate, defaults.growthRate, `${prefix}.growthRate`),
     wageGrowthRate: optionalFiniteNumber(rawMember.wageGrowthRate, defaults.wageGrowthRate, `${prefix}.wageGrowthRate`),
@@ -1052,7 +1053,7 @@ function contributionForMemberAtYear(member, inputs, year, mode) {
   const salaryAtYear = member.currentSalary * Math.pow(1 + member.wageGrowthRate, year - inputs.currentYear);
   const uncappedPersonal = mode === 'max'
     ? maxRelievablePersonalContribution(age, salaryAtYear)
-    : member.personalPct * salaryAtYear;
+    : member.personalPct * salaryAtYear + (year === inputs.currentYear ? member.oneOffPersonalContribution ?? 0 : 0);
   const personal = Math.min(uncappedPersonal, maxRelievablePersonalContribution(age, salaryAtYear));
   const employer = member.employerPct * salaryAtYear;
 
@@ -1984,6 +1985,7 @@ const PENSION_CASE_HOUSEHOLD_KEYS = Object.freeze([
 
 /** What a case may restate about one person's pension. */
 const PENSION_CASE_MEMBER_KEYS = Object.freeze([
+  'oneOffPersonalContribution',
   'retirementAge',
   'personalPct',
   'employerPct',
