@@ -144,7 +144,7 @@
 .ps-see:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 2px; border-radius: 4px; }
 
 /* where you were: quiet, and still there under reduced motion */
-.ps-section p.ps-here {
+.ps-headline.ps-here, .ps-summary.ps-here, .ps-section p.ps-here {
   margin-left: -17px;
   padding: 6px 0 6px 14px;
   border-left: 3px solid var(--ps-blue);
@@ -286,7 +286,7 @@
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .ps-section p.ps-here { transition: background 240ms ease; }
+  .ps-headline.ps-here, .ps-summary.ps-here, .ps-section p.ps-here { transition: background 240ms ease; }
 }
 
 /* ------------------------------------------------ inside the overview */
@@ -372,3 +372,111 @@ body.ps-focusbar-on .swipe-stage {
   .ps-focusbar .ps-offroute > div { flex: 1 1 calc(100% - 44px); }
   .ps-focusbar .ps-offroute .ps-btn { flex: 1 1 100%; justify-content: center; }
 }
+
+/* ------------------------------------- where a figure comes from, and explainers */
+
+/*
+ * Every figure the plan produced opens a popover saying where it comes from, on hover, on focus and on tap, and Esc
+ * closes it. The kind is written as words with a small mark (you told us, worked out by the app, a Planeir assumption,
+ * an official figure), so colour is never the only cue. An info marker after a phrase opens an explainer the same way.
+ */
+.ps-tip { transform: translateX(var(--ps-shift, 0px)); }
+/* A popover inside a heading must not take the heading's type. */
+.ps-pop {
+  width: min(340px, calc(100vw - 24px));
+  padding: 12px 14px;
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  max-height: min(70vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ps-tip::before { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 14px; }
+.ps-below > .ps-tip { bottom: auto; top: calc(100% + 12px); }
+.ps-below > .ps-tip::before { top: auto; bottom: 100%; }
+.ps-tw[data-ps-open] > .ps-tip { display: block; }
+.ps-tw[data-ps-dismissed] > .ps-tip { display: none; }
+
+.ps-pop span { display: block; }
+.ps-pop b { display: block; margin-bottom: 2px; }
+.ps-pop a { color: var(--ps-blue); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.ps-pop-rule { height: 1px; margin: 10px 0; background: var(--ps-line); }
+.ps-pop-head { margin-bottom: 6px; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ps-muted); font-weight: 700; }
+.ps-basis-kind { display: flex !important; align-items: center; gap: 7px; margin-bottom: 4px; font-size: 13.5px; font-weight: 700; color: var(--ps-ink); }
+.ps-basis-kind .ps-g { color: var(--ps-blue); }
+.ps-basis-line { margin-top: 3px; }
+.ps-basis-q { margin-top: 5px; padding-left: 10px; border-left: 2px solid var(--ps-line); color: var(--ps-ink); }
+.ps-basis-ev { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--ps-line); }
+.ps-about-title { margin-bottom: 4px; font-size: 13.5px; color: var(--ps-ink); }
+.ps-about-line { margin-top: 5px; }
+.ps-about-sources, .ps-about-date { margin-top: 7px; font-size: 12px; color: var(--ps-muted); }
+
+/* a figure with a basis: a dashed underline and a help cursor, so it reads as one without relying on colour */
+.ps-fig {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: help;
+  text-decoration: underline dashed 1px;
+  text-decoration-color: var(--ps-muted);
+  text-underline-offset: 4px;
+}
+.ps-fig:hover, .ps-fig[aria-expanded='true'] { background: var(--ps-blue-wash); text-decoration-style: solid; }
+.ps-fig:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 3px; }
+.ps-glance .ps-fig { text-align: left; }
+
+/* the info marker after a phrase */
+.ps-explain {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--ps-blue);
+  vertical-align: -4px;
+  cursor: help;
+}
+.ps-explain .ps-g { width: 17px; height: 17px; }
+.ps-explain::after { content: ''; position: absolute; inset: -12px; } /* a 44px target without moving the text */
+.ps-explain:hover, .ps-explain[aria-expanded='true'] { background: var(--ps-blue-wash); }
+.ps-explain:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 2px; }
+
+/* on a touch screen the first tap on a linked figure shows its basis; this opens the module */
+.ps-pop-open {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 0 16px;
+  border: 1px solid rgba(106, 167, 200, 0.6);
+  border-radius: 12px;
+  background: rgba(106, 167, 200, 0.16);
+  color: var(--ps-ink);
+  font: 600 14px 'Manrope', 'Segoe UI', sans-serif;
+  cursor: pointer;
+}
+.ps-tw[data-ps-touch] .ps-pop-open { display: inline-flex; }
+.ps-pop-open:focus-visible { outline: 2px solid var(--ps-blue); outline-offset: 2px; }
+.ps-g-flip { transform: scaleX(-1); }
+
+/* the goals section tells each goal in its own subsection */
+.ps-goal { margin-top: 22px; padding-left: 16px; border-left: 2px solid var(--ps-line); }
+.ps-goal h3 { margin: 0 0 8px; font: 600 20px/1.3 var(--ps-serif); color: var(--ps-ink); }

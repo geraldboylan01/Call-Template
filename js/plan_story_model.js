@@ -2,6 +2,7 @@ import {
   HOUSEHOLD_CASH_FLOW_BANNED_PHRASES,
   HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES
 } from './household_cash_flow_math.js';
+import { PLAN_STORY_BASIS_KINDS } from './plan_story_basis.js';
 
 /**
  * THE PLAN STORY, AS DATA.
@@ -50,8 +51,12 @@ const FORBIDDEN = Object.freeze([
   ...PLAN_STORY_RANKING_WORDS
 ]);
 
-/** The marker is `@` and nothing else, as the plan's placeholder syntax says. */
-const PLACEHOLDER = /\{(@?)([a-z][A-Za-z0-9_.-]*)\}/g;
+/**
+ * Two markers and nothing else: `@` makes a figure a link, and `?` (only as `{?explainer.<id>}`) attaches
+ * an explainer to a phrase. Anything else that looks like a placeholder is refused.
+ */
+const PLACEHOLDER = /\{([@?]?)([a-z][A-Za-z0-9_.-]*)\}/g;
+const EXPLAINER_KEY = /^explainer\.([a-z][a-z0-9_]*)$/;
 
 /** The five education-only parts a section may be told in, in the order they read. */
 const PLAN_STORY_PARTS = Object.freeze(['does', 'why', 'gives', 'costs', 'check']);
@@ -80,13 +85,17 @@ export function parseNarration(text, path = '/narration') {
   let last = 0;
   for (const match of text.matchAll(PLACEHOLDER)) {
     if (match.index > last) tokens.push({ type: 'text', text: text.slice(last, match.index) });
-    tokens.push({ type: 'placeholder', key: match[2], link: match[1] === '@' });
+    const explainer = match[1] === '?';
+    if (explainer && !EXPLAINER_KEY.test(match[2])) {
+      fail(path, `has {?${match[2]}}. The ? marker names an explainer: {?explainer.<id>}.`, 'bad_placeholder');
+    }
+    tokens.push({ type: 'placeholder', key: match[2], link: match[1] === '@', explainer });
     last = match.index + match[0].length;
   }
   if (last < text.length) tokens.push({ type: 'text', text: text.slice(last) });
   for (const token of tokens) {
     if (token.type === 'text' && /[{}]/.test(token.text)) {
-      fail(path, 'has a brace that is not a placeholder. A placeholder is {key} or {@key}.', 'bad_placeholder');
+      fail(path, 'has a brace that is not a placeholder. A placeholder is {key}, {@key} or {?explainer.<id>}.', 'bad_placeholder');
     }
   }
   return tokens;
@@ -103,12 +112,36 @@ function checkWords(text, path) {
   }
 }
 
-/** A fact the screen can show: plain text, or the reason there is no figure. */
+/**
+ * A fact the screen can show: its text, where it comes from (the `basis` the plan wrote for it, which the
+ * screen turns into words; a sample without one shows none), and the explainer it points to, if any.
+ */
 function readFact(fact, path) {
   if (!fact || typeof fact !== 'object') fail(path, 'is not a registered fact.', 'unknown_placeholder');
   const text = typeof fact.text === 'string' && fact.text.trim() ? fact.text.trim() : null;
   if (!text) fail(path, 'has no computed value. Register a .notApplicable key for a code-produced reason.', 'empty_fact');
-  return { text };
+  const basis = fact.basis ?? null;
+  if (basis !== null && (typeof basis !== 'object' || !PLAN_STORY_BASIS_KINDS.includes(basis.kind))) {
+    fail(`${path}.basis`, `must be one of: ${PLAN_STORY_BASIS_KINDS.join(', ')}.`, 'bad_basis');
+  }
+  const explainerId = typeof fact.explainerId === 'string' && fact.explainerId ? fact.explainerId : null;
+  return { text, basis, explainerId };
+}
+
+/** An explainer as the screen shows it: the register's own words, whole. */
+function readExplainer(explainer, path) {
+  const bad = (message) => fail(path, message, 'bad_explainer');
+  if (!explainer || typeof explainer !== 'object' || typeof explainer.title !== 'string' || !explainer.title.trim()) bad('has no title.');
+  if (!Array.isArray(explainer.sentences) || !explainer.sentences.length || explainer.sentences.some((entry) => typeof entry !== 'string' || !entry.trim())) bad('has no sentences.');
+  const sources = Array.isArray(explainer.sources) ? explainer.sources : [];
+  if (sources.some((source) => !source || typeof source.title !== 'string' || !source.title.trim())) bad('has a source with no title.');
+  return {
+    title: explainer.title.trim(),
+    sentences: explainer.sentences.map((entry) => entry.trim()),
+    sources: sources.map((source) => ({ title: source.title.trim(), url: typeof source.url === 'string' && source.url ? source.url : null })),
+    checkedOn: typeof explainer.checkedOn === 'string' ? explainer.checkedOn : null,
+    catalogueVersion: typeof explainer.catalogueVersion === 'string' ? explainer.catalogueVersion : null
+  };
 }
 
 function readSource(source, path) {
@@ -134,18 +167,33 @@ function readSource(source, path) {
  * are links, and reasons. `registry` maps a placeholder key to
  * `{ text, source: { chapter, caseId?, nativeCaseId?, focusTargetId?, panel? } }`.
  * Code-produced reasons are registered under their explicit `<key>.notApplicable` key.
+ * `explainers` maps an explainer id to the register's explainer; `{?explainer.<id>}` names one of them.
  */
-export function resolveNarration(text, registry, { path = '/narration', label = () => null } = {}) {
+export function resolveNarration(text, registry, { path = '/narration', label = () => null, explainers = {} } = {}) {
   checkWordsInText(text, path);
   const segments = [];
+  const aboutOf = (id, where) => (id && explainers?.[id] ? readExplainer(explainers[id], `${where}.explainer`) : null);
   for (const token of parseNarration(text, path)) {
     if (token.type === 'text') { segments.push(token); continue; }
-    const where = `${path}{${token.link ? '@' : ''}${token.key}}`;
+    const where = `${path}{${token.explainer ? '?' : token.link ? '@' : ''}${token.key}}`;
+    if (token.explainer) {
+      const id = EXPLAINER_KEY.exec(token.key)[1];
+      if (!explainers || !Object.hasOwn(explainers, id)) {
+        fail(where, `names the explainer "${id}", which the explainer catalogue does not hold for this plan.`, 'unknown_explainer');
+      }
+      segments.push({ type: 'explainer', key: token.key, id, explainer: readExplainer(explainers[id], where) });
+      continue;
+    }
     const fact = readFact(registry?.[token.key], where);
     const source = readSource(registry[token.key].source, `${where}.source`);
     if (!source) fail(where, token.link ? 'is marked as a link but the fact has no source to open.' : 'has no registered source.', token.link ? 'unlinkable_placeholder' : 'bad_source');
+    // What the screen shows on hover or tap comes from the fact, never from the story.
+    const explained = aboutOf(fact.explainerId, where);
+    // The module a figure's source names is shown in its basis ("worked out by the app, in the Mortgage module").
+    const basisModule = fact.basis && source.chapter ? label(source, token.key)?.module ?? null : null;
+    const about = { ...(fact.basis ? { basis: fact.basis } : {}), ...(basisModule ? { basisModule } : {}), ...(explained ? { about: explained } : {}) };
     if (!token.link) {
-      segments.push({ type: token.key.endsWith('.notApplicable') ? 'reason' : 'figure', key: token.key, text: fact.text });
+      segments.push({ type: token.key.endsWith('.notApplicable') ? 'reason' : 'figure', key: token.key, text: fact.text, ...about });
       continue;
     }
     segments.push({
@@ -153,7 +201,8 @@ export function resolveNarration(text, registry, { path = '/narration', label = 
       key: token.key,
       text: fact.text,
       target: { ...source, figureKey: token.key, figureText: fact.text },
-      describe: label(source, token.key)
+      describe: label(source, token.key),
+      ...about
     });
   }
   return segments;
@@ -204,7 +253,7 @@ function deriveSeeIn(paragraphs) {
  * case ({ chapters: { id: { title, glyph } }, cases: { id: { caseId: title } } }),
  * so a tooltip can say "Car loan · Clear it now" without the story knowing it.
  */
-export function resolveStory({ story, registry, catalogue = {} }) {
+export function resolveStory({ story, registry, catalogue = {}, explainers = {} }) {
   if (!story || typeof story !== 'object') fail('/story', 'must be an object.');
   if (typeof story.routeId !== 'string' || !story.routeId.trim()) fail('/story/routeId', 'needs its route id.');
   if (!Array.isArray(story.sections) || story.sections.length !== SECTION_IDS.length) {
@@ -221,7 +270,8 @@ export function resolveStory({ story, registry, catalogue = {} }) {
     glyph: chapters[source.chapter]?.glyph || null,
     opensPanel: !source.chapter
   });
-  const resolve = (text, path) => resolveNarration(text, registry, { path, label });
+  const resolve = (text, path) => resolveNarration(text, registry, { path, label, explainers });
+  const plainText = (segments) => segments.map((segment) => segment.text ?? '').join('');
 
   const sections = (story.sections || []).map((section, index) => {
     const path = `/story/sections/${index}`;
@@ -230,13 +280,30 @@ export function resolveStory({ story, registry, catalogue = {} }) {
     const paragraphs = sectionParagraphs(section, path).map((text, p) => ({
       segments: resolve(text, `${path}/paragraphs/${p}`)
     }));
+    // B1.5 section 3: the goals section has one subsection per goal, in the ledger's order.
+    if (section.goals !== undefined && section.id !== 'goals') fail(`${path}/goals`, 'only the goals section has goal subsections.');
+    const goalIds = new Set();
+    const goals = (section.goals ?? []).map((goal, g) => {
+      const goalPath = `${path}/goals/${g}`;
+      if (typeof goal?.goalId !== 'string' || !goal.goalId.trim()) fail(`${goalPath}/goalId`, 'needs the goal it tells.');
+      if (goalIds.has(goal.goalId)) fail(`${goalPath}/goalId`, `repeats the goal ${goal.goalId}.`);
+      goalIds.add(goal.goalId);
+      const goalTitle = resolve(goal.title, `${goalPath}/title`);
+      return {
+        goalId: goal.goalId,
+        title: plainText(goalTitle),
+        titleSegments: goalTitle,
+        paragraphs: sectionParagraphs(goal, goalPath).map((text, p) => ({ segments: resolve(text, `${goalPath}/paragraphs/${p}`) }))
+      };
+    });
     return {
       id: section.id,
       title: titleSegments.map((segment) => segment.text).join(''),
       titleSegments,
       number: index + 1,
       paragraphs,
-      seeIn: deriveSeeIn([{ segments: titleSegments }, ...paragraphs]).map((entry) => ({
+      goals,
+      seeIn: deriveSeeIn([{ segments: titleSegments }, ...paragraphs, ...goals.flatMap((goal) => [{ segments: goal.titleSegments }, ...goal.paragraphs])]).map((entry) => ({
         ...entry,
         title: chapters[entry.chapter]?.title || entry.panel || entry.chapter,
         glyph: chapters[entry.chapter]?.glyph || null

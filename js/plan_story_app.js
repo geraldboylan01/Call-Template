@@ -1,4 +1,4 @@
-import { buildPlanStoryScreen } from './plan_story_session.js';
+import { buildPlanStoryScreen, planStoryChapterOf, planStoryModuleFor } from './plan_story_session.js';
 import {
   buildBackToStoryPill,
   buildOffRouteNote,
@@ -53,10 +53,7 @@ export function createPlanStoryController({ ui, app }) {
   const planStoryOf = () => session()?.planStory || null;
   const viewport = () => ui.overviewViewport;
 
-  function chapterOfModule(moduleId) {
-    const map = planStoryOf()?.chapterModules || {};
-    return Object.keys(map).find((chapter) => map[chapter] === moduleId) || null;
-  }
+  const chapterOfModule = (moduleId) => planStoryChapterOf(planStoryOf(), moduleId);
 
   function currentCase(moduleId) {
     const names = bridgeNames(chapterOfModule(moduleId));
@@ -97,8 +94,9 @@ export function createPlanStoryController({ ui, app }) {
         return Boolean(focusTarget && module && focusTarget.moduleKey === module.key && focusTarget.available && focusTarget.ref.type !== 'chart-point'
           && (!focusTarget.scenarioId || focusTarget.scenarioId === (source.nativeCaseId ?? source.caseId)));
       },
-      findModule: (chapter) => {
-        const id = planStoryOf()?.chapterModules?.[chapter];
+      // A compiled plan has one module per compiled case, so a link finds its module by the case it names.
+      findModule: (_chapter, source = target) => {
+        const id = planStoryModuleFor(planStoryOf(), source);
         return id && session().modules.some((module) => module.id === id) ? id : null;
       },
       setCase,
@@ -237,6 +235,17 @@ export function createPlanStoryController({ ui, app }) {
     return number && title ? `section ${number}, ${title}` : '';
   }
 
+  /**
+   * A compiled plan holds a module for each route's case of a chapter, and they share a title; the pill says which one
+   * is open ("Your cash flow for Clear car").
+   */
+  function showingLine(target) {
+    if (!planStoryOf()?.caseModules?.[target.caseId]) return '';
+    const { module, cases } = titles(target.chapter);
+    const route = cases[target.caseId] || cases[target.nativeCaseId];
+    return route ? `${module} for ${route}` : '';
+  }
+
   function removeFocusBar() {
     focusBar?.remove();
     focusBar = null;
@@ -281,6 +290,7 @@ export function createPlanStoryController({ ui, app }) {
       focusBar.append(buildBackToStoryPill({
         sectionTitle: sectionLabel(open.context.sectionId),
         figureText: open.target.figureText,
+        showing: showingLine(open.target),
         onBack: () => { void backToStory(); }
       }));
       const note = offRouteNote();

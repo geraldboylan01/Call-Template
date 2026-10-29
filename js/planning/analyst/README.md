@@ -21,6 +21,8 @@ profile-built alternative when the confirmed form lacks funding facts; the
 tool preserves that refusal instead of filling gaps. Use the `--silent` npm
 flag when stdout must contain only JSON/MCP frames.
 
+`read_position` and `price_route` return `storyFacts`: the keys a story may use, each with how it reads and whether it opens a module or the plan view. Write a story with those keys (`{key}`, `{@key}` for a link, `{figure.<id>}`, `{?explainer.<id>}`); they are the ones the story screen opens, and `npm run analyst:open -- <caseDir>` turns a submitted story into a session the local app opens. `facts` is the older metrics registry: `submit_story` still accepts its keys but reports `openOnStoryScreen: false`.
+
 `submit_story` accepts `{story: {routeId, headline, summary, sections}}`.
 Sections follow B1.5 section 3 in order, with `id`, `title` and `parts` containing
 `does`, `why`, `gives`, `costs`, `check`. The goals section also contains
