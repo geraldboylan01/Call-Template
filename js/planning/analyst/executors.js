@@ -1,30 +1,29 @@
 import { getFigures } from '../figures/get_figures.js';
 import { getExplainers } from '../figures/get_explainers.js';
+import { assembleCaseRoutes, compileCaseStories } from './compilation.js';
+import { goalWays, balancingMoves as nativeBalancingMoves, suggestRoutes, priceRoute as nativePriceRoute } from '../plan_pack/ledger_walk.js';
+import { FIGURE_PREFIX, figureEntry, storyFactRegistry, referencedPlaceholders } from '../../plan_story_registry.js';
 import { readPlanPosition } from '../plan_pack/story_facts.js';
-import { FIGURE_PREFIX, compactStoryFacts, referencedPlaceholders, storyFactRegistry } from '../../plan_story_registry.js';
-import { compilePlanPack } from '../plan_pack/compiler.js';
-import { normalizePlanPack } from '../plan_pack/schema.js';
-import { resolveStory, resolveNarration } from '../../plan_story_model.js';
+import { validateLeverSources } from '../plan_pack/lever_catalogue.js';
+import { sizeMajorMove } from '../plan_pack/major_move_search.js';
+import { PROPERTY_LEVERS } from '../plan_pack/property_moves.js';
+import { resolveStory } from '../../plan_story_model.js';
 import { cloneJson, assertIsoDate } from '../utils.js';
 import { compiledFacts } from './facts.js';
 import { missingFactQuestions } from './questions.js';
-import { TOOL_CATALOGUE, ENGINE_TOOLS, validateToolInput, refused, budgetRefusal } from './contracts.js';
+import { TOOL_CATALOGUE, RUN_LIMITS, validateToolInput, refused, budgetRefusal } from './contracts.js';
 import { caseRefusal } from './case_file.js';
 
 const ok = data => ({ ok: true, status: 'ok', data });
 const fromError = (error, fallback = '/input') => ({ ok: false, status: 'refused',
   refusals: error.diagnostics ?? [{ code: error.code ?? 'invalid_input', path: error.path ?? fallback, message: error.message }] });
 
-function readPosition(caseFile) {
-  const compiled = caseFile.pinned.currentPosition;
-  const facts = compiledFacts(compiled, 'current');
-  caseFile.factRegistry.current = facts.registry;
-  return ok({ route: compiled.routes[0], ledgerSummary: facts.ledgerSummary, chapters: facts.chapters,
-    facts: facts.registry, diagnostics: compiled.resourceLedger.routes[0]?.diagnostics ?? [],
-    omittedChapters: caseFile.pinned.omittedChapters,
-    // The keys a story may use, as the story screen opens them (docs/story-facts.md). `facts` is the older metrics registry.
-    storyFacts: compactStoryFacts(readPlanPosition(compiled), 'current'),
-    scope: 'Compiled current position only. Write a story with the keys in `storyFacts`: they are the ones the story screen can open. `facts` is the older metrics registry.' });
+function readPosition(caseFile, { routeId = 'current' }) {
+  const compiled = routeId === 'current' ? caseFile.pinned.currentPosition : caseFile.pricedRoutes[routeId];
+  if (!compiled || !Object.hasOwn(caseFile.factRegistry, routeId)) return refused('unpriced_route', '/input/routeId', 'Read current or a successfully priced route.');
+  const facts = compiledFacts(compiled, routeId);
+  caseFile.factRegistry[routeId] = facts.registry;
+  return ok({ ...facts.selected, storyFacts: facts.storyFacts, versions: compiled.versions, calculationDate: compiled.calculationDate });
 }
 
 function readFigures(caseFile, input) {
@@ -34,89 +33,171 @@ function readFigures(caseFile, input) {
   }
   const unknown = input.ids?.find(id => !getFigures().some(figure => figure.id === id));
   if (unknown) return refused('unknown_figure', '/input/ids/' + input.ids.indexOf(unknown), 'The register has no figure with this ID.');
-  const figures = getFigures(input);
+  const figures = getFigures(input).map(figure => ({ ...figure, explainers: figure.explainers ?? [] }));
   for (const figure of figures) {
     const id = 'figure.' + figure.id;
     // Figure facts are global to this run, never borrowed from another route.
     caseFile.factRegistry.figures ??= {};
-    caseFile.factRegistry.figures[id] = { id, value: figure.value, unit: figure.unit, text: figure.valueShown,
+    caseFile.factRegistry.figures[id] = { id, value: figure.value, unit: figure.unit, text: figure.valueShown, explainers: figure.explainers,
       source: { panel: 'figures', registerSource: figure.source, checkedOn: figure.checkedOn,
         catalogueVersion: figure.catalogueVersion, versions: caseFile.pinned.versions } };
   }
   return ok({ figures, versions: caseFile.pinned.versions });
 }
 
-async function priceRoute(caseFile, { route, reason }) {
+function readExplainers(_caseFile, input) {
+  const unknown = input.ids?.find(id => !getExplainers().some(explainer => explainer.id === id));
+  if (unknown) return refused('unknown_explainer', '/input/ids/' + input.ids.indexOf(unknown), 'The catalogue has no explainer with this ID.');
+  const unknownFigure = input.figureIds?.find(id => !getFigures().some(figure => figure.id === id));
+  if (unknownFigure) return refused('unknown_figure', '/input/figureIds/' + input.figureIds.indexOf(unknownFigure), 'The register has no figure with this ID.');
+  return ok({ explainers: getExplainers(input) });
+}
+
+function settingSourceChecks(pack, route) {
+  return route.changes.map((change, index) => {
+    const path = '/routes/1/changes/' + index;
+    try {
+      validateLeverSources(pack, change, path);
+      return { type: change.type, path: path + '/sources', status: 'passed', sources: cloneJson(change.sources) };
+    } catch (error) {
+      return { type: change.type, path: error.path ?? path, status: 'refused', sources: cloneJson(change.sources ?? {}),
+        refusals: fromError(error).refusals };
+    }
+  });
+}
+
+
+function pricedResult(caseFile, compiled, routeId) {
+  const facts = compiledFacts(compiled, routeId);
+  caseFile.pricedRoutes[routeId] = compiled;
+  caseFile.factRegistry[routeId] = facts.registry;
+  delete caseFile.storyDrafts[routeId];
+  return { route: compiled.routes.find(row => row.id === routeId),
+    ledger: compiled.resourceLedger.routes.find(row => row.routeId === routeId),
+    position: facts.selected, storyFacts: facts.storyFacts,
+    chapters: facts.chapters, facts: facts.position.routes.find(row => row.routeId === routeId).facts,
+    ledgerSummary: facts.ledgerSummary, versions: compiled.versions, sourceHash: compiled.source.hash };
+}
+
+async function priceRoute(caseFile, { route, reason }, execution) {
   if (route.id === 'current') return refused('immutable_current', '/input/route/id', 'The current route is pinned; use a new alternative ID.');
-  // No household, planning inputs or compiler options are accepted from tools.
-  // Every call starts with the pinned pack, not a previously mutated route.
-  const pack = cloneJson(caseFile.pinned.planPack);
-  pack.routes = [{ id: 'current', changes: [] }, route];
-  pack.narration = {};
-  try { normalizePlanPack(pack); }
-  catch (error) { return fromError(error); }
-  caseFile.routeDrafts[route.id] = { route: cloneJson(route), ...(reason ? { reason } : {}) };
-  const compiled = await compilePlanPack(pack, { resourceLedger: true });
-  if (compiled.status !== 'compiled') return fromError({ diagnostics: compiled.diagnostics });
-  const facts = compiledFacts(compiled, route.id);
-  const result = { route: compiled.routes.find(row => row.id === route.id),
-    ledger: compiled.resourceLedger.routes.find(row => row.routeId === route.id),
-    chapters: facts.chapters, facts: facts.registry, ledgerSummary: facts.ledgerSummary,
-    storyFacts: compactStoryFacts(readPlanPosition(compiled), route.id),
-    versions: compiled.versions, sourceHash: compiled.source.hash };
-  caseFile.pricedRoutes[route.id] = compiled;
-  caseFile.factRegistry[route.id] = facts.registry;
+  // Reusing an ID replaces its draft. A refusal must not leave older facts or
+  // a story looking as though they price the newly submitted settings.
+  delete caseFile.pricedRoutes[route.id];
+  delete caseFile.factRegistry[route.id];
   delete caseFile.storyDrafts[route.id];
-  return ok(result);
+  caseFile.routeDrafts[route.id] = { route: cloneJson(route), ...(reason ? { reason } : {}) };
+  const checks = settingSourceChecks(caseFile.pinned.planPack, route);
+  const failures = checks.flatMap(check => check.refusals ?? []);
+  if (failures.length) return { ...fromError({ diagnostics: failures }), data: { settingSourceChecks: checks } };
+  // Full B1 assembly removes only chapters without route adapters. It preserves
+  // refusals and never substitutes today's summary for a priced alternative.
+  const assembly = await assembleCaseRoutes(caseFile, [route], execution);
+  const compiled = assembly.compilation;
+  if (compiled?.status !== 'compiled') return { ...fromError({ diagnostics: assembly.routeRefusals ?? assembly.missingFacts.map(row => ({
+    code: row.factId, path: row.fieldPath, message: row.reason
+  })) }), data: { settingSourceChecks: checks, ledgers: compiled?.resourceLedger?.routes ?? [], omittedChapters: assembly.omittedChapters } };
+  return ok({ ...pricedResult(caseFile, compiled, route.id), settingSourceChecks: checks, omittedChapters: assembly.omittedChapters });
 }
 
-/** The facts a story on this route may use, as the story screen opens them: `readPlanPosition` on the plan this route was priced in. */
-function storyFacts(caseFile, routeId) {
-  try {
-    const compiled = routeId === 'current' ? caseFile.pinned.currentPosition : caseFile.pricedRoutes[routeId];
-    return storyFactRegistry(readPlanPosition(compiled), routeId);
-  } catch (_error) { return {}; }
+function toolDraft(caseFile, { route, routeId }, fallback) {
+  if (route && routeId && route.id !== routeId) throw Object.assign(new Error('The route ID must match the supplied draft.'), { path: '/input/routeId' });
+  if (route) return route;
+  if (routeId) {
+    if (caseFile.routeDrafts[routeId]) return caseFile.routeDrafts[routeId].route;
+    throw Object.assign(new Error('Supply a saved draft ID or a route.'), { path: '/input/routeId', code: 'unknown_route' });
+  }
+  return { id: fallback, changes: [] };
 }
 
-function submitStory(caseFile, { story }) {
+function nativeResult(result, extra = {}) {
+  const budget = result.refusals?.filter(row => row.code === 'budget_exceeded');
+  if (result.status === 'refused' || budget?.length) return { ...fromError({ diagnostics: budget?.length ? budget : result.refusals }), data: { ...result, ...extra } };
+  return ok({ ...result, ...extra });
+}
+
+async function goalWaysTool(caseFile, input, execution) {
+  const route = toolDraft(caseFile, input, 'walk');
+  const assembly = await assembleCaseRoutes(caseFile, [], execution);
+  if (!assembly.planPack) return fromError({ diagnostics: assembly.routeRefusals ?? assembly.missingFacts.map(row => ({ path: row.fieldPath, code: row.factId, message: row.reason })) });
+  return nativeResult(await goalWays(assembly, route, input.goalId, execution));
+}
+
+async function suggestRoutesTool(caseFile, _input, execution) {
+  const assembly = await assembleCaseRoutes(caseFile, [], execution);
+  if (!assembly.planPack) return fromError({ diagnostics: assembly.routeRefusals ?? assembly.missingFacts.map(row => ({ path: row.fieldPath, code: row.factId, message: row.reason })) });
+  return nativeResult(await suggestRoutes(assembly, execution));
+}
+
+async function balancingMoves(caseFile, input, execution) {
+  const route = toolDraft(caseFile, input, 'balance');
+  const { type, propertyId, year } = input;
+  if (route.id === 'current') return refused('immutable_current', '/input/route/id', 'Size a move for an alternative draft.');
+  const checks = settingSourceChecks(caseFile.pinned.planPack, route);
+  const failures = checks.flatMap(check => check.refusals ?? []);
+  if (failures.length) return { ...fromError({ diagnostics: failures }), data: { settingSourceChecks: checks } };
+  const assembly = await assembleCaseRoutes(caseFile, [], execution);
+  if (!assembly.planPack) return fromError({ diagnostics: assembly.routeRefusals ?? assembly.missingFacts.map(row => ({ code: row.factId, path: row.fieldPath, message: row.reason })) });
+  if (!PROPERTY_LEVERS.includes(type)) {
+    const pricing = await nativePriceRoute(assembly, route, execution);
+    return nativeResult(await nativeBalancingMoves(pricing, execution), { settingSourceChecks: checks });
+  }
+  const sized = await sizeMajorMove(assembly.planPack, route, { type, propertyId, year },
+    { maxProbes: RUN_LIMITS.engineRuns - caseFile.budget.engineRuns, ...execution });
+  if (sized.status === 'refused') return { ...fromError({ diagnostics: sized.refusals }), data: { ...sized, settingSourceChecks: checks } };
+  if (sized.status === 'sized') {
+    caseFile.routeDrafts[route.id] = { route: cloneJson(sized.route), reason: 'Native major-move sizing within the recorded bounds.' };
+    const priced = pricedResult(caseFile, sized.compilation, route.id);
+    return ok({ ...sized, position: priced.position, facts: priced.facts, storyFacts: priced.storyFacts, versions: priced.versions, sourceHash: priced.sourceHash,
+      settingSourceChecks: settingSourceChecks(assembly.planPack, sized.route) });
+  }
+  return ok({ ...sized, settingSourceChecks: checks });
+}
+
+async function submitStory(caseFile, { story }, execution) {
   const { routeId } = story;
   if (routeId !== 'current' && !Object.hasOwn(caseFile.pricedRoutes, routeId)) {
     return refused('unpriced_route', '/input/story/routeId', 'Price this route before submitting its story.');
   }
-  caseFile.storyDrafts[routeId] = cloneJson(story);
-  const onScreen = storyFacts(caseFile, routeId);
-  // `storyFacts` are the keys the story screen opens; the older metrics registry is still accepted here, but a story using it cannot be opened.
-  const registry = { ...caseFile.factRegistry[routeId], ...caseFile.factRegistry.figures, ...onScreen };
-  const explainers = Object.fromEntries(getExplainers().map(explainer => [explainer.id, explainer]));
+  const stories = { ...caseFile.storyDrafts, [routeId]: cloneJson(story) };
   try {
-    resolveStory({ story, registry, explainers });
-    const ids = new Set();
-    for (const [index, goal] of (story.sections[4].goals ?? []).entries()) {
-      const path = '/story/sections/4/goals/' + index;
-      if (!caseFile.pinned.profile.goals.some(row => row.goalId === goal.goalId) || ids.has(goal.goalId)) {
-        return refused('invalid_goal', path + '/goalId', 'Name a household goal once.');
+    const prepared = await compileCaseStories(caseFile, stories, execution);
+    const compiled = prepared.compilation;
+    const position = readPlanPosition(compiled);
+    const explainers = Object.fromEntries(getExplainers().map(entry => [entry.id, entry]));
+    for (const draft of Object.values(stories)) {
+      // No metrics aliases and no unfiltered register snapshot: use precisely
+      // the same registry and effective-date figure lookup as the screen.
+      const registry = storyFactRegistry(position, draft.routeId);
+      for (const key of referencedPlaceholders(draft).keys) if (key.startsWith(FIGURE_PREFIX)) {
+        const entry = figureEntry(key.slice(FIGURE_PREFIX.length), compiled.calculationDate);
+        if (entry) registry[key] = entry;
       }
-      ids.add(goal.goalId);
-      resolveNarration(goal.title, registry, { path: path + '/title', explainers });
-      for (const [part, text] of Object.entries(goal.parts)) resolveNarration(text, registry, { path: path + '/parts/' + part, explainers });
+      resolveStory({ story: draft, registry, explainers });
+      const ids = new Set();
+      const goals = position.routes.find(row => row.routeId === draft.routeId).goalWalk;
+      for (const [index, goal] of (draft.sections[4].goals ?? []).entries()) {
+        if ((!compiled.source.normalizedPlanPack.household.goals.some(row => row.goalId === goal.goalId)
+          && !goals.some(row => row.goalId === goal.goalId)) || ids.has(goal.goalId)) {
+          return refused('invalid_goal', '/story/sections/4/goals/' + index + '/goalId', 'Name a household goal once.');
+        }
+        ids.add(goal.goalId);
+      }
     }
-    // A key outside `storyFacts` (and not a register figure) passes the older checks but cannot be opened on the story screen.
-    const { keys } = referencedPlaceholders(story);
-    const notOnScreen = [...keys].filter(key => !Object.hasOwn(onScreen, key)
-      && !(key.startsWith(FIGURE_PREFIX) && getFigures().some(figure => figure.id === key.slice(FIGURE_PREFIX.length)))).sort();
+    caseFile.storyDrafts = stories;
+    caseFile.storyCompilation = prepared;
     return ok({ verdict: 'passes_available_checks', scope: 'B1.5 shape and plan_story_model checks only',
-      fullChecker: 'not built yet', reviewStatus: 'pending', releaseEligible: false,
-      openOnStoryScreen: notOnScreen.length === 0, ...(notOnScreen.length ? { keysNotOnStoryScreen: notOnScreen } : {}) });
+      fullChecker: 'not built yet', reviewStatus: 'pending', releaseEligible: false, openOnStoryScreen: true });
   } catch (error) { return fromError(error, '/story'); }
 }
 
 const notBuilt = (_caseFile, _input, name) => refused('not_built_yet', '/tools/' + name, 'not built yet');
 const executors = {
-  read_position: readPosition, read_figures: readFigures, price_route: priceRoute,
+  read_position: readPosition, read_figures: readFigures, read_explainers: readExplainers, price_route: priceRoute,
   missing_facts: caseFile => ok(missingFactQuestions(caseFile)), submit_story: submitStory,
-  goal_ways: caseFile => notBuilt(caseFile, null, 'goal_ways'),
-  suggest_routes: caseFile => notBuilt(caseFile, null, 'suggest_routes'),
-  balancing_moves: caseFile => notBuilt(caseFile, null, 'balancing_moves'),
+  goal_ways: goalWaysTool,
+  suggest_routes: suggestRoutesTool,
+  balancing_moves: balancingMoves,
   run_whatif: caseFile => notBuilt(caseFile, null, 'run_whatif')
 };
 
@@ -136,11 +217,14 @@ export async function executeTool(rawCase, name, input) {
         result = errors.length ? { ok: false, status: 'refused', refusals: errors }
           : budgetRefusal(caseFile, name, input);
         if (!result) {
-          // Charge centrally before executing, including an engine refusal.
-          // Replacing a stub cannot accidentally bypass the shared counters.
-          if (ENGINE_TOOLS.includes(name)) caseFile.budget.engineRuns++;
+          // Charge each real compiler invocation, including preflights and
+          // nested native searches. The callback never enters a wire pack.
           if (name === 'run_whatif') caseFile.budget.whatifsByRoute[input.routeId] = (caseFile.budget.whatifsByRoute[input.routeId] ?? 0) + 1;
-          result = await executors[name](caseFile, input);
+          const execution = { beforeCompile: () => {
+            if (caseFile.budget.engineRuns >= RUN_LIMITS.engineRuns) throw Object.assign(new Error('The plan has used its engine runs.'), { code: 'budget_exceeded', path: '/budget/engineRuns' });
+            caseFile.budget.engineRuns++;
+          } };
+          result = await executors[name](caseFile, input, execution);
         }
       }
     } catch (error) { result = fromError(error); }

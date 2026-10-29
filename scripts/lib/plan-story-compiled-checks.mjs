@@ -249,15 +249,14 @@ export async function runPlanStoryCompiledTests() {
       assert.equal(empty.status, 1);
       assert.match(empty.stderr, /No story has been submitted/);
 
-      // A key the screen cannot open passes the older checks, and submission says so.
+      // A metrics-only key is refused before it can become an active story.
       const legacy = { ...madeUpBorrowerStory(), summary: 'Your cash is {ledger.cashRemaining}.' };
       const legacyResult = await submit(legacy);
-      assert.equal(legacyResult.ok, true);
-      assert.equal(legacyResult.data.openOnStoryScreen, false);
-      assert.deepEqual(legacyResult.data.keysNotOnStoryScreen, ['ledger.cashRemaining']);
+      assert.equal(legacyResult.ok, false);
+      assert.match(legacyResult.refusals[0].path, /ledger\.cashRemaining/);
       const stuck = run();
       assert.equal(stuck.status, 1);
-      assert.match(stuck.stderr, /unknown_placeholder|ledger\.cashRemaining/);
+      assert.match(stuck.stderr, /No story has been submitted/);
 
       // An invented key, and an explainer the catalogue does not hold, are refused at submission, with their paths.
       const invented = await submit({ ...madeUpBorrowerStory(), summary: 'Your net worth is {position.invented}.' });

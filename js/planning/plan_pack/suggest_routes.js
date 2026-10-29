@@ -178,9 +178,9 @@ async function combinedMajors(session, draft) {
  * current plus three alternatives; suggestions are separate candidates for
  * the analyst to retain, never silently inserted as five plan-pack routes.
  */
-export async function suggestRoutes(compiledPlan) {
+export async function suggestRoutes(compiledPlan, execution = {}) {
   try {
-    const session = walkSession(compiledPlan), empty = { id: 'walk', changes: [] };
+    const session = walkSession(compiledPlan, execution), empty = { id: 'walk', changes: [] };
     const base = await session.fast(empty);
     if (!base.ledger) return { status: 'refused', suggestions: [], refusals: base.refusals };
     const suggestions = [], refusals = [], signatures = new Map();

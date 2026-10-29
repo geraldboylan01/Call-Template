@@ -67,7 +67,7 @@ npm run --silent analyst:open -- private/analyses/<requestId>/<runId>
 
 reads the run's case file (it never changes it), compiles the pinned plan with the current position and every route the analyst submitted a story for, builds the session, and writes `session.json` beside the case file (private, git-ignored). It prints how to open it: serve the folder (`node scripts/dev-static-server.mjs`), run the local worker as the README describes, and open `dev/plan-story-open.html?session=/private/analyses/<requestId>/<runId>/session.json`, which puts the session into the app's browser storage (asking first if one is there) and opens the story.
 
-**One set of keys.** `read_position` and `price_route` list `storyFacts`, the keys a story may use, and `submit_story` checks a story against the same facts the screen opens (`js/plan_story_registry.js`), including `{figure.<id>}` and explainers. A key from the older metrics registry (`facts`) still passes the older checks, but submission says `openOnStoryScreen: false` and lists `keysNotOnStoryScreen`, and `analyst:open` refuses it with the path.
+**One set of keys.** `read_position` and `price_route` list `storyFacts`, the keys a story may use, and `submit_story` checks a story against the same facts the screen opens (`js/plan_story_registry.js`), including `{figure.<id>}` and explainers. `facts` now contains the native `readPlanPosition` facts and their bases for that same route. Older metrics-only aliases are refused at submission. Only accepted stories become active, and submission and `analyst:open` use the same selected compilation and effective-date register lookup.
 
 ## Files
 

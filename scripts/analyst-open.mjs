@@ -11,8 +11,7 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readLocalCase } from './analyst-local-store.mjs';
 import { caseRefusal } from '../js/planning/analyst/case_file.js';
-import { compilePlanPack } from '../js/planning/plan_pack/compiler.js';
-import { cloneJson } from '../js/planning/utils.js';
+import { compileCaseStories } from '../js/planning/analyst/compilation.js';
 import { buildSessionFromPlan } from '../js/plan_story_compiled.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -40,12 +39,9 @@ const alternatives = routeIds.filter((id) => id !== 'current');
 const missing = alternatives.filter((id) => !caseFile.routeDrafts?.[id]?.route);
 if (missing.length) stop(`Route ${missing.join(', ')} has a story but no priced draft. Price it with price_route first.`);
 
-const pack = cloneJson(caseFile.pinned.planPack);
-pack.routes = [{ id: 'current', changes: [] }, ...alternatives.map((id) => caseFile.routeDrafts[id].route)];
-pack.narration = {};
-// With no alternative, compile as the case did: the current position, with goal funding not priced.
-const compiled = await compilePlanPack(pack, alternatives.length ? { resourceLedger: true } : { resourceLedger: true, currentPositionOnly: true });
-if (compiled.status !== 'compiled') stop(`The plan did not compile: ${JSON.stringify(compiled.diagnostics)}`);
+let compiled;
+try { ({ compilation: compiled } = await compileCaseStories(caseFile, stories)); }
+catch (error) { stop(`The plan did not compile: ${JSON.stringify(error.diagnostics ?? error.message)}`); }
 
 let session;
 try { session = buildSessionFromPlan(compiled, stories, { clientName: caseFile.pinned.profile?.displayName ?? compiled.clientName }); }

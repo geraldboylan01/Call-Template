@@ -6,8 +6,8 @@ import { findBalancingMoves } from './balancing_moves.js';
 /** One goal at its ledger point. Every choice carries the exact wire draft and
  * the complete priceRoute result; callers cannot mistake a prefix for a plan.
  */
-export async function goalWays(compiledPlan, routeDraft, goalId) {
-  try { return await goalWaysInSession(walkSession(compiledPlan), wireDraft(routeDraft), goalId); }
+export async function goalWays(compiledPlan, routeDraft, goalId, execution = {}) {
+  try { return await goalWaysInSession(walkSession(compiledPlan, execution), wireDraft(routeDraft), goalId); }
   catch (error) { return { status: 'refused', goalId, ways: [], levers: [], refusals: [refusal(error)] }; }
 }
 export async function goalWaysInSession(session, routeDraft, goalId, { searchLevers = true } = {}) {

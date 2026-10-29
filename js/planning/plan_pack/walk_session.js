@@ -60,7 +60,7 @@ export function prefix(ledger, goalId) {
 /** A call-local cache only. Financial probes call the very same B1 preparer;
  * every returned choice is then compiled with all original chapters/options.
  */
-export function walkSession(input) {
+export function walkSession(input, { beforeCompile } = {}) {
   const pack = sourcePack(input), probes = new Map(), compiled = new Map(), majorProofs = new Map();
   const candidate = draft => ({ ...cloneJson(pack), narration: {}, routes: [{ id: 'current' }, wireDraft(draft)] });
   const fast = async draft => {
@@ -87,7 +87,7 @@ export function walkSession(input) {
     if (!compiled.has(key)) compiled.set(key, (async () => {
       let raw;
       try { raw = candidate(draft); } catch (error) { return { kind: 'priced_route', status: 'refused', routeDraft: cloneJson(draft), ledger: null, refusals: [refusal(error)] }; }
-      const compilation = await compilePlanPack(raw, { resourceLedger: true });
+      const compilation = await compilePlanPack(raw, { resourceLedger: true, beforeCompile });
       const ledger = compilation.resourceLedger?.routes.find(row => row.routeId === draft.id) ?? null;
       const result = { kind: 'priced_route', status: compilation.status, planPack: compilation.source?.normalizedPlanPack ?? raw,
         routeDraft: cloneJson(draft), compileOptions: { resourceLedger: true }, compilation, ledger,
@@ -119,12 +119,12 @@ export function walkSession(input) {
     })());
     return compiled.get(key);
   };
-  return { pack, fast, price, probeCount: () => probes.size };
+  return { pack, fast, price, beforeCompile, probeCount: () => probes.size };
 }
 
 /** Pure pricing seam for the future price_route wrapper; no tool or I/O. */
-export async function priceRoute(compiledPlan, routeDraft) {
-  try { return await walkSession(compiledPlan).price(wireDraft(routeDraft)); }
+export async function priceRoute(compiledPlan, routeDraft, execution = {}) {
+  try { return await walkSession(compiledPlan, execution).price(wireDraft(routeDraft)); }
   catch (error) { return { kind: 'priced_route', status: 'refused', ledger: null, refusals: [refusal(error)] }; }
 }
 

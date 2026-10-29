@@ -76,7 +76,7 @@ export function resolvePlanNarration(template, values, path = '/narration') {
   });
   return { text: rendered, html: '<p>' + escapeHtml(rendered) + '</p>' };
 }
-export const PLAN_PACK_METRIC_TYPES = frozen({
+const PLAN_PACK_METRIC_TYPES = frozen({
   household_cash_flow: { income: 'money', bankTakeHome: 'money', tax: 'money', pensions: 'money', leftOver: 'money' },
   liquidity_analysis: { currentCash: 'money', monthlyExpenditure: 'money', monthsCovered: 'number', minimumCash: 'money', targetCash: 'money', surplusCash: 'money', shortfallCash: 'money' },
   personal_balance_sheet: { grossAssets: 'money', totalLiabilities: 'money', netWorth: 'money', spendableReserves: 'money', reserveMonths: 'number' },
@@ -145,7 +145,10 @@ function validateLiteralNarration(pack, resourceLedger) {
  * B0 compiles engine inputs; explicit resourceLedger mode also checks B1
  * allocation and route balance. Every route starts from the same opening facts.
  */
-export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false } = {}) {
+export async function compilePlanPack(raw, { resourceLedger = false, currentPositionOnly = false, beforeCompile } = {}) {
+  // Caller-local execution accounting, never part of the financial wire pack.
+  // Throw before work so nested searches cannot exceed the caller's budget.
+  beforeCompile?.();
   let pack;
   try {
     pack = frozen(normalizePlanPack(raw, { allowMultipleMajors: resourceLedger && !currentPositionOnly }));

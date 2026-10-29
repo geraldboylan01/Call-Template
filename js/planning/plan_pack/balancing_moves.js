@@ -113,7 +113,7 @@ export async function findBalancingMoves(session, draft, { goalId, ordinaryOnly 
   if (includeMajor && !ordinaryOnly && !draft.changes.some(change => classifyLever(pack, change).scale === 'major')) {
     const majorTypes = [{ type: 'tradeDownHome' }, ...pack.household.properties.filter(property => property.use !== 'home').map(property => ({ type: 'sellProperty', propertyId: property.propertyId }))];
     for (const options of majorTypes) {
-      const sized = await sizeMajorMove(pack, draft, { ...options, ...(goalId ? { goalIds: ids } : {}) });
+      const sized = await sizeMajorMove(pack, draft, { ...options, ...(goalId ? { goalIds: ids } : {}) }, { beforeCompile: session.beforeCompile });
       if (sized.status === 'sized') await add(options.type + ':' + (options.propertyId ?? 'home'), sized.route,
         { setting: sized.route.changes.at(-1), bounds: sized.bounds }, 'The smallest major move inside the central bounds that funds the scoped goals.');
       else if (sized.status === 'refused') refusals.push(...sized.refusals);
@@ -126,9 +126,9 @@ export async function findBalancingMoves(session, draft, { goalId, ordinaryOnly 
 
 /** One self-contained priced route is the input, as returned by priceRoute or
  * any goal way. No tool, I/O, global search state, or ranking is involved. */
-export async function balancingMoves(pricedRoute) {
+export async function balancingMoves(pricedRoute, execution = {}) {
   try {
-    const session = walkSession(pricedRoute);
+    const session = walkSession(pricedRoute, execution);
     return await findBalancingMoves(session, pricedRoute.routeDraft);
   } catch (error) { return { status: 'refused', moves: [], refusals: [refusal(error)] }; }
 }
