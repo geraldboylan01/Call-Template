@@ -21,9 +21,8 @@ try {
   } else {
     if (!values.case) throw Object.assign(new Error('Supply a case directory.'), { path: '/case' });
     const tool = TOOL_CATALOGUE.find(row => row.name === name);
-    // Unknown/unavailable tools do not read an input file at all. Their calls
-    // still enter the case log through the common dispatcher.
-    const input = !tool || tool.unavailable ? null : JSON.parse(await readFile(values.input, 'utf8'));
+    // Even an unavailable pricing tool needs its route for the shared budget.
+    const input = !tool ? null : JSON.parse(await readFile(values.input, 'utf8'));
     result = await callLocalTool(values.case, name, input);
   }
   process.stdout.write(JSON.stringify(result) + '\n');

@@ -158,7 +158,7 @@ The analyst works through stages, like a task list. Each stage has an exit condi
 5. **Write.** The story for each route, section by section, in the five parts, placeholders only.
 6. **Check.** `submit_story`, then fix and resubmit within the budget. Exit: the checker passes, or the budget is spent and the run is marked for Gerry with the refusals listed.
 
-**Budget:** up to three routes in the story, eight what-ifs a route and sixty engine runs a plan, as B1.5 sets them; the walk's `goal_ways` calls count towards the engine runs. Tuned once real runs exist.
+**Budget:** up to three alternatives in the story and eight what-ifs a route. A plan permits thirty pricing tool calls (`goal_ways`, `suggest_routes`, `balancing_moves`, `price_route`, `run_whatif`). A valid pricing attempt counts even if it returns a refusal. Each call permits at most eighty compiler runs, and the whole plan has a separate fifteen-hundred-compiler-run runaway guard. Every preflight and nested compile counts; case creation consumes compiler runs but no pricing call. Reusing a retained priced candidate consumes a pricing call and no compiler runs. Read-only calls consume neither. Refusals identify the exhausted counter by path.
 
 ### 3.7 Review and release
 
@@ -203,6 +203,12 @@ The same call, facts and versions give the same result in either harness and in 
 A trial merge of main with #99, #100 and #102 passes `check:dated-cost-contract`, `check:plan-pack-fixtures`, `check:plan-resource-ledger`, `check:form-to-profile`, `check:form-to-plan` and `check:plan-story`.
 
 ## 6. The order of work
+
+For the first local test, the budget unit is a pricing tool call, not an internal
+compiler probe: thirty calls per plan, eighty compiler runs inside a call, and
+fifteen hundred compiler runs across the plan. Keep three alternatives and eight
+what-ifs per route. These guards apply identically through the CLI and MCP, and
+the case log records each call's pricing-call and compiler-run usage.
 
 Three drafts, each a working whole. Each line names the chat it belongs to; lines in the same chat run one after another, and different chats run together.
 

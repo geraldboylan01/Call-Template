@@ -21,10 +21,11 @@ import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
 import { compactStoryFacts } from '../js/plan_story_registry.js';
 import { checkAnalystWiring } from './check-analyst-wiring.mjs';
 import { checkReply } from './lib/analyst-reply-check.mjs';
+import { compilerBudget } from '../js/planning/analyst/budget.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const execFileAsync = promisify(execFile);
-// A native walk can perform up to sixty compiler runs. Transport parity checks
+// A native walk can perform up to eighty compiler runs. Transport parity checks
 // its result, not a one-minute latency target on a shared CI runner. Both
 // harnesses get the same finite deadline and CLI results have an explicit cap.
 const harnessTimeoutMs = 5 * 60_000;
@@ -82,7 +83,7 @@ try {
       const initial = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7,
         calculationDate: c.pinned.calculationDate, clientLabel: fixture.id, beforeCompile });
       await compilePlanPack(initial.planPack, { ...initial.compileOptions, beforeCompile });
-      assert.equal(c.budget.engineRuns, initialCompiles, 'Case creation includes every compiler preflight');
+      assert.equal(c.budget.compilerRuns, initialCompiles, 'Case creation includes every compiler preflight');
     }
     const position = await executeTool(c, 'read_position', {});
     assert.equal(position.result.ok, true);
@@ -100,7 +101,7 @@ try {
     }
     for (const tool of TOOL_CATALOGUE) {
       const input = tool.name === 'price_route' ? { route: { id: 'trial', changes: [] } }
-        : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: c.pinned.profile.goals[0].goalId } : {};
+        : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: c.pinned.profile.goals[0].goalId } : tool.name === 'run_whatif' ? { routeId: 'trial' } : {};
       const out = await executeTool(c, tool.name, input);
       checkReply(tool.name, out.result, input, fixture.id);
       assert.equal(out.caseFile.runLog.length, 2);
@@ -215,7 +216,7 @@ try {
   assert.equal(priced.result.ok, true, JSON.stringify(priced.result));
   const compiler = await compilePlanPack({ ...lean.pinned.planPack, routes: [{ id: 'current' }, route] }, { resourceLedger: true });
   assert.deepEqual(priced.result.data.ledger, compiler.resourceLedger.routes.find(row => row.routeId === route.id));
-  assert.ok(priced.caseFile.budget.engineRuns > 1 && priced.caseFile.budget.engineRuns <= 60);
+  assert.ok(priced.caseFile.budget.compilerRuns > 1 && priced.caseFile.budget.compilerRuns <= RUN_LIMITS.compilerRuns);
   for (const change of [
     { type: 'useCash', goalId: 'missing', amount: 'whole' },
     { type: 'moveGoal', goalId: 'missing', targetDate: '2030-01-01' },
@@ -231,17 +232,24 @@ try {
   const otherRoute = story(); otherRoute.summary = '{unchanged.ledger.cashRemaining}';
   assertRefusal((await executeTool(priced.caseFile, 'submit_story', { story: otherRoute })).result);
 
-  assert.deepEqual(RUN_LIMITS, { routes: 3, whatifsPerRoute: 8, engineRuns: 60 });
-  lean.budget.engineRuns = 59;
+  assert.deepEqual(RUN_LIMITS, { routes: 3, whatifsPerRoute: 8, pricingCalls: 30, compilerRunsPerCall: 80, compilerRuns: 1500 });
+  const callCase = clone(lean), meter = compilerBudget(callCase);
+  for (let i = 0; i < 80; i++) meter.beforeCompile();
+  assert.throws(() => meter.beforeCompile(), error => error.path === '/budget/compilerRunsPerCall');
+  assert.equal(callCase.budget.compilerRuns, lean.budget.compilerRuns + 80);
+  lean.budget.compilerRuns = 1499;
   const last = await executeTool(lean, 'price_route', { route });
-  assert.equal(last.caseFile.budget.engineRuns, 60);
+  assert.equal(last.caseFile.budget.compilerRuns, 1500);
   const beyond = await executeTool(last.caseFile, 'price_route', { route });
   assert.equal(firstCode(beyond), 'budget_exceeded');
-  assert.equal(beyond.caseFile.budget.engineRuns, 60);
+  assert.equal(beyond.caseFile.budget.compilerRuns, 1500);
   assert.equal(beyond.caseFile.runLog.length, last.caseFile.runLog.length + 1);
-  for (const tool of ['goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']) {
-    assert.equal(budgetRefusal(last.caseFile, tool, { routeId: 'unchanged' }).refusals[0].path, '/budget/engineRuns');
-  }
+  const calls = clone(lean); calls.budget.pricingCalls = 29;
+  const thirtieth = await executeTool(calls, 'run_whatif', { routeId: 'unchanged' });
+  assert.equal(thirtieth.result.refusals[0].code, 'not_built_yet');
+  assert.equal(thirtieth.caseFile.budget.pricingCalls, 30);
+  for (const tool of ['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif'])
+    assert.equal(budgetRefusal(thirtieth.caseFile, tool, { routeId: 'unchanged' }).refusals[0].path, '/budget/pricingCalls');
   const whatifs = clone(base); whatifs.budget.whatifsByRoute.example = 7;
   assert.equal(budgetRefusal(whatifs, 'run_whatif', { routeId: 'example' }), null);
   whatifs.budget.whatifsByRoute.example++;
@@ -266,7 +274,7 @@ try {
   const listed = await client.listTools();
   assert.deepEqual(listed.tools.map(({ name, inputSchema }) => ({ name, inputSchema })), TOOL_CATALOGUE.map(({ name, inputSchema }) => ({ name, inputSchema })));
   for (const tool of [...TOOL_CATALOGUE, { name: 'unknown' }]) {
-    const input = tool.name === 'price_route' ? { route } : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: 'goal_application_understand_position' } : {};
+    const input = tool.name === 'price_route' ? { route } : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: 'goal_application_understand_position' } : tool.name === 'run_whatif' ? { routeId: 'trial' } : {};
     const saved = await readFile(join(directory, 'case.json'), 'utf8');
     await writeFile(inputFile, JSON.stringify(input));
     const cliResult = await cliTool(tool.name, directory, inputFile);
@@ -280,11 +288,11 @@ try {
   await rm(join(directory, '.lock'));
   const stored = JSON.parse(await readFile(join(directory, 'case.json'), 'utf8'));
   assert.equal(stored.runLog.length, 1 + TOOL_CATALOGUE.length + 1);
-  assert.ok(stored.budget.engineRuns > 1 && stored.budget.engineRuns <= 60, 'Both harnesses share one persisted budget');
-  const persistedFull = { ...stored, budget: { ...stored.budget, engineRuns: 60 } };
+  assert.ok(stored.budget.compilerRuns > 1 && stored.budget.compilerRuns <= RUN_LIMITS.compilerRuns, 'Both harnesses share one persisted budget');
+  const persistedFull = { ...stored, budget: { ...stored.budget, pricingCalls: 30, compilerRuns: 1500 } };
   await writeFile(join(directory, 'case.json'), JSON.stringify(persistedFull));
   assert.equal((await callLocalTool(directory, 'price_route', { route })).refusals[0].code, 'budget_exceeded');
-  assert.equal(JSON.parse(await readFile(join(directory, 'case.json'), 'utf8')).budget.engineRuns, 60);
+  assert.equal(JSON.parse(await readFile(join(directory, 'case.json'), 'utf8')).budget.compilerRuns, 1500);
   const tracked = spawnSync('git', ['ls-files', '--', 'private/analyses/'], { cwd: root, encoding: 'utf8' });
   assert.equal(tracked.status, 0); assert.equal(tracked.stdout.trim(), '', 'No analysis path may be tracked');
   assert.equal(spawnSync('git', ['check-ignore', '--quiet', join(directory, 'case.json')], { cwd: root }).status, 0);

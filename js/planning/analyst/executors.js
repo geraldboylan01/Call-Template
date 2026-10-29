@@ -11,8 +11,9 @@ import { resolveStory } from '../../plan_story_model.js';
 import { cloneJson, assertIsoDate, stableStringify } from '../utils.js';
 import { compiledFacts } from './facts.js';
 import { missingFactQuestions } from './questions.js';
-import { TOOL_CATALOGUE, RUN_LIMITS, validateToolInput, refused, budgetRefusal } from './contracts.js';
+import { TOOL_CATALOGUE, PRICING_TOOLS, RUN_LIMITS, validateToolInput, refused, budgetRefusal } from './contracts.js';
 import { caseRefusal } from './case_file.js';
+import { compilerBudget } from './budget.js';
 
 const ok = data => ({ ok: true, status: 'ok', data });
 const fromError = (error, fallback = '/input') => ({ ok: false, status: 'refused',
@@ -157,7 +158,7 @@ async function balancingMoves(caseFile, input, execution) {
     return nativeResult(await nativeBalancingMoves(pricing, execution), { settingSourceChecks: checks });
   }
   const sized = await sizeMajorMove(assembly.planPack, route, { type, propertyId, year },
-    { maxProbes: RUN_LIMITS.engineRuns - caseFile.budget.engineRuns, ...execution });
+    { maxProbes: RUN_LIMITS.compilerRunsPerCall, ...execution });
   if (sized.status === 'refused') return { ...fromError({ diagnostics: sized.refusals }), data: { ...sized, settingSourceChecks: checks } };
   if (sized.status === 'sized') {
     caseFile.routeDrafts[route.id] = { route: cloneJson(sized.route), reason: 'Native major-move sizing within the recorded bounds.' };
@@ -237,10 +238,11 @@ function retainCandidates(caseFile, result) {
 export async function executeTool(rawCase, name, input) {
   const caseFile = cloneJson(rawCase);
   let result;
+  let pricingCalls = 0;
+  const meter = compilerBudget(caseFile);
   const tool = TOOL_CATALOGUE.find(row => row.name === name);
-  // Availability is decided before input validation or inspection.
+  // Invalid inputs do not start pricing; every valid pricing attempt is charged.
   if (!tool) result = refused('unknown_tool', '/tool', 'Unknown analyst tool.');
-  else if (tool.unavailable) result = executors[name](caseFile);
   else {
     try {
       result = await caseRefusal(caseFile);
@@ -249,20 +251,18 @@ export async function executeTool(rawCase, name, input) {
         result = errors.length ? { ok: false, status: 'refused', refusals: errors }
           : budgetRefusal(caseFile, name, input);
         if (!result) {
+          if (PRICING_TOOLS.includes(name)) { caseFile.budget.pricingCalls++; pricingCalls++; }
           // Charge each real compiler invocation, including preflights and
           // nested native searches. The callback never enters a wire pack.
           if (name === 'run_whatif') caseFile.budget.whatifsByRoute[input.routeId] = (caseFile.budget.whatifsByRoute[input.routeId] ?? 0) + 1;
-          const execution = { candidatePrefix: 'candidate_' + (caseFile.runLog.length + 1), beforeCompile: () => {
-            if (caseFile.budget.engineRuns >= RUN_LIMITS.engineRuns) throw Object.assign(new Error('The plan has used its engine runs.'), { code: 'budget_exceeded', path: '/budget/engineRuns' });
-            caseFile.budget.engineRuns++;
-          } };
+          const execution = { candidatePrefix: 'candidate_' + (caseFile.runLog.length + 1), beforeCompile: meter.beforeCompile };
           result = await executors[name](caseFile, input, execution);
         }
       }
     } catch (error) { result = fromError(error); }
   }
   retainCandidates(caseFile, result);
-  const record = { sequence: caseFile.runLog.length + 1, tool: name, input: cloneJson(input ?? null), result: cloneJson(result) };
+  const record = { sequence: caseFile.runLog.length + 1, tool: name, input: cloneJson(input ?? null), result: cloneJson(result), usage: { pricingCalls, ...meter.usage } };
   caseFile.runLog.push(record);
   if (name === 'submit_story') caseFile.checkerReports.push({ sequence: record.sequence, result: record.result });
   return { caseFile, result };

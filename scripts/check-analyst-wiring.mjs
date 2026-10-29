@@ -19,7 +19,7 @@ import { reviewedRouteExample } from './fixtures/form-to-plan-reviewed.mjs';
 import { majorHouseholds } from './fixtures/major-levers.households.mjs';
 import { createLocalCase } from './analyst-local-store.mjs';
 import { checkReply } from './lib/analyst-reply-check.mjs';
-import { TOOL_CATALOGUE } from '../js/planning/analyst/contracts.js';
+import { TOOL_CATALOGUE, RUN_LIMITS } from '../js/planning/analyst/contracts.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const fact = path => ({ kind: 'fact', path });
@@ -52,13 +52,13 @@ export async function checkAnalystWiring({ fixtures, options }) {
   for (const c of [reviewed, trade, rental]) for (const tool of TOOL_CATALOGUE) {
     if (['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves'].includes(tool.name)) continue; // Exercised below with actual priced choices.
     const input = tool.name === 'price_route' ? { route: route('compact_check') }
-      : tool.name === 'goal_ways' ? { goalId: example.costId } : {};
+      : tool.name === 'goal_ways' ? { goalId: example.costId } : tool.name === 'run_whatif' ? { routeId: 'trial' } : {};
     const out = await executeTool(c, tool.name, input);
     checkReply(tool.name, out.result, input, c.pinned.runId);
   }
   const unknownMove = await executeTool(trade, 'balancing_moves', { type: 'invented_move' });
   assert.equal(unknownMove.result.refusals[0].path, '/input/type');
-  assert.equal(unknownMove.caseFile.budget.engineRuns, trade.budget.engineRuns);
+  assert.equal(unknownMove.caseFile.budget.compilerRuns, trade.budget.compilerRuns);
   const central = path => ({ kind: 'default', path, version: reviewed.pinned.versions.assumptions });
   const inputs = [
     [reviewed, { type: 'useCash', goalId: example.costId, amount: 1000,
@@ -145,16 +145,16 @@ export async function checkAnalystWiring({ fixtures, options }) {
     assert.deepEqual(out.result.data.route, native.route);
     assert.deepEqual(out.result.data.ledger, native.ledger);
     assert.deepEqual(out.result.data.facts, readPlanPosition(native.compilation).routes.find(row => row.routeId === draft.id).facts);
-    assert.equal(out.caseFile.budget.engineRuns, c.budget.engineRuns + compiles);
+    assert.equal(out.caseFile.budget.compilerRuns, c.budget.compilerRuns + compiles);
     assert.ok(out.result.data.settingSourceChecks.every(row => row.status === 'passed'));
     assert.equal((await executeTool(out.caseFile, 'read_position', { routeId: draft.id })).result.ok, true);
     // A proposed move is reusable through the ordinary price_route contract.
     assert.equal((await executeTool(c, 'price_route', { route: out.result.data.route })).result.ok, true);
   }
-  const limited = clone(trade); limited.budget.engineRuns = 58;
+  const limited = clone(trade); limited.budget.compilerRuns = 1498;
   const exhausted = await executeTool(limited, 'balancing_moves', { route: route('limited'), type: 'tradeDownHome', year: 2026 });
   assert.equal(exhausted.result.refusals[0].code, 'budget_exceeded');
-  assert.equal(exhausted.caseFile.budget.engineRuns, 60, 'Bridge preflights and search share the same counter');
+  assert.equal(exhausted.caseFile.budget.compilerRuns, 1500, 'Bridge preflights and search share the same counter');
   assert.equal((await executeTool(exhausted.caseFile, 'balancing_moves', { route: route('limited'), type: 'tradeDownHome' })).result.refusals[0].code, 'budget_exceeded');
   // A saved refused draft can be sized by ID without replacing its inputs.
   const draftCase = clone(trade); draftCase.routeDrafts.saved = { route: route('saved') };
@@ -189,10 +189,10 @@ export async function checkAnalystWiring({ fixtures, options }) {
       if (choice) {
         const cached = await executeTool(actual.caseFile, 'price_route', { candidateId: choice.candidateId });
         assert.equal(cached.result.ok, true);
-        assert.equal(cached.caseFile.budget.engineRuns, actual.caseFile.budget.engineRuns, 'Retaining a priced candidate never recompiles it');
+        assert.equal(cached.caseFile.budget.compilerRuns, actual.caseFile.budget.compilerRuns, 'Retaining a priced candidate never recompiles it');
       }
-      assert.equal(actual.caseFile.budget.engineRuns - c.budget.engineRuns, calls, name + ': exact compile accounting');
-      assert.ok(actual.caseFile.budget.engineRuns <= 60);
+      assert.equal(actual.caseFile.budget.compilerRuns - c.budget.compilerRuns, calls, name + ': exact compile accounting');
+      assert.ok(actual.caseFile.budget.compilerRuns <= RUN_LIMITS.compilerRuns);
       assert.deepEqual(c, before, name + ': input case unchanged');
       if (c === trade && name === 'suggest_routes') assert.ok(returned.suggestions.some(row => row.allGoalsOnTime && row.what.some(change => change.type === 'tradeDownHome')));
       if (c === trade && name === 'balancing_moves') assert.ok(returned.moves.some(row => row.kind.startsWith('tradeDownHome')));
@@ -204,11 +204,11 @@ export async function checkAnalystWiring({ fixtures, options }) {
   for (const [name, input] of [
     ['goal_ways', { route: route('limited'), goalId: example.costId }], ['suggest_routes', {}], ['balancing_moves', { route: route('limited') }]
   ]) {
-    const limited = clone(trade); limited.budget.engineRuns = 59;
+    const limited = clone(trade); limited.budget.compilerRuns = 1499;
     const out = await executeTool(limited, name, input);
     assert.equal(out.result.refusals[0].code, 'budget_exceeded');
-    assert.equal(out.caseFile.budget.engineRuns, 60, name + ': no sixty-first compile');
-    assert.equal(out.caseFile.runLog.at(-1).result.refusals[0].path, '/budget/engineRuns');
+    assert.equal(out.caseFile.budget.compilerRuns, 1500, name + ': no compiler run past the plan guard');
+    assert.equal(out.caseFile.runLog.at(-1).result.refusals[0].path, '/budget/compilerRuns');
   }
   console.log('[AnalystPartC] goal ways, suggestions, ordinary and major balancing, exact compile accounting and cap passed.');
 

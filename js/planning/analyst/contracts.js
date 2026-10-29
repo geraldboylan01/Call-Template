@@ -2,9 +2,9 @@ import Ajv from 'ajv';
 import { FIGURE_KINDS, FIGURE_MODULES } from '../figures/kinds.js';
 import { getLeverCatalogue } from '../plan_pack/lever_catalogue.js';
 
-export const ANALYST_VERSION = 'analyst-tools-2.0.0';
-export const RUN_LIMITS = Object.freeze({ routes: 3, whatifsPerRoute: 8, engineRuns: 60 });
-const ENGINE_TOOLS = Object.freeze(['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']);
+export const ANALYST_VERSION = 'analyst-tools-2.1.0';
+export const RUN_LIMITS = Object.freeze({ routes: 3, whatifsPerRoute: 8, pricingCalls: 30, compilerRunsPerCall: 80, compilerRuns: 1500 });
+export const PRICING_TOOLS = Object.freeze(['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']);
 const object = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
 const text = { type: 'string', minLength: 1 };
 const routeId = { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,63}$' };
@@ -61,7 +61,7 @@ export const TOOL_CATALOGUE = Object.freeze([
   { name: 'balancing_moves', description: 'Find native ordinary goal moves and lever sizes for a route or saved routeId. Omitted route starts an empty draft. An explicit tradeDownHome or sellProperty type uses the native major search, optionally in a fixed year. All compiler invocations count against the engine budget.',
     inputSchema: object({ route, routeId, type: { enum: ['tradeDownHome', 'sellProperty'] }, propertyId: text, year: { type: 'integer' } }) },
   { name: 'run_whatif', description: 'Not built yet: run a sourced what-if.', unavailable: true,
-    inputSchema: object({ routeId, kind: text, parameters: { type: 'object' }, sources: { type: 'object' } }) },
+    inputSchema: object({ routeId, kind: text, parameters: { type: 'object' }, sources: { type: 'object' } }, ['routeId']) },
   { name: 'missing_facts', description: 'Return missing household facts as form questions, and separate implementation gaps.', inputSchema: object() },
   { name: 'submit_story', description: 'Check B1.5 story shape and the existing story model. Full completeness and link checking is pending; this never releases a story.',
     inputSchema: object({ story }, ['story']) }
@@ -84,9 +84,9 @@ export function refused(code, path, message) {
 }
 
 export function budgetRefusal(caseFile, name, input) {
-  if (ENGINE_TOOLS.includes(name)
-    && caseFile.budget.engineRuns >= RUN_LIMITS.engineRuns) {
-    return refused('budget_exceeded', '/budget/engineRuns', 'The plan has used its engine runs.');
+  if (PRICING_TOOLS.includes(name)
+    && caseFile.budget.pricingCalls >= RUN_LIMITS.pricingCalls) {
+    return refused('budget_exceeded', '/budget/pricingCalls', 'The plan has used its pricing tool calls.');
   }
   if (name === 'run_whatif' && (caseFile.budget.whatifsByRoute[input.routeId] ?? 0) >= RUN_LIMITS.whatifsPerRoute) {
     return refused('budget_exceeded', '/budget/whatifsByRoute/' + input.routeId, 'This route has used its what-ifs.');

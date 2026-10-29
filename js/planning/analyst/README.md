@@ -77,11 +77,14 @@ version drift requires a fresh run. After a crash, check that no caller is
 running before removing a stale `.lock` or `case.json.next` file.
 
 The limits are three alternatives in the story, eight what-ifs per route and
-sixty compiler runs. Case creation counts its bridge preflights and the initial
-current-position compilation.
+thirty pricing tool calls per plan. Each call permits at most eighty compiler
+runs, with a separate fifteen-hundred-run guard for the plan. Case creation
+counts its bridge preflights and initial compilation against the plan guard.
 After creation, every actual `compilePlanPack` invocation is charged through a
 call-local `beforeCompile` callback, including profile-bridge preflights and
 nested part c/major-search compiles. The callback stays outside wire packs,
-results and files, and refuses before a sixty-first compile. Cached compilation
-reads and schema/source validation consume no runs. Budgets survive retries,
+results and files, and refuses before exceeding either compiler guard. Selecting
+a cached candidate uses a pricing call but no compiler runs. Read-only tools
+and schema validation consume no pricing calls. Valid pricing attempts that
+return refusals still count, including the unavailable what-if tool. Budgets survive retries,
 process restarts and caller changes. Tests use only invented households.
