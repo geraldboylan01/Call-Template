@@ -3344,13 +3344,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-76594388944e19a3a52f",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-a86aae68337a664f2827",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-38d3b35d7a2928621694",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -5071,6 +5071,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -5078,6 +5080,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -5100,6 +5104,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -5107,6 +5113,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -5129,6 +5137,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -5136,6 +5146,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -5158,6 +5170,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -5165,6 +5179,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -5187,6 +5203,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -5194,6 +5212,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -5216,6 +5236,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -5223,6 +5245,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -5230,6 +5254,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -5350,13 +5490,13 @@
             "title": "sell_investment",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-592ca7d651dfef67ce19",
-              "liquidity_analysis": "case-50152681b872cb708da9",
-              "household_cash_flow": "case-1c41f86d0d840e4b7b73",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-fb26359472582b5e7835",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-399cde5c807ac4e82246",
+              "liquidity_analysis": "case-fd28da0e3af0b1b18f20",
+              "household_cash_flow": "case-6772fac859ed11f32f62",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-249f9ecff97129650294",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -7093,6 +7233,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -7100,6 +7242,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -7122,6 +7266,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -7129,6 +7275,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -7151,6 +7299,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -7158,6 +7308,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -7180,6 +7332,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -7187,6 +7341,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -7209,6 +7365,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -7216,6 +7374,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -7238,6 +7398,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -7245,6 +7407,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -7252,6 +7416,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -7384,13 +7664,13 @@
             "title": "use_cash",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-3eb4a3cb89b590cfb731",
-              "liquidity_analysis": "case-4b7a1dbc780acc236cfe",
-              "household_cash_flow": "case-c8e23810d86131e477e7",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-90287ed7d6806c0cfd4d",
-              "future_cost_fund": "case-13971a7efd9de34f5429"
+              "personal_balance_sheet": "case-16f4b2e990bea383a254",
+              "liquidity_analysis": "case-d2dff0ac0823d05384f4",
+              "household_cash_flow": "case-cb3fb48de323b32f1a1c",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-505b939233b59a29692e",
+              "future_cost_fund": "case-02b10e4df2e2f75b7f95"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -9125,6 +9405,8 @@
                       "required": 4691.225527108235,
                       "planned": 4691.225527108235,
                       "allocated": 4691.225527108235,
+                      "yearlyAllocated": 4691.225527108235,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -9132,6 +9414,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -9154,6 +9438,8 @@
                       "required": 4691.225527108235,
                       "planned": 4691.225527108235,
                       "allocated": 4691.225527108235,
+                      "yearlyAllocated": 4691.225527108235,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -9161,6 +9447,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -9183,6 +9471,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -9190,6 +9480,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -9212,6 +9504,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -9219,6 +9513,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -9241,6 +9537,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -9248,6 +9546,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -9270,6 +9570,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -9277,6 +9579,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -9284,6 +9588,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 1000,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 4691.225527108235
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 4691.225527108235
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -9423,13 +9843,13 @@
             "title": "clear_loan",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-11befcb7a2ac3952cfe3",
-              "liquidity_analysis": "case-8e463d53da07f729ff7b",
-              "household_cash_flow": "case-7f885b3b7a1bbbd80258",
-              "loan_analysis": "case-592e8e095827d8b91651",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-c1ac66a01ed426fa1244",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-24738330f82d0cae7227",
+              "liquidity_analysis": "case-f71c3173d8776c2359f5",
+              "household_cash_flow": "case-c78191792f07f1038bf3",
+              "loan_analysis": "case-6578c0017557be49297c",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-2986ca9017fb5a180015",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -11154,6 +11574,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -11161,6 +11583,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -11183,6 +11607,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -11190,6 +11616,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -11212,6 +11640,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -11219,6 +11649,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -11241,6 +11673,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -11248,6 +11682,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -11270,6 +11706,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -11277,6 +11715,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -11299,6 +11739,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -11306,6 +11748,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -11313,6 +11757,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -11577,13 +12137,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-76594388944e19a3a52f",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-a86aae68337a664f2827",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-38d3b35d7a2928621694",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -13304,6 +13864,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -13311,6 +13873,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -13333,6 +13897,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -13340,6 +13906,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -13362,6 +13930,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -13369,6 +13939,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -13391,6 +13963,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -13398,6 +13972,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -13420,6 +13996,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -13427,6 +14005,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -13449,6 +14029,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -13456,6 +14038,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -13463,6 +14047,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -13583,13 +14283,13 @@
             "title": "extra_pension",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-e97cc9190efcede50844",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-f6dd1fa2395538be1998",
-              "protection_gap": "case-9c967564ff3ffadbe818",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-03ee0c9601c4435a793d",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-77bcb1ae85a1d94221b2",
+              "protection_gap": "case-a87bc7a2a97ced89002e",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -15324,6 +16024,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -15331,6 +16033,8 @@
                       "required": 720,
                       "planned": 720,
                       "allocated": 720,
+                      "yearlyAllocated": 720,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -15353,6 +16057,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -15360,6 +16066,8 @@
                       "required": 734.3999999999978,
                       "planned": 734.3999999999978,
                       "allocated": 734.3999999999978,
+                      "yearlyAllocated": 734.3999999999978,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -15382,6 +16090,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -15389,6 +16099,8 @@
                       "required": 749.0879999999925,
                       "planned": 749.0879999999925,
                       "allocated": 749.0879999999925,
+                      "yearlyAllocated": 749.0879999999925,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -15411,6 +16123,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -15418,6 +16132,8 @@
                       "required": 764.0697599999985,
                       "planned": 764.0697599999985,
                       "allocated": 764.0697599999985,
+                      "yearlyAllocated": 764.0697599999985,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -15440,6 +16156,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -15447,6 +16165,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -15469,6 +16189,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -15476,6 +16198,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -15483,6 +16207,129 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 720
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 734.3999999999978
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 749.0879999999925
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 764.0697599999985
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.14210526315789473,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "explicitContributions": [
+                    {
+                      "personId": "primary",
+                      "annualGrossExtra": 1200,
+                      "maximumAnnualGrossExtra": 20800
+                    }
+                  ],
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -15630,13 +16477,13 @@
             "title": "spend_less",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-a69cf62b6c1d0447369c",
-              "liquidity_analysis": "case-24fadbbfa3419544ce45",
-              "household_cash_flow": "case-c8022bfed62a6b240997",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-2d7d2a4748d5abc864fa",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-8f17b7d4ea559d6c1f03",
+              "liquidity_analysis": "case-83e1130c249502fa4853",
+              "household_cash_flow": "case-3f1c3907a72267c5ad30",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-e69071b00f079de72c77",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -17370,6 +18217,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -17377,6 +18226,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -17399,6 +18250,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -17406,6 +18259,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -17428,6 +18283,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -17435,6 +18292,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -17457,6 +18316,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -17464,6 +18325,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -17486,6 +18349,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -17493,6 +18358,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -17515,6 +18382,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -17522,6 +18391,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -17529,6 +18400,122 @@
                   "planned": 0,
                   "remaining": 28461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -17672,13 +18659,13 @@
             "title": "retire_later",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-1c41f86d0d840e4b7b73",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-5afd397a462d1521c558",
-              "protection_gap": "case-a86aae68337a664f2827",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-6772fac859ed11f32f62",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-a7c1607daddf09f6362a",
+              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -19414,6 +20401,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -19421,6 +20410,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -19443,6 +20434,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -19450,6 +20443,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -19472,6 +20467,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -19479,6 +20476,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -19501,6 +20500,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -19508,6 +20509,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -19530,6 +20533,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -19537,6 +20542,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -19559,6 +20566,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -19566,6 +20575,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -19573,6 +20584,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 66,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -19839,13 +20966,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-76594388944e19a3a52f",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-a86aae68337a664f2827",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-38d3b35d7a2928621694",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -21566,6 +22693,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -21573,6 +22702,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -21595,6 +22726,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -21602,6 +22735,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -21624,6 +22759,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -21631,6 +22768,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -21653,6 +22792,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -21660,6 +22801,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -21682,6 +22825,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -21689,6 +22834,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -21711,6 +22858,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -21718,6 +22867,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -21725,6 +22876,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -21845,13 +23112,13 @@
             "title": "major_spending",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-a4f3b6f0b4ffc66bf68e",
-              "liquidity_analysis": "case-4f20827f78e32c880408",
-              "household_cash_flow": "case-a78d2ba2d9fa9ee76ae5",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-1c9595b0a53c134ab316",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-03ec68a822cfbbb4b539",
+              "liquidity_analysis": "case-ccc43756ee11282df6f3",
+              "household_cash_flow": "case-bab5f162c60e466a4500",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-39583bf0f6a873fd21c1",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -23585,6 +24852,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -23592,6 +24861,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -23614,6 +24885,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -23621,6 +24894,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -23643,6 +24918,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -23650,6 +24927,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -23672,6 +24951,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -23679,6 +24960,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -23701,6 +24984,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -23708,6 +24993,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -23730,6 +25017,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -23737,6 +25026,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -23744,6 +25035,122 @@
                   "planned": 0,
                   "remaining": 30461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -23887,13 +25294,13 @@
             "title": "major_delay",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-1c41f86d0d840e4b7b73",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-d2ee2723370d58d98cf5",
-              "protection_gap": "case-a86aae68337a664f2827",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-6772fac859ed11f32f62",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-6a99a1e61761468cbfec",
+              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -25635,6 +27042,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25642,6 +27051,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25664,6 +27075,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25671,6 +27084,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25693,6 +27108,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25700,6 +27117,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25722,6 +27141,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25729,6 +27150,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25751,6 +27174,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25758,6 +27183,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25780,6 +27207,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25787,6 +27216,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25809,6 +27240,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -25816,6 +27249,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -25823,6 +27258,126 @@
                   "planned": 0,
                   "remaining": 27316.71298133076,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2032,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 68,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -25962,13 +27517,13 @@
             "title": "ordinary_boundary",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-05a7bbca6f53adeb733a",
-              "liquidity_analysis": "case-a0c34aa88d935dc1751c",
-              "household_cash_flow": "case-ed9f16abb28d08a8af31",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-6225422b26d7ad0f5aae",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-5c2fd6a9e59ec4843872",
+              "liquidity_analysis": "case-9cd02b9d033103b1afcb",
+              "household_cash_flow": "case-5e9fbe4659de3371d2d0",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-62af1f8a019de1682fd1",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -27702,6 +29257,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -27709,6 +29266,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -27731,6 +29290,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -27738,6 +29299,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -27760,6 +29323,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -27767,6 +29332,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -27789,6 +29356,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -27796,6 +29365,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -27818,6 +29389,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -27825,6 +29398,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -27847,6 +29422,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -27854,6 +29431,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -27861,6 +29440,122 @@
                   "planned": 0,
                   "remaining": 29661.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -28131,13 +29826,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-9d806a9b6edf93547ed1",
-              "liquidity_analysis": "case-d900b9a5bf504d042735",
-              "household_cash_flow": "case-76594388944e19a3a52f",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-ce2350aa28c54bfbcbe6",
-              "protection_gap": "case-a86aae68337a664f2827",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-45f05eea4064212387de",
+              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
+              "household_cash_flow": "case-38d3b35d7a2928621694",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-68940307f55ab2e489cd",
+              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -29858,6 +31553,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -29865,6 +31562,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -29887,6 +31586,8 @@
                       "required": 5191.560302808516,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -29894,6 +31595,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -29916,6 +31619,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -29923,6 +31628,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -29945,6 +31652,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -29952,6 +31661,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -29974,6 +31685,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -29981,6 +31694,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -30003,6 +31718,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -30010,6 +31727,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -30017,6 +31736,122 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.12631578947368421,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -30137,13 +31972,13 @@
             "title": "combined",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-3d7225eff47fa422272f",
-              "liquidity_analysis": "case-3cbcc251001a7ddb429f",
-              "household_cash_flow": "case-8b96ce4646667b6e2108",
-              "loan_analysis": "case-dc5b41adf375fd715759",
-              "pension_projection": "case-f6dd1fa2395538be1998",
-              "protection_gap": "case-09b640b728986d3d92bf",
-              "future_cost_fund": "case-60bb14e8b9cbf43a70b5"
+              "personal_balance_sheet": "case-dc19e150cf8f274cc12e",
+              "liquidity_analysis": "case-c045fef644a665fef4f1",
+              "household_cash_flow": "case-966d956c046583be3b45",
+              "loan_analysis": "case-efb1268b1976cb53f250",
+              "pension_projection": "case-77bcb1ae85a1d94221b2",
+              "protection_gap": "case-200d10f437e4af4c011d",
+              "future_cost_fund": "case-c3ab915c6e97c744ac65"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -31882,6 +33717,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -31889,6 +33726,8 @@
                       "required": 720,
                       "planned": 720,
                       "allocated": 720,
+                      "yearlyAllocated": 720,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -31911,6 +33750,8 @@
                       "required": 5191.560302808516,
                       "planned": 5191.560302808516,
                       "allocated": 5191.560302808516,
+                      "yearlyAllocated": 5191.560302808516,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -31918,6 +33759,8 @@
                       "required": 734.3999999999978,
                       "planned": 734.3999999999978,
                       "allocated": 734.3999999999978,
+                      "yearlyAllocated": 734.3999999999978,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -31940,6 +33783,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -31947,6 +33792,8 @@
                       "required": 749.0879999999925,
                       "planned": 749.0879999999925,
                       "allocated": 749.0879999999925,
+                      "yearlyAllocated": 749.0879999999925,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -31969,6 +33816,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -31976,6 +33825,8 @@
                       "required": 764.0697599999985,
                       "planned": 764.0697599999985,
                       "allocated": 764.0697599999985,
+                      "yearlyAllocated": 764.0697599999985,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -31998,6 +33849,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -32005,6 +33858,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -32027,6 +33882,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     },
                     {
@@ -32034,6 +33891,8 @@
                       "required": 0,
                       "planned": 0,
                       "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
                       "shortfall": 0
                     }
                   ],
@@ -32041,6 +33900,129 @@
                   "planned": 0,
                   "remaining": 26461.59701866924,
                   "shortfall": 0
+                }
+              ],
+              "goalFunding": [
+                {
+                  "goalId": "fictional_dated_cost",
+                  "kind": "dated_cost",
+                  "order": 1,
+                  "startsInYears": 2,
+                  "wholeCash": 10376.17322430223,
+                  "maximumCash": 10376.17322430223,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 5191.560302808516
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 5191.560302808516
+                    }
+                  ]
+                },
+                {
+                  "goalId": "goal_application_retire",
+                  "kind": "retirement",
+                  "order": 3,
+                  "startsInYears": null,
+                  "wholeCash": null,
+                  "maximumCash": null,
+                  "cashAllocated": 0,
+                  "needsByYear": [
+                    {
+                      "year": 2026,
+                      "amount": 720
+                    },
+                    {
+                      "year": 2027,
+                      "amount": 734.3999999999978
+                    },
+                    {
+                      "year": 2028,
+                      "amount": 749.0879999999925
+                    },
+                    {
+                      "year": 2029,
+                      "amount": 764.0697599999985
+                    },
+                    {
+                      "year": 2030,
+                      "amount": 0
+                    },
+                    {
+                      "year": 2031,
+                      "amount": 0
+                    }
+                  ],
+                  "projectedPotGap": 0,
+                  "contributionBenchmark": {
+                    "currentYear": 2026,
+                    "growthRate": 0.05,
+                    "inflationRate": 0.02,
+                    "wageGrowthRate": 0.02,
+                    "incomeMode": "target",
+                    "targetIncomeToday": 32000,
+                    "horizonEndAge": 100,
+                    "pensions": [
+                      {
+                        "id": "primary",
+                        "title": "Yours pension",
+                        "currentAge": 61,
+                        "retirementAge": 65,
+                        "currentSalary": 76000,
+                        "currentPot": 540000,
+                        "personalPct": 0.14210526315789473,
+                        "employerPct": 0.05,
+                        "includeStatePension": true,
+                        "statePensionFraction": 0.7,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      },
+                      {
+                        "id": "partner",
+                        "title": "Your partner’s pension",
+                        "currentAge": 59,
+                        "retirementAge": 65,
+                        "currentSalary": 58000,
+                        "currentPot": 0,
+                        "personalPct": 0,
+                        "employerPct": 0,
+                        "includeStatePension": true,
+                        "statePensionFraction": 1,
+                        "statePensionStartAge": 66,
+                        "statePensionEscalationRate": 0.02
+                      }
+                    ],
+                    "otherIncomeSources": [
+                      {
+                        "id": "defined-benefit-pension_application_1",
+                        "title": "Defined-benefit pension",
+                        "type": "pension",
+                        "ownerId": "partner",
+                        "annualAmountToday": 22000,
+                        "startAge": 65,
+                        "inflationIndexed": false
+                      }
+                    ],
+                    "statePensionRule": {
+                      "catalogueVersion": "ie-planning-rules-2026.02",
+                      "effectiveFrom": "2026-01-01",
+                      "source": "https://www.gov.ie/en/service/e6f908-state-pension-contributory/"
+                    },
+                    "targetIncomeBasis": "net",
+                    "householdTaxStatus": "single"
+                  },
+                  "oneOffGross": 0,
+                  "explicitContributions": [
+                    {
+                      "personId": "primary",
+                      "annualGrossExtra": 1200,
+                      "maximumAnnualGrossExtra": 20800
+                    }
+                  ],
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
                 }
               ],
               "annualFunding": {
@@ -32478,7 +34460,8 @@
           {
             "code": "invalid_input",
             "path": "/routes/1/changes",
-            "message": "/routes/1/changes: At most one major lever is supported per route; a combined-major search belongs to the later balancing tool."
+            "message": "/routes/1/changes: At most one major move is allowed: a single move can fund this same ordinary draft.",
+            "routeId": "refused"
           }
         ]
       }

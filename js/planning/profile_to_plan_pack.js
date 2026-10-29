@@ -287,7 +287,7 @@ export async function profileToPlanPack(rawProfile, { confirmedRevision, calcula
       }
       if (!pack.chapters.length) break;
     }
-    try { if (pack.chapters.length) planPack = normalizePlanPack(pack); }
+    try { if (pack.chapters.length) planPack = normalizePlanPack(pack, { allowMultipleMajors: true }); }
     catch (error) { gap(error.path ?? '/routes', error.message, null, error.code ?? 'invalid_input'); }
     for (const error of compilation.diagnostics) gap(error.path, error.message, error.chapter, error.code, error.code.startsWith('requires_') ? 'implementation' : 'household_fact');
     return { planPack, compileOptions, missingFacts, omittedChapters, provenance, compilation, routeRefusals: compilation.diagnostics };

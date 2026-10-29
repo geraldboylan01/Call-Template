@@ -100,7 +100,7 @@ const INCOME_FIELDS = Object.freeze(['personId', 'type', 'amount', 'mappedFromJo
 const OUTGOING_FIELDS = Object.freeze(['id', 'label', 'amount']);
 const CASE_FIELDS = Object.freeze(['id', 'title', 'description', 'changes']);
 const CLEAR_FIELDS = Object.freeze(['type', 'outgoingId', 'paidFrom']);
-const PENSION_FIELDS = Object.freeze(['type', 'amount', 'personId']);
+const PENSION_FIELDS = Object.freeze(['type', 'amount', 'personId', 'cashAmount']);
 
 /** A payload carrying any of these is refused: tax is calculated, never stated. */
 const REFUSED_TAX_FIELDS = Object.freeze(['tax', 'totalTax', 'taxRate', 'incomeTax', 'usc', 'prsi']);
@@ -436,7 +436,10 @@ function parseChange(rawChange, where, people, outgoingsById) {
   if (personId === JOINT && people.length === 1) {
     personId = people[0].id;
   }
-  return { type: 'extraPension', amount: rawChange.amount, personId };
+  if (rawChange.cashAmount !== undefined && (!isFiniteNumber(rawChange.cashAmount) || rawChange.cashAmount < 0 || rawChange.cashAmount > rawChange.amount + 1e-8)) {
+    throw new Error(`${where}.cashAmount must be between zero and the contribution increase.`);
+  }
+  return { type: 'extraPension', amount: rawChange.amount, personId, ...(rawChange.cashAmount > 0 ? { cashAmount: Math.min(rawChange.amount, rawChange.cashAmount) } : {}) };
 }
 
 function normalizeScenarios(raw, people, outgoings) {
@@ -875,6 +878,11 @@ function buildCaseModels(inputs, year, options) {
 
   const models = inputs.scenarios.map((scenario) => {
     const contributions = contributionsForCase(scenario, inputs.people, inputs.todayContributions);
+    const cashContributions = Object.fromEntries(inputs.people.map(person => [person.id, 0]));
+    for (const change of scenario.changes.filter(change => change.type === 'extraPension' && change.cashAmount > 0)) {
+      const owners = change.personId === JOINT ? inputs.people.map(person => person.id) : [change.personId];
+      for (const owner of owners) cashContributions[owner] += change.cashAmount / owners.length;
+    }
     const isBase = scenario.id === baseScenario.id;
     const caseEstimate = isBase ? baseEstimate : estimate(scenario.id, contributions);
 
@@ -906,22 +914,24 @@ function buildCaseModels(inputs, year, options) {
         gross,
         tax,
         heldAtZero: tax !== taxBeforeFloor ? taxBeforeFloor : null,
-        // Preserve the existing after-tax figure; bank pay also deducts the
-        // full contribution, exactly once, as the household ledger does.
+        // Payroll contributions reduce bank pay. A cash-funded contribution
+        // was already paid from savings; only its annual tax effect belongs
+        // here. Its gross amount must never be deducted from payroll again.
         takeHome: gross - tax,
-        bankTakeHome: gross - tax - contributions[person.id],
+        bankTakeHome: gross - tax - contributions[person.id] + cashContributions[person.id],
         taxSource: stated ? 'stated' : 'estimated',
         basis: inputs.taxStatus === 'married_or_civil_partners' && inputs.people.length === 2 ? 'allocated' : 'own',
         estimatedTax: Math.max(0, estimatedTax),
         estimatedTakeHome: gross - Math.max(0, estimatedTax),
-        estimatedBankTakeHome: gross - Math.max(0, estimatedTax) - contributions[person.id],
+        estimatedBankTakeHome: gross - Math.max(0, estimatedTax) - contributions[person.id] + cashContributions[person.id],
         usc: injected ? null : caseEstimate.people[person.id].usc,
         prsi: injected ? null : caseEstimate.people[person.id].prsi
       };
     });
 
     const taxTotal = people.reduce((sum, person) => sum + person.tax, 0);
-    const pensionsGross = Object.values(contributions).reduce((sum, amount) => sum + amount, 0);
+    const cashPensionsGross = Object.values(cashContributions).reduce((sum, amount) => sum + amount, 0);
+    const pensionsGross = Object.values(contributions).reduce((sum, amount) => sum + amount, 0) - cashPensionsGross;
 
     // What the contribution saves: each person's tax in this case with no
     // contributions, less their tax with them. An estimate of the change, always,
@@ -933,7 +943,7 @@ function buildCaseModels(inputs, year, options) {
       person.pensionRelief = 0;
       person.pensionCost = contributions[person.personId];
     });
-    if (pensionsGross > 0) {
+    if (pensionsGross + cashPensionsGross > 0) {
       const without = estimate(`${scenario.id}:without-contributions`, noContributions);
       people.forEach((person) => {
         const withoutEstimated = injected
@@ -981,6 +991,7 @@ function buildCaseModels(inputs, year, options) {
       taxTotal,
       taxEstimatedTotal: caseEstimate.total,
       pensionsGross,
+      ...(cashPensionsGross > 0 ? { cashPensionsGross } : {}),
       taxRelief,
       statedLines,
       statedTotal,
@@ -1413,9 +1424,10 @@ export function computeHouseholdCashFlowProjection(rawInputs, options = {}) {
         total: model.totalOutgoings
       },
       pensionContributions: {
-        gross: model.pensionsGross,
+        ...(model.cashPensionsGross > 0 ? { paidFromCash: model.cashPensionsGross } : {}),
+        gross: model.pensionsGross + (model.cashPensionsGross ?? 0),
         taxRelief: model.taxRelief,
-        costAfterRelief: model.pensionsGross - model.taxRelief
+        costAfterRelief: model.pensionsGross + (model.cashPensionsGross ?? 0) - model.taxRelief
       },
       leftOver: {
         amount: model.leftOver,
