@@ -13,6 +13,8 @@ import { resolveTaxRules } from '../js/planning/tax/resolve.js';
 import { PLANEIR_ASSUMPTIONS } from '../js/planning/planeir_assumptions.js';
 import { getFigures } from '../js/planning/figures/get_figures.js';
 import { SECTIONS } from '../js/case_application/schema.js';
+import { computeHouseholdCashFlowProjection } from '../js/household_cash_flow_math.js';
+import { euroText as cashFlowEuroText } from '../js/household_cash_flow_view.js';
 
 const base = () => JSON.parse(readFileSync('scripts/fixtures/plan-packs/valid-b1.json', 'utf8'));
 const compile = async p => {
@@ -36,7 +38,7 @@ async function test(name, fn) {
   catch (error) { failures++; console.error('FAIL ' + name + ': ' + error.stack); }
 }
 // These assertions use the compiled cases, never module samples. This tests the
-// registry's sources; the story/link checker is a separate, later component.
+// registry's sources; check:story-checker tests the separate story/link checker.
 function checkBasis(basis, calculationDate) {
   assert.ok(basis && ['stated', 'calculated', 'assumption', 'official'].includes(basis.kind)); basisChecks++;
   if (basis.kind === 'calculated') assert.ok(basis.engine && basis.calculation && Array.isArray(basis.inputs));
@@ -85,7 +87,12 @@ function checkSources(c, s) {
       if (source.focusTargetId) {
         const target = catalogue.targets.find(row => row.id === source.focusTargetId);
         assert.ok(target?.available);
-        assert.ok(target.value === f.value || target.cells?.some(cell => cell === f.value), f.key + ': actual focused figure');
+        if (source.chapter === 'household_cash_flow') {
+          const model = computeHouseholdCashFlowProjection(native.input, { calculationYear: Number(c.calculationDate.slice(0, 4)) }).debug.cases.find(row => row.id === source.nativeCaseId);
+          const metric = source.path.split('/').at(-1);
+          const shown = metric === 'leftOver' ? model.shownLeftOver : model.lines.find(row => row.id === (metric === 'pensions' ? 'pensions' : 'tax')).shownAmount;
+          assert.ok(target.cells.includes(shown)); assert.equal(f.display, cashFlowEuroText(shown));
+        } else assert.ok(target.value === f.value || target.cells?.some(cell => cell === f.value), f.key + ': actual focused figure');
       }
     }
   }
