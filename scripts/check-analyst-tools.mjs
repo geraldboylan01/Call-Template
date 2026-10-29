@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile, writeFile, rm, stat } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv from 'ajv';
@@ -21,6 +22,31 @@ import { compactStoryFacts } from '../js/plan_story_registry.js';
 import { checkAnalystWiring } from './check-analyst-wiring.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const execFileAsync = promisify(execFile);
+// A native walk can perform up to sixty compiler runs. Transport parity checks
+// its result, not a one-minute latency target on a shared CI runner. Both
+// harnesses get the same finite deadline and CLI results have an explicit cap.
+const harnessTimeoutMs = 5 * 60_000;
+const harnessMaxBuffer = 32 * 1024 * 1024;
+async function harnessCall(label, run) {
+  const started = performance.now();
+  console.log('[AnalystHarness] ' + label + ': started');
+  try { return await run(); }
+  catch (error) {
+    throw new Error(label + ' failed after ' + Math.round(performance.now() - started) + 'ms: '
+      + (error.code ?? '') + ' ' + error.message.slice(-3000));
+  } finally { console.log('[AnalystHarness] ' + label + ': ' + Math.round(performance.now() - started) + 'ms'); }
+}
+function cliTool(name, directory, inputFile) {
+  return harnessCall('CLI ' + name, async () => {
+    const { stdout } = await execFileAsync('npm', ['run', '--silent', 'analyst', '--', name, '--case', directory, '--input', inputFile],
+      { cwd: root, encoding: 'utf8', maxBuffer: harnessMaxBuffer, timeout: harnessTimeoutMs });
+    return JSON.parse(stdout);
+  });
+}
+function mcpTool(name, input) {
+  return harnessCall('MCP ' + name, () => client.callTool({ name, arguments: input }, undefined, { timeout: harnessTimeoutMs }));
+}
 const fixtures = JSON.parse(await readFile(new URL('./fixtures/form-to-profile.households.json', import.meta.url), 'utf8'));
 const requestId = 'analyst-check-' + process.pid;
 const options = (fixture, runId = fixture.id) => ({ requestId, runId, revision: 7, confirmedRevision: 7,
@@ -219,11 +245,9 @@ try {
     const input = tool.name === 'price_route' ? { route } : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: 'goal_application_understand_position' } : {};
     const saved = await readFile(join(directory, 'case.json'), 'utf8');
     await writeFile(inputFile, JSON.stringify(input));
-    const cli = spawnSync('npm', ['run', '--silent', 'analyst', '--', tool.name, '--case', directory, '--input', inputFile], { cwd: root, encoding: 'utf8' });
-    assert.equal(cli.status, 0, cli.stderr);
-    const cliResult = JSON.parse(cli.stdout);
+    const cliResult = await cliTool(tool.name, directory, inputFile);
     await writeFile(join(directory, 'case.json'), saved);
-    const mcp = await client.callTool({ name: tool.name, arguments: input });
+    const mcp = await mcpTool(tool.name, input);
     assert.deepEqual(JSON.parse(mcp.content[0].text), cliResult, tool.name + ': real stdio and CLI parity');
     assert.deepEqual(mcp.structuredContent, cliResult);
   }
@@ -266,12 +290,10 @@ try {
     if (replaySeed) await writeFile(join(wiring.directory, 'case.json'), replaySeed);
     const snapshot = await readFile(join(wiring.directory, 'case.json'), 'utf8');
     await writeFile(wiringInput, JSON.stringify(input));
-    const cli = spawnSync('npm', ['run', '--silent', 'analyst', '--', name, '--case', wiring.directory, '--input', wiringInput], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
-    assert.equal(cli.status, 0, String(cli.error ?? '') + cli.stderr.slice(-3000));
-    const expected = JSON.parse(cli.stdout);
+    const expected = await cliTool(name, wiring.directory, wiringInput);
     assert.equal(expected.ok, true, JSON.stringify(expected.refusals));
     await writeFile(join(wiring.directory, 'case.json'), snapshot);
-    const actual = await client.callTool({ name, arguments: input });
+    const actual = await mcpTool(name, input);
     assert.deepEqual(actual.structuredContent, expected, 'Native wiring parity: ' + name);
     if (!replaySeed) replaySeed = await readFile(join(wiring.directory, 'case.json'), 'utf8');
   }
