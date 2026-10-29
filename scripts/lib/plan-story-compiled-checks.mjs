@@ -241,9 +241,7 @@ export async function runPlanStoryCompiledTests() {
       // The analyst is told the keys the screen can open.
       const position = await callLocalTool(created.directory, 'read_position', {});
       assert.equal(position.ok, true);
-      assert.ok(position.data.storyFacts['position.netWorth'] && position.data.storyFacts['issues.debts_other_than_mortgage.liability_application_loan_0.balance'], 'the story facts are listed');
-      assert.equal(position.data.storyFacts['position.netWorth'].opens, 'module');
-      assert.equal(position.data.storyFacts['position.spareCash'].opens, 'plan');
+      assert.ok(position.data.storyFacts.includes('position.netWorth') && position.data.storyFacts.includes('issues.debts_other_than_mortgage.liability_application_loan_0.balance'), 'the story facts are listed');
 
       const empty = run();
       assert.equal(empty.status, 1);

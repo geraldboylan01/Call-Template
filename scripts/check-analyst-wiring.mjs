@@ -18,6 +18,8 @@ import { sha256Json } from '../js/planning/utils.js';
 import { reviewedRouteExample } from './fixtures/form-to-plan-reviewed.mjs';
 import { majorHouseholds } from './fixtures/major-levers.households.mjs';
 import { createLocalCase } from './analyst-local-store.mjs';
+import { checkReply } from './lib/analyst-reply-check.mjs';
+import { TOOL_CATALOGUE } from '../js/planning/analyst/contracts.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const fact = path => ({ kind: 'fact', path });
@@ -47,6 +49,13 @@ export async function checkAnalystWiring({ fixtures, options }) {
   properties.rental.goals.find(goal => goal.goalId === 'fictional_dated_cost').targetAmount.amount = 150000;
   const trade = await reviewedCase(properties.tradeDown, 'trade');
   const rental = await reviewedCase(properties.rental, 'rental');
+  for (const c of [reviewed, trade, rental]) for (const tool of TOOL_CATALOGUE) {
+    if (['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves'].includes(tool.name)) continue; // Exercised below with actual priced choices.
+    const input = tool.name === 'price_route' ? { route: route('compact_check') }
+      : tool.name === 'goal_ways' ? { goalId: example.costId } : {};
+    const out = await executeTool(c, tool.name, input);
+    checkReply(tool.name, out.result, input, c.pinned.runId);
+  }
   const unknownMove = await executeTool(trade, 'balancing_moves', { type: 'invented_move' });
   assert.equal(unknownMove.result.refusals[0].path, '/input/type');
   assert.equal(unknownMove.caseFile.budget.engineRuns, trade.budget.engineRuns);
@@ -75,6 +84,7 @@ export async function checkAnalystWiring({ fixtures, options }) {
     const alternative = route('test_' + change.type.toLowerCase(), change);
     const out = await executeTool(c, 'price_route', { route: alternative });
     assert.equal(out.result.ok, true, change.type + ': ' + JSON.stringify(out.result.refusals));
+    checkReply('price_route', out.result, { route: alternative }, change.type);
     const compiled = out.caseFile.pricedRoutes[alternative.id];
     const position = readPlanPosition(compiled);
     const selected = position.routes.find(row => row.routeId === alternative.id);
@@ -128,6 +138,7 @@ export async function checkAnalystWiring({ fixtures, options }) {
     const out = await executeTool(c, 'balancing_moves', { route: draft, type, ...(propertyId ? { propertyId } : {}), year: 2026 });
     assert.equal(out.result.ok, true, JSON.stringify(out.result));
     assert.equal(out.result.data.status, 'sized');
+    checkReply('balancing_moves', out.result, {}, type);
     let compiles = 0; const execution = { beforeCompile: () => { compiles++; } };
     const assembly = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate, clientLabel: c.pinned.planPack.clientName, routes: [], ...execution });
     const native = await sizeMajorMove(assembly.planPack, draft, { type, propertyId, year: 2026 }, execution);
@@ -155,7 +166,7 @@ export async function checkAnalystWiring({ fixtures, options }) {
   ordinaryProfile.assets.forEach(asset => { asset.currentValue.amount = asset.type === 'cash' ? 21000 : 0; });
   ordinaryProfile.goals.find(goal => goal.goalId === example.costId).targetAmount.amount = 100000;
   const ordinary = await reviewedCase(ordinaryProfile, 'ordinary');
-  for (const c of [reviewed, trade]) {
+  for (const c of [reviewed, trade, rental]) {
     for (const [name, input] of [
       ['goal_ways', { route: route('walk'), goalId: example.costId }],
       ['suggest_routes', {}], ['balancing_moves', { route: route('walk') }]
@@ -163,14 +174,23 @@ export async function checkAnalystWiring({ fixtures, options }) {
       const before = clone(c);
       const actual = await executeTool(c, name, input);
       assert.equal(actual.result.ok, true, name + ': ' + JSON.stringify(actual.result.refusals));
-      let calls = 0; const execution = { beforeCompile: () => { calls++; } };
+      checkReply(name, actual.result, input, c.pinned.runId);
+      if (c === rental) continue; // Native financial parity is already checked on the other households.
+      let calls = 0; const execution = { candidatePrefix: 'candidate_' + (c.runLog.length + 1), beforeCompile: () => { calls++; } };
       const assembly = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate,
         clientLabel: c.pinned.planPack.clientName, routes: [], ...execution });
       const expected = name === 'goal_ways' ? await goalWays(assembly, input.route, input.goalId, execution)
         : name === 'suggest_routes' ? await suggestRoutes(assembly, execution)
           : await balancingMoves(await nativePriceRoute(assembly, input.route, execution), execution);
       const { settingSourceChecks, ...returned } = actual.result.data;
-      assert.deepEqual(returned, expected, name + ': native function result');
+      const financial = value => JSON.parse(JSON.stringify(value, (key, v) => ['candidateId', 'wireRoute'].includes(key) ? undefined : v));
+      assert.deepEqual(financial(returned), expected, name + ': native function result');
+      const choice = returned.suggestions?.find(row => row.pricing?.compilation?.status === 'compiled');
+      if (choice) {
+        const cached = await executeTool(actual.caseFile, 'price_route', { candidateId: choice.candidateId });
+        assert.equal(cached.result.ok, true);
+        assert.equal(cached.caseFile.budget.engineRuns, actual.caseFile.budget.engineRuns, 'Retaining a priced candidate never recompiles it');
+      }
       assert.equal(actual.caseFile.budget.engineRuns - c.budget.engineRuns, calls, name + ': exact compile accounting');
       assert.ok(actual.caseFile.budget.engineRuns <= 60);
       assert.deepEqual(c, before, name + ': input case unchanged');

@@ -2,7 +2,7 @@ import Ajv from 'ajv';
 import { FIGURE_KINDS, FIGURE_MODULES } from '../figures/kinds.js';
 import { getLeverCatalogue } from '../plan_pack/lever_catalogue.js';
 
-export const ANALYST_VERSION = 'analyst-tools-1.2.0';
+export const ANALYST_VERSION = 'analyst-tools-2.0.0';
 export const RUN_LIMITS = Object.freeze({ routes: 3, whatifsPerRoute: 8, engineRuns: 60 });
 const ENGINE_TOOLS = Object.freeze(['price_route', 'goal_ways', 'suggest_routes', 'balancing_moves', 'run_whatif']);
 const object = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
@@ -45,9 +45,10 @@ const story = object({
 }, ['routeId', 'headline', 'summary', 'sections']);
 
 export const TOOL_CATALOGUE = Object.freeze([
-  { name: 'read_position', description: 'Read native facts, bases and issues for current (default) or a successfully priced route. storyFacts is the only placeholder key set the story screen opens.', inputSchema: object({ routeId }) },
+  { name: 'read_position', description: 'Read compact facts and story keys for current or a priced route. Ask for up to twenty keys to inspect their full source and basis.', inputSchema: object({ routeId, keys: { type: 'array', minItems: 1, maxItems: 20, uniqueItems: true, items: text } }) },
   { name: 'read_figures', description: 'Read dated register values and their provenance.', inputSchema: object({
-    ids: { type: 'array', items: text }, kinds: { anyOf: [{ type: 'array', items: { enum: FIGURE_KINDS } }, { enum: FIGURE_KINDS }] },
+    offset: { type: 'integer', minimum: 0 },
+    ids: { type: 'array', maxItems: 10, items: text }, kinds: { anyOf: [{ type: 'array', items: { enum: FIGURE_KINDS } }, { enum: FIGURE_KINDS }] },
     module: { enum: FIGURE_MODULES }, onDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' }
   }) },
   { name: 'read_explainers', description: 'Read the code-owned explainers by ID or by the figures they explain. Read-only; wording is returned unchanged.',
@@ -56,7 +57,7 @@ export const TOOL_CATALOGUE = Object.freeze([
     inputSchema: object({ routeId, goalId: text, route }, ['goalId']) },
   { name: 'suggest_routes', description: 'Return up to five independently priced native ledger walks, with their source drafts and reasons. Choose candidates through price_route; the story still has at most three alternatives.', inputSchema: object() },
   { name: 'price_route', description: 'Price any catalogue lever through the full profile-to-plan compiler and resource ledger. Returns the ledger, route story facts with bases, issues, and setting-source checks.',
-    inputSchema: object({ route, reason: text }, ['route']) },
+    inputSchema: { ...object({ route, candidateId: text, reason: text }), anyOf: [{ required: ['route'] }, { required: ['candidateId'] }] } },
   { name: 'balancing_moves', description: 'Find native ordinary goal moves and lever sizes for a route or saved routeId. Omitted route starts an empty draft. An explicit tradeDownHome or sellProperty type uses the native major search, optionally in a fixed year. All compiler invocations count against the engine budget.',
     inputSchema: object({ route, routeId, type: { enum: ['tradeDownHome', 'sellProperty'] }, propertyId: text, year: { type: 'integer' } }) },
   { name: 'run_whatif', description: 'Not built yet: run a sourced what-if.', unavailable: true,

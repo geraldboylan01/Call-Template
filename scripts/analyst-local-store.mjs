@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createCaseFile } from '../js/planning/analyst/case_file.js';
 import { executeTool } from '../js/planning/analyst/executors.js';
 import { refused } from '../js/planning/analyst/contracts.js';
+import { toolReply } from '../js/planning/analyst/replies.js';
 
 export const ANALYSES_ROOT = fileURLToPath(new URL('../private/analyses/', import.meta.url));
 
@@ -56,7 +57,7 @@ export async function callLocalTool(directory, name, input) {
     }
     const output = await executeTool(caseFile, name, input);
     await save(path, output.caseFile);
-    return output.result;
+    return toolReply(name, output.result, input);
   } finally {
     await lock.close();
     await unlink(join(path, '.lock'));

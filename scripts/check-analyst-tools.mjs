@@ -20,6 +20,7 @@ import { missingFactQuestions } from '../js/planning/analyst/questions.js';
 import { readPlanPosition } from '../js/planning/plan_pack/story_facts.js';
 import { compactStoryFacts } from '../js/plan_story_registry.js';
 import { checkAnalystWiring } from './check-analyst-wiring.mjs';
+import { checkReply } from './lib/analyst-reply-check.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const execFileAsync = promisify(execFile);
@@ -87,6 +88,13 @@ try {
     assert.equal(position.result.ok, true);
     assert.deepEqual(position.result.data.facts, readPlanPosition(c.pinned.currentPosition).routes[0].facts);
     assert.deepEqual(position.result.data.storyFacts, compactStoryFacts(readPlanPosition(c.pinned.currentPosition), 'current'));
+    const compact = checkReply('read_position', position.result, {}, fixture.id);
+    assert.ok(Object.keys(compact.data.facts).every(key => !key.startsWith('current.')));
+    assert.ok(Object.values(compact.data.facts).every(fact => !fact.source && !fact.basis));
+    const keys = Object.keys(position.result.data.facts).slice(0, 20);
+    const detail = await executeTool(c, 'read_position', { keys });
+    checkReply('read_position', detail.result, { keys }, fixture.id);
+    assert.deepEqual(detail.result.data.facts, Object.fromEntries(keys.map(key => [key, position.result.data.facts[key]])));
     for (const fact of Object.values(position.result.data.facts)) {
       assert.ok(fact.key && fact.status && fact.basis && fact.source.routeId === 'current' && fact.source.versions);
     }
@@ -94,6 +102,7 @@ try {
       const input = tool.name === 'price_route' ? { route: { id: 'trial', changes: [] } }
         : tool.name === 'submit_story' ? { story: story() } : tool.name === 'goal_ways' ? { goalId: c.pinned.profile.goals[0].goalId } : {};
       const out = await executeTool(c, tool.name, input);
+      checkReply(tool.name, out.result, input, fixture.id);
       assert.equal(out.caseFile.runLog.length, 2);
       assert.deepEqual(out.caseFile.runLog.at(-1).result, out.result);
       if (tool.unavailable) { assertRefusal(out.result); assert.equal(firstCode(out), 'not_built_yet'); }
@@ -156,6 +165,21 @@ try {
     const result = await executeTool(base, 'read_figures', input);
     assert.deepEqual(result.result.data.figures, getFigures(input).map(figure => ({ ...figure, explainers: figure.explainers ?? [] })));
     assert.ok(!JSON.stringify(result.result.data.figures).includes('"quotes"'));
+  }
+  const allFigures = getFigures();
+  const unfunded = checkReply('goal_ways', { ok: true, data: { ways: [{ kind: 'lump_sum',
+    pricing: { ledger: null, refusals: [{ code: 'missing_information', path: '/household/assets', message: 'Cash is unavailable.' }] },
+    shortfall: { cash: 2000, yearly: [{ year: 2028, amount: 1000 }] } }] } });
+  assert.deepEqual(unfunded.data.ways[0].shortfall, { cash: 2000, yearly: [{ year: 2028, amount: 1000 }] }, 'An unpriced way keeps its native shortfall and calendar year');
+  const indexIds = [];
+  for (let offset = 0; offset < allFigures.length; offset += 100) {
+    const raw = (await executeTool(base, 'read_figures', { offset })).result;
+    indexIds.push(...checkReply('read_figures', raw, { offset }).data.figures.map(row => row.id));
+  }
+  assert.deepEqual(indexIds, allFigures.map(row => row.id), 'Index pages omit no figures');
+  for (let offset = 0; offset < allFigures.length; offset += 10) {
+    const ids = allFigures.slice(offset, offset + 10).map(row => row.id);
+    checkReply('read_figures', (await executeTool(base, 'read_figures', { ids })).result, { ids });
   }
   const a = await executeTool(base, 'read_position', {});
   const b = await executeTool(a.caseFile, 'read_figures', { kinds: ['law'] });
@@ -249,7 +273,7 @@ try {
     await writeFile(join(directory, 'case.json'), saved);
     const mcp = await mcpTool(tool.name, input);
     assert.deepEqual(JSON.parse(mcp.content[0].text), cliResult, tool.name + ': real stdio and CLI parity');
-    assert.deepEqual(mcp.structuredContent, cliResult);
+    assert.equal(mcp.structuredContent, undefined);
   }
   await writeFile(join(directory, '.lock'), '');
   assert.equal((await callLocalTool(directory, 'price_route', { route })).refusals[0].code, 'case_busy');
@@ -294,7 +318,10 @@ try {
     assert.equal(expected.ok, true, JSON.stringify(expected.refusals));
     await writeFile(join(wiring.directory, 'case.json'), snapshot);
     const actual = await mcpTool(name, input);
-    assert.deepEqual(actual.structuredContent, expected, 'Native wiring parity: ' + name);
+    assert.equal(actual.structuredContent, undefined);
+    assert.equal(actual.content.length, 1);
+    assert.deepEqual(JSON.parse(actual.content[0].text), expected, 'Native wiring parity: ' + name);
+    assert.ok(Buffer.byteLength(actual.content[0].text) < 60_000, name + ': MCP reply exceeds 60 KB');
     if (!replaySeed) replaySeed = await readFile(join(wiring.directory, 'case.json'), 'utf8');
   }
   console.log('[AnalystTools] schemas, confirmed cases, all tools, refusals, budgets, CLI/MCP parity and private paths passed.');
