@@ -1,0 +1,121 @@
+{
+  "routeId": "candidate_4_4",
+  "headline": "Moving home to meet your dated cost",
+  "summary": "This illustration combines your spare savings, working money and the proceeds of moving to a smaller home. It meets your dated cost while keeping your emergency reserve. You have not told us whether you would consider moving.",
+  "sections": [
+    {
+      "id": "current_position", "title": "Where you stand today",
+      "parts": {
+        "does": "Today your yearly surplus is {current.position.leftOver}, with {current.position.spareCash} above your emergency reserve.",
+        "why": "These are today's arrangements, before the home move or money assigned to goals.",
+        "gives": "Your net worth is {@current.position.netWorth}. Your net worth as a share of assets is {current.position.solvency}; your home accounts for {current.position.homeShare} of your net worth. The recorded pressure point is: {current.position.pressurePoints}.",
+        "costs": "Keeping everything as it is leaves the dated cost short of funding, even though you have spare savings.",
+        "check": "Whether your spending, savings and future cost still reflect what you expect."
+      }
+    },
+    {
+      "id": "ledger", "title": "How the money is assigned",
+      "parts": {
+        "does": "This route keeps assets already assigned to retirement out of the money available for the dated cost: {ledger.crossedOff}.",
+        "why": "A pension pot cannot also pay a separate bill, and the emergency reserve stays protected.",
+        "gives": "Including the proposed sale proceeds, the cash above the reserve starts at {steps.reserve.cashAfter}, with {steps.reserve.surplusAfter} of working money each year before goal funding. After assigning the opening savings to the dated cost, the capital balance is {steps.fictional_dated_cost.cashAfter} and yearly money left is {steps.fictional_dated_cost.surplusAfter}. The retirement step adds no further allocation: its capital balance is {steps.goal_application_retire.cashAfter}, with {steps.goal_application_retire.surplusAfter} of yearly money left.",
+        "costs": "That capital balance includes sale proceeds committed to the dated cost across its funding years. It is not spare money to spend again.",
+        "check": "The goal section shows when working money and sale proceeds are paid into the fund."
+      }
+    },
+    {
+      "id": "protecting", "title": "Keeping an emergency reserve",
+      "parts": {
+        "does": "The route protects {position.reserve}, based on {position.reserveMonths} months of essential spending.",
+        "why": "The reserve supports you before money is assigned to goals.",
+        "gives": "If you could not work, the calculated yearly income gap is {protection.primary-cannot-work.gap}. {protection.primary-cannot-work.months.notApplicable} If your partner could not work, the gap is {protection.partner-cannot-work.gap}. {protection.partner-cannot-work.months.notApplicable} In the illustration of your death, the gap is {protection.primary-died.gap}. {protection.primary-died.months.notApplicable}",
+        "costs": "Money protected for emergencies cannot fund the home purchase or your dated cost.",
+        "check": "Whether essential spending and the income that would continue reflect your circumstances."
+      }
+    },
+    {
+      "id": "inefficiencies", "title": "Borrowing and savings",
+      "issues": ["debts_other_than_mortgage", "idle_cash_vs_debt"],
+      "parts": {
+        "does": "The recorded borrowing issue is {issues.debts_other_than_mortgage.headline}: your {issues.debts_other_than_mortgage.liability_application_loan_0.label} has {issues.debts_other_than_mortgage.liability_application_loan_0.balance} outstanding at {issues.debts_other_than_mortgage.liability_application_loan_0.rate}, with a current yearly interest cost of {issues.debts_other_than_mortgage.liability_application_loan_0.yearlyCost} a year. Its recorded end date is {issues.debts_other_than_mortgage.liability_application_loan_0.endDate}.",
+        "why": "The rate comparison is {issues.idle_cash_vs_debt.headline}. Today's spare cash is {current.issues.idle_cash_vs_debt.fictional_home_loan.spareCash}, earning {current.issues.idle_cash_vs_debt.fictional_home_loan.cashRateAfterTax} after tax against a home-loan rate of {current.issues.idle_cash_vs_debt.fictional_home_loan.loanRate}. On {current.issues.idle_cash_vs_debt.fictional_home_loan.comparedAmount}, the calculated yearly difference is {current.issues.idle_cash_vs_debt.fictional_home_loan.yearlyDifference}.",
+        "gives": "The home move settles the home loan. The route still has a car-loan comparison: its capital above the reserve is {issues.idle_cash_vs_debt.liability_application_loan_0.spareCash}, with an assumed cash return after tax of {issues.idle_cash_vs_debt.liability_application_loan_0.cashRateAfterTax} against borrowing at {issues.idle_cash_vs_debt.liability_application_loan_0.loanRate}. The comparison on {issues.idle_cash_vs_debt.liability_application_loan_0.comparedAmount} gives a yearly difference of {issues.idle_cash_vs_debt.liability_application_loan_0.yearlyDifference}.",
+        "costs": "The car loan continues. The sale proceeds shown above are committed to the dated cost, so the rate comparison does not make those proceeds available again.",
+        "check": "The car-loan terms and whether any early settlement charge applies."
+      }
+    },
+    {
+      "id": "goals", "title": "The home move and your goals", "majorMoves": ["change_1"],
+      "parts": {
+        "does": "{moves.change_1.property} is sold in {moves.change_1.year} and this route buys a smaller home costing {@moves.change_1.newHomePrice}.",
+        "why": "The dated cost needs more money on time than your spare savings and working surplus provide. Moving is shown as an illustration because you have not told us whether you would consider it.",
+        "gives": "After settling the home loan and transaction costs, the move releases {@moves.change_1.cashReleased} for the dated cost.",
+        "costs": "Selling costs are {moves.change_1.sellingCosts}. Buying costs are {moves.change_1.buyingCosts}, including stamp duty of {moves.change_1.stampDuty}. The calculated sale tax is {moves.change_1.tax}. Moving also means leaving a home and possibly an area you know.",
+        "check": "Whether a suitable smaller home is realistic at this price, the actual selling and buying costs, any mortgage break charge, and whether moving is something you would consider."
+      },
+      "goals": [
+        {
+          "goalId": "fictional_dated_cost", "title": "{goals.fictional_dated_cost.title}",
+          "parts": {
+            "does": "This goal is {goals.fictional_dated_cost.state}. Its funding uses {goals.fictional_dated_cost.chosenWay}, alongside {goals.fictional_dated_cost.routeCash} of opening savings assigned in {goals.fictional_dated_cost.routeCashYear}.",
+            "why": "The fund receives {goals.fictional_dated_cost.routeYearly} each year during its saving period. That amount combines working money and capital; it is not an amount your income must supply alone.",
+            "gives": "In {goals.fictional_dated_cost.funding.2026.year}, working money supplies {goals.fictional_dated_cost.funding.2026.yearlyAllocated} and the sale supplies {goals.fictional_dated_cost.funding.2026.capitalAllocated}. In {goals.fictional_dated_cost.funding.2027.year}, working money supplies {goals.fictional_dated_cost.funding.2027.yearlyAllocated} and the sale supplies {goals.fictional_dated_cost.funding.2027.capitalAllocated}.",
+            "costs": "The saving period uses the available working surplus and the sale proceeds committed here. Those amounts cannot also fund another purchase.",
+            "check": "The amount and date of the cost, and whether the fund's assumptions still fit when the bill is due."
+          }
+        },
+        {
+          "goalId": "goal_application_retire", "title": "{goals.goal_application_retire.title}",
+          "parts": {
+            "does": "Your retirement goal is {goals.goal_application_retire.state}, using {goals.goal_application_retire.chosenWay}.",
+            "why": "The recorded pensions and current funding meet the stated retirement target in this calculation.",
+            "gives": "This route assigns additional cash of {goals.goal_application_retire.routeCash} and additional yearly money of {goals.goal_application_retire.routeYearly} to retirement.",
+            "costs": "Pension resources remain assigned to retirement and depend on the stated benefits and calculation assumptions.",
+            "check": "Your pension statements, retirement dates and the income you expect to spend."
+          }
+        }
+      ]
+    },
+    {
+      "id": "cash_flow_after", "title": "What is left in each year", "freedCash": ["liability_application_loan_0", "fictional_dated_cost"],
+      "parts": {
+        "does": "While the goal is being funded, the money left is {cashFlow.2026.remaining} in {cashFlow.2026.year} and {cashFlow.2027.remaining} in {cashFlow.2027.year}. Sale proceeds meet the part that working money cannot pay.",
+        "why": "Funding for {freed.fictional_dated_cost.label}, previously {freed.fictional_dated_cost.amount} each year from working money and capital together, ends from {freed.fictional_dated_cost.fromYear}. The {freed.liability_application_loan_0.label} repayment frees {freed.liability_application_loan_0.amount} a year from the ledger year {freed.liability_application_loan_0.fromYear}.",
+        "gives": "After the saving period, yearly money left is {cashFlow.2028.remaining} in {cashFlow.2028.year} and {cashFlow.2029.remaining} in {cashFlow.2029.year}. Your working income stops in {retirement.primary.fromYear}. Yearly money left for further goals is then {cashFlow.2030.remaining} in {cashFlow.2030.year} and {cashFlow.2031.remaining} in {cashFlow.2031.year}. Your partner's working income stops in {retirement.partner.fromYear}; working money available for further goals is {cashFlow.2032.remaining} in {cashFlow.2032.year}.",
+        "costs": "No spare yearly working money remains during the dated-cost saving period. The later figures follow the stated retirement dates and do not assume pay rises.",
+        "check": "The car-loan payoff timing and each retirement date, since these change when working money becomes available."
+      }
+    },
+    {
+      "id": "net_worth_after", "title": "What you own after the changes",
+      "parts": {
+        "does": "After the route's opening changes, your net worth is {position.netWorth}.",
+        "why": "Your home is smaller, the home loan is settled, and money is assigned to the dated-cost fund.",
+        "gives": "What you own would cover what you owe. The difference from today's net worth is {vsCurrent.netWorth}.",
+        "costs": "Selling and buying costs reduce net worth. Cash assigned to the dated-cost fund is committed, even while it remains an asset in the opening balance sheet.",
+        "check": "The property valuation, settlement figure and transaction costs before relying on the illustration."
+      }
+    },
+    {
+      "id": "risks", "title": "What could change the result", "risks": [{"changeIds": ["change_1"]}],
+      "parts": {
+        "does": "The main change is the home move and its release of capital for your dated cost.",
+        "why": "A lower sale price, a dearer replacement home or higher transaction costs would leave less capital for the fund.",
+        "gives": "The figures describe the priced route under its recorded assumptions. The separate what-if tool is not built, so further stress results have not been produced.",
+        "costs": "You cannot treat the priced route as evidence that a changed sale price or cost would still meet the goal.",
+        "check": "Sale price, replacement price, costs and timing are the subjects for further stress testing when that tool is available."
+      }
+    },
+    {
+      "id": "check_next", "title": "What remains to be checked",
+      "parts": {
+        "does": "This remains a fictional illustration for review.",
+        "why": "Whether moving home is acceptable matters as much as whether the figures add up.",
+        "gives": "You can see today's position, the transaction, the dated-cost funding years and the later working-money timeline separately.",
+        "costs": "Further stress calculations have not been produced because the what-if tool is not built.",
+        "check": "Whether you would consider moving; a suitable home and actual transaction costs; the dated cost's amount and date; pension statements and retirement dates; and the effect of changed assumptions."
+      }
+    }
+  ],
+  "whatifs": [{"id":"incomeStops.primary"},{"id":"incomeStops.partner"},{"id":"death"}]
+}

@@ -391,7 +391,7 @@ export async function prepareResourceRoute(pack, route, index) {
     missing('/chapters', 'Include household_cash_flow so protection uses the changed per-person bank pay after pension contributions.');
   }
   const horizon = Math.max(1, propertyMove ? propertyMove.offset + 1 : 0, ...quotes.map(g => g.needs.length),
-    ...costs.map(g => (g.contract.moneyEachYear.at(-1)?.year ?? calendarYear - 1) - calendarYear + 1));
+    ...costs.map(g => (g.contract.moneyEachYear.at(-1)?.year ?? calendarYear - 1) - calendarYear + 1)) + 1;
   // Today's surplus is earned; a repayment the route clears or that ends is spending that stops.
   const earnedLeftOver = baselineLeftOver - context.spendingRemoved;
   // Only property proceeds are implicitly used to fill this route's yearly

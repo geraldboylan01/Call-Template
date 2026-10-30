@@ -116,6 +116,11 @@ try {
     assert.ok(missing.questions.length);
     for (const q of missing.questions) {
       assert.ok(q.path && q.label && types.has(q.type) && q.affects.length && q.reason);
+      assert.equal(q.technicalReason, q.reason);
+      assert.doesNotMatch(q.label, /profilePath|v1|schema|adapter|planningInputs|HouseholdProfile|What details/);
+      if (q.factId === 'goal_flexibility') assert.ok(c.pinned.profile.goals.some(goal => q.label.includes(goal.title)));
+      if (q.fieldPath.endsWith('/netAnnual')) assert.match(q.label, /income pay each year after tax/);
+      if (q.factId === 'essential_spending_basis') assert.equal(q.label, 'How much of your monthly spending is essential spending, including rent or mortgage?');
       assert.equal(Object.hasOwn(q, 'answer'), false);
       if (q.type === 'choice') assert.ok(q.options.length);
       if (q.proposed) assert.equal(q.writesTo, 'confirmed_form_revision_only');
@@ -200,7 +205,7 @@ try {
   for (const edit of badStories) { const s = story(); edit(s); assertRefusal((await executeTool(base, 'submit_story', { story: s })).result); }
   const checked = await executeTool(base, 'submit_story', { story: story() });
   assert.equal(checked.result.ok, false, 'A shape-only story is no longer accepted');
-  assert.equal(checked.result.data.report.checkerVersion, 'story-checker-1.0.0');
+  assert.equal(checked.result.data.report.checkerVersion, 'story-checker-1.1.0');
   assert.deepEqual(checked.caseFile.storyDrafts, {});
   assert.equal(checked.result.data.releaseEligible, false);
   assert.equal(checked.caseFile.reviewStatus, 'pending');

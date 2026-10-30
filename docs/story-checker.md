@@ -74,3 +74,18 @@ For `{@key}`, code follows the fact's route through `chapterCases`, checks its p
 The existing fact registry now gives chapter sources a null plan-panel target and uses native protection/cash-flow display formatting. It never invents a focus for an undisplayed per-person figure. A missing target, changed case, unequal value or unit, stale version, unsupported exact adapter or mismatched display is a refusal at the story text path. There is no sample lookup, nearest case or silent formatting repair. The current chapter-backed story facts use balance sheet, liquidity, cash flow and protection; a new chapter-backed fact needs its exact native adapter before it can be linked.
 
 `npm run check:story-checker` runs in `check:consumer`. It includes independently authored placeholder stories for the invented renter and borrower, the B1 fixture, a negative case for every rule, native rounding/case/target comparisons, major-move evidence and immutable-input checks. Both authored accepted stories also build and import a complete screen session, including their limitation placeholders. The analyst tool runs this checker before accepting a draft, and `analyst:open` requires a matching passing report.
+
+
+The checker requires property-move fact keys beside the section's `majorMoves`
+reference. A fact narrated only in another section does not meet this floor.
+Goal capital and income allocations belong in their own goal subsection; yearly
+remaining money and its calendar years belong in `cash_flow_after`. Route
+stories open with `current.position.*`, preserving today's values and sources.
+
+Protection figure restrictions apply throughout `protecting`, and to the
+individual sentence describing a death or hypothetical income-stop case
+elsewhere. A dated retirement statement and ordinary solvency wording using
+“cover” do not create protection scope. A money placeholder may be followed
+directly by “a year” or “a month”; standalone typed durations remain refused.
+The “Words the checker refuses” block in the analyst wording guide is checked
+against the rule vocabulary by `check:story-checker`.

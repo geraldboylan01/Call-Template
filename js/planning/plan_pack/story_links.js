@@ -8,9 +8,20 @@ import { PLANEIR_ASSUMPTIONS_VERSION } from '../planeir_assumptions.js';
 import { IE_TAX_RULES_VERSION } from '../tax/rules_ie.js';
 import { figuresVersionLabel } from '../figures/get_figures.js';
 import { pointerValue } from './story_registry.js';
+import { storyDisplay, shownMoneyValue } from './story_display.js';
+import { propertyMoveChapter, propertyMoveRows } from './property_move_story.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function nativeFigure(entry, source, compiled, target) {
+  if (source.chapter === 'property_move') {
+    const ledger = compiled.resourceLedger.routes.find(row => row.routeId === source.routeId);
+    const property = compiled.source.normalizedPlanPack.household.properties.find(row => row.propertyId === ledger.propertyMove.propertyId);
+    const built = propertyMoveChapter(ledger.propertyMove, property);
+    if (!same(entry.input, built.input) || !same(entry.payload, built.payload) || !same(entry.metrics, built.metrics)) throw new Error('The transaction module differs from its priced ledger.');
+    const row = propertyMoveRows(ledger.propertyMove, property).find(row => row.key === source.path.split('/').at(-1));
+    if (!row || source.nativeCaseId !== null) throw new Error('No matching transaction figure.');
+    return { value: row.value, unit: row.unit, display: row.display, targetValue: row.display };
+  }
   const metric = source.path?.split('/metrics/')[1]?.replaceAll('~1', '/').replaceAll('~0', '~');
   if (source.chapter === 'personal_balance_sheet') {
     if (source.nativeCaseId !== 'current' || !['base', 'current'].includes(entry.nativeCaseId)) throw new Error('The balance sheet link must open the compiled current-position case.');
@@ -81,6 +92,7 @@ export function checkStoryLink(compiled, fact, path) {
     if (fact.unit !== shown.unit || target.units && target.units !== shown.unit) return refuse('link_unit', 'The story and linked module measure this figure in different units.');
     const targetValue = shown.targetValue ?? shown.value;
     if (!same(target.value, targetValue) && !target.cells?.some(cell => same(cell, targetValue))) return refuse('link_target', 'The selected target does not show this calculated figure.');
+    if (['EUR', 'EUR/year', 'EUR/month'].includes(shown.unit)) shown.display = storyDisplay(shownMoneyValue(shown.display), shown.unit);
     if (fact.display !== shown.display) return refuse('link_display', 'The linked figure must read exactly as the module formats it: ' + shown.display + '.');
     return { ok: true, key: fact.key, ...shown, source };
   } catch (error) { return refuse('link_calculation', error.message); }

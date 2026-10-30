@@ -1,5 +1,6 @@
 import { buildPresentationCatalogue } from '../../presenter_catalogue.js';
 import { StoryBasis } from './story_basis.js';
+import { storyDisplay as display, shownMoneyValue } from './story_display.js';
 import { euroText as protectionEuroText } from '../../protection_gap_math.js';
 import { euroText as cashFlowEuroText } from '../../household_cash_flow_view.js';
 
@@ -8,15 +9,6 @@ export function pointerValue(root, pointer) {
 }
 const pointerPart = value => String(value).replaceAll('~', '~0').replaceAll('/', '~1');
 const finite = value => typeof value === 'number' && Number.isFinite(value);
-const money = value => new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(value);
-function display(value, unit) {
-  if (unit === 'EUR' || unit === 'EUR/year' || unit === 'EUR/month') return money(value);
-  if (unit === 'ratio') return new Intl.NumberFormat('en-IE', { style: 'percent', maximumFractionDigits: 2 }).format(value);
-  if (unit === 'list') return value.length ? value.map(row => typeof row === 'string' ? row : row.label ?? row.title ?? row.text ?? row.message ?? row.id).join(', ') : 'None';
-  if (unit === 'year' || unit === 'date' || unit === 'text') return String(value);
-  return new Intl.NumberFormat('en-IE', { maximumFractionDigits: 2 }).format(value);
-}
-
 /** A local registry, with no global state, UI, tool dispatch or story checker. */
 export class StoryRegistry {
   constructor(compiled, route, index) {
@@ -43,12 +35,12 @@ export class StoryRegistry {
   }
   source(path, extra = {}) {
     return { kind: 'plan', chapter: null, routeId: this.route.id, caseId: null, nativeCaseId: null, focusTargetId: null,
-      panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.1.1' }, ...extra };
+      panel: 'plan_facts', ...(path ? { path } : {}), versions: { ...this.compiled.versions, storyFacts: 'story-facts-1.2.0' }, ...extra };
   }
   chapterSource(chapter, relative, value, requestedCaseId = chapter.entry.nativeCaseId) {
     const { entry } = chapter;
     const source = this.source(chapter.path + relative, { kind: 'chapter', chapter: chapter.id, panel: null, caseId: entry.id,
-      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.1.1' },
+      nativeCaseId: requestedCaseId, versions: { ...this.compiled.versions, ...entry.provenance?.versions, storyFacts: 'story-facts-1.2.0' },
       basis: entry.basis, inputHash: entry.inputHash });
     // Discover actual existing targets from the compiled payload and outputs.
     // No target is invented when the catalogue offers no corresponding figure.
@@ -73,12 +65,13 @@ export class StoryRegistry {
       : cashFlowColumn ? candidates.find(row => row.kind === 'table-row' && row.cells?.[0] === native?.label && row.columns?.includes(cashFlowColumn))
       : chapter.id === 'household_cash_flow' ? null
       : candidates.find(row => row.kind === 'holding' && row.label.toLowerCase() === labels && row.value === value)
-        ?? candidates.find(row => row.kind === 'table-row' && String(row.cells?.[0]).toLowerCase() === labels && row.cells.some(cell => cell === value))
-        ?? candidates.find(row => row.kind === 'table-row' && native && row.cells?.[0] === native.label && row.cells.some(cell => cell === value));
+        ?? candidates.find(row => row.kind === 'table-row' && String(row.cells?.[0]).toLowerCase() === labels && row.cells.some(cell => cell === value || chapter.id === 'property_move' && cell === display(value, chapter.entry.units[metric])))
+        ?? candidates.find(row => row.kind === 'table-row' && native && row.cells?.[0] === native.label && row.cells.some(cell => cell === value || chapter.id === 'property_move' && cell === display(value, chapter.entry.units[metric])));
     if (target) {
       source.focusTargetId = target.id;
       if (target.value === value && target.displayValue) source.display = target.displayValue;
       if (cashFlowColumn) source.display = cashFlowEuroText(target.cells[target.columns.indexOf(cashFlowColumn)]);
+      if (chapter.id === 'property_move') source.display = display(value, chapter.entry.units[metric]);
     }
     return source;
   }
@@ -87,7 +80,8 @@ export class StoryRegistry {
     if (value === undefined || value === null || (typeof value === 'number' && !finite(value))) {
       return this.unavailable(key, 'This figure was not produced by the compiled plan.', source);
     }
-    const fact = { key, value: structuredClone(value), unit, display: shown ?? source.display ?? display(value, unit), status: 'available', source,
+    const fact = { key, value: structuredClone(value), unit, display: ['EUR', 'EUR/year', 'EUR/month'].includes(unit) ? display(shownMoneyValue(shown ?? source.display ?? value), unit)
+        : unit === 'text' && /goals\..*\.(?:state|chosenWay)$/.test(key) ? String(value).replace(/^./, c => c.toLowerCase()) : shown ?? source.display ?? display(value, unit), status: 'available', source,
       basis: this.bases.for(key, value, source), ...(source.explainerId ? { explainerId: source.explainerId } : {}) };
     this.facts[key] = fact; return fact;
   }

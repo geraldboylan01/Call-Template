@@ -3344,13 +3344,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-38d3b35d7a2928621694",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-1585bd7b9b5025f39fa2",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -4734,6 +4734,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -5254,6 +5260,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -5281,6 +5320,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -5368,8 +5408,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -5490,13 +5529,13 @@
             "title": "sell_investment",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-399cde5c807ac4e82246",
-              "liquidity_analysis": "case-fd28da0e3af0b1b18f20",
-              "household_cash_flow": "case-6772fac859ed11f32f62",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-249f9ecff97129650294",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-c3ea5629922c1e4e05ac",
+              "liquidity_analysis": "case-2ae9cfcee7e90ef9c7ed",
+              "household_cash_flow": "case-ed69859279b5c6f94515",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-c1d5613b724dd8a42e5b",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -6894,6 +6933,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -7416,6 +7461,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -7443,6 +7521,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -7530,8 +7609,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -7664,13 +7742,13 @@
             "title": "use_cash",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-16f4b2e990bea383a254",
-              "liquidity_analysis": "case-d2dff0ac0823d05384f4",
-              "household_cash_flow": "case-cb3fb48de323b32f1a1c",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-505b939233b59a29692e",
-              "future_cost_fund": "case-02b10e4df2e2f75b7f95"
+              "personal_balance_sheet": "case-105b3588b80417c7f235",
+              "liquidity_analysis": "case-b13614fd5487f4e5fd42",
+              "household_cash_flow": "case-0c7ab764ef7cc0b6c951",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-d16bab0fbf0ee5de202a",
+              "future_cost_fund": "case-7f208a8fd41ec82c54e4"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -9060,6 +9138,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -9588,6 +9672,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -9615,6 +9732,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -9702,8 +9820,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -9843,13 +9960,13 @@
             "title": "clear_loan",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-24738330f82d0cae7227",
-              "liquidity_analysis": "case-f71c3173d8776c2359f5",
-              "household_cash_flow": "case-c78191792f07f1038bf3",
-              "loan_analysis": "case-6578c0017557be49297c",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-2986ca9017fb5a180015",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-2b5dde7c5b0fc758d0f9",
+              "liquidity_analysis": "case-85f81b909380e1219008",
+              "household_cash_flow": "case-40f6751676e7c8051d0a",
+              "loan_analysis": "case-90d0738ca786967574a2",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-d76b6a7e6bdab8179689",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -11239,6 +11356,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -11757,6 +11880,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -11784,6 +11940,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -11871,8 +12028,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -12137,13 +12293,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-38d3b35d7a2928621694",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-1585bd7b9b5025f39fa2",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -13527,6 +13683,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -14047,6 +14209,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -14074,6 +14269,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -14161,8 +14357,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -14283,13 +14478,13 @@
             "title": "extra_pension",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-03ee0c9601c4435a793d",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-77bcb1ae85a1d94221b2",
-              "protection_gap": "case-a87bc7a2a97ced89002e",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-00cfb680dcc18166af17",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-1fc49efdab8282ce9178",
+              "protection_gap": "case-e7540a31da73fe5e9266",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -15679,6 +15874,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -16207,6 +16408,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -16234,6 +16468,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -16328,8 +16563,7 @@
                       "annualGrossExtra": 1200,
                       "maximumAnnualGrossExtra": 20800
                     }
-                  ],
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  ]
                 }
               ],
               "annualFunding": {
@@ -16477,13 +16711,13 @@
             "title": "spend_less",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-8f17b7d4ea559d6c1f03",
-              "liquidity_analysis": "case-83e1130c249502fa4853",
-              "household_cash_flow": "case-3f1c3907a72267c5ad30",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-e69071b00f079de72c77",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-04a0aa226ba33c130a52",
+              "liquidity_analysis": "case-890da88b0c188d23866c",
+              "household_cash_flow": "case-1b82c30601968f6ed716",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-9911e73723d76c53ba1b",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -17872,6 +18106,12 @@
                   "current": 25461.59701866924,
                   "route": 28461.59701866924,
                   "difference": 3000
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -18400,6 +18640,39 @@
                   "planned": 0,
                   "remaining": 28461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 53978.31,
+                  "freed": 4800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -18427,6 +18700,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -18514,8 +18788,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -18659,13 +18932,13 @@
             "title": "retire_later",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-6772fac859ed11f32f62",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-a7c1607daddf09f6362a",
-              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-ed69859279b5c6f94515",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-facdb3b9e3ad5ff2f157",
+              "protection_gap": "case-1585bd7b9b5025f39fa2",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -20056,6 +20329,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -20584,6 +20863,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -20611,6 +20923,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -20698,8 +21011,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -20966,13 +21278,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-38d3b35d7a2928621694",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-1585bd7b9b5025f39fa2",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -22356,6 +22668,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -22876,6 +23194,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -22903,6 +23254,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -22990,8 +23342,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -23112,13 +23463,13 @@
             "title": "major_spending",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-03ec68a822cfbbb4b539",
-              "liquidity_analysis": "case-ccc43756ee11282df6f3",
-              "household_cash_flow": "case-bab5f162c60e466a4500",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-39583bf0f6a873fd21c1",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-24ca25af269a062e31bc",
+              "liquidity_analysis": "case-ddc4744c3ef71f7d74d1",
+              "household_cash_flow": "case-c40d7a1dfb308c9e3584",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-fe37ce1f40bd1d533c1a",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -24507,6 +24858,12 @@
                   "current": 25461.59701866924,
                   "route": 30461.59701866924,
                   "difference": 5000
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -25035,6 +25392,39 @@
                   "planned": 0,
                   "remaining": 30461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 55978.31,
+                  "freed": 6800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -25062,6 +25452,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -25149,8 +25540,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -25294,13 +25684,13 @@
             "title": "major_delay",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-6772fac859ed11f32f62",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-6a99a1e61761468cbfec",
-              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-ed69859279b5c6f94515",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-40ea0a770e6be87b9f46",
+              "protection_gap": "case-1585bd7b9b5025f39fa2",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -26694,8 +27084,14 @@
                 },
                 {
                   "year": 2032,
-                  "current": null,
+                  "current": 0,
                   "route": 27316.71298133076,
+                  "difference": 27316.71298133076
+                },
+                {
+                  "year": 2033,
+                  "current": null,
+                  "route": 0,
                   "difference": null
                 }
               ],
@@ -27258,6 +27654,39 @@
                   "planned": 0,
                   "remaining": 27316.71298133076,
                   "shortfall": 0
+                },
+                {
+                  "offset": 7,
+                  "year": 2033,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -27285,6 +27714,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -27376,8 +27806,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -27517,13 +27946,13 @@
             "title": "ordinary_boundary",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-5c2fd6a9e59ec4843872",
-              "liquidity_analysis": "case-9cd02b9d033103b1afcb",
-              "household_cash_flow": "case-5e9fbe4659de3371d2d0",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-62af1f8a019de1682fd1",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-0041346ec0698fe6f695",
+              "liquidity_analysis": "case-ca99d99ff093efa4a0cd",
+              "household_cash_flow": "case-6e0e83a2841dac75a881",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-05ad7efdb3b1ea3f01d8",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -28912,6 +29341,12 @@
                   "current": 25461.59701866924,
                   "route": 29661.59701866924,
                   "difference": 4200
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -29440,6 +29875,39 @@
                   "planned": 0,
                   "remaining": 29661.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 55178.31,
+                  "freed": 6000,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -29467,6 +29935,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -29554,8 +30023,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -29826,13 +30294,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-45f05eea4064212387de",
-              "liquidity_analysis": "case-3a39e6dcfb58773a98f2",
-              "household_cash_flow": "case-38d3b35d7a2928621694",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-68940307f55ab2e489cd",
-              "protection_gap": "case-35c9d85c4f6e2ad9e0f4",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-261306361c9ba99155e0",
+              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
+              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-388118dd734e78f803c4",
+              "protection_gap": "case-1585bd7b9b5025f39fa2",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -31216,6 +31684,12 @@
                   "current": 25461.59701866924,
                   "route": 25461.59701866924,
                   "difference": 0
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -31736,6 +32210,39 @@
                   "planned": 0,
                   "remaining": 25461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 50978.31,
+                  "freed": 1800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -31763,6 +32270,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -31850,8 +32358,7 @@
                     "targetIncomeBasis": "net",
                     "householdTaxStatus": "single"
                   },
-                  "oneOffGross": 0,
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  "oneOffGross": 0
                 }
               ],
               "annualFunding": {
@@ -31972,13 +32479,13 @@
             "title": "combined",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-dc19e150cf8f274cc12e",
-              "liquidity_analysis": "case-c045fef644a665fef4f1",
-              "household_cash_flow": "case-966d956c046583be3b45",
-              "loan_analysis": "case-efb1268b1976cb53f250",
-              "pension_projection": "case-77bcb1ae85a1d94221b2",
-              "protection_gap": "case-200d10f437e4af4c011d",
-              "future_cost_fund": "case-c3ab915c6e97c744ac65"
+              "personal_balance_sheet": "case-fd91d9e7795b15f9c55c",
+              "liquidity_analysis": "case-043c931d1cb8f8ddf6a4",
+              "household_cash_flow": "case-e928c9d64758af26ba44",
+              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
+              "pension_projection": "case-1fc49efdab8282ce9178",
+              "protection_gap": "case-17c2a5ba4a4443aa6077",
+              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -33372,6 +33879,12 @@
                   "current": 25461.59701866924,
                   "route": 26461.59701866924,
                   "difference": 1000
+                },
+                {
+                  "year": 2032,
+                  "current": 0,
+                  "route": 0,
+                  "difference": 0
                 }
               ],
               "goals": [
@@ -33900,6 +34413,39 @@
                   "planned": 0,
                   "remaining": 26461.59701866924,
                   "shortfall": 0
+                },
+                {
+                  "offset": 6,
+                  "year": 2032,
+                  "leftOver": 51978.31,
+                  "freed": 2800,
+                  "earningShare": 0,
+                  "available": 0,
+                  "cashflowDeficit": 0,
+                  "goals": [
+                    {
+                      "goalId": "fictional_dated_cost",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    },
+                    {
+                      "goalId": "goal_application_retire",
+                      "required": 0,
+                      "planned": 0,
+                      "allocated": 0,
+                      "yearlyAllocated": 0,
+                      "capitalAllocated": 0,
+                      "shortfall": 0
+                    }
+                  ],
+                  "required": 0,
+                  "planned": 0,
+                  "remaining": 0,
+                  "shortfall": 0
                 }
               ],
               "goalFunding": [
@@ -33927,6 +34473,7 @@
                   "kind": "retirement",
                   "order": 3,
                   "startsInYears": null,
+                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark",
                   "wholeCash": null,
                   "maximumCash": null,
                   "cashAllocated": 0,
@@ -34021,8 +34568,7 @@
                       "annualGrossExtra": 1200,
                       "maximumAnnualGrossExtra": 20800
                     }
-                  ],
-                  "timingBasis": "per_person_retirement_ages_in_contributionBenchmark"
+                  ]
                 }
               ],
               "annualFunding": {

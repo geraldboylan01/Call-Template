@@ -1,6 +1,9 @@
 import { readPlanPosition } from '../plan_pack/story_facts.js';
 
-const entries = facts => Object.entries(facts ?? {}).filter(([key]) => !key.startsWith('current.'));
+const entries = (facts, requirements) => {
+  const needed = new Set((requirements?.required ?? []).filter(row => ['current_position', 'inefficiencies'].includes(row.section)).map(row => row.key));
+  return Object.entries(facts ?? {}).filter(([key]) => !key.startsWith('current.') || requirements && requirements.routeId !== 'current' && (key.startsWith('current.position.') || needed.has(key)));
+};
 const pick = (value, keys) => Object.fromEntries(keys.filter(key => value?.[key] !== undefined).map(key => [key, value[key]]));
 const storyKeys = compiled => {
   if (compiled?.status !== 'compiled') return [];
@@ -38,9 +41,9 @@ export function toolReply(name, result, input = {}) {
   if (!result.data) return result;
   const data = result.data;
   if (name === 'read_position') return { ...result, data: {
-    routeId: data.routeId, facts: input?.keys ? data.facts : Object.fromEntries(entries(data.facts).map(([key, fact]) => [key,
+    routeId: data.routeId, facts: input?.keys ? data.facts : Object.fromEntries(entries(data.facts, data.storyRequirements).map(([key, fact]) => [key,
       { key, display: fact.display, unit: fact.unit, status: fact.status, basisKind: fact.basis?.kind }])),
-    storyFacts: entries(data.storyFacts).map(([key]) => key),
+    storyFacts: entries(data.storyFacts, data.storyRequirements).map(([key]) => key),
     goalOrder: data.goalWalk?.map(row => row.goalId), issues: data.issues?.map(row => pick(row, ['id', 'headline', 'headlineKey'])),
     unavailableIssues: data.unavailableIssues, storyRequirements: data.storyRequirements
   } };
