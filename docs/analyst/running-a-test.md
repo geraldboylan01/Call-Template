@@ -242,3 +242,41 @@ creation added 0.9 seconds and 15 compiler runs: **42.3 seconds and
 used 40 of eighty compiles. The largest reply was 36,647 bytes, below 60 KB.
 The story passed `story-checker-1.0.0` and opened through `analyst:open`. Full
 results, inputs and `walk-timing.json` stay in the private case directory.
+
+## Debt-first trade-down walk
+
+On 30 October 2026, a fresh `fictional-trade-down` case pinned to
+`plan-pack-1.8.0` completed the actual CLI walk: read current, suggest routes,
+inspect both goals' ways, price the route, read its facts, submit the fixture
+story and prepare its session with `analyst:open`.
+
+Every suggested family now clears the invented car loan before funding goals.
+For the story, the former replacement-home price of €472,988.11 was retained
+to isolate the change: `clearOutgoing debt_0` from savings, `useCash remaining`
+for the dated cost, then `tradeDownHome`. Both goals are on time, the €21,000
+reserve remains protected, and money left in both 2026 and 2027 is €377.18,
+compared with €0 in the former route. A freshly sized major move can instead
+use the improvement for a dearer replacement home.
+
+| CLI call | Elapsed | Compiler runs |
+| --- | ---: | ---: |
+| `suggest_routes` | 27.9 s | 40 |
+| `goal_ways: dated cost` | 6.8 s | 14 |
+| `goal_ways: retirement` | 3.3 s | 12 |
+| `price_route: same home transaction, debt first` | 1.7 s | 9 |
+| `read_position: retained route` | 1.1 s | 0 |
+| `submit_story` | passing | 0 |
+
+The run used four pricing calls and ninety compiler runs, including fifteen
+for case creation. The largest reply was 45,425 bytes, below 60 KB. The full
+story passed `story-checker-1.1.0`; `analyst:open` checked it again and prepared
+the session. The source is `scripts/fixtures/analyst-trade-down-story.json`.
+Its rendered text is included in the pull request. The case, replies, timing,
+and session remain under git-ignored `private/analyses/`.
+
+Retained routes that leave a flagged loan running return a note with its
+liability path and a required inefficiency reason and annual interest fact.
+Recorded repayment restrictions use the optional liability fact
+`earlyRepaymentAllowed: false`; missing terms are not invented. The property
+transaction's `loanRepaid` fact names the secured loan and settlement amount,
+separately from clearing dearer borrowing out of savings.

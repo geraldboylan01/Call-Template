@@ -14,6 +14,7 @@ You have real freedom here. Code offers starting points; you choose, change them
 This is how a planner builds a route, and how you build one.
 
 1. Start from the current position. Note the spare cash and the money left over each year.
+   Before walking the goals, clear dearer loans and cards flagged by `idle_cash_vs_debt` from spare cash above the reserve, dearest rate first. Every walk starts here, including keeping the cash and major moves. Keep a debt only when the cash cannot cover it, clearing it would leave an otherwise on-time goal short, or its recorded terms prevent clearance. The inefficiencies section must use the returned code fact to say why a dear loan is left running, or that it is not cleared and what it costs each year. The mortgage comes last, through its own three goal ways and existing lump-sum test. A sale repaying its secured loan uses the sale's `loanRepaid` fact.
 2. Take the goals in the ledger's order (see `method.md`): the reserve, protection, loans and cards, dated costs soonest first, the mortgage, then retirement.
 3. At each goal, call `goal_ways` with the route so far. It tells you what is still available at that point, and prices each way of meeting the goal:
    - from the lump sum still available;
@@ -44,7 +45,7 @@ A route is worth showing when:
 
 Aim for two or three routes that each tell a different story. Useful contrasts:
 - **Cash first:** spare cash goes to the goals in the method's order (often clearing dear debt, then a lump sum towards the soonest dated cost or the mortgage), so the yearly money is free for later goals.
-- **Keep the cash, use the yearly money:** savings stay as they are (beyond the reserve), and the goals are met from what is left over each year.
+- **Keep the cash, use the yearly money:** after clearing dearer loans and cards, keep the remaining savings above the reserve and meet goals from what is left over each year.
 - **A different shape:** a goal moved within its flexibility, or a major lever (below), when the first two leave goals late or short.
 
 `suggest_routes` composes walks like these for you, already priced, with what each changes and why. Start from them, but do not stop at them if this household needs something they do not offer.

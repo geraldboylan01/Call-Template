@@ -67,7 +67,7 @@ try {
   assert.deepEqual(costWays.ways.map(way => way.kind), ['surplus', 'lump_sum', 'mix']);
   assert.ok(costWays.ways.every(way => way.meetsGoalOnTime));
   const kept = costWays.ways[0], cash = costWays.ways[1], mix = costWays.ways[2];
-  close(cash.pricing.ledger.cashAllocated, costWays.ways[0].funding.wholeCash);
+  close(cash.pricing.ledger.cashAllocated - kept.pricing.ledger.cashAllocated, costWays.ways[0].funding.wholeCash);
   assert.ok(cash.funding.needsByYear.every(row => row.amount < 0.005));
   assert.ok(mix.pricing.ledger.cashAllocated > 0 && mix.pricing.ledger.cashAllocated < cash.pricing.ledger.cashAllocated);
   assert.ok(kept.pricing.ledger.years[0].planned > mix.pricing.ledger.years[0].planned);
@@ -108,7 +108,8 @@ try {
   assert.deepEqual(mortgageWays.ways[0].pricing.ledger, mortgageWays.ways.at(-1).pricing.ledger);
   const walkedDebts = await suggestRoutes(debts.compilation);
   const first = walkedDebts.suggestions.find(row => row.families.includes('lump_sum_first'));
-  assert.deepEqual(first.route.changes.filter(row => row.type === 'useCash').map(row => row.goalId), ['invented_loan_goal', reviewed.costId, 'invented_mortgage_goal']);
+  assert.equal(first.route.changes[0].type, 'clearOutgoing');
+  assert.deepEqual(first.route.changes.filter(row => row.type === 'useCash').map(row => row.goalId), [reviewed.costId, 'invented_mortgage_goal']);
   const lessCash = structuredClone(debts.compilation.source.normalizedPlanPack);
   lessCash.household.assets.find(asset => asset.assetId === lessCash.planningInputs.cashAssetId).currentValue = eur(25000);
   const refusedCash = await checkWays({ source: { normalizedPlanPack: lessCash } }, loanCash.route, 'invented_mortgage_goal');
@@ -191,6 +192,7 @@ try {
     && ordinaryWalk.route.changes.some(row => row.type === 'sellAsset'), 'Compose cash and ordinary changes where no single move is enough');
   await parity(combination.compilation, ordinaryWalk.pricing);
   for (let index = 0; index < ordinaryWalk.route.changes.length; index++) {
+    if (ordinaryWalk.route.changes[index].type === 'clearOutgoing') continue; // Removing inefficiency precedes the goal minima.
     const reduced = structuredClone(ordinaryWalk.route); reduced.changes.splice(index, 1);
     assert.equal((await priceRoute(combination.compilation, reduced)).meetsAllGoals, false, 'No redundant change in the ordinary combination');
   }

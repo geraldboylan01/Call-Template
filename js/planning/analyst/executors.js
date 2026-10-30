@@ -12,6 +12,8 @@ import { missingFactQuestions } from './questions.js';
 import { TOOL_CATALOGUE, PRICING_TOOLS, RUN_LIMITS, validateToolInput, refused, budgetRefusal } from './contracts.js';
 import { caseRefusal } from './case_file.js';
 import { compilerBudget } from './budget.js';
+import { inefficiencyFirst, debtNotes } from '../plan_pack/debt_efficiency.js';
+import { walkSession } from '../plan_pack/walk_session.js';
 
 const ok = data => ({ ok: true, status: 'ok', data });
 const fromError = (error, fallback = '/input') => ({ ok: false, status: 'refused',
@@ -85,7 +87,8 @@ function pricedResult(caseFile, compiled, routeId) {
     ledger: compiled.resourceLedger.routes.find(row => row.routeId === routeId),
     position: facts.selected, storyFacts: facts.storyFacts,
     chapters: facts.chapters, facts: facts.position.routes.find(row => row.routeId === routeId).facts,
-    ledgerSummary: facts.ledgerSummary, versions: compiled.versions, sourceHash: compiled.source.hash };
+    ledgerSummary: facts.ledgerSummary, versions: compiled.versions, sourceHash: compiled.source.hash,
+    notes: debtNotes(compiled.resourceLedger.routes.find(row => row.routeId === routeId)) };
 }
 
 async function priceRoute(caseFile, { route, candidateId, reason }, execution) {
@@ -161,13 +164,14 @@ async function balancingMoves(caseFile, input, execution) {
     const pricing = await nativePriceRoute(assembly, route, execution);
     return nativeResult(await nativeBalancingMoves(pricing, execution), { settingSourceChecks: checks });
   }
-  const sized = await sizeMajorMove(assembly.planPack, route, { type, propertyId, year },
+  const start = await inefficiencyFirst(walkSession(assembly, execution), route);
+  const sized = await sizeMajorMove(assembly.planPack, start.draft, { type, propertyId, year },
     { maxProbes: RUN_LIMITS.compilerRunsPerCall, ...execution });
   if (sized.status === 'refused') return { ...fromError({ diagnostics: sized.refusals }), data: { ...sized, settingSourceChecks: checks } };
   if (sized.status === 'sized') {
     caseFile.routeDrafts[route.id] = { route: cloneJson(sized.route), reason: 'Native major-move sizing within the recorded bounds.' };
     const priced = pricedResult(caseFile, sized.compilation, route.id);
-    return ok({ ...sized, position: priced.position, facts: priced.facts, storyFacts: priced.storyFacts, versions: priced.versions, sourceHash: priced.sourceHash,
+    return ok({ ...sized, position: priced.position, facts: priced.facts, storyFacts: priced.storyFacts, notes: priced.notes, versions: priced.versions, sourceHash: priced.sourceHash,
       settingSourceChecks: settingSourceChecks(assembly.planPack, sized.route) });
   }
   return ok({ ...sized, settingSourceChecks: checks });

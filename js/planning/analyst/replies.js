@@ -33,7 +33,7 @@ function choiceView(choice) {
       yearly: (choice.shortfall.yearly ?? []).filter(row => row.amount > 0.005) } } : {}),
     ...(choice.funding ? { funding: pick(choice.funding, ['kind', 'wholeCash', 'maximumCash', 'cashAllocated', 'startsInYears', 'projectedPotGap', 'timingBasis']) } : {}),
     ...(route ? { route } : {}),
-    ledger: ledgerView(priced.ledger), refusals: priced.refusals ?? choice.refusals ?? [], storyFacts: storyKeys(priced.compilation) };
+    ledger: ledgerView(priced.ledger), refusals: priced.refusals ?? choice.refusals ?? [], notes: priced.notes ?? choice.notes ?? [], storyFacts: storyKeys(priced.compilation) };
 }
 
 /** Only the harness reply is projected. The executor result and audit log stay full. */

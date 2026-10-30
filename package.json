@@ -183,7 +183,7 @@
     "check:route-levers": "node ./scripts/check-route-levers.mjs",
     "check:story-facts": "node ./scripts/check-story-facts.mjs",
     "check:story-checker": "node ./scripts/check-story-checker.mjs",
-    "check:ledger-walk": "node ./scripts/check-ledger-walk.mjs"
+    "check:ledger-walk": "node ./scripts/check-debt-efficiency.mjs && node ./scripts/check-ledger-walk.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

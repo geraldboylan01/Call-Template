@@ -47,7 +47,7 @@ function debtsAt(pack, property, date, debtInputs) {
     if (!projection.payoffDateIso && date > projection.endMonthIso) refuse(path + '/remainingTermMonths', 'A sale after an unpaid loan’s term needs its settlement/balloon facts; the old repayment is not extended.');
     const previous = date === pack.calculationDate ? null : projection.monthlySchedule.filter(row => row.dateIso < date).at(-1);
     const balanceAtSale = previous?.balanceEnd ?? projection.openingBalance;
-    return { liabilityId: id, balance: balanceAtSale,
+    return { liabilityId: id, label: debt.label, balance: balanceAtSale,
       annualPayment: balanceAtSale > 0 ? 12 * (debtInputs?.[id] ? projection.monthlyPaymentUsed : monthly) : 0,
       endsInYears: projection.payoffDateIso ? Math.ceil(projection.monthsSimulated / 12) : null };
   });

@@ -2152,6 +2152,7 @@
         "debts": [
           {
             "liabilityId": "fictional_home_loan",
+            "label": "Invented home loan",
             "balance": 60000,
             "annualPayment": 7200,
             "endsInYears": null
@@ -2347,6 +2348,22 @@
             },
             "payerBasis": "stated_goal_payers"
           }
+        }
+      ],
+      "debtDecisions": [
+        {
+          "liabilityId": "liability_application_loan_0",
+          "label": "car loan",
+          "path": "/household/liabilities/0",
+          "code": "not_cleared",
+          "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+          "goalIds": [],
+          "retained": true,
+          "yearlyCost": 150,
+          "repaymentsStopped": 0,
+          "spareCash": 371568.2,
+          "comparedAmount": 3000,
+          "yearlyDifference": 145.98000000000002
         }
       ]
     }
@@ -4681,6 +4698,7 @@
         "debts": [
           {
             "liabilityId": "fictional_rental_loan",
+            "label": "Invented rental loan",
             "balance": 50000,
             "annualPayment": 4800,
             "endsInYears": 14
@@ -5235,6 +5253,22 @@
             },
             "payerBasis": "stated_goal_payers"
           }
+        }
+      ],
+      "debtDecisions": [
+        {
+          "liabilityId": "liability_application_loan_0",
+          "label": "car loan",
+          "path": "/household/liabilities/0",
+          "code": "not_cleared",
+          "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+          "goalIds": [],
+          "retained": true,
+          "yearlyCost": 150,
+          "repaymentsStopped": 0,
+          "spareCash": 263699.55,
+          "comparedAmount": 3000,
+          "yearlyDifference": 145.98000000000002
         }
       ]
     },
@@ -5982,6 +6016,7 @@
         "debts": [
           {
             "liabilityId": "fictional_rental_loan",
+            "label": "Invented rental loan",
             "balance": 49297.66407407408,
             "annualPayment": 4800,
             "endsInYears": 14
@@ -6536,6 +6571,22 @@
             },
             "payerBasis": "stated_goal_payers"
           }
+        }
+      ],
+      "debtDecisions": [
+        {
+          "liabilityId": "liability_application_loan_0",
+          "label": "car loan",
+          "path": "/household/liabilities/0",
+          "code": "not_cleared",
+          "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+          "goalIds": [],
+          "retained": true,
+          "yearlyCost": 150,
+          "repaymentsStopped": 0,
+          "spareCash": 65350,
+          "comparedAmount": 3000,
+          "yearlyDifference": 145.98000000000002
         }
       ]
     },
@@ -8196,6 +8247,7 @@
         "debts": [
           {
             "liabilityId": "fictional_rental_loan",
+            "label": "Invented rental loan",
             "balance": 232659.35990757815,
             "annualPayment": 24000,
             "endsInYears": null
@@ -8782,6 +8834,22 @@
             },
             "payerBasis": "stated_goal_payers"
           }
+        }
+      ],
+      "debtDecisions": [
+        {
+          "liabilityId": "liability_application_loan_0",
+          "label": "car loan",
+          "path": "/household/liabilities/0",
+          "code": "not_cleared",
+          "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+          "goalIds": [],
+          "retained": true,
+          "yearlyCost": 150,
+          "repaymentsStopped": 0,
+          "spareCash": 55750,
+          "comparedAmount": 3000,
+          "yearlyDifference": 145.98000000000002
         }
       ]
     },
