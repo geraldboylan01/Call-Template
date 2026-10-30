@@ -3344,13 +3344,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-1585bd7b9b5025f39fa2",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-4fdb996326fa4880832a",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-6ccfcc3b423caf7f110a",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -5529,13 +5529,13 @@
             "title": "sell_investment",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-c3ea5629922c1e4e05ac",
-              "liquidity_analysis": "case-2ae9cfcee7e90ef9c7ed",
-              "household_cash_flow": "case-ed69859279b5c6f94515",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-c1d5613b724dd8a42e5b",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-b85d68a876357a0434bd",
+              "liquidity_analysis": "case-e045f8249bb22979e368",
+              "household_cash_flow": "case-f07f5cc99c580d166e16",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-0cef55f3e9ba94c1b694",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -7734,6 +7734,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 113193.70000000001,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           },
@@ -7742,13 +7758,13 @@
             "title": "use_cash",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-105b3588b80417c7f235",
-              "liquidity_analysis": "case-b13614fd5487f4e5fd42",
-              "household_cash_flow": "case-0c7ab764ef7cc0b6c951",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-d16bab0fbf0ee5de202a",
-              "future_cost_fund": "case-7f208a8fd41ec82c54e4"
+              "personal_balance_sheet": "case-54265f441f940efec5a8",
+              "liquidity_analysis": "case-478066b194b9b852ccd1",
+              "household_cash_flow": "case-e71088162075385f1203",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-372c3ff151e05fcf5ec5",
+              "future_cost_fund": "case-29b254364c8556e2e616"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -9952,6 +9968,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 68000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           },
@@ -9960,13 +9992,13 @@
             "title": "clear_loan",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-2b5dde7c5b0fc758d0f9",
-              "liquidity_analysis": "case-85f81b909380e1219008",
-              "household_cash_flow": "case-40f6751676e7c8051d0a",
-              "loan_analysis": "case-90d0738ca786967574a2",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-d76b6a7e6bdab8179689",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-e9f90f70b62c8c792c28",
+              "liquidity_analysis": "case-385b5e3a53c2e7121350",
+              "household_cash_flow": "case-195e4ac369bfc3197f41",
+              "loan_analysis": "case-51cd3d5d45cf49b7762d",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-08a2ea70765bcbbb1e87",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -12158,6 +12190,23 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "cleared_from_spare_cash",
+                  "reason": "car loan is cleared from spare cash before the goals, dearest borrowing rate first.",
+                  "goalIds": [],
+                  "retained": false,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 1800,
+                  "clearanceYear": 2026,
+                  "spareCash": 66000,
+                  "comparedAmount": 0,
+                  "yearlyDifference": 0
+                }
               ]
             }
           }
@@ -12293,13 +12342,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-1585bd7b9b5025f39fa2",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-4fdb996326fa4880832a",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-6ccfcc3b423caf7f110a",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -14478,13 +14527,13 @@
             "title": "extra_pension",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-00cfb680dcc18166af17",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-1fc49efdab8282ce9178",
-              "protection_gap": "case-e7540a31da73fe5e9266",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-25bed40a37e8ad0b80bc",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-5dd7cd46dcbf60135dd6",
+              "protection_gap": "case-52f23f901021aa13dd77",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -16703,6 +16752,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           },
@@ -16711,13 +16776,13 @@
             "title": "spend_less",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-04a0aa226ba33c130a52",
-              "liquidity_analysis": "case-890da88b0c188d23866c",
-              "household_cash_flow": "case-1b82c30601968f6ed716",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-9911e73723d76c53ba1b",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-f1b690c6d77cbb97849e",
+              "liquidity_analysis": "case-7b394aa5d2f6e6675b35",
+              "household_cash_flow": "case-3a96495b15a8b02e27af",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-88e2acd2ca81f62f485c",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -18924,6 +18989,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           },
@@ -18932,13 +19013,13 @@
             "title": "retire_later",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-ed69859279b5c6f94515",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-facdb3b9e3ad5ff2f157",
-              "protection_gap": "case-1585bd7b9b5025f39fa2",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-f07f5cc99c580d166e16",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-15a68de1351ba18e257f",
+              "protection_gap": "case-6ccfcc3b423caf7f110a",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -21143,6 +21224,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           }
@@ -21278,13 +21375,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-1585bd7b9b5025f39fa2",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-4fdb996326fa4880832a",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-6ccfcc3b423caf7f110a",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -23463,13 +23560,13 @@
             "title": "major_spending",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-24ca25af269a062e31bc",
-              "liquidity_analysis": "case-ddc4744c3ef71f7d74d1",
-              "household_cash_flow": "case-c40d7a1dfb308c9e3584",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-fe37ce1f40bd1d533c1a",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-254a0ead3425f5706ff4",
+              "liquidity_analysis": "case-8935e7c1074786fdbbaf",
+              "household_cash_flow": "case-86fca22959050b5f038b",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-1e4a664216fdf143d9fb",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -25676,6 +25773,25 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "insufficient_spare_cash",
+                  "reason": "car loan is left running because available spare cash cannot cover its balance while protecting the reserve and existing commitments.",
+                  "goalIds": [
+                    "fictional_dated_cost",
+                    "goal_application_retire"
+                  ],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           },
@@ -25684,13 +25800,13 @@
             "title": "major_delay",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-ed69859279b5c6f94515",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-40ea0a770e6be87b9f46",
-              "protection_gap": "case-1585bd7b9b5025f39fa2",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-f07f5cc99c580d166e16",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-f5df41283d5a67d43208",
+              "protection_gap": "case-6ccfcc3b423caf7f110a",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -27938,6 +28054,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           },
@@ -27946,13 +28078,13 @@
             "title": "ordinary_boundary",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-0041346ec0698fe6f695",
-              "liquidity_analysis": "case-ca99d99ff093efa4a0cd",
-              "household_cash_flow": "case-6e0e83a2841dac75a881",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-05ad7efdb3b1ea3f01d8",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-d4c61511c9f038c436ab",
+              "liquidity_analysis": "case-f8f607a73130207e9ece",
+              "household_cash_flow": "case-d220e9ccaeca7cb8cfa3",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-7e8539de074f71e6a532",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -30159,6 +30291,22 @@
                     "payerBasis": "stated_goal_payers"
                   }
                 }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
+                }
               ]
             }
           }
@@ -30294,13 +30442,13 @@
             "title": "current",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-261306361c9ba99155e0",
-              "liquidity_analysis": "case-67a6b9bc55d830dbc42e",
-              "household_cash_flow": "case-a54cd3d18aec1c69bbce",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-388118dd734e78f803c4",
-              "protection_gap": "case-1585bd7b9b5025f39fa2",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-da9d74d3da104b44ae0b",
+              "liquidity_analysis": "case-69188ef0c115a2ebabd7",
+              "household_cash_flow": "case-4fdb996326fa4880832a",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-1edf8b9063de00c92d46",
+              "protection_gap": "case-6ccfcc3b423caf7f110a",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -32479,13 +32627,13 @@
             "title": "combined",
             "status": "compiled",
             "chapterCases": {
-              "personal_balance_sheet": "case-fd91d9e7795b15f9c55c",
-              "liquidity_analysis": "case-043c931d1cb8f8ddf6a4",
-              "household_cash_flow": "case-e928c9d64758af26ba44",
-              "loan_analysis": "case-d3fc4dba07e0eb6cf161",
-              "pension_projection": "case-1fc49efdab8282ce9178",
-              "protection_gap": "case-17c2a5ba4a4443aa6077",
-              "future_cost_fund": "case-c8b7e6f5e02869ba3001"
+              "personal_balance_sheet": "case-55496db10ebdb5746965",
+              "liquidity_analysis": "case-772f4cde94ac34359503",
+              "household_cash_flow": "case-c6db3b0808327b5c621c",
+              "loan_analysis": "case-4a9474630190855f9155",
+              "pension_projection": "case-5dd7cd46dcbf60135dd6",
+              "protection_gap": "case-dd4c5106b47c02470607",
+              "future_cost_fund": "case-849b0f630c91e2f3a03a"
             },
             "sourceHousehold": {
               "profileId": "fictional-reviewed-routes",
@@ -34729,6 +34877,22 @@
                     },
                     "payerBasis": "stated_goal_payers"
                   }
+                }
+              ],
+              "debtDecisions": [
+                {
+                  "liabilityId": "liability_application_loan_0",
+                  "label": "car loan",
+                  "path": "/household/liabilities/0",
+                  "code": "not_cleared",
+                  "reason": "car loan is not cleared in this route. Its annual interest at the recorded balance is 150.00 euro.",
+                  "goalIds": [],
+                  "retained": true,
+                  "yearlyCost": 150,
+                  "repaymentsStopped": 0,
+                  "spareCash": 69000,
+                  "comparedAmount": 3000,
+                  "yearlyDifference": 145.98000000000002
                 }
               ]
             }

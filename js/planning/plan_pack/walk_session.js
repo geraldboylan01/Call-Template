@@ -4,6 +4,7 @@ import { prepareResourceRoute } from './resource_ledger.js';
 import { cloneJson } from '../utils.js';
 import { classifyLever } from './lever_catalogue.js';
 import { proveSingleMajorFailure, ordinaryDraft } from './major_policy.js';
+import { debtNotes } from './debt_efficiency.js';
 
 export const METHOD_ORDER = Object.freeze(['reserve', 'protection', 'loans_and_cards', 'dated_costs_soonest_first', 'mortgage', 'retirement']);
 export const RETIREMENT_GOALS = Object.freeze(['retire', 'retire_early', 'improve_pension']);
@@ -92,7 +93,7 @@ export function walkSession(input, { beforeCompile, candidatePrefix } = {}) {
       const ledger = compilation.resourceLedger?.routes.find(row => row.routeId === draft.id) ?? null;
       const result = { kind: 'priced_route', status: compilation.status, planPack: compilation.source?.normalizedPlanPack ?? raw,
         routeDraft: cloneJson(draft), compileOptions: { resourceLedger: true }, compilation, ledger,
-        meetsAllGoals: compilation.status === 'compiled' && meets(ledger), refusals: compilation.diagnostics };
+        meetsAllGoals: compilation.status === 'compiled' && meets(ledger), refusals: compilation.diagnostics, notes: debtNotes(ledger) };
       // If cash cannot be paid, retain a clearly labelled native quote without
       // pretending that an overdrawn household produced a financial case.
       if (!ledger && draft.changes.some(change => change.type === 'useCash' || change.oneOffAmount)) {

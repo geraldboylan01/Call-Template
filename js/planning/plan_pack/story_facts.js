@@ -333,6 +333,12 @@ export function readPlanPosition(compiled) {
     currentPosition(r);
     const goalWalk = goalFacts(r), steps = ledgerWalk(r, goalWalk), freed = freedCash(r);
     moveFacts(r); pensions(r); protection(r); pressurePoints(r);
+    for (const [index, decision] of (r.ledger?.debtDecisions ?? []).entries()) {
+      const key = 'inefficiencies.' + decision.liabilityId;
+      for (const [field, unit] of [['reason', 'text'], ['code', 'text'], ['yearlyCost', 'EUR/year'], ['yearlyDifference', 'EUR/year'], ['repaymentsStopped', 'EUR/year'], ['clearanceYear', 'year']]) {
+        if (decision[field] !== undefined) r.from(key + '.' + field, r.ledgerPath + '/debtDecisions/' + index + '/' + field, unit);
+      }
+    }
     const scanned = scanStoryIssues(r);
     return { routeId: r.route.id, facts: r.facts, goalWalk, steps, freedCash: freed, issues: scanned.issues, unavailableIssues: scanned.unavailable };
   });

@@ -25,6 +25,8 @@ import { storyFactRegistry } from '../js/plan_story_registry.js';
 import { getStoryRequirements, checkStory } from '../js/planning/plan_pack/story_checker.js';
 import { checkStoryLink } from '../js/planning/plan_pack/story_links.js';
 import { minimalAnalystStory } from './fixtures/minimal-analyst-story.mjs';
+import { inefficiencyFirst } from '../js/planning/plan_pack/debt_efficiency.js';
+import { walkSession } from '../js/planning/plan_pack/walk_session.js';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const fact = path => ({ kind: 'fact', path });
@@ -94,7 +96,8 @@ export async function checkAnalystWiring({ fixtures, options }) {
       const ledger = out.result.data.ledger;
       const transaction = ledger.propertyMove;
       const property = compiled.source.normalizedPlanPack.household.properties.find(row => row.propertyId === transaction.propertyId);
-      const expected = { property: property.label ?? (change.type === 'tradeDownHome' ? 'Your home' : 'Your rental property'), year: transaction.year, sellingCosts: transaction.sellingCosts, tax: transaction.tax,
+      const expected = { property: property.label ?? (change.type === 'tradeDownHome' ? 'Your home' : 'Your rental property'), year: transaction.year,
+        loanRepaid: 'The sale repays ' + transaction.debts.filter(debt => debt.balance > 0).map(debt => `${debt.label}: ${new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' }).format(debt.balance)}`).join('; ') + '.', sellingCosts: transaction.sellingCosts, tax: transaction.tax,
         ...(change.type === 'tradeDownHome' ? { newHomePrice: transaction.newHomePrice, cashReleased: transaction.cashReleased,
           buyingCosts: transaction.buyingCosts.total, stampDuty: transaction.buyingCosts.stampDuty }
           : { netProceeds: transaction.cashReleased, rentStopped: transaction.rental.rent, runningCostsStopped: transaction.rental.running,
@@ -189,7 +192,8 @@ export async function checkAnalystWiring({ fixtures, options }) {
     checkReply('balancing_moves', out.result, {}, type);
     let compiles = 0; const execution = { beforeCompile: () => { compiles++; } };
     const assembly = await profileToPlanPack(c.pinned.profile, { confirmedRevision: 7, calculationDate: c.pinned.calculationDate, clientLabel: c.pinned.planPack.clientName, routes: [], ...execution });
-    const native = await sizeMajorMove(assembly.planPack, draft, { type, propertyId, year: 2026 }, execution);
+    const start = await inefficiencyFirst(walkSession(assembly, execution), draft);
+    const native = await sizeMajorMove(assembly.planPack, start.draft, { type, propertyId, year: 2026 }, execution);
     assert.deepEqual(out.result.data.route, native.route);
     assert.deepEqual(out.result.data.ledger, native.ledger);
     assert.deepEqual(out.result.data.facts, readPlanPosition(native.compilation).routes.find(row => row.routeId === draft.id).facts);

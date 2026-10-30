@@ -55,7 +55,11 @@ calls `suggestRoutes`, returning up to five independent native walks.
 `balancing_moves({route?, routeId?})` calls `balancingMoves` for ordinary goal
 moves and lever sizes; an explicit `type: tradeDownHome` or `sellProperty`
 uses `sizeMajorMove`, with optional `year` and the recorded `propertyId` for a
-sale. Omitted drafts start an empty walk. A `routeId` refers to a saved draft.
+sale. Omitted drafts start with dear loans and cards cleared from spare cash,
+dearest rate first, unless the reserve, an otherwise on-time goal or recorded
+early-repayment terms prevent it. Mortgages stay with their own goal ways.
+Retained routes report omitted clearances as notes and required inefficiency
+facts. A `routeId` refers to a saved draft.
 Each candidate has a reusable `candidateId` and a priced wire route with its
 own ID. Select it with `price_route({candidateId})` or its unchanged wire route;
 the stored compilation is reused. Changed settings or IDs require fresh pricing.

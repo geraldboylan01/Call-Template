@@ -6,6 +6,9 @@ export function propertyMoveRows(move, property) {
   const rows = [
     ['property', 'Property', property.label ?? (property.use === 'home' ? 'Your home' : 'Your rental property'), 'text'],
     ['year', 'Year', move.year, 'year'],
+    ['loanRepaid', 'Loan repaid', move.debts.some(debt => debt.balance > 0)
+      ? 'The sale repays ' + move.debts.filter(debt => debt.balance > 0).map(debt => `${debt.label}: ${storyDisplay(debt.balance, 'EUR')}`).join('; ') + '.'
+      : 'There is no outstanding secured loan to repay from this sale.', 'text'],
     ['sellingCosts', 'Selling costs', move.sellingCosts, 'EUR'],
     ['tax', 'Tax', move.tax, 'EUR']
   ];

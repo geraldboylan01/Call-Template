@@ -119,8 +119,8 @@ function quoteGoals(context, pack, cashByGoal = {}) {
       const monthly = currentDebt.currentBalance.amount === 0 ? 0 : priced.monthlyPayment;
       const delta = 12 * (monthly - currentDebt.monthlyPayment.amount);
       return { ...common, kind: 'debt', order: goal.type === 'manage_loan' ? 0 : 2, startsInYears: years,
-        liabilityId: debt.liabilityId, priced, input: priced.input, monthly, years, wholeCash: priced.wholeCash,
-        maximumCash: debt.currentBalance.amount, needs: Array.from({ length: years }, () => Math.max(0, delta)),
+        liabilityId: debt.liabilityId, priced, input: priced.input, monthly, years, wholeCash: currentDebt.currentBalance.amount === 0 ? 0 : priced.wholeCash,
+        maximumCash: currentDebt.currentBalance.amount === 0 ? 0 : debt.currentBalance.amount, needs: Array.from({ length: years }, () => Math.max(0, delta)),
         freed: Array.from({ length: years }, () => Math.max(0, -delta)), alreadyCovered: delta <= 0.005, hasCurrentFunding: mortgage.fixedPaymentAmount > 0 };
     }
     const producer = planDatedCostProducer(context, pack, goal);
@@ -466,7 +466,8 @@ export async function prepareResourceRoute(pack, route, index) {
       startsInYears: goal.kind === 'retirement' ? null : goal.startsInYears,
       ...(goal.kind === 'retirement' ? { timingBasis: 'per_person_retirement_ages_in_contributionBenchmark' } : {}),
       wholeCash: goal.wholeCash, maximumCash: goal.maximumCash ?? null,
-      cashAllocated: cashByGoal[goal.goalId] ?? context.cashByLiability[goal.liabilityId] ?? 0,
+      cashAllocated: cashByGoal[goal.goalId] ?? (clearances.some(({ change }) => pack.planningInputs.outgoingBindings.find(binding => binding.id === change.outgoingId)?.liabilityId === goal.liabilityId)
+        || propertyMove?.debts.some(debt => debt.liabilityId === goal.liabilityId) ? 0 : context.cashByLiability[goal.liabilityId] ?? 0),
       needsByYear: goal.needs.map((amount, offset) => ({ year: calendarYear + offset, amount })),
       ...(goal.kind === 'retirement' ? { projectedPotGap: goal.priced.gapLeftOver, contributionBenchmark: goal.priced.plannedInput,
         oneOffGross: sum(context.pensionContributions.map(change => change.oneOffAmount ?? 0)),

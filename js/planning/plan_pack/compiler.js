@@ -11,8 +11,9 @@ import { HOUSEHOLD_CASH_FLOW_BANNED_PHRASES, HOUSEHOLD_CASH_FLOW_PROVIDER_NAMES 
 import { classifyLever } from './lever_catalogue.js';
 import { proveSingleMajorFailure } from './major_policy.js';
 import { propertyMoveChapter, propertyMoveRows } from './property_move_story.js';
+import { debtDecisions } from './debt_efficiency.js';
 
-const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.7.0';
+const PLAN_PACK_COMPILER_VERSION = 'plan-pack-1.8.0';
 const versions = Object.freeze({
   compiler: PLAN_PACK_COMPILER_VERSION,
   assumptions: PLANEIR_ASSUMPTIONS_VERSION,
@@ -175,6 +176,14 @@ export async function compilePlanPack(raw, { resourceLedger = false, currentPosi
         const multiple = route.changes.filter(change => classifyLever(pack, change).scale === 'major').length > 1;
         const majorException = multiple ? await proveSingleMajorFailure(pack, route, index) : null;
         const prepared = currentPositionOnly ? await prepareCurrentPosition(pack) : await prepareResourceRoute(pack, route, index);
+        if (!currentPositionOnly && route.id !== 'current') {
+          const session = { pack, fast: async draft => {
+            try { return await prepareResourceRoute(pack, draft, index); }
+            catch { return { ledger: null }; }
+          } };
+          prepared.ledger.debtDecisions = await debtDecisions(pack, route, prepared.ledger,
+            ledgers.find(row => row.routeId === 'current'), session);
+        }
         if (majorException) prepared.ledger.majorException = majorException;
         context = prepared.context;
         if (!currentPositionOnly) context.resourceLedger = prepared.ledger;

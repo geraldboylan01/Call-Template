@@ -6,8 +6,8 @@ export const STORY_SECTIONS = Object.freeze(['current_position', 'ledger', 'prot
   'cash_flow_after', 'net_worth_after', 'risks', 'check_next']);
 export const STORY_PARTS = Object.freeze(['does', 'why', 'gives', 'costs', 'check']);
 const PROPERTY_MOVE_FIELDS = {
-  tradeDownHome: ['property', 'year', 'sellingCosts', 'tax', 'newHomePrice', 'cashReleased', 'buyingCosts', 'stampDuty'],
-  sellProperty: ['property', 'year', 'sellingCosts', 'tax', 'netProceeds', 'rentStopped', 'runningCostsStopped', 'rentalTaxStopped', 'repaymentsStopped']
+  tradeDownHome: ['property', 'year', 'loanRepaid', 'sellingCosts', 'tax', 'newHomePrice', 'cashReleased', 'buyingCosts', 'stampDuty'],
+  sellProperty: ['property', 'year', 'loanRepaid', 'sellingCosts', 'tax', 'netProceeds', 'rentStopped', 'runningCostsStopped', 'rentalTaxStopped', 'repaymentsStopped']
 };
 const people = household => [household.primaryPerson, household.partner].filter(Boolean);
 
@@ -103,6 +103,10 @@ export function storyRequirements(compiled, position) {
     keys.forEach(key => requireFact(key, 'inefficiencies', issue.headline));
     return { id: issue.id, factKeys: keys };
   });
+  for (const decision of ledger?.debtDecisions ?? []) {
+    requireFact('inefficiencies.' + decision.liabilityId + '.reason', 'inefficiencies', 'Debt clearance decision');
+    if (decision.retained) requireFact('inefficiencies.' + decision.liabilityId + '.yearlyCost', 'inefficiencies', 'Retained debt interest cost');
+  }
   const years = ledger?.years?.map(row => row.year) ?? [];
   const freed = (ledger?.freedCash ?? []).filter(event => years.includes(event.fromYear)).map(event => {
     const id = event.liabilityId ?? event.goalId;

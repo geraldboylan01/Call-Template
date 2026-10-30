@@ -2,12 +2,17 @@ import { cloneJson } from '../utils.js';
 import { walkSession, wireDraft, withoutTargetFunding, upsert, cashChoice, moveChoice, availableAt, goalOutcome, prefix, meets, refusal, RETIREMENT_GOALS, METHOD_ORDER } from './walk_session.js';
 import { amount, cents, minimum, pensionMembers, contributions } from './walk_search.js';
 import { findBalancingMoves } from './balancing_moves.js';
+import { inefficiencyFirst } from './debt_efficiency.js';
 
 /** One goal at its ledger point. Every choice carries the exact wire draft and
  * the complete priceRoute result; callers cannot mistake a prefix for a plan.
  */
 export async function goalWays(compiledPlan, routeDraft, goalId, execution = {}) {
-  try { return await goalWaysInSession(walkSession(compiledPlan, execution), wireDraft(routeDraft), goalId); }
+  try {
+    const session = walkSession(compiledPlan, execution);
+    const start = await inefficiencyFirst(session, wireDraft(routeDraft));
+    return await goalWaysInSession(session, start.draft, goalId);
+  }
   catch (error) { return { status: 'refused', goalId, ways: [], levers: [], refusals: [refusal(error)] }; }
 }
 export async function goalWaysInSession(session, routeDraft, goalId, { searchLevers = true } = {}) {

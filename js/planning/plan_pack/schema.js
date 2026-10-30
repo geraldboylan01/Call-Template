@@ -297,6 +297,10 @@ export function normalizePlanPack(raw, { allowMultipleMajors = false } = {}) {
       } else if (change.type === 'clearOutgoing') {
         reference(change.outgoingId, new Set(planningInputs.outgoingBindings.map(b => b.id)), here + '/outgoingId');
         if (change.paidFrom !== 'savings') fail(here + '/paidFrom', 'must be savings.');
+        const binding = planningInputs.outgoingBindings.find(b => b.id === change.outgoingId);
+        if (household.liabilities.find(debt => debt.liabilityId === binding.liabilityId).earlyRepaymentAllowed === false) {
+          fail(here + '/outgoingId', 'The recorded loan terms do not allow early repayment.');
+        }
       } else {
         reference(change.goalId, new Set(goals.keys()), here + '/goalId');
         if (['completed', 'paused'].includes(goals.get(change.goalId).status)) fail(here + '/goalId', 'cannot change an inactive goal.');

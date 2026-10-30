@@ -3,8 +3,10 @@ import { classifyLever } from './lever_catalogue.js';
 import { sizeMajorMove } from './major_move_search.js';
 import { bounded, fact, upsert, moveChoice, cashChoice, meets, prefix, refusal, walkSession } from './walk_session.js';
 import { amount, cents, minimum, maximum, pensionMembers, cashWalk, spendCeiling } from './walk_search.js';
+import { inefficiencyFirst } from './debt_efficiency.js';
 
 export async function findBalancingMoves(session, draft, { goalId, ordinaryOnly = false, includeMajor = true } = {}) {
+  draft = (await inefficiencyFirst(session, draft)).draft;
   const base = await session.fast(draft), moves = [], refusals = [], failed = [];
   if (!base.ledger) return { status: 'refused', moves, refusals: base.refusals };
   const ids = goalId ? prefix(base.ledger, goalId) : undefined;
@@ -80,6 +82,8 @@ export async function findBalancingMoves(session, draft, { goalId, ordinaryOnly 
       'The smallest cut whose native ledger funds every scoped goal; the essential floor and major boundary still apply.');
   } catch (error) { refusals.push(refusal(error)); }
   for (const binding of pack.planningInputs.outgoingBindings) {
+    const debt = pack.household.liabilities.find(row => row.liabilityId === binding.liabilityId);
+    if (debt.type === 'mortgage' || debt.earlyRepaymentAllowed === false) continue;
     if (draft.changes.some(change => change.type === 'clearOutgoing' && change.outgoingId === binding.id)) continue;
     const index = pack.planningInputs.outgoingBindings.indexOf(binding);
     const candidate = upsert(draft, { type: 'clearOutgoing', outgoingId: binding.id, paidFrom: 'savings', sources: { outgoingId: fact(`/planningInputs/outgoingBindings/${index}/id`),
@@ -91,7 +95,7 @@ export async function findBalancingMoves(session, draft, { goalId, ordinaryOnly 
   for (const [index, asset] of pack.household.assets.entries()) {
     if (asset.type !== 'investment' || !(asset.currentValue?.amount > 0) || draft.changes.some(change => change.type === 'sellAsset' && change.assetId === asset.assetId)) continue;
     const sold = upsert(draft, { type: 'sellAsset', assetId: asset.assetId, sources: { assetId: fact(`/household/assets/${index}/assetId`) } });
-    const allocated = await cashWalk(session, sold), probe = await session.fast(allocated.draft);
+    const allocated = await inefficiencyFirst(session, sold, { finish: draft => cashWalk(session, draft) }), probe = await session.fast(allocated.draft);
     if (ok(probe)) await add('sellAsset:' + asset.assetId, allocated.draft, { assetId: asset.assetId, basis: 'whole_holding_only' }, 'Price the whole holding through tax, then commit the proceeds in method order.');
     else refusals.push(...allocated.refusals, ...probe.refusals);
   }

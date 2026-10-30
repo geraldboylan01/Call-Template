@@ -7,8 +7,9 @@ import { goalWaysInSession } from './goal_ways.js';
 import { findBalancingMoves } from './balancing_moves.js';
 import { singleMajorTrials } from './major_policy.js';
 import { propertyMoveBounds, PROPERTY_LEVERS } from './property_moves.js';
+import { inefficiencyFirst } from './debt_efficiency.js';
 
-async function cashFirst(session, start) {
+async function cashFirstCore(session, start) {
   const result = await cashWalk(session, start);
   const probe = await session.fast(result.draft);
   const retirement = probe.ledger?.goalFunding.find(goal => goal.kind === 'retirement');
@@ -21,12 +22,15 @@ async function cashFirst(session, start) {
   return result;
 }
 
+const cashFirst = (session, start) => inefficiencyFirst(session, start, { finish: draft => cashFirstCore(session, draft) });
+
 /** Minimise a feasible combination conditionally, one setting at a time. No
  * economic score or ranking across different human trade-offs is introduced.
  */
 async function minimiseOrdinary(session, draft) {
   let next = cloneJson(draft);
   for (const change of [...next.changes].reverse()) {
+    if (change.type === 'clearOutgoing') continue;
     const without = removeChange(next, candidate => JSON.stringify(candidate) === JSON.stringify(change));
     if (meets((await session.fast(without)).ledger)) { next = without; continue; }
     if (change.type === 'spendLess') {
@@ -120,9 +124,12 @@ async function ordinaryCombination(session, start) {
       if (meets((await session.fast(walked.draft)).ledger)) return { draft: await minimiseOrdinary(session, walked.draft), refusals };
     }
   }
-  // Full clearances are discrete choices. Try each against the same ordinary
-  // envelope, rather than assuming that spending cash always improves a plan.
+  // Other non-mortgage full clearances can still help an ordinary envelope.
+  // Flagged dear debts were already tested before this goal walk.
   for (const [index, binding] of pack.planningInputs.outgoingBindings.entries()) {
+    const debt = pack.household.liabilities.find(row => row.liabilityId === binding.liabilityId);
+    if (debt.type === 'mortgage' || debt.earlyRepaymentAllowed === false
+      || structural.changes.some(change => change.type === 'clearOutgoing' && change.outgoingId === binding.id)) continue;
     const cleared = upsert(structural, { type: 'clearOutgoing', outgoingId: binding.id, paidFrom: 'savings', sources: { outgoingId: fact(`/planningInputs/outgoingBindings/${index}/id`),
       paidFrom: { kind: 'default', path: '/routes/clearOutgoingPaidFrom', version: PLANEIR_ASSUMPTIONS.version } } });
     const probe = await session.fast(cleared);
@@ -186,6 +193,7 @@ export async function suggestRoutes(compiledPlan, execution = {}) {
     const suggestions = [], refusals = [], signatures = new Map();
     const add = async (family, draft, why, minimisation = null) => {
       if (!draft || suggestions.length >= 5) return;
+      draft = (await inefficiencyFirst(session, draft)).draft;
       const signature = JSON.stringify(draft.changes);
       if (signatures.has(signature)) { signatures.get(signature).families.push(family); return; }
       const priced = await session.price(draft);
@@ -195,13 +203,14 @@ export async function suggestRoutes(compiledPlan, execution = {}) {
     };
     const cash = await cashFirst(session, empty);
     await add('lump_sum_first', cash.draft, 'Commit spare cash goal by goal in method order, preserving the reserve and repricing yearly funding after each choice.');
-    await add('cash_kept', empty, 'Keep uncommitted cash and use the native yearly funding requirements, with any remaining gap shown.');
-    const ordinary = await findBalancingMoves(session, empty, { ordinaryOnly: true, includeMajor: false });
+    const kept = await inefficiencyFirst(session, empty);
+    await add('cash_kept', kept.draft, 'Clear dear loans and cards first, then keep uncommitted cash and use yearly money for goals, with any remaining gap shown.');
+    const ordinary = await findBalancingMoves(session, kept.draft, { ordinaryOnly: true, includeMajor: false });
     const single = ordinary.moves[0];
     if (single) await add('smallest_ordinary_moves', single.route, single.why, single.minimum);
-    else if (meets(base.ledger)) await add('smallest_ordinary_moves', empty, 'No ordinary move is needed to fund the stated goals.');
+    else if (meets((await session.fast(kept.draft)).ledger)) await add('smallest_ordinary_moves', kept.draft, 'After removing debt inefficiencies, no further ordinary move is needed to fund the stated goals.');
     else {
-      const combined = await ordinaryCombination(session, empty);
+      const combined = await ordinaryCombination(session, kept.draft);
       if (combined.draft) await add('smallest_ordinary_moves', combined.draft,
         'Compose ordinary changes in method order, then remove redundant changes and minimise each remaining numeric setting with the others fixed.',
         { basis: 'conditional_minima_not_an_economic_ranking' });

@@ -253,6 +253,10 @@ function normalizeLiability(value, index) {
   if (typeof annualInterestRate === 'number') liability.annualInterestRate = annualInterestRate;
   if (monthlyPayment) liability.monthlyPayment = monthlyPayment;
   if (typeof remainingTermMonths === 'number') liability.remainingTermMonths = remainingTermMonths;
+  if (value.earlyRepaymentAllowed !== undefined) {
+    if (typeof value.earlyRepaymentAllowed !== 'boolean') throw new Error(`${fieldName}.earlyRepaymentAllowed must be a boolean.`);
+    liability.earlyRepaymentAllowed = value.earlyRepaymentAllowed;
+  }
   return liability;
 }
 
