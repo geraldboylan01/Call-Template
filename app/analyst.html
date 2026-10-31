@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en-IE"><head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" /><meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.planeir.ie http://127.0.0.1:8787 http://localhost:8787; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <meta name="call-canvas-worker-base-url" content="https://api.planeir.ie" />
+  <title>Analyses | Planeir adviser</title>
+  <link rel="icon" href="../favicon.svg" /><link rel="stylesheet" href="../styles/landing.css" />
+  <link rel="stylesheet" href="../styles/apply.css" /><link rel="stylesheet" href="../styles/workspace.css" />
+  <link rel="stylesheet" href="../styles/analyst.css" />
+</head><body><div class="landing-shell">
+  <header class="site-header demo-admin-header"><a class="site-brand" href="./">Planeir · adviser</a><nav class="site-header-actions" aria-label="Adviser"><a href="./">Workspace</a><a href="./demos.html">Demo requests</a><button id="logout" class="button button-secondary" hidden>Sign out</button></nav></header>
+  <main class="analyst-main"><p class="section-eyebrow">Private adviser workspace</p><h1>Household analyses</h1>
+    <p>Run the planning method, follow its work and review a checked draft. Every result stays here for your review.</p>
+    <p id="status" role="status" aria-live="polite"></p>
+    <form id="login" class="apply-card" hidden><h2>Adviser sign-in</h2><label class="field">Password<input id="password" type="password" autocomplete="current-password" required /></label><button class="button button-primary">Sign in</button></form>
+    <div id="content" hidden><p id="limits"></p><div class="analyst-grid">
+      <div><section class="apply-card"><h2>Made-up households</h2><div id="fixtures"></div></section>
+        <section id="confirmedSection" class="apply-card" hidden><h2>Confirmed application revisions</h2><div id="confirmed"></div></section>
+        <section class="apply-card"><h2>Saved runs</h2><button id="refresh" class="button button-secondary">Refresh</button><div id="runs"></div></section></div>
+      <section class="apply-card analyst-run" aria-label="Selected analysis"><div id="detail"><h2>Follow an analysis</h2><p>Choose a household or a saved run.</p></div></section>
+    </div></div>
+  </main></div><script type="module" src="../js/analyst_admin.js"></script>
+</body></html>

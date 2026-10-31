@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { createLocalCase, storeNewCase } from './analyst-local-store.mjs';
-import { REVIEWED_FIXTURES, buildReviewedFixture } from './fixtures/analyst-households.mjs';
+import { REVIEWED_FIXTURES, createFixtureCase } from './fixtures/analyst-households.mjs';
 import { refused } from '../js/planning/analyst/contracts.js';
 
 const loadFixtures = async () => JSON.parse(await readFile(new URL('./fixtures/form-to-profile.households.json', import.meta.url), 'utf8'));
@@ -21,6 +21,6 @@ export async function newFixtureCase(name) {
   const input = { requestId: 'fixture-' + name, runId: 'run-' + randomUUID(),
     revision: 7, confirmedRevision: 7, confirmedAt: '2026-10-20T12:00:00.000Z',
     information: (fixture ?? fixtures[2]).information, clientLabel: name };
-  const result = reviewed ? await storeNewCase(await buildReviewedFixture(name, fixtures, input)) : await createLocalCase(input);
+  const result = reviewed ? await storeNewCase(await createFixtureCase(name, input.runId)) : await createLocalCase(input);
   return { ...result, fixture: name, reachesRoutes: Boolean(reviewed) };
 }

@@ -1,0 +1,18 @@
+{
+  "fixture": "fictional-trade-down",
+  "storyFixture": "analyst-trade-down-story.json",
+  "calls": [
+    {"name":"read_position","input":{}},
+    {"name":"missing_facts","input":{}},
+    {"name":"read_figures","input":{}},
+    {"name":"suggest_routes","input":{}},
+    {"name":"price_route","input":{"candidateId":"$tradeDown.candidateId"}},
+    {"name":"goal_ways","input":{"routeId":"$tradeDown.routeId","goalId":"fictional_dated_cost"}},
+    {"name":"goal_ways","input":{"routeId":"$tradeDown.routeId","goalId":"goal_application_retire"}},
+    {"name":"run_whatif","input":{"routeId":"$tradeDown.routeId"}},
+    {"name":"read_position","input":{"routeId":"$tradeDown.routeId"}},
+    {"name":"read_explainers","input":{}},
+    {"name":"balancing_moves","input":{"route":{"id":"replay_sizing","changes":[]},"type":"tradeDownHome","year":2026}},
+    {"name":"submit_story","input":{"storyFixture":true}}
+  ]
+}
