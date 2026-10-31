@@ -7,7 +7,6 @@ import { handleEducationProfile } from './education_customer_profile.js';
 import { handleQualificationRequest } from './advisor/qualification.js';
 import { demoRouteMethods, handleDemoRequest, processDemoOutbox } from './demo/router.js';
 import { analystMethods, handleAnalystRequest } from './analyst/router.js';
-export { AnalystWorkflow } from './analyst/workflow.js';
 import { ensureAudioAccess, voiceMetadata, handlePublicAudio, deleteVoiceNotes, cleanupVoiceNotes } from './application_audio.js';
 import { hasVoicePublicationConsent } from '../../js/case_application/voice_contract.js';
 
