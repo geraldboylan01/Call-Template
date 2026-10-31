@@ -10297,7 +10297,23 @@ export async function initApp(options = {}) {
 
     document.body?.classList.remove('advisor-gate-pending');
 
-    if ('initialSession' in options && options.initialSession != null) {
+    const analystRun = new URLSearchParams(window.location.search).get('analystRun');
+    if (analystRun && !runtimeConfig.readOnly) {
+      if (!/^run-[a-f0-9-]{36}$/.test(analystRun) || !WORKER_BASE_URL) throw new Error('Invalid private analysis link.');
+      await ensureAdvisorAuthenticated('Sign in to review this private analysis.');
+      // The server recompiles and rechecks the draft before opening it; render replaces this.
+      const greeting = document.getElementById('greetingHeadline');
+      if (greeting) greeting.textContent = 'Opening the analysis…';
+      const response = await fetchWithAdvisorAuth(`${WORKER_BASE_URL}/api/advisor/analyst/${encodeURIComponent(analystRun)}/session`, { cache: 'no-store' });
+      const analysis = await response.json();
+      if (!response.ok) throw new Error(analysis.error || 'The analysis could not be opened.');
+      appState.session = importSession(analysis.session);
+      appState.publishedAccess = null;
+      runtimeConfig.allowPublish = false;
+      runtimeConfig.persistLocalSession = false;
+      const { attachAnalystReview } = await import('./analyst_review.js');
+      attachAnalystReview(analysis.review);
+    } else if ('initialSession' in options && options.initialSession != null) {
       appState.session = importSession(options.initialSession);
       appState.publishedAccess = null;
     } else {

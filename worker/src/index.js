@@ -6,6 +6,8 @@ import { handleStripeWebhook, handleStripePurchases, stripePurchaseRouteMethods,
 import { handleEducationProfile } from './education_customer_profile.js';
 import { handleQualificationRequest } from './advisor/qualification.js';
 import { demoRouteMethods, handleDemoRequest, processDemoOutbox } from './demo/router.js';
+import { analystMethods, handleAnalystRequest } from './analyst/router.js';
+export { AnalystWorkflow } from './analyst/workflow.js';
 import { ensureAudioAccess, voiceMetadata, handlePublicAudio, deleteVoiceNotes, cleanupVoiceNotes } from './application_audio.js';
 import { hasVoicePublicationConsent } from '../../js/case_application/voice_contract.js';
 
@@ -335,6 +337,8 @@ function getRouteConfig(pathname) {
   if (pathname === '/api/advisor/qualification/ranking') return { methods: 'GET,OPTIONS' };
   if (/^\/api\/advisor\/leads\/\d+\/qualification(?:\/outcomes)?$/.test(pathname)) return { methods: pathname.endsWith('/outcomes') ? 'POST,OPTIONS' : 'GET,POST,OPTIONS' };
   const demoMethods = demoRouteMethods(pathname);
+  const analystRouteMethods = analystMethods(pathname);
+  if (analystRouteMethods) return { methods: analystRouteMethods };
   if (demoMethods) return { methods: demoMethods };
   if (/^\/api\/applications\/voice-note\/(config|access|prepare|upload|discard)$/.test(pathname)) {
     return { methods: pathname.endsWith('/config') ? 'GET,OPTIONS' : pathname.endsWith('/upload') ? 'PUT,OPTIONS' : 'POST,OPTIONS' };
@@ -9292,6 +9296,15 @@ export default {
           requireCsrf, rateScope: 'advisor-qualification', rateLimitMax: 60
         }),
         respond: (data, status, methods) => jsonResponse(data, status, origin, methods, requestHeaders, noStoreHeaders())
+      });
+    }
+
+    if (pathname.startsWith('/api/advisor/analyst')) {
+      return handleAnalystRequest(request, env, {
+        requireAdmin: requireCsrf => requireAdvisorSession(request, env, origin, routeConfig?.methods || 'GET,POST,OPTIONS', {
+          requireCsrf, rateScope: 'advisor-analyst', rateLimitMax: 1000
+        }),
+        respond: (data, status = 200) => jsonResponse(data, status, origin, routeConfig?.methods || 'GET,POST,OPTIONS', requestHeaders, noStoreHeaders())
       });
     }
 

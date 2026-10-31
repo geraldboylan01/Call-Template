@@ -38,6 +38,7 @@ const HTML_FILES = [
   'app/education-call-report.html',
   'app/walkthrough-payment.html',
   'app/demos.html',
+  'app/analyst.html',
   'app/analytics.html',
   'app/modules.html',
   'app/access.html',

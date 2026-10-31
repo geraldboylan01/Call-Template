@@ -17,6 +17,7 @@ assert.equal(
 
 for (const page of [
   'app/index.html',
+  'app/analyst.html',
   'app/session.html',
   'app/clients.html',
   'app/modules.html',

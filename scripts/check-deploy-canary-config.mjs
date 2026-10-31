@@ -600,9 +600,9 @@ for (const tableName of ['fixedRealtimeValues']) {
     for (const source of Object.values(configs)) {
       const original = readVariables(source);
       const compacted = readVariables(compactConsumerSettings(source));
-      // One separate payment-settings binding leaves 31 of the free plan's
-      // 64 settings available for existing and future secrets.
-      assert(Object.keys(compacted).length <= 33, 'packed settings must leave room for 31 secrets');
+      // Analyst Workflows require Workers Paid for their CPU allowance. Keep
+      // the same 31-secret headroom within that plan's 128-binding limit.
+      assert(Object.keys(compacted).length <= 97, 'packed settings must leave room for 31 secrets');
       for (const [name, value] of Object.entries(compacted)) {
         if (name.startsWith('CONSUMER_SETTINGS_JSON_')) assert(Buffer.byteLength(value) <= 4096);
       }

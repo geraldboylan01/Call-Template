@@ -27,6 +27,7 @@ function hasAdvisorEntryIntent() {
   const params = new URLSearchParams(window.location.search);
   const hashParams = getHashParams();
   return params.has('advisor')
+    || params.has('analystRun')
     || params.has('login')
     || (params.has('pub') && hashParams.has('ak'));
 }

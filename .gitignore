@@ -4,6 +4,7 @@ coverage/
 *.tsbuildinfo
 .worker-dry-run/
 worker/.wrangler/tmp/
+worker/.wrangler/
 worker/wrangler.*.generated.toml
 .dev.vars
 worker/.dev.vars
@@ -28,3 +29,5 @@ private/analyses/
 /Planeir_Economics_Model_v2.xlsx
 /Planeir_Implementation_Design_and_Prompts.md
 /Planeir_Model1_vs_Model2.xlsx
+
+worker/src/analyst/instructions.generated.js

@@ -1,4 +1,30 @@
 import { ConsumerError } from './errors.js';
+import { TOOL_CATALOGUE } from '../../../js/planning/analyst/contracts.js';
+import { ANALYST_MODELS } from '../analyst/budget.js';
+
+/** Separate analyst allowlist: this never widens consumer intake models. */
+export function analystResponseBody(policy, instructions, input) {
+  if (!ANALYST_MODELS.includes(policy.model)) throw new Error('Analyst model is not allowed.');
+  return { model: policy.model, store: false, include: ['reasoning.encrypted_content'],
+    instructions, input, reasoning: { effort: policy.reasoningEffort },
+    max_output_tokens: policy.maxOutputTokens, service_tier: 'default', parallel_tool_calls: false,
+    tools: TOOL_CATALOGUE.map(({ name, description, inputSchema }) => ({
+      type: 'function', name, description, parameters: inputSchema, strict: false
+    })) };
+}
+
+export async function callAnalystModel(env, body) {
+  if (!env.OPENAI_API_KEY || !ANALYST_MODELS.includes(body.model)) throw new Error('Analyst provider is unavailable.');
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method: 'POST', signal: AbortSignal.timeout(8 * 60 * 1000),
+    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}`, 'Content-Type': 'application/json',
+      'X-Client-Request-Id': crypto.randomUUID() }, body: JSON.stringify(body)
+  });
+  if (!response.ok) throw Object.assign(new Error('Analyst provider request failed.'), { code: `provider_http_${response.status}` });
+  const data = await response.json();
+  if (!Array.isArray(data.output)) throw new Error('Invalid analyst model response.');
+  return data;
+}
 import {
   redactSensitiveIdentifiers,
   validateProfilePatchValue,
